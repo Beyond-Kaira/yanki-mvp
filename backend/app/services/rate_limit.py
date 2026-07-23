@@ -66,8 +66,8 @@ def hash_ip(ip: str, salt: str) -> str:
 def client_ip(request: Request) -> str | None:
     """Best-effort client IP.
 
-    Prefers the first entry of ``X-Forwarded-For`` (the shared Caddy sets it in
-    prod), else the socket peer. Tolerates ``request.client`` being ``None``
+    Prefers the first entry of ``X-Forwarded-For`` (the host nginx edge sets it
+    in prod), else the socket peer. Tolerates ``request.client`` being ``None``
     (as it can be under the test client / ASGI without a peer).
     """
     forwarded = request.headers.get("x-forwarded-for")

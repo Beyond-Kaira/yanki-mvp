@@ -3,15 +3,14 @@
 #   images tagged by git SHA. Serving topology (yanki.beyondkaira.com, on the
 #   SAME VPS as the other beyondkaira sites — pulse-prod, Ant Media, brier —
 #   which must never be disturbed):
-#     - web + api join the shared Caddy's docker network (`pulse-prod_default`,
-#       external) under the aliases yanki-web / yanki-api; the shared Caddy
-#       terminates TLS and path-routes /api/* + /healthz -> yanki-api:8141,
-#       else -> yanki-web:8140 (see deploy/caddy/yanki.beyondkaira.com.caddy).
-#       A containerized Caddy cannot reach host-loopback binds, hence aliases.
-#     - the 127.0.0.1 host binds below exist ONLY for deploy.sh health checks
-#       and local debugging, and are parameterized because this VPS already
-#       uses 8140: YANKI_PROD_WEB_PORT (default 8142) / YANKI_PROD_API_PORT
-#       (default 8143) in deploy/.env.
+#     - host nginx (deploy/nginx/yanki.beyondkaira.com.conf, installed under
+#       /etc/nginx) terminates TLS (certbot HTTP-01 webroot) and path-routes
+#       /api/* + /healthz -> 127.0.0.1:8143 (api:8141), else -> 127.0.0.1:8142
+#       (web:8140), over the loopback publishes below.
+#     - the 127.0.0.1 host binds below are the edge's ONLY way in (plus deploy
+#       health checks / local debugging), and are parameterized because this
+#       VPS already uses 8140: YANKI_PROD_WEB_PORT (default 8142) /
+#       YANKI_PROD_API_PORT (default 8143) in deploy/.env.
 # Requires POSTGRES_PASSWORD (and, when deploying, GIT_SHA) — see deploy/.env.
 name: yanki-prod
 
@@ -38,10 +37,6 @@ services:
     command: sh -c "alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 8141"
     ports:
       - "127.0.0.1:${YANKI_PROD_API_PORT:-8143}:8141"
-    networks:
-      default: {}
-      caddy_shared:
-        aliases: [yanki-api]
     environment:
       DATABASE_URL: postgresql+psycopg://yanki:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@db:5432/yanki
     env_file:
@@ -78,10 +73,6 @@ services:
       dockerfile: Dockerfile.prod
     ports:
       - "127.0.0.1:${YANKI_PROD_WEB_PORT:-8142}:8140"
-    networks:
-      default: {}
-      caddy_shared:
-        aliases: [yanki-web]
     environment:
       API_ORIGIN: http://api:8141
     env_file:
@@ -93,12 +84,3 @@ services:
 
 volumes:
   yanki_pgdata:
-
-networks:
-  default: {}
-  # The shared Caddy's network (created by the ams-pulse prod stack). Only web
-  # and api join it (db + worker stay internal). If this external network is
-  # missing, `compose up` fails fast — the pulse-prod stack must be up first.
-  caddy_shared:
-    external: true
-    name: pulse-prod_default

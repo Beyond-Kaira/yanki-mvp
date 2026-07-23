@@ -46,10 +46,9 @@ $COMPOSE up -d
 # 3. Health-check loop against the api's loopback bind. The host port is
 #    parameterized — 8140 is taken by another tenant on this VPS and 8141 is
 #    the dev stack's api default on the same box, hence prod's 8142/8143 —
-#    and must match the compose default; the shared Caddy reaches the api
-#    over the docker network alias instead. /healthz only answers after the
-#    api container finishes `alembic upgrade head`, so this waits out
-#    migrations too.
+#    and must match the compose default; the host nginx edge proxies to this
+#    same loopback bind. /healthz only answers after the api container
+#    finishes `alembic upgrade head`, so this waits out migrations too.
 API_PORT="$(grep -E '^YANKI_PROD_API_PORT=' "$HERE/.env" | tail -1 | cut -d= -f2 | tr -d '[:space:]\r' || true)"
 API_PORT="${API_PORT:-8143}"
 echo ">> health check: http://127.0.0.1:${API_PORT}/healthz"

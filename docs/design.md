@@ -170,7 +170,7 @@ narrowings are exactly the parts that must **not** be blown away on the next
   (the token families are `primary`, `surface`, `success`, `danger`). This keeps
   the UI consistent and re-themeable.
 - **Fetch relative paths only** (`/api/v1/...`, `/healthz`). Next.js `rewrites()`
-  proxy them to the API in dev; Caddy path-routes them in prod. Never hard-code
+  proxy them to the API in dev; host nginx path-routes them in prod. Never hard-code
   the API origin in a component. (Rationale: ADR-6.)
 - **Types come from the contract.** Import request/response types from
   `lib/contracts.ts` (the hand-maintained alias layer over the generated
@@ -233,7 +233,7 @@ decision → consequences**, with one line on why the alternative was rejected.
 - **Context:** in dev the web (8140) and api (8141) are different origins.
 - **Decision:** Next.js `rewrites()` proxy `/api/:path*` and `/healthz` to
   `API_ORIGIN` (default `http://localhost:8141`); the frontend always fetches
-  relative paths. In prod, Caddy path-routes on one origin.
+  relative paths. In prod, the host nginx edge path-routes on one origin.
 - **Consequences:** no CORS config anywhere; dev and prod use identical relative
   URLs in the frontend.
 - **Rejected:** enabling CORS on the API — extra config, wildcard/security
@@ -647,7 +647,7 @@ decision → consequences**, with one line on why the alternative was rejected.
   is closed, but residual overshoot is a small multiple of the cap if the true
   per-run cost drifts above `_EST_CHECKER_RUN_COST_USD` (retune it with the price
   tables and at P5.7); (b) the per-IP hash comes from the first `X-Forwarded-For`
-  entry, which is **client-controlled** even behind the shared Caddy (same caveat
+  entry, which is **client-controlled** even behind the edge proxy (same caveat
   as tech-debt #2), so the per-IP cap is spoofable — the per-brand cap and the
   projected cost cap are the real backstops against a spoofed-IP burst; (c)
   because a cache hit is exempt from the per-IP limit too, an abuser hammering an

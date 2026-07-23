@@ -807,7 +807,8 @@ happy path renders a score.**
   161.97.172.146` verified resolving 2026-07-10.
 - **Complexity:** M
 - **Topology facts (verified on the VPS 2026-07-10, drove the session-5
-  post-close deploy-config changes):**
+  post-close deploy-config changes; SUPERSEDED since — the edge moved from the
+  shared Caddy to host nginx, see `deploy/MIGRATION.md`):**
   - The shared Caddy is the container `pulse-prod-caddy-1`; it mounts ONE
     config file read-only (`~/repo/ams-pulse/deploy/config/Caddyfile.prod`) —
     there is **no import dir**, so publishing Yanki means adding the site
@@ -1414,7 +1415,7 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   check"). `POST /api/v1/checker` derives `ip_hash = sha256(RATE_LIMIT_SALT +
   X-Forwarded-For client IP)` into `checker_submissions.ip_hash`
   (privacy-preserving behind
-  the shared Caddy) and enforces all guards before enqueuing.
+  the nginx edge) and enforces all guards before enqueuing.
 - **Why now:** hard prerequisite for a public URL with real keys; a public,
   anonymous, LLM-spending endpoint without these is an open cost/abuse hole.
 - **Dependencies:** P5.1 (`ip_hash` column; the submit route).
@@ -1602,8 +1603,8 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   it against `CHECKER_DAILY_USD_CAP` and the pricing model (feeds the roadmap 2d
   pricing decision). Verify the kill-switch, both rate limits, and the daily cost cap
   fire live. Redeploy the existing stack to `yanki.beyondkaira.com` (the `/checker` +
-  `/methodology` + `/api/v1/checker*` routes need **no** Caddy change — the shared
-  Caddy already path-routes `/api/*` → api and everything else → web), then flip
+  `/methodology` + `/api/v1/checker*` routes need **no** edge change — the host
+  nginx vhost already path-routes `/api/*` → api and everything else → web), then flip
   `CHECKER_ENABLED=1`. Add a `DRY_RUN=1` checker-happy-path e2e job to CI. The
   **loud public launch** (Product Hunt / LinkedIn) is the go/no-go gated here on:
   real engines green, the abuse guards verified live, the methodology page live, and
@@ -1751,7 +1752,7 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   the `llm_cache` upsert (P5.2) removes the tech-debt #6 race so a second worker can
   be added later with no code change.
 - **`ip_hash` is a salted hash of the `X-Forwarded-For` client IP** (privacy behind
-  the shared Caddy), stored instead of a raw IP; the salt (`RATE_LIMIT_SALT`) is a
+  the nginx edge), stored instead of a raw IP; the salt (`RATE_LIMIT_SALT`) is a
   new env var.
 - **`CHECKER_ENABLED` defaults to `0`** — the public route is dark in every
   environment (`deploy/.env.example` ships `0`) until the operator flips it at
@@ -1780,7 +1781,7 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   numbers come from P5.11's Week-1 cost read and the pricing decision. Product to
   confirm the free-tier generosity vs spend.
 - **Behind-proxy client IP:** rate limiting keys on a salted hash of the client IP;
-  behind the shared Caddy the real client IP arrives via `X-Forwarded-For` — confirm
+  behind the host nginx edge the real client IP arrives via `X-Forwarded-For` — confirm
   the trusted-proxy handling so the hash keys on the visitor, not the proxy, and is
   spoof-resistant enough for per-IP limiting. (Infra detail for P5.6/P5.11.)
 - **Which brand gets the "≥1 full raw answer" shown free** — defaulting to the first

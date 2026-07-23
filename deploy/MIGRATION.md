@@ -1,5 +1,11 @@
 # Yanki — Caddy → host-nginx edge migration
 
+> **Status: COMPLETE (2026-07).** The cutover has been executed: host nginx
+> (`deploy/nginx/yanki.beyondkaira.com.conf`, TLS via certbot HTTP-01 webroot)
+> is the live edge, proxying to the loopback binds 127.0.0.1:8142 (web) /
+> 127.0.0.1:8143 (api). The retired Caddy block (`deploy/caddy/`) has been
+> deleted from the repo. This document is retained as the executed runbook.
+
 Move `yanki.beyondkaira.com` off the **shared containerised Caddy** and onto
 **host nginx** with **wildcard TLS** and **private-loopback** upstreams. Every
 artifact here is **additive** — the existing Caddy block, `deploy.sh`,
@@ -15,7 +21,7 @@ you run the cutover, which is **reversible**.
 
 ## What changes, and what does NOT
 
-| | Caddy (today) | nginx (after) |
+| | Caddy (before) | nginx (now) |
 |---|---|---|
 | Edge | shared **container** `pulse-prod-caddy-1`, one hand-edited Caddyfile | host **nginx**, `deploy/nginx/yanki.beyondkaira.com.conf`, one file |
 | TLS | terminated on the shared Caddy | wildcard `*.beyondkaira.com` cert on nginx |
@@ -148,8 +154,9 @@ sudo systemctl stop nginx                  # (or remove yanki's :443 listen)
 sudo docker start pulse-prod-caddy-1       # Caddy back on :443, unchanged
 ```
 
-Keep the Caddy block (`deploy/caddy/yanki.beyondkaira.com.caddy`) in the repo
-until every site is proven on nginx. Do NOT delete it as part of this migration.
+The Caddy block (`deploy/caddy/yanki.beyondkaira.com.caddy`) was kept in the
+repo until the site was proven on nginx, then deleted (see the status note at
+the top).
 
 ## 5. 🤖 Deploy from now on
 

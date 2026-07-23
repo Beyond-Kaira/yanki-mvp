@@ -76,7 +76,7 @@ time to list everything.
 
 | Service        | Host port           | Notes                                                |
 | -------------- | ------------------- | ---------------------------------------------------- |
-| Frontend (web) | **8140**            | Next.js. Public via Caddy in prod.                   |
+| Frontend (web) | **8140**            | Next.js. Public via host nginx in prod.              |
 | Backend (api)  | **8141**            | FastAPI. `/api/*` and `/healthz` routed here.        |
 | Postgres (db)  | 5432 (**dev only**) | Never published in production; internal network only.|
 
@@ -84,12 +84,11 @@ Host ports for `make dev` are parameterized — set `YANKI_WEB_PORT`, `YANKI_API
 or `YANKI_DB_PORT` in `deploy/.env` to dodge conflicts with something already
 running (defaults 8140 / 8141 / 5432; container-internal ports are unaffected).
 
-In production the shared **pulse-prod Caddy** terminates TLS on
-`yanki.beyondkaira.com` and path-routes `/api/*` + `/healthz` → api and
-everything else → web, reaching both **over the shared docker network**
-(aliases `yanki-api:8141` / `yanki-web:8140` — a containerized Caddy can't hit
-host-loopback binds). The prod stack's own `127.0.0.1` binds are health-check/
-debug only and parameterized (`YANKI_PROD_WEB_PORT`=8142,
+In production the **host nginx** vhost
+(`deploy/nginx/yanki.beyondkaira.com.conf`) terminates TLS on
+`yanki.beyondkaira.com` (certbot HTTP-01 webroot) and path-routes `/api/*` +
+`/healthz` → api and everything else → web, over the prod stack's loopback
+binds. Those binds are parameterized (`YANKI_PROD_WEB_PORT`=8142,
 `YANKI_PROD_API_PORT`=8143 — 8140 is taken by another tenant on the VPS).
 Same origin, so there is no CORS.
 
@@ -150,18 +149,16 @@ make rollback    # redeploy the last-good SHA if something slips through
    (verified 2026-07-10). Yanki serves from the **same VPS** as the other
    beyondkaira sites (pulse-prod, Ant Media, brier) — deploys must never
    disturb them.
-3. ~~Add the site block~~ **done:** the block from
-   `deploy/caddy/yanki.beyondkaira.com.caddy` now lives in the shared Caddy's
-   config (`~/repo/ams-pulse/deploy/config/Caddyfile.prod` — it has **no
-   import dir**), validated in-container and **reloaded** (never restart)
-   in `pulse-prod-caddy-1`. Don't append it twice — a duplicate site key
-   fails validation.
+3. ~~Install the edge~~ **done:** the nginx vhost
+   `deploy/nginx/yanki.beyondkaira.com.conf` is installed under
+   `/etc/nginx/sites-available/` (enabled via symlink), validated with
+   `nginx -t` and **reloaded** (never restart). TLS renews via certbot
+   HTTP-01 webroot. (Originally published through the shared pulse-prod
+   Caddy; migrated to host nginx per `deploy/MIGRATION.md`.)
 
-Compose project name is `yanki-prod`. Yanki runs **no** Caddy of its own: web +
-api join the shared Caddy's network (`pulse-prod_default`) as `yanki-web` /
-`yanki-api`, and the only host binds are loopback health-check ports
-(8142/8143 by default). The pulse-prod stack must be up first (its network is
-`external` to Yanki's compose).
+Compose project name is `yanki-prod`. Yanki runs no edge of its own: host
+nginx proxies to the stack's loopback binds — 127.0.0.1:8142 (web) /
+127.0.0.1:8143 (api) by default — which are the only published host ports.
 
 ---
 

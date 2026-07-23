@@ -56,7 +56,7 @@ devDependencies).)
    of this item was REPAID in session 9 — the live endpoint now enforces
    5/IP/hour + 100/day rolling caps with 429 + `Retry-After` before any row
    is created). Accepted residue: XFF is client-controllable when a request
-   reaches the api without the shared Caddy in front, so the *per-IP* limit
+   reaches the api without the host nginx edge in front, so the *per-IP* limit
    is spoofable — the *global* daily cap (≈$1.62/day worst case at measured
    cost) is the deliberate backstop, and either limit set to `0` is a clean
    kill-switch (429 everything). Also: the daily-cap `COUNT` has no dedicated
@@ -84,20 +84,16 @@ devDependencies).)
    means a losing concurrent writer can drop a rival's just-committed fresh row
    and replace it with its own — harmless (both answers valid, timestamp stays
    fresh, response cost is recorded from the generated result, not the cache row).
-7. **The Caddy publish step is manual, non-idempotent, and coupled two-way to
-   pulse-prod** (rewritten session 7 — the wiring itself is now PROVEN live by
-   P4.2: aliases `yanki-web`/`yanki-api` on `pulse-prod_default`, loopback
-   binds 8142/8143 for health checks, TLS issued, co-tenants undisturbed).
-   What remains accepted debt: (a) `make deploy` does NOT publish — the yanki
-   site block lives inside the operator's
-   `~/repo/ams-pulse/deploy/config/Caddyfile.prod` (appended by hand
-   2026-07-10; the repo's `deploy/caddy/*.caddy` copy is documentation now,
-   and the two must be kept in sync manually); (b) appending twice = duplicate
-   site key = reload failure — always `caddy validate` in-container before
-   `caddy reload`, NEVER restart the shared Caddy; (c) the lifecycle coupling
-   is TWO-WAY — pulse-prod must be up before `make deploy`, and while
-   yanki-prod is attached a `pulse-prod down`/network recreate is blocked by
-   (or strands) yanki's endpoints.
+7. ~~**The Caddy publish step is manual, non-idempotent, and coupled two-way to
+   pulse-prod**~~ **LARGELY REPAID by the Caddy → nginx cutover** (see
+   `deploy/MIGRATION.md`): the shared containerised Caddy was retired; the edge
+   is now a host nginx vhost (`deploy/nginx/yanki.beyondkaira.com.conf`,
+   installed under `/etc/nginx`) proxying the loopback binds 8142/8143, and the
+   two-way pulse-prod lifecycle coupling is gone (yanki no longer joins
+   `pulse-prod_default`; the retired `deploy/caddy/` block was deleted).
+   Remaining accepted debt: `make deploy` still does NOT publish edge config —
+   the repo's nginx conf and the installed `/etc/nginx` copy must be kept in
+   sync manually (`sudo cp` + `nginx -t` + reload, never restart).
 8. **The e2e CI job depends on real runner egress to example.com.** DRY_RUN
    mocks only the LLM providers; pipeline step 1 (discovery) genuinely fetches
    the submitted URL, so the spec's `https://example.com` submission needs
@@ -230,7 +226,7 @@ devDependencies).)
     retune the estimate with the price tables and at P5.7 when Gemini/Perplexity
     stop being $0 stubs. **(b)** the per-IP hash is derived from the first
     `X-Forwarded-For` entry, which is **client-controlled** even behind the
-    shared Caddy (same caveat as item #2), so the per-IP cap is spoofable; the
+    edge proxy (same caveat as item #2), so the per-IP cap is spoofable; the
     per-brand cap and the projected daily cost cap are the real backstops against
     a spoofed-IP burst. **(c)** a cache hit is exempt from the per-IP limit too,
     so an abuser hammering an *already-cached* brand can still grow

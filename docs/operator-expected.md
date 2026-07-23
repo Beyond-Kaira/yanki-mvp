@@ -92,8 +92,8 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 - **Ports 5432 and 8140 are taken on this host.** Dev stack is
   parameterized: `YANKI_DB_PORT=5434 YANKI_WEB_PORT=8240 make dev`
   (web → http://localhost:8240, api on 8141). **Prod** loopback binds are
-  8142 (web) / 8143 (api) — health checks only; the shared Caddy reaches
-  containers via network aliases.
+  8142 (web) / 8143 (api) — the host nginx edge proxies to these (they also
+  serve deploy health checks).
 - **Node is v20 here; README recommends 22 LTS.** All green on 20 —
   upgrade optional.
 - **Docker group membership may not apply to long-lived sessions** —

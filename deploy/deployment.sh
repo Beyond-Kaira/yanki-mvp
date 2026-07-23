@@ -3,20 +3,20 @@
 # deployment.sh — Yanki prod deploy for the HOST-nginx edge (nginx-aware variant
 # of deploy/deploy.sh).
 #
-# WHY A SECOND SCRIPT (additive, not a replacement)
-# -------------------------------------------------
-# deploy/deploy.sh is the CADDY-era deploy: it builds, `compose up`s, and
-# health-checks the api's PRIVATE loopback port (127.0.0.1:8143/healthz) — it
-# proves the CONTAINER is up, but not that the edge routes to it, because the
-# edge (shared containerised Caddy) was owned by another repo.
+# WHY A SECOND SCRIPT (this is the deploy path; deploy.sh is the engine's origin)
+# -------------------------------------------------------------------------------
+# deploy/deploy.sh builds, `compose up`s, and health-checks the api's PRIVATE
+# loopback port (127.0.0.1:8143/healthz) — it proves the CONTAINER is up, but
+# not that the edge routes to it.
 #
 # This script keeps deploy.sh's exact docker-compose engine and its .last-good
 # rollback discipline, but moves the health gate to the PUBLIC url
 # (https://yanki.beyondkaira.com/healthz). That single change is what makes it
 # "nginx-aware": a green run proves the whole host-nginx path-split
-# (/api/* + /healthz -> api, else -> web) actually serves, end to end. Use this
-# once the Caddy -> nginx :443 cutover in deploy/MIGRATION.md is done; before
-# that, deploy.sh remains the deploy path (or override HEALTH_URL, see below).
+# (/api/* + /healthz -> api, else -> web) actually serves, end to end. The
+# host-nginx edge (deploy/nginx/yanki.beyondkaira.com.conf) is live, so THIS
+# is the standard deploy; deploy.sh remains for container-only health checks
+# (or override HEALTH_URL, see below).
 #
 # deploy.sh is left UNTOUCHED. This file adds nothing to the live edge on its
 # own; it is a deploy driver you run by hand.

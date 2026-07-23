@@ -5,8 +5,8 @@ import type { ReactNode } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { getAnalysis, ApiError } from '@/lib/api'
-import type { Analysis } from '@/lib/contracts'
-import StepProgress from '@/components/StepProgress'
+import type { Analysis, PipelineStep } from '@/lib/contracts'
+import StepProgress, { STEP_PHRASES } from '@/components/StepProgress'
 import ScoreGauge from '@/components/ScoreGauge'
 import ResultsTable from '@/components/ResultsTable'
 import KycCard from '@/components/KycCard'
@@ -68,7 +68,19 @@ export default function AnalysisPage() {
       </p>
     )
   } else if (analysis.status === 'failed') {
-    content = <FailureCard reason={analysis.error ?? 'The analysis failed.'} />
+    content = (
+      <div className="space-y-6">
+        <FailureCard
+          reason={analysis.error ?? 'The analysis failed.'}
+          step={analysis.current_step}
+        />
+        <StepProgress
+          status="failed"
+          progress={analysis.progress}
+          currentStep={analysis.current_step}
+        />
+      </div>
+    )
   } else if (analysis.status === 'done') {
     content = <Results analysis={analysis} />
   } else {
@@ -107,7 +119,13 @@ export default function AnalysisPage() {
   )
 }
 
-function FailureCard({ reason }: { reason: string }) {
+function FailureCard({
+  reason,
+  step,
+}: {
+  reason: string
+  step?: PipelineStep | null
+}) {
   return (
     <div
       role="alert"
@@ -116,6 +134,11 @@ function FailureCard({ reason }: { reason: string }) {
       <h2 className="text-xl font-semibold text-danger-strong">
         {"We couldn't finish this analysis."}
       </h2>
+      {step ? (
+        <p className="text-sm font-medium text-surface-foreground">
+          It stopped while {STEP_PHRASES[step]}.
+        </p>
+      ) : null}
       <p className="text-sm text-surface-foreground">{reason}</p>
       <Link
         href="/"

@@ -82,6 +82,7 @@ function CheckerResults() {
         status={analysis.status}
         progress={analysis.progress}
         currentStep={analysis.current_step}
+        createdAt={analysis.created_at}
       />
     )
   }

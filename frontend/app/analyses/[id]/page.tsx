@@ -6,7 +6,8 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { getAnalysis, ApiError } from '@/lib/api'
 import type { Analysis, PipelineStep } from '@/lib/contracts'
-import StepProgress, { STEP_PHRASES } from '@/components/StepProgress'
+import StepProgress from '@/components/StepProgress'
+import { STEP_PHRASES } from '@/lib/steps'
 import ScoreGauge from '@/components/ScoreGauge'
 import ResultsTable from '@/components/ResultsTable'
 import KycCard from '@/components/KycCard'
@@ -74,11 +75,17 @@ export default function AnalysisPage() {
           reason={analysis.error ?? 'The analysis failed.'}
           step={analysis.current_step}
         />
-        <StepProgress
-          status="failed"
-          progress={analysis.progress}
-          currentStep={analysis.current_step}
-        />
+        {/* The trail exists to point at the step that broke. A run that failed
+            before claiming one reports current_step=null, leaving nothing to
+            point at — the alert above already carries the outcome, so render
+            no trail rather than a row of neutral "waiting" steps. */}
+        {analysis.current_step ? (
+          <StepProgress
+            status="failed"
+            progress={analysis.progress}
+            currentStep={analysis.current_step}
+          />
+        ) : null}
       </div>
     )
   } else if (analysis.status === 'done') {
@@ -89,6 +96,7 @@ export default function AnalysisPage() {
         status={analysis.status}
         progress={analysis.progress}
         currentStep={analysis.current_step}
+        createdAt={analysis.created_at}
       />
     )
   }

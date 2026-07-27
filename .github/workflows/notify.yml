@@ -23,8 +23,17 @@ on:
   pull_request_review:
     types: [submitted]
   workflow_run:
-    # No `workflows:` filter, so this covers every workflow in the repo
-    # (including ones added later) without editing this file.
+    # `workflows:` is REQUIRED. Omitting it does not mean "every workflow" — it
+    # makes the whole file schema-invalid, and GitHub then refuses to run ANY
+    # trigger in it, not just this one. The symptom is silent: a 0s failed run
+    # attributed to `push` (an event this file does not even declare), no jobs
+    # in it, nothing on the PR's check list, and the workflow listed under its
+    # path instead of its name in `gh workflow list`.
+    #
+    # It matches literal workflow `name:` values — no globs, no patterns — so
+    # every workflow that should page Slack on failure has to be named here.
+    # Add new ones as they land; `gh workflow list` prints the current names.
+    workflows: [CI]
     types: [completed]
 
 permissions: {}
@@ -42,9 +51,10 @@ jobs:
   notify:
     name: post to Slack
     # Every event except workflow_run is always worth a message. workflow_run
-    # fires on every completed run, so filter it down to failures here, and skip
-    # this workflow's own runs — otherwise a failed notification notifies about
-    # the failed notification, forever.
+    # fires on every completed run, so filter it down to failures here. The
+    # name check is belt-and-braces: `workflows:` above already excludes this
+    # workflow, but if someone ever adds "Notifications" to that list, a failed
+    # notification would notify about the failed notification, forever.
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'failure' &&

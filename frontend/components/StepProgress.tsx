@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { AnalysisStatus, PipelineStep } from '@/lib/contracts'
+import { PANEL_ENGINE_IDS, engineLabel } from '@/lib/engines'
 
 type StepState = 'done' | 'active' | 'failed' | 'pending'
 
@@ -43,11 +44,9 @@ const STEP_DESCRIPTIONS: Record<PipelineStep, string> = {
   scoring: 'Calculating your GEO score.',
 }
 
-// Display names for the engine panel, mirroring the backend default panel
-// (backend/app/providers/registry.py DEFAULT_PANEL) — update together. The
-// backend does not report per-engine completion, so the panel only ever shows
-// all engines as being asked; no fabricated checkmarks or counters.
-const PANEL_ENGINES = ['Claude', 'ChatGPT', 'Gemini', 'Perplexity']
+// The backend does not report per-engine completion, so the panel only ever
+// shows all engines as being asked; no fabricated checkmarks or counters.
+const PANEL_ENGINES = PANEL_ENGINE_IDS.map(engineLabel)
 
 const STATE_WORD: Record<StepState, string> = {
   done: 'completed',

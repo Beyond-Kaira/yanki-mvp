@@ -1,12 +1,5 @@
 import type { EnginePresence } from '@/lib/contracts'
-
-// Friendly labels for the panel engines; unknown keys fall back to the raw id.
-const ENGINE_LABELS: Record<string, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  gemini: 'Gemini',
-  perplexity: 'Perplexity',
-}
+import { engineLabel } from '@/lib/engines'
 
 interface EnginePresenceMapProps {
   presence: EnginePresence[]
@@ -22,11 +15,11 @@ export default function EnginePresenceMap({ presence }: EnginePresenceMapProps) 
         id="engine-presence-heading"
         className="text-xl font-semibold text-surface-foreground"
       >
-        Engine presence
+        Where you show up
       </h2>
       <ul className="space-y-3">
         {presence.map((engine) => {
-          const label = ENGINE_LABELS[engine.engine] ?? engine.engine
+          const label = engineLabel(engine.engine)
           const pct =
             engine.total > 0
               ? Math.round((engine.mentioned / engine.total) * 100)

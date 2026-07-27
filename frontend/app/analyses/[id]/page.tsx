@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { getAnalysis, ApiError } from '@/lib/api'
 import type { Analysis, PipelineStep } from '@/lib/contracts'
+import { deriveEnginePresence, groupByQuestion } from '@/lib/results'
 import StepProgress, { STEP_PHRASES } from '@/components/StepProgress'
-import ScoreGauge from '@/components/ScoreGauge'
-import ResultsTable from '@/components/ResultsTable'
+import ScoreSummary from '@/components/ScoreSummary'
+import EnginePresenceMap from '@/components/EnginePresenceMap'
+import QuestionBreakdown from '@/components/QuestionBreakdown'
 import KycCard from '@/components/KycCard'
 import WaitlistForm from '@/components/WaitlistForm'
 
@@ -158,45 +160,38 @@ function Results({ analysis }: { analysis: Analysis }) {
     result.responses.filter((response) => response.footprint).length
   const percent = Math.round((result.geo_score ?? 0) * 100)
 
+  // `engine_presence` rides the envelope for checker rows only, so fall back to
+  // the same aggregate derived from the responses we already hold.
+  const presence = useMemo(
+    () => result.engine_presence ?? deriveEnginePresence(result.responses),
+    [result.engine_presence, result.responses],
+  )
+  const questions = useMemo(
+    () => groupByQuestion(result.prompts, result.responses),
+    [result.prompts, result.responses],
+  )
+
   return (
     <div className="space-y-8">
-      <section className="rounded-xl border border-surface-border bg-white p-6 shadow-sm">
-        <ScoreGauge score={percent} footprintCount={footprints} totalResponses={total} />
-      </section>
+      <ScoreSummary
+        score={percent}
+        footprintCount={footprints}
+        totalResponses={total}
+        questionCount={result.prompts.length}
+        engineCount={presence.length}
+      />
 
       {result.kyc ? <KycCard kyc={result.kyc} /> : null}
 
-      {result.prompts.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="text-xl font-semibold text-surface-foreground">
-            Generated prompts
-          </h2>
-          <ul className="space-y-2">
-            {result.prompts.map((prompt) => (
-              <li
-                key={prompt.id}
-                className="flex flex-col gap-2 rounded-lg border border-surface-border bg-white p-3 sm:flex-row sm:items-start"
-              >
-                <span className="w-fit rounded-full bg-primary-soft px-2 py-0.5 text-xs font-medium text-primary-strong">
-                  {prompt.category}
-                </span>
-                <span className="text-sm text-surface-foreground">{prompt.text}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {presence.length > 0 ? <EnginePresenceMap presence={presence} /> : null}
 
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold text-surface-foreground">Responses</h2>
-        {result.responses.length > 0 ? (
-          <ResultsTable responses={result.responses} prompts={result.prompts} />
-        ) : (
-          <p className="text-sm text-surface-subtle">
-            No engine responses were recorded for this analysis.
-          </p>
-        )}
-      </section>
+      {questions.length > 0 ? (
+        <QuestionBreakdown groups={questions} />
+      ) : (
+        <p className="text-sm text-surface-subtle">
+          No engine responses were recorded for this analysis.
+        </p>
+      )}
 
       {/* Growth loop: once a score is on screen, invite the visitor to keep
           tracking it. Reuses WaitlistForm as-is (its own <section> landmark and

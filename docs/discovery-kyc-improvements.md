@@ -1,8 +1,10 @@
-# Discovery + KYC extraction — proposed improvements
+# Discovery + KYC extraction — improvements
 
-**Status: proposal, nothing implemented yet.** This document exists to be argued
-with. It proposes six ordered, independently shippable steps for the first two
-pipeline steps; the team picks which ones to build and in what order.
+**Status: steps 1, 2a, 3, 4 and 5 are implemented** (branch
+`feat/discovery-kyc-improvements`, one commit each, `make test` green and
+`make gen-types` a zero diff). **Steps 2b and 6 are not built** — they revive
+scope the operator parked, and that call is not engineering's to make. See the
+bucket table below.
 
 Discovery (`backend/app/pipeline/discovery.py`) and KYC extraction
 (`backend/app/pipeline/kyc.py`) feed everything after them. The KYC profile is
@@ -12,9 +14,10 @@ an error — it shows up as a plausible-looking GEO score that is quietly wrong.
 That is why they are worth a pass of their own.
 
 Steps 1–5 do **not** touch the `KYC` Pydantic model (`kyc.py:25-34`) and need no
-contract regeneration. **Only Step 6 touches the model.**
+contract regeneration — confirmed by a zero-diff `make gen-types`. **Only Step 6
+touches the model.**
 
-## Read this before picking steps — two of them need an operator decision
+## What shipped, and the two steps that still need an operator decision
 
 `docs/roadmap.md` §2c is **deferred by operator decision (2026-07-10)**: "the
 whole product ships English-only for now", revived "only on the operator's word".
@@ -23,20 +26,22 @@ Two items in that deferred list overlap this proposal:
 - "Turkish suffix-aware brand/footprint matching" — **part of Step 2**
 - native Turkish prompt generation — the thing **Step 6** exists to unblock
 
-So the steps split into two buckets, and the team should treat them differently:
+So the steps split into two buckets, and they were treated differently:
 
-| | Steps | Needs |
-|---|---|---|
-| **Clear to build now** | 1, 2a, 3, 4, 5 | normal review |
-| **Reviving deferred §2c scope** | 2b, 6 | operator sign-off first |
+| | Steps | Needs | State |
+|---|---|---|---|
+| **Clear to build** | 1, 2a, 3, 4, 5 | normal review | **implemented**, one commit each |
+| **Reviving deferred §2c scope** | 2b, 6 | operator sign-off first | **not built** — awaiting that decision |
 
 Step 2 is split below into **2a** (language-neutral matching robustness, which
 helps English brands too) and **2b** (Turkish suffixation specifically). That
 split is the whole reason to read Step 2 carefully rather than approving it
-wholesale.
+wholesale — and it is why 2a could ship while 2b waits.
 
-I am flagging this rather than quietly shipping it: the roadmap note is explicit
-that the deferral is an operator call, not an engineering one.
+This was flagged rather than quietly shipped: the roadmap note is explicit that
+the deferral is an operator call, not an engineering one. `test_footprint.py`
+carries a row asserting `Yankinin` still does **not** match `Yanki`, so the
+boundary between 2a and 2b is enforced by a test rather than by memory.
 
 ---
 
@@ -75,6 +80,15 @@ the SSRF-guarded client) and must bound its own output.
 and `description` appear in `discover()` output. Existing fixtures carry no
 JSON-LD, so `_jsonld_text` returns `""` and the truncation/SPA tests stay
 byte-stable.
+
+**Shipped as proposed**, with two additions the "bound its own output" line
+implied but did not spell out: a `MAX_JSONLD_CHARS = 4_000` budget so JSON-LD can
+never crowd out real page copy, and cross-page dedup, because sites repeat one
+`Organization` block on every page and paying for it six times is waste. Keys
+harvested: `name`, `legalName`, `alternateName`, `description`, `slogan`,
+`brand`, `sameAs`, and the nested `addressLocality`/`addressCountry` (which feed
+`locations`). Recursing into every container value handles `@graph`, top-level
+arrays and nested nodes without special-casing any of them.
 
 ---
 
@@ -124,6 +138,27 @@ word-boundary anchor; add only the tolerances above. This adds alias *values* to
 an existing list — no model change, no contract work. Must preserve the invariant
 that company + registrable domain are always aliases.
 
+**Shipped, with one deviation from the instruction above.** The fold did *not*
+end up reusing `discovery._TR_FOLD` in place; it moved to a new
+`backend/app/pipeline/textfold.py` that both modules import. The reason is a
+constraint the proposal missed: `footprint.detect` matches against folded text
+but slices the user-facing snippet out of the **original** by index, so the fold
+must be **length-preserving** — and `_TR_FOLD` was only ever used *after*
+`casefold()`, which is not. `"İ".casefold()` is two codepoints (`i` +
+U+0307 combining dot above), so the old approach would both corrupt every
+snippet after an `İ` and fail to match `İşbank` against `Isbank` at all. The
+shared table is therefore case-*preserving* and 1:1, with `re.IGNORECASE` doing
+the case work; German `ß` is deliberately excluded because it expands to `ss`.
+The proposal's actual intent — one map, not two — is honoured. Tests pin the
+length invariant and the snippet's original spelling.
+
+`kyc._ensure_name_aliases` mints the folded and suffix-stripped forms only when
+they differ from an alias already present, so an ASCII, suffix-free brand gains
+nothing and the alias chips in `KycCard` stay clean. The folded alias is not
+redundant with the footprint fold: `checker_summary._exclusions` suppresses
+competitors by `casefold()` alone, so `Türk Holding` would otherwise fail to
+suppress a reported `Turk Holding`.
+
 ### 2b — Turkish suffix awareness (**deferred scope — needs operator sign-off**)
 
 Row 4 (`Yankinin` ↔ `Yanki`) needs agglutinative-suffix handling, which is
@@ -136,8 +171,16 @@ boundary allowance after the stem — but it is deferred *scope*, not deferred
 the current English-only decision. Shipping 2b re-opens a product bet the
 operator explicitly parked.
 
+**Not shipped — awaiting operator sign-off.** `test_footprint.py` asserts the
+current (2a-only) behaviour: `Yankinin` does **not** match `Yanki`. That test is
+the enforcement of the boundary, and it is the test to change when 2b is
+approved.
+
 **Proof either worked.** Unit tests for each row of the table above, plus a
-false-positive guard on a 2-character brand.
+false-positive guard on a 2-character brand. Both landed for 2a: one
+parametrised case per row, plus guards that `GE` does not leak into
+`General`/`German` and that `Coca-Cola` does not bridge "Coca leaves and cola
+nuts".
 
 ---
 
@@ -164,6 +207,14 @@ same PR, or DRY_RUN and the e2e break.
 **Proof it worked.** Unit test with a canned provider whose first response wraps
 valid JSON in prose → `generate_kyc` returns a valid `KYC` instead of raising.
 
+**Shipped as proposed.** The retry re-sends the same prompt, and a test asserts
+both prompts are byte-identical *and* both contain `"json object"`, so the
+`MockProvider` coupling fails loudly rather than silently. Tests also pin that
+the free repair does not trigger a second round trip, that the happy path still
+costs exactly one call, and that the retry is bounded at one rather than looping.
+The two user-facing messages stayed distinct ("could not read the company
+profile" vs "the company profile was incomplete") and now have a test.
+
 ---
 
 ## Step 4 — Guard `_fetch` on Content-Type
@@ -186,6 +237,12 @@ public so CI and offline dev keep working.
 
 **Proof it worked.** Unit test: a link mocked as `application/pdf` is skipped and
 its bytes never reach `_clean_text`; a header-less mock still parses.
+
+**Shipped as proposed.** The length guard is now shared with `_fetch_script` via
+`_within_size`, and there are two extra tests: an oversized `content-length` is
+skipped, and a non-HTML *homepage* raises `PipelineError` rather than producing
+garbage KYC input. The fail-open-on-missing-Content-Type choice has a test of its
+own so it reads as a decision rather than an accident.
 
 ---
 
@@ -216,6 +273,25 @@ profile, so the `example.com` e2e happy path never trips it. Must raise only
 
 **Proof it worked.** Unit test: a provider returning `{"company": ""}` raises,
 and `run_execute` is asserted **not** to have been called.
+
+**Shipped, with two decisions the proposal left open.**
+
+1. **Where the gate sits.** It runs *after* the KYC step commits, not before, so
+   the offending profile stays on the failed row and an operator can see exactly
+   what came back. Failing without persisting the evidence would have made these
+   failures much harder to diagnose than the runs they replace.
+2. **Checker rows.** `checker_prompts` has the same `"solutions"` fallback as
+   `prompts.py`, so the waste is identical on that path — but a checker's brand
+   and category are validated at submit time, and a terse model reply that does
+   not echo the category into `keywords`/`services`/`industry` must not fail a
+   legitimate public submission. So `require_usable` takes a `known_topic`, and
+   the runner passes `analysis.category` for checker rows. The empty-company
+   check still applies to both paths, because with no company `footprint` has
+   nothing to match no matter where the row came from.
+
+Tests cover both useless shapes (empty company, zero topics) asserting
+`run_execute` is never called, and that a thin-but-legitimate profile with a
+single keyword, service *or* industry passes.
 
 ---
 
@@ -256,12 +332,17 @@ step alone.
 **Proof it worked.** `<html lang="tr">` → `kyc.language == "tr"`; a `.com.tr` site
 with no `lang` attribute falls back to `tr`; `make gen-types` produces no diff.
 
+**Not shipped — awaiting operator sign-off.** Nothing in the implemented steps
+depends on it, and no implemented step touches the `KYC` model, so this remains a
+clean, self-contained decision to take later.
+
 ---
 
 ## Cost
 
-No step adds a paid call on the happy path. Step 5 *saves* up to ~60 calls per
-junk run. Step 3 adds at most one extra KYC call, on failure paths only.
+No step adds a paid call on the happy path — Step 3 has a test asserting exactly
+one call when the first response parses. Step 5 *saves* up to ~60 calls per junk
+run. Step 3 adds at most one extra KYC call, on failure paths only.
 
 One thing the team should know before approving Step 3: `generate_kyc` discards
 `result.cost_usd` (`kyc.py:134`), and the only dollar cap sums the *execute*

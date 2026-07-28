@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup, Tag
 
 from app.net_guard import is_public_host
 from app.pipeline.errors import PipelineError
+from app.pipeline.textfold import fold
 
 USER_AGENT = "YankiBot/0.1"
 TIMEOUT_SECONDS = 15.0
@@ -63,7 +64,7 @@ MIN_LITERAL_LEN = 20
 MAX_LITERAL_LEN = 600
 
 # Path keywords that flag a content-ful page, English + Turkish (unaccented; see
-# _fold). Links whose path matches these are crawled before generic first-seen.
+# textfold.fold). Links matching these are crawled before generic first-seen.
 _CONTENT_KEYWORDS = (
     "about",
     "company",
@@ -84,21 +85,6 @@ _CONTENT_KEYWORDS = (
     "teknoloji",
 )
 
-# Fold Turkish diacritics to ASCII so "ürünler"/"çözüm" match the keyword list.
-_TR_FOLD = str.maketrans(
-    {
-        "ç": "c",
-        "ğ": "g",
-        "ı": "i",
-        "ö": "o",
-        "ş": "s",
-        "ü": "u",
-        "â": "a",
-        "î": "i",
-        "û": "u",
-    }
-)
-
 # "...", '...', or `...` literals (backticks are where Vite/React content lives).
 _LITERAL_RE = re.compile(
     r'"([^"\\]*(?:\\.[^"\\]*)*)"'
@@ -108,10 +94,6 @@ _LITERAL_RE = re.compile(
 )
 
 _CODE_CHARS = set("{}();=<>$[]|&*+`\\/")
-
-
-def _fold(text: str) -> str:
-    return text.casefold().translate(_TR_FOLD)
 
 
 def _clean_text(html: str) -> str:
@@ -245,7 +227,7 @@ def _fetch_script(client: httpx.Client, url: str) -> str | None:
 
 
 def _is_content_link(link: str) -> bool:
-    folded = _fold(urlparse(link).path)
+    folded = fold(urlparse(link).path)
     return any(keyword in folded for keyword in _CONTENT_KEYWORDS)
 
 

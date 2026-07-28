@@ -3,7 +3,9 @@
 Makes one LLM call asking for strict JSON, parses it tolerantly (stripping any
 ```json fences), and validates against the ``KYC`` model. Aliases always include
 the company name and the registrable domain name (without TLD) so footprint
-detection has something to match on.
+detection has something to match on, plus — when they differ from what is
+already there — the ASCII-folded and legal-suffix-stripped forms of the company
+name, because an answer says "Globex Robotics", not "Globex Robotics A.Ş.".
 
 When the model reports no locations, we fall back to the country implied by the
 URL's country-code TLD (``.com.tr`` -> Türkiye, ``.de`` -> Germany, ...). That
@@ -20,6 +22,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, ValidationError
 
 from app.pipeline.errors import PipelineError
+from app.pipeline.textfold import fold_ascii
 
 
 class KYC(BaseModel):
@@ -124,10 +127,92 @@ def _cctld_country(url: str) -> str:
     return _CCTLD_COUNTRIES.get(labels[-1].lower(), "")
 
 
+# Legal-form suffixes that belong to a *registered* name but almost never to the
+# way an answer refers to the company ("Globex Robotics A.Ş." is written "Globex
+# Robotics"). Matched longest-first so "Ltd. Şti." wins over "Ltd.".
+_LEGAL_SUFFIXES = sorted(
+    (
+        "anonim şirketi",
+        "ltd. şti.",
+        "ltd şti.",
+        "ltd şti",
+        "corporation",
+        "limited",
+        "a.ş.",
+        "a.ş",
+        "a.s.",
+        "s.r.l.",
+        "gmbh",
+        "sarl",
+        "corp.",
+        "corp",
+        "inc.",
+        "inc",
+        "llc",
+        "plc",
+        "s.a.",
+        "b.v.",
+        "n.v.",
+    ),
+    key=len,
+    reverse=True,
+)
+
+# A stripped stem shorter than this is noise, not a brand.
+_MIN_ALIAS_LEN = 2
+
+# Characters that may sit between a name and its legal suffix.
+_SUFFIX_BOUNDARY = " .,-"
+
+
+def _strip_legal_suffix(name: str) -> str:
+    """``"Globex Robotics A.Ş."`` -> ``"Globex Robotics"``; ``""`` if nothing to strip.
+
+    This only ever produces an *extra* alias — the registered name itself is
+    never removed or rewritten.
+    """
+    lowered = name.casefold()
+    for suffix in _LEGAL_SUFFIXES:
+        if not lowered.endswith(suffix):
+            continue
+        cut = len(name) - len(suffix)
+        # Require a real boundary before the suffix, or "Zinc" reads as "Z" +
+        # "inc" and "Sparc" as "Spa" + "rc".
+        if cut <= 0 or name[cut - 1] not in _SUFFIX_BOUNDARY:
+            continue
+        stem = name[:cut].rstrip(_SUFFIX_BOUNDARY)
+        if len(stem) >= _MIN_ALIAS_LEN:
+            return stem
+    return ""
+
+
 def _ensure_alias(kyc: KYC, value: str) -> None:
     value = (value or "").strip()
     if value and value.lower() not in [alias.lower() for alias in kyc.aliases]:
         kyc.aliases.append(value)
+
+
+def _ensure_name_aliases(kyc: KYC, name: str) -> None:
+    """Add a company name plus the other forms an answer is likely to use.
+
+    Two extras, each added only when it actually differs from what is already
+    there (so an ASCII, suffix-free brand gains nothing and the alias chips the
+    user sees stay clean):
+
+    * the ASCII-folded form — ``footprint`` folds both sides itself, but
+      ``checker_summary`` excludes competitors by casefold alone, so ``Türk
+      Holding`` would otherwise fail to suppress a reported ``Turk Holding``;
+    * the legal-suffix-stripped stem, which is how people actually write it.
+    """
+    name = (name or "").strip()
+    if not name:
+        return
+    _ensure_alias(kyc, name)
+    _ensure_alias(kyc, fold_ascii(name))
+    stem = _strip_legal_suffix(name)
+    if stem:
+        _ensure_alias(kyc, stem)
+        _ensure_alias(kyc, fold_ascii(stem))
 
 
 def generate_kyc(text: str, url: str, provider) -> KYC:
@@ -144,7 +229,7 @@ def generate_kyc(text: str, url: str, provider) -> KYC:
     except ValidationError as exc:
         raise PipelineError("the company profile was incomplete") from exc
 
-    _ensure_alias(kyc, kyc.company)
+    _ensure_name_aliases(kyc, kyc.company)
     _ensure_alias(kyc, _registrable_name(url))
 
     # Deterministic location fallback from the domain's ccTLD (never overrides a

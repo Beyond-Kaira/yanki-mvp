@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.pipeline.errors import PipelineError
@@ -65,6 +67,58 @@ def test_domain_alias_skips_multipart_public_suffix():
     comtr_aliases = [alias.lower() for alias in comtr.aliases]
     assert "sirket" in comtr_aliases
     assert "com" not in comtr_aliases
+
+
+def test_legal_suffix_stripped_form_is_added_as_an_alias():
+    # Answers name the company the way people write it, not the way it is
+    # registered. The registered name is kept too — this only ever adds.
+    raw = '{"company": "Globex Robotics A.\\u015e.", "description": "d"}'
+    kyc = generate_kyc("text", "https://globex.com", _CannedProvider(raw))
+    lowered = [alias.lower() for alias in kyc.aliases]
+    assert "globex robotics a.ş." in lowered
+    assert "globex robotics" in lowered
+
+
+@pytest.mark.parametrize(
+    ("company", "expected_stem"),
+    [
+        ("Globex Robotics A.Ş.", "Globex Robotics"),
+        ("Globex Robotics Ltd. Şti.", "Globex Robotics"),
+        ("Globex, Inc.", "Globex"),
+        ("Globex GmbH", "Globex"),
+        ("Globex Limited", "Globex"),
+    ],
+)
+def test_legal_suffix_stems(company, expected_stem):
+    raw = json.dumps({"company": company, "description": "d"})
+    kyc = generate_kyc("text", "https://globex.com", _CannedProvider(raw))
+    assert expected_stem in kyc.aliases
+
+
+@pytest.mark.parametrize("company", ["Zinc", "Sparc", "Inc", "Corporation"])
+def test_legal_suffix_strip_needs_a_word_boundary(company):
+    # "Zinc" is a brand, not "Z" + "inc"; a bare legal form has no stem at all.
+    # Only the company itself and the registrable domain survive — no stem.
+    raw = json.dumps({"company": company, "description": "d"})
+    kyc = generate_kyc("text", "https://example.com", _CannedProvider(raw))
+    assert kyc.aliases == [company, "example"]
+
+
+def test_ascii_folded_company_is_added_as_an_alias():
+    # checker_summary excludes competitors by casefold alone, so the folded form
+    # has to exist as a real alias for "Turk Holding" to be suppressed.
+    raw = '{"company": "T\\u00fcrk Holding", "description": "d"}'
+    kyc = generate_kyc("text", "https://example.com", _CannedProvider(raw))
+    assert "Türk Holding" in kyc.aliases
+    assert "Turk Holding" in kyc.aliases
+
+
+def test_plain_ascii_company_gains_no_duplicate_aliases():
+    # The extra forms are added only when they differ — the alias chips a user
+    # sees must not fill up with copies of the same name.
+    raw = '{"company": "Globex", "description": "d"}'
+    kyc = generate_kyc("text", "https://globex.com", _CannedProvider(raw))
+    assert kyc.aliases == ["Globex"]
 
 
 def test_cctld_fills_empty_location():

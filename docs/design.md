@@ -64,6 +64,13 @@ yanki/
   footprint, scoring — each is a plain sync function with a clear signature.
   A junior can read any single step end-to-end without holding the rest of the
   system in their head, and each step is unit-testable in isolation.
+  Two modules are **not** steps and say so in their docstrings:
+  `checker_prompts.py` (the fixed alternative to `prompts.py`, ADR-20) and
+  `textfold.py` (the ASCII fold shared by discovery and footprint, ADR-26).
+  A shared helper only earns its own module when two steps would otherwise
+  keep divergent copies of the same table — `textfold` also has an invariant
+  (1:1 length) that one caller's correctness depends on, which is easier to
+  state and test in one place than to re-derive at each call site.
 - **`providers/` behind one interface.** Every model (Claude, OpenAI, the two
   stubs, and the mock) implements the same `Provider` protocol, so the pipeline
   never branches on "which engine". Swapping a stub for a real engine is a

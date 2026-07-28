@@ -156,3 +156,74 @@ def test_missing_required_field_raises_pipeline_error():
     raw = '{"description": "d", "industry": "i"}'
     with pytest.raises(PipelineError):
         generate_kyc("text", "https://x.com", _CannedProvider(raw))
+
+
+class _ScriptedProvider:
+    """Returns each queued response in turn, so a retry can differ from the first."""
+
+    name = "scripted"
+    model = "scripted"
+
+    def __init__(self, *responses: str) -> None:
+        self._responses = list(responses)
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str) -> ProviderResult:
+        self.prompts.append(prompt)
+        index = min(len(self.prompts) - 1, len(self._responses) - 1)
+        return ProviderResult(
+            text=self._responses[index], model=self.model, cost_usd=0.0
+        )
+
+
+_VALID = '{"company": "Globex", "description": "Widgets", "industry": "Manufacturing"}'
+
+
+def test_prose_wrapped_json_is_repaired_without_a_retry():
+    # The repair is a string operation, so a formatting slip costs $0 and one
+    # call — not a second round trip.
+    provider = _ScriptedProvider(f"Here is the profile:\n{_VALID}\nHope this helps!")
+    kyc = generate_kyc("text", "https://globex.com", provider)
+    assert kyc.company == "Globex"
+    assert len(provider.prompts) == 1
+
+
+def test_unusable_first_response_is_retried_once():
+    provider = _ScriptedProvider("I'm sorry, I can't help with that.", _VALID)
+    kyc = generate_kyc("text", "https://globex.com", provider)
+    assert kyc.company == "Globex"
+    assert len(provider.prompts) == 2
+
+
+def test_retry_is_bounded_at_one_and_then_raises():
+    provider = _ScriptedProvider("nope", "still nope")
+    with pytest.raises(PipelineError):
+        generate_kyc("text", "https://globex.com", provider)
+    assert len(provider.prompts) == 2  # one attempt + one retry, never a loop
+
+
+def test_happy_path_still_costs_exactly_one_call():
+    provider = _ScriptedProvider(_VALID)
+    generate_kyc("text", "https://globex.com", provider)
+    assert len(provider.prompts) == 1
+
+
+def test_retry_resends_the_prompt_the_mock_provider_keys_off():
+    # MockProvider returns its canned profile only when the prompt contains
+    # "json object" (mock.py:46-50). If the retry ever stops re-sending the same
+    # prompt, DRY_RUN and the e2e break — so pin it here.
+    provider = _ScriptedProvider("nope", _VALID)
+    generate_kyc("text", "https://globex.com", provider)
+    assert len(provider.prompts) == 2
+    assert provider.prompts[0] == provider.prompts[1]
+    assert all("json object" in prompt.lower() for prompt in provider.prompts)
+
+
+def test_validation_failure_keeps_its_own_message():
+    # Well-formed JSON of the wrong shape is a different failure from
+    # unparseable text, and the user-facing wording still says so.
+    raw = '{"description": "d"}'  # parses, but has no company
+    with pytest.raises(PipelineError, match="incomplete"):
+        generate_kyc("text", "https://x.com", _CannedProvider(raw))
+    with pytest.raises(PipelineError, match="could not read"):
+        generate_kyc("text", "https://x.com", _CannedProvider("not json at all"))

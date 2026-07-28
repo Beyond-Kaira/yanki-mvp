@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from app.pipeline.discovery import MAX_CHARS, discover
+from app.pipeline.discovery import MAX_CHARS, MAX_PAGE_BYTES, discover
 from app.pipeline.errors import PipelineError
 
 HOME = "https://example.com"
@@ -275,6 +275,76 @@ def test_page_without_jsonld_is_unchanged():
     html = "<html><body><p>Real content here.</p></body></html>"
     respx.get(HOME).mock(return_value=httpx.Response(200, html=html))
     assert discover(HOME) == "Real content here."
+
+
+@respx.mock
+def test_non_html_link_is_skipped():
+    # A linked PDF's bytes must never reach BeautifulSoup/_clean_text, where the
+    # resulting mojibake would eat the MAX_CHARS budget real page copy needed.
+    home = "https://example.com/"
+    home_html = (
+        "<html><body><p>Home page.</p>"
+        '<a href="/brochure.pdf">Brochure</a>'
+        '<a href="/about">About</a>'
+        "</body></html>"
+    )
+    respx.get(home).mock(return_value=httpx.Response(200, html=home_html))
+    pdf = respx.get("https://example.com/brochure.pdf").mock(
+        return_value=httpx.Response(
+            200,
+            content=b"%PDF-1.4 \xff\xfe binary garbage endobj",
+            headers={"content-type": "application/pdf"},
+        )
+    )
+    respx.get("https://example.com/about").mock(
+        return_value=httpx.Response(200, html="<p>About us content.</p>")
+    )
+    text = discover(home)
+    assert "About us content." in text
+    assert pdf.called  # we only learn the type by asking...
+    assert "PDF-1.4" not in text  # ...but its bytes are dropped, not parsed
+    assert "endobj" not in text
+
+
+@respx.mock
+def test_link_without_content_type_is_still_parsed():
+    # Fail open on a missing/empty Content-Type, matching net_guard's stance and
+    # keeping header-less fixtures working.
+    home = "https://example.com/"
+    home_html = '<html><body><p>Home.</p><a href="/about">About</a></body></html>'
+    respx.get(home).mock(return_value=httpx.Response(200, html=home_html))
+    respx.get("https://example.com/about").mock(
+        return_value=httpx.Response(
+            200, content=b"<p>About us content.</p>", headers={"content-type": ""}
+        )
+    )
+    assert "About us content." in discover(home)
+
+
+@respx.mock
+def test_oversized_page_is_skipped():
+    home = "https://example.com/"
+    home_html = '<html><body><p>Home.</p><a href="/huge">Huge</a></body></html>'
+    respx.get(home).mock(return_value=httpx.Response(200, html=home_html))
+    respx.get("https://example.com/huge").mock(
+        return_value=httpx.Response(
+            200,
+            html="<p>Enormous page.</p>",
+            headers={"content-length": str(MAX_PAGE_BYTES + 1)},
+        )
+    )
+    assert "Enormous page." not in discover(home)
+
+
+@respx.mock
+def test_non_html_homepage_raises_pipeline_error():
+    respx.get(HOME).mock(
+        return_value=httpx.Response(
+            200, content=b"%PDF-1.4", headers={"content-type": "application/pdf"}
+        )
+    )
+    with pytest.raises(PipelineError):
+        discover(HOME)
 
 
 @respx.mock

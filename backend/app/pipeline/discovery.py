@@ -1,7 +1,8 @@
 """Step 1 - discovery: fetch and extract the main text of a company website.
 
-Fetches the homepage plus up to five same-domain links (httpx, 15s timeout,
-``YankiBot/0.1`` user agent), harvesting schema.org JSON-LD, page metadata
+Fetches the homepage plus up to five same-domain HTML links (httpx, 15s timeout,
+``YankiBot/0.1`` user agent; non-HTML and oversized responses are skipped),
+harvesting schema.org JSON-LD, page metadata
 (title, description, keywords, Open Graph) and visible text from each.
 Content-ful links (about, products, services, ... incl. Turkish equivalents) are
 preferred over first-seen order. When a site renders almost no server-side text
@@ -58,6 +59,11 @@ _JSONLD_KEYS = frozenset(
 SPA_TEXT_THRESHOLD = 800
 MAX_SCRIPTS = 3
 MAX_SCRIPT_BYTES = 2_000_000
+MAX_PAGE_BYTES = 2_000_000
+
+# Content types worth handing to an HTML parser. Anything else a link points at
+# (PDF, image, zip) is skipped rather than turned into mojibake.
+_HTML_CONTENT_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 MIN_LITERAL_LEN = 20
 # A genuine prose string literal is a sentence or two; anything longer is almost
 # always a minified-code span that happens to fall between two backticks.
@@ -203,6 +209,29 @@ def _same_domain(base: str, link: str) -> bool:
     return urlparse(base).netloc == urlparse(link).netloc
 
 
+def _within_size(response: httpx.Response, limit: int) -> bool:
+    """False when the response *declares* more bytes than we are willing to read."""
+    length = response.headers.get("content-length")
+    return not (length and length.isdigit() and int(length) > limit)
+
+
+def _is_html(response: httpx.Response) -> bool:
+    """True for HTML — and for a response that declares no type at all.
+
+    ``_select_links`` happily picks a linked PDF or image, whose bytes would
+    otherwise go through BeautifulSoup and ``_clean_text`` and whose mojibake
+    would eat the MAX_CHARS budget that real page copy needed.
+
+    Missing or empty Content-Type is treated as HTML on purpose. That is the
+    codebase's existing fail-open stance — ``net_guard`` treats an unresolvable
+    host as public so CI and offline dev keep working — and many respx fixtures
+    set no header at all.
+    """
+    declared = response.headers.get("content-type", "")
+    content_type = declared.split(";")[0].strip().casefold()
+    return not content_type or content_type in _HTML_CONTENT_TYPES
+
+
 def _fetch(client: httpx.Client, url: str) -> str | None:
     try:
         response = client.get(url)
@@ -210,7 +239,11 @@ def _fetch(client: httpx.Client, url: str) -> str | None:
         return None
     if response.status_code != 200:
         return None
-    return response.text
+    if not _is_html(response):
+        return None
+    if not _within_size(response, MAX_PAGE_BYTES):
+        return None
+    return response.text[:MAX_PAGE_BYTES]
 
 
 def _fetch_script(client: httpx.Client, url: str) -> str | None:
@@ -220,8 +253,7 @@ def _fetch_script(client: httpx.Client, url: str) -> str | None:
         return None
     if response.status_code != 200:
         return None
-    length = response.headers.get("content-length")
-    if length and length.isdigit() and int(length) > MAX_SCRIPT_BYTES:
+    if not _within_size(response, MAX_SCRIPT_BYTES):
         return None
     return response.text[:MAX_SCRIPT_BYTES]
 

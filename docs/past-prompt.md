@@ -193,3 +193,14 @@ session-12 §9 superseding next-session prompt (P5.12 headline + P5.7 on keys
 the waitlist + Resend email notifications (became P5.13); an operator-file
 rewrite into answer-sheet form; three status reports. Full log:
 `sessions/2026-07-10-11.md`.
+
+## Session 14 — 2026-07-28 (#01 today)
+
+**Prompt executed:** "implement by mini-commits. but dont push them i will do
+it tomorrow after review." No scope named, so it was taken from the previous
+commit on the branch (`f5b5eb4`), which proposed six ordered discovery/KYC
+steps and split them into "clear to build" (1, 2a, 3, 4, 5) and "needs operator
+sign-off" (2b, 6). The clear five were implemented, one commit each, plus five
+docs commits; **nothing pushed, nothing deployed**. The two parked steps became
+operator question **A2**. Full log:
+[sessions/2026-07-28-01.md](sessions/2026-07-28-01.md) — §8 is the next brief.

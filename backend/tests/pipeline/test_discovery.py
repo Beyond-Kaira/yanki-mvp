@@ -202,6 +202,81 @@ def test_non_spa_does_not_fetch_bundles():
     assert not bundle.called
 
 
+# A page whose visible copy is pure marketing prose, but whose JSON-LD states
+# the facts plainly — the shape SEO tooling emits on most commercial sites.
+_JSONLD_HOME = """<html><head>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Organization",
+ "name": "Globex Robotics",
+ "legalName": "Globex Robotics A.S.",
+ "description": "We build autonomous warehouse robots.",
+ "brand": {"@type": "Brand", "name": "PalletMover"},
+ "sameAs": ["https://www.linkedin.com/company/globex"],
+ "address": {"@type": "PostalAddress", "addressLocality": "Berlin",
+             "addressCountry": "DE"}}
+</script>
+</head><body><p>Imagine a world that just works. We dare to dream.</p></body></html>"""
+
+
+@respx.mock
+def test_jsonld_facts_are_extracted():
+    respx.get(HOME).mock(return_value=httpx.Response(200, html=_JSONLD_HOME))
+    text = discover(HOME)
+    assert "Globex Robotics" in text
+    assert "Globex Robotics A.S." in text  # legalName, an alias-worthy form
+    assert "We build autonomous warehouse robots." in text
+    assert "PalletMover" in text  # nested brand node
+    assert "linkedin.com/company/globex" in text  # sameAs, as text (never fetched)
+    assert "Berlin" in text  # nested address feeds `locations`
+    # The visible copy is still harvested; JSON-LD is a second read, not a swap.
+    assert "We dare to dream." in text
+
+
+@respx.mock
+def test_jsonld_survives_truncation():
+    # JSON-LD leads the combined text, so it is still there after the cut even
+    # when the page carries far more visible copy than MAX_CHARS.
+    big = "word " * 10_000  # ~50k chars
+    html = _JSONLD_HOME.replace("We dare to dream.", big)
+    respx.get(HOME).mock(return_value=httpx.Response(200, html=html))
+    text = discover(HOME)
+    assert len(text) == MAX_CHARS
+    assert "Globex Robotics" in text
+
+
+@respx.mock
+def test_jsonld_handles_graph_arrays_and_malformed_blocks():
+    html = (
+        "<html><head>"
+        # Malformed block first: it must not cost us the good one after it.
+        '<script type="application/ld+json">{"name": broken,,}</script>'
+        '<script type="application/ld+json">'
+        '{"@graph": [{"@type": "WebSite", "name": "globex.com"},'
+        ' {"@type": "Organization", "name": "Globex Robotics",'
+        '  "description": "Warehouse automation."}]}'
+        "</script>"
+        # A top-level array is equally legal schema.org.
+        '<script type="application/ld+json">'
+        '[{"@type": "Product", "name": "ArmBot"}]'
+        "</script>"
+        "</head><body><p>Home.</p></body></html>"
+    )
+    respx.get(HOME).mock(return_value=httpx.Response(200, html=html))
+    text = discover(HOME)
+    assert "Globex Robotics" in text
+    assert "Warehouse automation." in text
+    assert "ArmBot" in text
+
+
+@respx.mock
+def test_page_without_jsonld_is_unchanged():
+    # Existing fixtures carry no JSON-LD: the extra pass must be a no-op, not a
+    # stray separator or empty segment.
+    html = "<html><body><p>Real content here.</p></body></html>"
+    respx.get(HOME).mock(return_value=httpx.Response(200, html=html))
+    assert discover(HOME) == "Real content here."
+
+
 @respx.mock
 def test_prefers_content_ful_turkish_links():
     home = "https://example.com/"

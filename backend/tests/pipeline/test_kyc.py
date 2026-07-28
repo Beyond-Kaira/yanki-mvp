@@ -5,7 +5,7 @@ import json
 import pytest
 
 from app.pipeline.errors import PipelineError
-from app.pipeline.kyc import KYC, build_prompt, generate_kyc
+from app.pipeline.kyc import KYC, build_prompt, generate_kyc, require_usable
 from app.providers.base import ProviderResult
 
 
@@ -156,6 +156,37 @@ def test_missing_required_field_raises_pipeline_error():
     raw = '{"description": "d", "industry": "i"}'
     with pytest.raises(PipelineError):
         generate_kyc("text", "https://x.com", _CannedProvider(raw))
+
+
+def test_require_usable_accepts_a_thin_but_legitimate_profile():
+    # The gate rejects *useless*, never merely thin: one keyword is enough.
+    require_usable(KYC(company="Globex", keywords=["widgets"]))
+    require_usable(KYC(company="Globex", services=["consulting"]))
+    require_usable(KYC(company="Globex", industry="Manufacturing"))
+
+
+def test_require_usable_rejects_an_empty_company():
+    # company has no min_length, so this validates — and then footprint has
+    # nothing to match and scores every answer against an empty brand.
+    with pytest.raises(PipelineError, match="company"):
+        require_usable(KYC(company="", keywords=["widgets"]))
+    with pytest.raises(PipelineError, match="company"):
+        require_usable(KYC(company="   ", keywords=["widgets"]))
+
+
+def test_require_usable_rejects_a_profile_with_no_topic_signal():
+    # No keyword/service/industry -> the topic pool falls back to the literal
+    # "solutions" and we would pay to ask generic questions about "solutions".
+    with pytest.raises(PipelineError, match="does"):
+        require_usable(KYC(company="Globex"))
+
+
+def test_require_usable_accepts_a_caller_supplied_topic():
+    # The checker's submitted category is real input even when the model does
+    # not echo it back into keywords/services/industry.
+    require_usable(KYC(company="Nike"), known_topic="running shoes")
+    with pytest.raises(PipelineError):
+        require_usable(KYC(company="Nike"), known_topic="   ")
 
 
 class _ScriptedProvider:

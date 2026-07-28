@@ -262,6 +262,33 @@ def _read_profile(raw: str) -> tuple[KYC | None, str]:
     return None, reason
 
 
+def require_usable(kyc: KYC, known_topic: str = "") -> None:
+    """Raise ``PipelineError`` if this profile is not worth paying to fan out on.
+
+    Two ways a validated profile is still useless:
+
+    * ``company`` has no ``min_length``, so ``company=""`` passes validation.
+      ``_ensure_name_aliases`` then silently no-ops and ``footprint`` has nothing
+      to match, scoring every answer against an empty brand.
+    * With no keyword, service or industry signal, the topic pool falls back to
+      the literal ``"solutions"`` and we spend the run asking generic questions
+      about "solutions".
+
+    Either way the job goes on to ``execute`` — the single most expensive step in
+    the pipeline, up to ``max_responses_per_job`` (default 60) paid calls — and
+    returns a plausible-looking GEO score that is quietly meaningless.
+
+    ``known_topic`` lets a caller contribute a topic signal it already trusts:
+    the checker's submitted category is real input even when the model does not
+    echo it back into keywords/services/industry.
+    """
+    if not (kyc.company or "").strip():
+        raise PipelineError("could not identify the company — nothing to measure")
+    signals = [*kyc.keywords, *kyc.services, kyc.industry, known_topic]
+    if not any((signal or "").strip() for signal in signals):
+        raise PipelineError("could not identify what the company does")
+
+
 def generate_kyc(text: str, url: str, provider) -> KYC:
     prompt = build_prompt(text, url)
     kyc, reason = _read_profile(provider.generate(prompt).text)

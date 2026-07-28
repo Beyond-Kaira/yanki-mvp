@@ -86,6 +86,12 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 | Weighted AI Visibility Score 0–100: mention × position (1.0 / 0.7 / 0.4) × sentiment (1.0 / 0.9 / 0.5), averaged, ×100 | The defensible, published score the product sells on; the MVP's binary score is the honest placeholder until this lands. |
 | Sentiment + position extraction pass (cheap model) | Inputs to the weighted score; a cheap analysis model is one of the three cost protections. |
 
+> **Under review, not yet committed:** [`docs/discovery-kyc-improvements.md`](discovery-kyc-improvements.md)
+> proposes six ordered steps for the discovery and KYC steps that feed this
+> number — the input side of "make the number trustworthy". Two of its steps
+> (2b, 6) would revive §2c scope and are explicitly gated on an operator
+> decision; the rest are ordinary quality/reliability work.
+
 ### 2c. Turkish as a first-class language — the wedge that can't be a sprint bolt-on
 
 > **⚠ Deferred to Later — operator decision, 2026-07-10.** The whole product

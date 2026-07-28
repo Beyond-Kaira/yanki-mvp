@@ -152,6 +152,32 @@ class WaitlistSignup(Base):
     )
 
 
+class User(Base):
+    """A registered user account."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    email: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        unique=True,
+    )
+    password_hash: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+    )
+
+
 class LlmCache(Base):
     __tablename__ = "llm_cache"
 

@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, field_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
 
 # Minimal email shape check. email-validator (pydantic[email]) is not installed
 # and the card says not to add a heavy dep just for this — a conservative regex
@@ -79,6 +79,50 @@ class WaitlistRequest(BaseModel):
 
 class WaitlistResponse(BaseModel):
     ok: bool
+
+
+class SignupRequest(BaseModel):
+    """Credentials required to create a user account."""
+
+    email: str
+    password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+
+        if not _EMAIL_RE.fullmatch(normalized):
+            raise ValueError("invalid email")
+
+        return normalized
+
+
+class LoginRequest(BaseModel):
+    """Credentials required to authenticate a user."""
+
+    email: str
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+
+        if not _EMAIL_RE.fullmatch(normalized):
+            raise ValueError("invalid email")
+
+        return normalized
+
+
+class UserOut(BaseModel):
+    """Public user fields returned by authentication endpoints."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    created_at: datetime
 
 
 class PromptOut(BaseModel):

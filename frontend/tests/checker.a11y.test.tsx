@@ -51,7 +51,7 @@ function makeAnalysis(overrides: Partial<Analysis>): Analysis {
       competitors_appeared: null,
     },
     ...overrides,
-  } as Analysis
+  }
 }
 
 describe('Checker screens accessibility', () => {

@@ -5,9 +5,16 @@ import type { ReactNode } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getAnalysis, ApiError } from '@/lib/api'
-import type { Analysis, AnalysisResponse, Prompt } from '@/lib/contracts'
+import type {
+  Analysis,
+  AnalysisResponse,
+  PipelineStep,
+  Prompt,
+} from '@/lib/contracts'
+import { STEP_PHRASES } from '@/lib/steps'
+import { deriveEnginePresence } from '@/lib/results'
 import StepProgress from '@/components/StepProgress'
-import ScoreGauge from '@/components/ScoreGauge'
+import ScoreSummary from '@/components/ScoreSummary'
 import ResultsTable from '@/components/ResultsTable'
 import EnginePresenceMap from '@/components/EnginePresenceMap'
 import CompetitorsList from '@/components/CompetitorsList'
@@ -73,7 +80,24 @@ function CheckerResults() {
       </p>
     )
   } else if (analysis.status === 'failed') {
-    content = <FailureCard reason={analysis.error ?? 'The check failed.'} />
+    content = (
+      <div className="space-y-6">
+        <FailureCard
+          reason={analysis.error ?? 'The check failed.'}
+          step={analysis.current_step}
+        />
+        {/* The trail exists to point at the step that broke. A run that failed
+            before claiming one reports current_step=null, leaving nothing to
+            point at — the alert above already carries the outcome. */}
+        {analysis.current_step ? (
+          <StepProgress
+            status="failed"
+            progress={analysis.progress}
+            currentStep={analysis.current_step}
+          />
+        ) : null}
+      </div>
+    )
   } else if (analysis.status === 'done') {
     content = <Results analysis={analysis} submissionId={submissionId} />
   } else {
@@ -82,6 +106,7 @@ function CheckerResults() {
         status={analysis.status}
         progress={analysis.progress}
         currentStep={analysis.current_step}
+        createdAt={analysis.created_at}
       />
     )
   }
@@ -136,7 +161,13 @@ export default function CheckerResultsPage() {
   )
 }
 
-function FailureCard({ reason }: { reason: string }) {
+function FailureCard({
+  reason,
+  step,
+}: {
+  reason: string
+  step?: PipelineStep | null
+}) {
   return (
     <div
       role="alert"
@@ -145,6 +176,11 @@ function FailureCard({ reason }: { reason: string }) {
       <h2 className="text-xl font-semibold text-danger-strong">
         {"We couldn't finish this check."}
       </h2>
+      {step ? (
+        <p className="text-sm font-medium text-surface-foreground">
+          It stopped while {STEP_PHRASES[step]}.
+        </p>
+      ) : null}
       <p className="text-sm text-surface-foreground">{reason}</p>
       <Link
         href="/checker"
@@ -168,8 +204,13 @@ function Results({
   const footprints =
     result.footprint_count ??
     result.responses.filter((response) => response.footprint).length
-  // geo_score is a 0–1 fraction; ScoreGauge takes a 0–100 percentage.
-  const percent = Math.round((result.geo_score ?? 0) * 100)
+  // geo_score is a 0–1 fraction; ScoreSummary takes a 0–100 percentage, and
+  // null when there is nothing to score (the backend reports 0.0 either way).
+  const percent =
+    result.geo_score === null ? null : Math.round(result.geo_score * 100)
+  // Checker rows carry `engine_presence` from the backend; fall back to the
+  // same aggregate derived locally so the count never depends on that field.
+  const presence = result.engine_presence ?? deriveEnginePresence(result.responses)
 
   // The email gate is the PRIMARY conversion here, so the waitlist section stays
   // hidden until the gate is out of the way — either unlocked by the visitor, or
@@ -181,13 +222,15 @@ function Results({
 
   return (
     <div className="space-y-8">
-      <section className="rounded-xl border border-surface-border bg-white p-6 shadow-sm">
-        <ScoreGauge score={percent} footprintCount={footprints} totalResponses={total} />
-      </section>
+      <ScoreSummary
+        score={percent}
+        footprintCount={footprints}
+        totalResponses={total}
+        questionCount={result.prompts.length}
+        engineCount={presence.length}
+      />
 
-      {result.engine_presence ? (
-        <EnginePresenceMap presence={result.engine_presence} />
-      ) : null}
+      {presence.length > 0 ? <EnginePresenceMap presence={presence} /> : null}
 
       {result.competitors_appeared ? (
         <CompetitorsList competitors={result.competitors_appeared} />

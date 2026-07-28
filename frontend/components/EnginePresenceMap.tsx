@@ -24,7 +24,12 @@ export default function EnginePresenceMap({ presence }: EnginePresenceMapProps) 
             engine.total > 0
               ? Math.round((engine.mentioned / engine.total) * 100)
               : 0
-          const countText = `Mentioned in ${engine.mentioned} of ${engine.total} answers`
+          // An engine that returned nothing is listed rather than dropped, and
+          // says so — "0 of 0 answers" would read as a measured result.
+          const countText =
+            engine.total > 0
+              ? `Mentioned in ${engine.mentioned} of ${engine.total} answers`
+              : 'No answers recorded'
           return (
             <li
               key={engine.engine}

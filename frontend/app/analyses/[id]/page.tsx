@@ -6,8 +6,13 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { getAnalysis, ApiError } from '@/lib/api'
 import type { Analysis, PipelineStep } from '@/lib/contracts'
-import { deriveEnginePresence, groupByQuestion } from '@/lib/results'
-import StepProgress, { STEP_PHRASES } from '@/components/StepProgress'
+import {
+  deriveEnginePresence,
+  groupByQuestion,
+  runEngineIds,
+} from '@/lib/results'
+import { STEP_PHRASES } from '@/lib/steps'
+import StepProgress from '@/components/StepProgress'
 import ScoreSummary from '@/components/ScoreSummary'
 import EnginePresenceMap from '@/components/EnginePresenceMap'
 import QuestionBreakdown from '@/components/QuestionBreakdown'
@@ -76,11 +81,17 @@ export default function AnalysisPage() {
           reason={analysis.error ?? 'The analysis failed.'}
           step={analysis.current_step}
         />
-        <StepProgress
-          status="failed"
-          progress={analysis.progress}
-          currentStep={analysis.current_step}
-        />
+        {/* The trail exists to point at the step that broke. A run that failed
+            before claiming one reports current_step=null, leaving nothing to
+            point at — the alert above already carries the outcome, so render
+            no trail rather than a row of neutral "waiting" steps. */}
+        {analysis.current_step ? (
+          <StepProgress
+            status="failed"
+            progress={analysis.progress}
+            currentStep={analysis.current_step}
+          />
+        ) : null}
       </div>
     )
   } else if (analysis.status === 'done') {
@@ -91,6 +102,7 @@ export default function AnalysisPage() {
         status={analysis.status}
         progress={analysis.progress}
         currentStep={analysis.current_step}
+        createdAt={analysis.created_at}
       />
     )
   }
@@ -158,13 +170,20 @@ function Results({ analysis }: { analysis: Analysis }) {
   const footprints =
     result.footprint_count ??
     result.responses.filter((response) => response.footprint).length
-  const percent = Math.round((result.geo_score ?? 0) * 100)
+  // Null when there is nothing to score; ScoreSummary withholds the verdict
+  // rather than reading the backend's 0.0 as "engines left you out".
+  const percent =
+    result.geo_score === null ? null : Math.round(result.geo_score * 100)
 
   // `engine_presence` rides the envelope for checker rows only, so fall back to
   // the same aggregate derived from the responses we already hold.
   const presence = useMemo(
     () => result.engine_presence ?? deriveEnginePresence(result.responses),
     [result.engine_presence, result.responses],
+  )
+  const engines = useMemo(
+    () => runEngineIds(result.responses),
+    [result.responses],
   )
   const questions = useMemo(
     () => groupByQuestion(result.prompts, result.responses),
@@ -185,11 +204,14 @@ function Results({ analysis }: { analysis: Analysis }) {
 
       {presence.length > 0 ? <EnginePresenceMap presence={presence} /> : null}
 
-      {questions.length > 0 ? (
-        <QuestionBreakdown groups={questions} />
+      {/* Gated on answers, not questions: a run can hold prompts and no
+          responses, and rendering a column of 0/N cards would say less than
+          the sentence does. */}
+      {result.responses.length > 0 ? (
+        <QuestionBreakdown groups={questions} engines={engines} />
       ) : (
         <p className="text-sm text-surface-subtle">
-          No engine responses were recorded for this analysis.
+          No engine answers were recorded for this analysis.
         </p>
       )}
 

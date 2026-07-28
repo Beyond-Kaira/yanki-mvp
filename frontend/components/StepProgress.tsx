@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { AnalysisStatus, PipelineStep } from '@/lib/contracts'
 import { PANEL_ENGINE_IDS, engineLabel } from '@/lib/engines'
+import { STEP_DESCRIPTIONS, STEP_PHRASES } from '@/lib/steps'
 
 type StepState = 'done' | 'active' | 'failed' | 'pending'
 
@@ -22,28 +23,6 @@ const STEPS: StepDef[] = [
   { key: 'scoring', label: 'Scoring', threshold: 100 },
 ]
 
-// Present-continuous phrase describing what each step is doing. Shown live for
-// the active step, and reused by the failure card ("It stopped while …").
-export const STEP_PHRASES: Record<PipelineStep, string> = {
-  discovery: 'reading your website',
-  kyc: 'building your company profile',
-  prompts: 'writing the questions your buyers ask',
-  execute: 'asking the AI engines about you',
-  footprint: 'checking where you show up',
-  scoring: 'scoring your visibility',
-}
-
-// One-line explanation of what the ACTIVE step is doing, shown under its
-// label so the list reads as narration, not jargon.
-const STEP_DESCRIPTIONS: Record<PipelineStep, string> = {
-  discovery: "Fetching and reading your site's content.",
-  kyc: 'Turning it into a company profile.',
-  prompts: 'Generating the questions your buyers ask.',
-  execute: 'Running your buyer questions against each engine.',
-  footprint: 'Scanning every answer for your brand.',
-  scoring: 'Calculating your GEO score.',
-}
-
 // The backend does not report per-engine completion, so the panel only ever
 // shows all engines as being asked; no fabricated checkmarks or counters.
 const PANEL_ENGINES = PANEL_ENGINE_IDS.map(engineLabel)
@@ -59,18 +38,29 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-// Wall-clock seconds since mount — the honest "still moving" signal while the
-// backend only reports coarse step boundaries.
-function useElapsedSeconds(): number {
+// Wall-clock seconds since the run was CREATED, not since this component
+// mounted: reloading the tab mid-run must not restart the count. Falls back to
+// mount time only when the envelope carries no timestamp.
+//
+// `enabled` is false on a terminal screen, where the value is not rendered —
+// the interval would otherwise tick forever with nothing to show.
+function useElapsedSeconds(startedAt: string | null, enabled: boolean): number {
   const [seconds, setSeconds] = useState(0)
 
   useEffect(() => {
-    const startedAt = Date.now()
-    const timer = setInterval(() => {
-      setSeconds(Math.floor((Date.now() - startedAt) / 1000))
-    }, 1000)
+    if (!enabled) return
+
+    const parsed = startedAt ? Date.parse(startedAt) : Number.NaN
+    const base = Number.isNaN(parsed) ? Date.now() : parsed
+
+    function tick() {
+      setSeconds(Math.max(0, Math.floor((Date.now() - base) / 1000)))
+    }
+
+    tick()
+    const timer = setInterval(tick, 1000)
     return () => clearInterval(timer)
-  }, [])
+  }, [startedAt, enabled])
 
   return seconds
 }
@@ -85,19 +75,33 @@ interface StepProgressProps {
   status: AnalysisStatus
   progress: number
   currentStep: PipelineStep | null
+  // `created_at` off the envelope; the elapsed counter reads from it.
+  createdAt?: string | null
 }
 
 export default function StepProgress({
   status,
   progress,
   currentStep,
+  createdAt = null,
 }: StepProgressProps) {
-  const elapsed = useElapsedSeconds()
+  const isFailed = status === 'failed'
+  const elapsed = useElapsedSeconds(createdAt, !isFailed)
   const firstPendingIndex = STEPS.findIndex((step) => progress < step.threshold)
+  const failedIndex = STEPS.findIndex((step) => step.key === currentStep)
 
+  // A failed run is read from `current_step` FIRST, never from `progress`: a
+  // re-claimed job restarts at discovery without resetting `progress` (the
+  // pipeline only ever moves it forward, and the queue re-claims stale running
+  // rows), so a leftover high value would otherwise paint the very step that
+  // died — and every step after it — as completed.
   function stateFor(step: StepDef, index: number): StepState {
+    if (isFailed) {
+      if (index === failedIndex) return 'failed'
+      if (failedIndex >= 0 && index > failedIndex) return 'pending'
+      return progress >= step.threshold ? 'done' : 'pending'
+    }
     if (progress >= step.threshold) return 'done'
-    if (status === 'failed') return currentStep === step.key ? 'failed' : 'pending'
     if (status === 'running') {
       if (currentStep === step.key) return 'active'
       if (currentStep === null && index === firstPendingIndex) return 'active'
@@ -117,7 +121,7 @@ export default function StepProgress({
   const subline =
     status === 'queued'
       ? 'Your analysis is queued.'
-      : 'This usually takes a couple of minutes.'
+      : 'This takes a few minutes.'
 
   return (
     <div className="space-y-6">
@@ -162,12 +166,20 @@ export default function StepProgress({
 
       {activeStep?.key === 'execute' ? <EnginePanel /> : null}
 
+      {/* Progress semantics only while the run is live: polling has already
+          stopped on the failed screen, so announcing an in-progress operation
+          there contradicts the FailureCard alert. The bar stays as a visual
+          record of how far the run got. */}
       <div
-        role="progressbar"
-        aria-label="Analysis progress"
-        aria-valuenow={progress}
-        aria-valuemin={0}
-        aria-valuemax={100}
+        {...(isFailed
+          ? {}
+          : {
+              role: 'progressbar',
+              'aria-label': 'Analysis progress',
+              'aria-valuenow': progress,
+              'aria-valuemin': 0,
+              'aria-valuemax': 100,
+            })}
         className="h-2 w-full overflow-hidden rounded-full bg-surface-border"
       >
         <div
@@ -204,7 +216,12 @@ function EnginePanel() {
             <span className="text-sm font-medium text-surface-foreground">
               {engine}
             </span>
-            <span className="ml-auto text-xs text-surface-subtle">asking…</span>
+            {/* Decorative: the headline and the panel intro already say every
+                engine is being asked, so repeating it per chip only adds noise
+                to a screen-reader traversal. */}
+            <span aria-hidden="true" className="ml-auto text-xs text-surface-subtle">
+              asking…
+            </span>
           </li>
         ))}
       </ul>

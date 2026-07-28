@@ -6,12 +6,18 @@ import type { QuestionGroup } from '@/lib/results'
 
 interface QuestionBreakdownProps {
   groups: QuestionGroup[]
+  // Every engine the run should have covered, so the denominator is the panel
+  // rather than however many answers happened to come back.
+  engines: string[]
 }
 
 // The question-level view of a run: one card per question buyers ask, showing
 // which engines named the brand in their answer. Replaces the flat response
 // table, where each question repeated once per engine.
-export default function QuestionBreakdown({ groups }: QuestionBreakdownProps) {
+export default function QuestionBreakdown({
+  groups,
+  engines,
+}: QuestionBreakdownProps) {
   // Collapsed by default; multiple questions may be open at once.
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set())
 
@@ -42,7 +48,7 @@ export default function QuestionBreakdown({ groups }: QuestionBreakdownProps) {
 
       <ul className="space-y-3">
         {groups.map((group) => {
-          const { prompt, responses, mentioned } = group
+          const { prompt, responses, mentioned, snippet } = group
           const isOpen = openIds.has(prompt.id)
           const answersId = `answers-${prompt.id}`
           const hit = mentioned > 0
@@ -63,41 +69,69 @@ export default function QuestionBreakdown({ groups }: QuestionBreakdownProps) {
                 </div>
                 <p className="shrink-0 text-right">
                   <span
+                    aria-hidden="true"
                     className={`block text-lg font-semibold tabular-nums ${
                       hit ? 'text-success-strong' : 'text-surface-subtle'
                     }`}
                   >
-                    {mentioned}/{responses.length}
+                    {mentioned}/{engines.length}
                   </span>
-                  <span className="text-xs uppercase tracking-wider text-surface-subtle">
+                  <span
+                    aria-hidden="true"
+                    className="text-xs uppercase tracking-wider text-surface-subtle"
+                  >
                     engines
                   </span>
                   <span className="sr-only">
-                    named you in {mentioned} of {responses.length} answers
+                    named you in {mentioned} of {engines.length} answers
                   </span>
                 </p>
               </div>
 
+              {/* One chip per panel engine, not per answer: an engine that
+                  never answered this question is shown as a gap instead of
+                  being left out of the count. */}
               <ul className="flex flex-wrap gap-2">
-                {responses.map((response) => (
-                  <li
-                    key={response.id}
-                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm ${
-                      response.footprint
-                        ? 'border-success-soft bg-success-soft font-medium text-success-strong'
-                        : 'border-surface-border bg-surface-muted text-surface-subtle'
-                    }`}
-                  >
-                    <span aria-hidden="true">
-                      {response.footprint ? '✓' : '✕'}
-                    </span>
-                    {engineLabel(response.engine)}
-                    <span className="sr-only">
-                      {response.footprint ? 'named you' : 'did not name you'}
-                    </span>
-                  </li>
-                ))}
+                {engines.map((engine) => {
+                  const response = responses.find((row) => row.engine === engine)
+                  const named = Boolean(response?.footprint)
+                  const answered = Boolean(response)
+
+                  return (
+                    <li
+                      key={engine}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm ${
+                        named
+                          ? 'border-success bg-success-soft font-medium text-success-strong'
+                          : answered
+                            ? 'border-surface-border bg-surface-muted text-surface-subtle'
+                            : 'border-dashed border-surface-border bg-transparent text-surface-subtle'
+                      }`}
+                    >
+                      <span aria-hidden="true">
+                        {named ? '✓' : answered ? '✕' : '–'}
+                      </span>
+                      {engineLabel(engine)}
+                      <span className="sr-only">
+                        {named
+                          ? 'named you'
+                          : answered
+                            ? 'did not name you'
+                            : 'did not answer'}
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
+
+              {/* The evidence behind the ✓s, quoted from the first answer that
+                  matched. A question nobody answered with a mention has no
+                  snippet, and gets none. */}
+              {snippet ? (
+                <p className="truncate border-l-2 border-success-soft pl-3 text-xs text-surface-subtle">
+                  “{snippet}”
+                </p>
+              ) : null}
 
               {responses.length > 0 ? (
                 <button
@@ -125,6 +159,11 @@ export default function QuestionBreakdown({ groups }: QuestionBreakdownProps) {
                           {response.model}
                         </span>
                       </p>
+                      {response.matched_snippet?.trim() ? (
+                        <p className="border-l-2 border-success-soft pl-3 text-xs text-success-strong">
+                          “{response.matched_snippet}”
+                        </p>
+                      ) : null}
                       {response.raw_text.trim().length > 0 ? (
                         <pre className="max-w-prose whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-surface-foreground">
                           {response.raw_text}
@@ -151,7 +190,9 @@ function Chevron({ open }: { open: boolean }) {
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
-      className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+      className={`h-3 w-3 shrink-0 motion-safe:transition-transform ${
+        open ? 'rotate-90' : ''
+      }`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"

@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { deriveEnginePresence, groupByQuestion } from '@/lib/results'
+import {
+  deriveEnginePresence,
+  groupByQuestion,
+  runEngineIds,
+} from '@/lib/results'
 import type { AnalysisResponse, Prompt } from '@/lib/contracts'
 
+// No casts: fixtures satisfy the generated wire types in full, so a contract
+// change fails the build here rather than passing silently.
 function response(overrides: Partial<AnalysisResponse>): AnalysisResponse {
   return {
     id: 'r1',
@@ -11,14 +17,30 @@ function response(overrides: Partial<AnalysisResponse>): AnalysisResponse {
     matched_snippet: null,
     prompt_id: 'p1',
     raw_text: 'answer',
+    cost_usd: 0,
     ...overrides,
-  } as AnalysisResponse
+  }
 }
 
 const prompts: Prompt[] = [
   { id: 'p1', category: 'recommendation', text: 'Best analytics tools?' },
   { id: 'p2', category: 'comparison', text: 'How do they compare?' },
-] as Prompt[]
+]
+
+describe('runEngineIds', () => {
+  it('covers the panel even when a run has no answers at all', () => {
+    expect(runEngineIds([])).toEqual([
+      'anthropic',
+      'openai',
+      'gemini',
+      'perplexity',
+    ])
+  })
+
+  it('includes an engine outside the panel that did answer', () => {
+    expect(runEngineIds([response({ engine: 'mistral' })])).toContain('mistral')
+  })
+})
 
 describe('deriveEnginePresence', () => {
   it('counts mentions per engine', () => {
@@ -28,10 +50,30 @@ describe('deriveEnginePresence', () => {
       response({ id: 'c', engine: 'anthropic', footprint: true }),
     ])
 
-    expect(presence).toEqual([
-      { engine: 'openai', mentioned: 1, total: 2 },
-      { engine: 'anthropic', mentioned: 1, total: 1 },
+    expect(presence).toContainEqual({
+      engine: 'openai',
+      mentioned: 1,
+      total: 2,
+    })
+    expect(presence).toContainEqual({
+      engine: 'anthropic',
+      mentioned: 1,
+      total: 1,
+    })
+  })
+
+  it('keeps an engine that returned nothing instead of dropping it', () => {
+    const presence = deriveEnginePresence([
+      response({ id: 'a', engine: 'openai', footprint: true }),
     ])
+
+    // A silent provider must not shrink the denominator: it reports 0 of 0.
+    expect(presence).toContainEqual({
+      engine: 'gemini',
+      mentioned: 0,
+      total: 0,
+    })
+    expect(presence).toHaveLength(4)
   })
 
   it('treats a null footprint as not mentioned', () => {
@@ -39,11 +81,11 @@ describe('deriveEnginePresence', () => {
       response({ id: 'a', engine: 'gemini', footprint: null }),
     ])
 
-    expect(presence).toEqual([{ engine: 'gemini', mentioned: 0, total: 1 }])
-  })
-
-  it('returns nothing for an empty run', () => {
-    expect(deriveEnginePresence([])).toEqual([])
+    expect(presence).toContainEqual({
+      engine: 'gemini',
+      mentioned: 0,
+      total: 1,
+    })
   })
 })
 
@@ -52,13 +94,36 @@ describe('groupByQuestion', () => {
     const groups = groupByQuestion(prompts, [
       response({ id: 'a', prompt_id: 'p2', engine: 'openai', footprint: true }),
       response({ id: 'b', prompt_id: 'p1', engine: 'openai', footprint: true }),
-      response({ id: 'c', prompt_id: 'p1', engine: 'anthropic', footprint: false }),
+      response({
+        id: 'c',
+        prompt_id: 'p1',
+        engine: 'anthropic',
+        footprint: false,
+      }),
     ])
 
     expect(groups.map((group) => group.prompt.id)).toEqual(['p1', 'p2'])
-    expect(groups[0].responses.map((r) => r.id)).toEqual(['b', 'c'])
+    expect(groups[0].responses.map((row) => row.id)).toEqual(['b', 'c'])
     expect(groups[0].mentioned).toBe(1)
     expect(groups[1].mentioned).toBe(1)
+  })
+
+  it('quotes the first snippet among the mentions', () => {
+    const groups = groupByQuestion([prompts[0]], [
+      response({ id: 'a', footprint: false, matched_snippet: 'ignored' }),
+      response({ id: 'b', footprint: true, matched_snippet: '  ' }),
+      response({ id: 'c', footprint: true, matched_snippet: 'Acme is named.' }),
+    ])
+
+    expect(groups[0].snippet).toBe('Acme is named.')
+  })
+
+  it('has no snippet when nothing matched', () => {
+    const groups = groupByQuestion([prompts[0]], [
+      response({ id: 'a', footprint: false }),
+    ])
+
+    expect(groups[0].snippet).toBeNull()
   })
 
   it('keeps a prompt that has no responses yet', () => {

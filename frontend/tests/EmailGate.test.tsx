@@ -152,7 +152,7 @@ function makeAnalysis(responses: Analysis['result']['responses']): Analysis {
       engine_presence: null,
       competitors_appeared: null,
     },
-  } as Analysis
+  }
 }
 
 function response(

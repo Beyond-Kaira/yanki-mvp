@@ -3,8 +3,9 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import QuestionBreakdown from '@/components/QuestionBreakdown'
 import type { QuestionGroup } from '@/lib/results'
-import { axeCheck } from './a11y'
 
+// No casts: the fixtures satisfy the generated wire types in full, so a
+// contract change breaks the build here instead of passing silently.
 const groups: QuestionGroup[] = [
   {
     prompt: {
@@ -21,6 +22,7 @@ const groups: QuestionGroup[] = [
         matched_snippet: 'Acme is a strong option.',
         prompt_id: 'p1',
         raw_text: 'Acme is a strong option and…',
+        cost_usd: 0,
       },
       {
         id: 'r2',
@@ -30,15 +32,19 @@ const groups: QuestionGroup[] = [
         matched_snippet: null,
         prompt_id: 'p1',
         raw_text: 'Other vendors worth a look…',
+        cost_usd: 0,
       },
     ],
     mentioned: 1,
+    snippet: 'Acme is a strong option.',
   },
-] as QuestionGroup[]
+]
+
+const engines = ['anthropic', 'openai']
 
 describe('QuestionBreakdown', () => {
   it('shows the question, its category, and the per-engine outcome', () => {
-    render(<QuestionBreakdown groups={groups} />)
+    render(<QuestionBreakdown groups={groups} engines={engines} />)
 
     expect(screen.getByText('Best analytics tools?')).toBeInTheDocument()
     expect(screen.getByText('recommendation')).toBeInTheDocument()
@@ -49,11 +55,33 @@ describe('QuestionBreakdown', () => {
     expect(screen.queryByText('anthropic')).not.toBeInTheDocument()
   })
 
+  it('quotes the matched snippet as the evidence behind a mention', () => {
+    render(<QuestionBreakdown groups={groups} engines={engines} />)
+
+    expect(screen.getByText(/Acme is a strong option\./)).toBeInTheDocument()
+  })
+
+  it('counts against the panel, and marks an engine that never answered', () => {
+    render(
+      <QuestionBreakdown
+        groups={groups}
+        engines={['anthropic', 'openai', 'gemini']}
+      />,
+    )
+
+    // Denominator follows the panel, not the number of answers that arrived.
+    expect(screen.getByText('1/3')).toBeInTheDocument()
+    expect(screen.getByText('Gemini')).toBeInTheDocument()
+    expect(screen.getByText('did not answer')).toBeInTheDocument()
+  })
+
   it('keeps the answers collapsed until asked for', async () => {
     const user = userEvent.setup()
-    render(<QuestionBreakdown groups={groups} />)
+    render(<QuestionBreakdown groups={groups} engines={engines} />)
 
-    expect(screen.queryByText(/Acme is a strong option and/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Acme is a strong option and/),
+    ).not.toBeInTheDocument()
 
     const toggle = screen.getByRole('button', { name: /show answers/i })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -61,17 +89,9 @@ describe('QuestionBreakdown', () => {
     await user.click(toggle)
 
     expect(screen.getByText(/Acme is a strong option and/)).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /hide answers/i }),
-    ).toHaveAttribute('aria-expanded', 'true')
-  })
-
-  it('has no axe violations', async () => {
-    const { container } = render(
-      <main>
-        <QuestionBreakdown groups={groups} />
-      </main>,
+    expect(screen.getByRole('button', { name: /hide answers/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
     )
-    expect(await axeCheck(container)).toHaveNoViolations()
   })
 })

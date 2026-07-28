@@ -3,8 +3,9 @@ import { scoreBand } from '@/lib/score'
 import type { ScoreBand } from '@/lib/score'
 
 interface ScoreSummaryProps {
-  // GEO score as a whole-number percentage, 0–100.
-  score: number
+  // GEO score as a whole-number percentage, 0–100, or null when the run
+  // produced nothing to score.
+  score: number | null
   footprintCount: number
   totalResponses: number
   questionCount: number
@@ -35,30 +36,49 @@ export default function ScoreSummary({
     { label: 'Mentions', value: footprintCount },
   ]
 
+  // A run with no answers is not a run that scored zero. The backend collapses
+  // both to 0.0 (`geo_score` divides by a total of 0), so the gauge and the band
+  // sentence are withheld rather than asserting engines left the brand out of
+  // answers nobody ever received.
+  const scored = score !== null && totalResponses > 0
+
   return (
     <section className="overflow-hidden rounded-xl border border-surface-border bg-white shadow-sm">
       <div className="space-y-3 p-6">
-        <ScoreGauge
-          score={score}
-          footprintCount={footprintCount}
-          totalResponses={totalResponses}
-        />
-        <p className="mx-auto max-w-prose text-center text-sm font-medium text-surface-foreground">
-          {BAND_SENTENCE[scoreBand(score)]}
-        </p>
+        {scored ? (
+          <>
+            <ScoreGauge
+              score={score}
+              footprintCount={footprintCount}
+              totalResponses={totalResponses}
+            />
+            <p className="mx-auto max-w-prose text-center text-sm font-medium text-surface-foreground">
+              {BAND_SENTENCE[scoreBand(score)]}
+            </p>
+          </>
+        ) : (
+          <p className="mx-auto max-w-prose text-center text-sm text-surface-subtle">
+            No engine answers were recorded, so this run has no score.
+          </p>
+        )}
       </div>
 
       {/* gap-px over a border-colored track draws the hairlines, so the cells
           keep clean 1px separators when they wrap to two columns on mobile. */}
       <dl className="grid grid-cols-2 gap-px border-t border-surface-border bg-surface-border sm:grid-cols-4">
+        {/* `dt` before `dd` is the content model a `dl` requires;
+            flex-col-reverse keeps the value stacked above its label. */}
         {stats.map((stat) => (
-          <div key={stat.label} className="bg-white px-3 py-4 text-center">
-            <dd className="text-xl font-semibold tabular-nums text-surface-foreground">
-              {stat.value}
-            </dd>
+          <div
+            key={stat.label}
+            className="flex flex-col-reverse bg-white px-3 py-4 text-center"
+          >
             <dt className="text-xs uppercase tracking-wider text-surface-subtle">
               {stat.label}
             </dt>
+            <dd className="text-xl font-semibold tabular-nums text-surface-foreground">
+              {stat.value}
+            </dd>
           </div>
         ))}
       </dl>

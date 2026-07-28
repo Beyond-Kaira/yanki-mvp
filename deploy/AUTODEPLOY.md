@@ -71,7 +71,7 @@ diff ~/.local/bin/yanki-ci-deploy deploy/host/yanki-ci-deploy && echo in-sync
 | `~/deploy/yanki-mvp/deploy/.last-good` | rollback target, seeded from the manual era at `d6514ee` |
 | `~/.local/bin/yanki-ci-deploy` | the forced command |
 | `~/.local/state/yanki-ci-deploy.log` | append-only deploy log, timestamped UTC |
-| `~/.local/state/yanki-ci-deploy.lock` | `flock` serialising concurrent deploys |
+| `~/.local/state/yanki-prod-deploy.lock` | the one deploy lock — see below |
 
 The compose project name is fixed (`-p yanki-prod`), so driving the stack from
 the new checkout manages the *same* containers the manual deploys did.
@@ -87,7 +87,38 @@ the newest three tags per repository **plus** the sha just deployed, the
 and ignores `docker rmi` failures — an image still referenced by a running
 container refuses to delete, which is the last safety net.
 
-Not pruned: the buildx cache. Check `docker system df` occasionally.
+**Not pruned: the buildx cache**, and it is the real disk risk — it was already
+37GB when this was built. The wrapper does not touch it, because that cache is
+shared with every other build on the box and silently reclaiming it is not
+auto-deploy's call. Instead the wrapper **refuses to start a build with less
+than 10GB free** and tells you what to do:
+
+```bash
+docker system df                              # where the space actually went
+docker buildx prune --filter until=168h       # the usual reclaim
+```
+
+A refusal fails the `Deploy` run and pages Slack — which is the point. Filling
+this disk does not just fail a deploy, it takes the co-tenants down.
+
+## One lock, two drivers
+
+Two things now drive the `yanki-prod` compose project: CI, and a human running
+`make deploy`. Run at once they interleave two releases, and the surviving
+containers and the recorded `.last-good` can end up describing different code.
+
+Both therefore take the same `flock` on
+`~/.local/state/yanki-prod-deploy.lock`, waiting up to 900s:
+
+- the CI wrapper takes it **before** it checks out a sha, since the checkout has
+  to be inside the lock too, and passes `YANKI_DEPLOY_LOCK_HELD=1` down so
+  `deployment.sh` does not deadlock against it;
+- a human's `deployment.sh` takes it itself, after `--check` (which is read-only
+  and never blocks).
+
+So a hand deploy started during a CI deploy waits its turn instead of racing it.
+`rollback.sh` invoked directly is the one path outside this — it is the
+emergency lever, and it is meant to work even when everything else is stuck.
 
 ## What is still manual
 

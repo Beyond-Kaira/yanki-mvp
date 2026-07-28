@@ -33,12 +33,23 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 REPO=/home/aytek/deploy/yanki-mvp
 STATE=/home/aytek/.local/state
-LOCK="$STATE/yanki-ci-deploy.lock"
 LOG="$STATE/yanki-ci-deploy.log"
+
+# ONE machine-wide lock, shared with deploy/deployment.sh. The flock below only
+# serialises CI against CI; a human running `make deploy` from their own
+# checkout drives the SAME compose project (yanki-prod) and would otherwise
+# build and `up -d` straight through an in-flight CI deploy. deployment.sh takes
+# this same lock unless we tell it we already hold it.
+LOCK="${YANKI_DEPLOY_LOCK:-$STATE/yanki-prod-deploy.lock}"
 
 # How many historical image tags to keep per repository, on top of the tag being
 # deployed and the .last-good tag (which are never pruned — rollback needs them).
 KEEP_IMAGES=3
+
+# Refuse to start a build with less than this much free space. The disk is
+# shared with pulse-prod, brier, antmedia and evrak-app: filling it does not
+# just fail the deploy, it takes them down too.
+MIN_FREE_GB=10
 
 mkdir -p "$STATE"
 
@@ -142,8 +153,33 @@ prune_images() {
 # ---------------------------------------------------------------------------
 # deploy — the whole point
 # ---------------------------------------------------------------------------
+
+# A deploy builds ~2.1GB of fresh image layers before anything is pruned, and
+# pruning only runs AFTER a successful deploy — so the peak is always "old
+# images + new build". Check first and fail loudly rather than discover it by
+# filling the disk out from under the co-tenants.
+require_disk() {
+  local avail
+  avail="$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -dc '0-9')"
+  if [ -z "$avail" ]; then
+    oops "could not read free space on / — refusing to build blind"
+    return 1
+  fi
+  if [ "$avail" -lt "$MIN_FREE_GB" ]; then
+    oops "only ${avail}GB free on / but ${MIN_FREE_GB}GB is the floor. Refusing to build."
+    oops "  This disk is shared: filling it takes pulse-prod, brier, antmedia and"
+    oops "  evrak-app down with yanki. Reclaim space, then re-run the deploy."
+    oops "  Start with 'docker system df' — the buildx cache is usually the bulk,"
+    oops "  and 'docker buildx prune --filter until=168h' is the usual reclaim."
+    return 1
+  fi
+  info "disk: ${avail}GB free on / (floor ${MIN_FREE_GB}GB)"
+}
+
 do_deploy() {
   say "deploy requested: $SHA"
+
+  require_disk || return 1
 
   # 1. Refresh refs from the public remote. --prune keeps deleted branches from
   #    lingering; we only ever read origin/main below.
@@ -176,8 +212,10 @@ do_deploy() {
 
   # 4. Hand off to the repo's own deploy driver. It owns build -> up ->
   #    public health probe -> .last-good, and auto-rolls-back on failure.
+  #    The sentinel stops it re-taking the lock we are already holding, which
+  #    would deadlock against ourselves.
   say "running deploy/deployment.sh"
-  if ! "$REPO/deploy/deployment.sh"; then
+  if ! YANKI_DEPLOY_LOCK_HELD=1 YANKI_DEPLOY_LOCK="$LOCK" "$REPO/deploy/deployment.sh"; then
     oops "deployment.sh failed (it rolls back to .last-good on its own failure paths)"
     return 1
   fi
@@ -200,9 +238,14 @@ main() {
   # Serialise deploys. Two merges landing close together must not build and
   # `compose up` the same project concurrently; -w makes the second one wait
   # rather than fail, since it is about to deploy a newer sha anyway.
+  #
+  # 900s, not 1800s: the GitHub job times out at 45 minutes, and a wait that can
+  # eat 30 of them leaves no budget for the build it is waiting to start. Better
+  # to fail the queued run with a clear message than to have the runner drop the
+  # connection mid-`compose up`.
   exec 9>"$LOCK"
-  if ! flock -w 1800 9; then
-    oops "timed out waiting for another deploy to finish"
+  if ! flock -w 900 9; then
+    oops "timed out after 900s waiting for another deploy (CI or a human 'make deploy')"
     return 1
   fi
 

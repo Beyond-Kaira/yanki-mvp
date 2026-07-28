@@ -129,16 +129,25 @@ friendly names over the generated schemas and narrows the loosely-typed fields.
 
 ## Deploy
 
-Deployment reuses the proven ams-pulse pattern. One command from your laptop
-builds, deploys, migrates, health-checks, and auto-rolls-back on failure —
-**first exercised for real 2026-07-10; the site is live at
-<https://yanki.beyondkaira.com>** (in DRY_RUN mock mode until the operator
-flips it):
+**Merging to `main` deploys itself.** Once CI is green on `main`, the `Deploy`
+workflow SSHes to the VPS and ships that exact commit — build, migrate, public
+health check, auto-rollback on failure. Nobody has to touch the server. The site
+is live at <https://yanki.beyondkaira.com>. See
+[`deploy/AUTODEPLOY.md`](deploy/AUTODEPLOY.md) for the chain, the forced-command
+key that makes it safe on a shared VPS, and what is still manual (edge config
+and secrets).
+
+Deployment itself reuses the proven ams-pulse pattern — **first exercised for
+real 2026-07-10** — and the same driver is still there to run by hand when you
+need it (a rehearsal, a rollback, or a host with CI down):
 
 ```bash
 make deploy      # build + deploy + migrate + health check (auto-rollback on failure)
 make rollback    # redeploy the last-good SHA if something slips through
 ```
+
+Run those from `~/repo/yanki-mvp`; auto-deploy drives a **separate** checkout at
+`~/deploy/yanki-mvp` so it can never disturb your working tree.
 
 **One-time prerequisites** (all **done** as of 2026-07-10 — see [`docs/architecture.md`](docs/architecture.md)):
 
@@ -172,6 +181,7 @@ nginx proxies to the stack's loopback binds — 127.0.0.1:8142 (web) /
 | [docs/roadmap.md](docs/roadmap.md)                      | Leadership / engineers| Phased path from MVP to the Semrush alternative.        |
 | [docs/frontend-brandkit.md](docs/frontend-brandkit.md)  | Frontend              | Colors, type, spacing, components, voice/tone (EN + TR).|
 | [docs/test-suite.md](docs/test-suite.md)                | Every engineer        | Test pyramid, TDD workflow, fixtures, coverage targets. |
+| [deploy/AUTODEPLOY.md](deploy/AUTODEPLOY.md)            | On-call / operators   | Merge-to-live chain, the forced-command deploy key, pruning, rotation. |
 
 See also [CONTRIBUTING.md](CONTRIBUTING.md) for the branch/PR/commit flow and
 [SECURITY.md](SECURITY.md) for the secret policy and how to report issues.

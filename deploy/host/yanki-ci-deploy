@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# =============================================================================
+# yanki-ci-deploy — the FORCED COMMAND behind the CI deploy SSH key.
+#
+# This file is the entire attack surface of that key. It is referenced from
+# ~/.ssh/authorized_keys as:
+#
+#   command="/home/aytek/.local/bin/yanki-ci-deploy",restrict ssh-ed25519 AAAA... yanki-ci-deploy
+#
+# `command=` means sshd runs THIS and nothing else, whatever the client asks
+# for; the client's string arrives only as $SSH_ORIGINAL_COMMAND, as data.
+# `restrict` disables pty, agent/port/X11 forwarding and ~/.ssh/rc. So a leaked
+# private key buys "redeploy a commit that is already on main" — not a shell on
+# a box that also hosts pulse-prod, brier, antmedia and evrak-app.
+#
+# WHY IT LIVES OUTSIDE THE REPO (/home/aytek/.local/bin, not deploy/):
+# the deploy checks out main, so anything inside the repo is content this
+# script is supposed to be GUARDING. A wrapper stored in-tree could be edited
+# by the very commit it is meant to validate. Keep it here.
+#
+# PROTOCOL (SSH_ORIGINAL_COMMAND):
+#   deploy <40-hex-sha>   fetch, verify the sha is on origin/main, check it out,
+#                         run deploy/deployment.sh, prune stale images
+#   ping                  report state (checkout sha, last-good, live tags) and
+#                         change nothing — the connectivity smoke test
+#
+# EXIT: 0 ok · 1 deploy failed (deployment.sh rolls back) · 2 rejected request
+# =============================================================================
+set -euo pipefail
+
+# sshd hands a forced command a minimal environment; do not inherit PATH luck.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+REPO=/home/aytek/deploy/yanki-mvp
+STATE=/home/aytek/.local/state
+LOCK="$STATE/yanki-ci-deploy.lock"
+LOG="$STATE/yanki-ci-deploy.log"
+
+# How many historical image tags to keep per repository, on top of the tag being
+# deployed and the .last-good tag (which are never pruned — rollback needs them).
+KEEP_IMAGES=3
+
+mkdir -p "$STATE"
+
+stamp() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
+say()   { printf '[%s] %s\n' "$(stamp)" "$1"; }
+oops()  { printf '[%s] ERROR: %s\n' "$(stamp)" "$1" >&2; }
+
+# ---------------------------------------------------------------------------
+# Request parsing — everything here treats $SSH_ORIGINAL_COMMAND as hostile.
+# ---------------------------------------------------------------------------
+parse_request() {
+  local raw="${SSH_ORIGINAL_COMMAND:-}"
+
+  # No word splitting via eval, ever. Split on whitespace into exactly the
+  # fields we expect; a third field means the request is malformed, not that we
+  # should ignore the tail.
+  local verb="" arg="" extra=""
+  read -r verb arg extra <<<"$raw"
+
+  if [ -n "$extra" ]; then
+    oops "unexpected extra arguments in request"
+    return 2
+  fi
+
+  case "$verb" in
+    ping)
+      [ -z "$arg" ] || { oops "ping takes no argument"; return 2; }
+      VERB=ping
+      ;;
+    deploy)
+      # A full 40-char lowercase hex sha and nothing else. This rejects refs,
+      # ranges, options (--upload-pack=...), and anything with a shell
+      # metacharacter in one check.
+      if ! printf '%s' "$arg" | grep -qE '^[0-9a-f]{40}$'; then
+        oops "deploy needs a full 40-character lowercase hex sha"
+        return 2
+      fi
+      VERB=deploy
+      SHA="$arg"
+      ;;
+    "")
+      oops "no request (this key only accepts: deploy <sha> | ping)"
+      return 2
+      ;;
+    *)
+      # Deliberately does not echo the request back — it is attacker-controlled.
+      oops "refused: this key only accepts 'deploy <sha>' or 'ping'"
+      return 2
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# ping — read-only state report, so CI can prove the key works without shipping
+# ---------------------------------------------------------------------------
+do_ping() {
+  say "ping from CI"
+  printf '   host        : %s\n' "$(hostname)"
+  printf '   checkout    : %s @ %s\n' "$REPO" "$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo '?')"
+  printf '   last-good   : %s\n' "$(tr -d '[:space:]' <"$REPO/deploy/.last-good" 2>/dev/null || echo 'none')"
+  printf '   live images : %s\n' "$(docker ps --filter name=yanki-prod --format '{{.Image}}' | sort -u | tr '\n' ' ')"
+  printf '   deploy env  : %s\n' "$([ -e "$REPO/deploy/.env" ] && echo present || echo 'MISSING — deploys will fail')"
+  say "ping ok (nothing was changed)"
+}
+
+# ---------------------------------------------------------------------------
+# Image pruning — auto-deploy builds a new SHA-tagged image on EVERY merge, and
+# yanki-web alone is ~1.6GB. Without this the disk fills silently and takes the
+# co-tenant services down with it.
+#
+# Conservative by construction: only tags under the two yanki-* repositories are
+# ever considered, `latest`, the tag just deployed and the .last-good tag are
+# always kept, and `docker rmi` failures are ignored (an image still referenced
+# by a container refuses to delete — that refusal is the last safety net).
+# ---------------------------------------------------------------------------
+prune_images() {
+  local current="$1" lastgood="$2" name tag kept
+  say "pruning stale images (keeping newest $KEEP_IMAGES + $current + ${lastgood:-none} + latest)"
+  for name in yanki-api yanki-web; do
+    kept=0
+    # docker images lists newest first; <none> tags belong to dangling layers we
+    # do not touch here.
+    while read -r tag; do
+      [ -n "$tag" ] || continue
+      [ "$tag" = "<none>" ] && continue
+      if [ "$tag" = "latest" ] || [ "$tag" = "$current" ] || { [ -n "$lastgood" ] && [ "$tag" = "$lastgood" ]; }; then
+        continue
+      fi
+      kept=$((kept + 1))
+      if [ "$kept" -le "$KEEP_IMAGES" ]; then
+        continue
+      fi
+      if docker rmi "$name:$tag" >/dev/null 2>&1; then
+        printf '   removed %s:%s\n' "$name" "$tag"
+      fi
+    done < <(docker images --format '{{.Tag}}' "$name")
+  done
+  printf '   disk now: %s\n' "$(df -h --output=avail / | tail -1 | tr -d ' ') available on /"
+}
+
+# ---------------------------------------------------------------------------
+# deploy — the whole point
+# ---------------------------------------------------------------------------
+do_deploy() {
+  say "deploy requested: $SHA"
+
+  # 1. Refresh refs from the public remote. --prune keeps deleted branches from
+  #    lingering; we only ever read origin/main below.
+  if ! git -C "$REPO" fetch --quiet --prune origin main; then
+    oops "git fetch failed — cannot verify the requested sha"
+    return 1
+  fi
+
+  # 2. THE GATE. The sha must be reachable from origin/main. This is what makes
+  #    the key safe to hand to CI: it cannot ship a fork branch, a tag, a
+  #    force-pushed side branch or an arbitrary object — only history that is
+  #    genuinely on main, which is itself ruleset-protected on GitHub.
+  if ! git -C "$REPO" merge-base --is-ancestor "$SHA" origin/main 2>/dev/null; then
+    oops "$SHA is not an ancestor of origin/main — refusing to deploy it"
+    return 2
+  fi
+  say "verified $SHA is on origin/main"
+
+  # 3. Move the checkout onto exactly that commit. -f discards any leftover
+  #    state (rollback.sh checks out the last-good sha when an image was pruned,
+  #    so this checkout can legitimately start detached somewhere old).
+  #    `clean -fd` WITHOUT -x on purpose: -x would delete deploy/.env and
+  #    deploy/.last-good, which are gitignored and must survive.
+  git -C "$REPO" checkout -f --quiet --detach "$SHA"
+  git -C "$REPO" clean -fd --quiet
+  say "checkout is now $(git -C "$REPO" rev-parse --short HEAD)"
+
+  local lastgood=""
+  [ -f "$REPO/deploy/.last-good" ] && lastgood="$(tr -d '[:space:]' <"$REPO/deploy/.last-good" || true)"
+
+  # 4. Hand off to the repo's own deploy driver. It owns build -> up ->
+  #    public health probe -> .last-good, and auto-rolls-back on failure.
+  say "running deploy/deployment.sh"
+  if ! "$REPO/deploy/deployment.sh"; then
+    oops "deployment.sh failed (it rolls back to .last-good on its own failure paths)"
+    return 1
+  fi
+
+  local deployed
+  deployed="$(git -C "$REPO" rev-parse --short HEAD)"
+  prune_images "$deployed" "$lastgood"
+  say "deploy ok: $deployed is live"
+}
+
+# ---------------------------------------------------------------------------
+main() {
+  parse_request || return $?
+
+  if [ "$VERB" = "ping" ]; then
+    do_ping
+    return 0
+  fi
+
+  # Serialise deploys. Two merges landing close together must not build and
+  # `compose up` the same project concurrently; -w makes the second one wait
+  # rather than fail, since it is about to deploy a newer sha anyway.
+  exec 9>"$LOCK"
+  if ! flock -w 1800 9; then
+    oops "timed out waiting for another deploy to finish"
+    return 1
+  fi
+
+  do_deploy
+}
+
+# Tee through a pipeline rather than `exec > >(tee ...)`: the process
+# substitution form can lose the tail of the log when the script exits.
+{ main; } 2>&1 | tee -a "$LOG"
+exit "${PIPESTATUS[0]}"

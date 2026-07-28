@@ -33,7 +33,11 @@ on:
     # It matches literal workflow `name:` values — no globs, no patterns — so
     # every workflow that should page Slack on failure has to be named here.
     # Add new ones as they land; `gh workflow list` prints the current names.
-    workflows: [CI]
+    #
+    # Deploy is in this list because a failed production deploy is the single
+    # most important thing to hear about: it means the VPS either rolled back to
+    # deploy/.last-good or needs hands-on recovery.
+    workflows: [CI, Deploy]
     types: [completed]
 
 permissions: {}

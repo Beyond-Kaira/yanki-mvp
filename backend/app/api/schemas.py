@@ -8,14 +8,31 @@ state (and failures keep their partial results queryable — FR-7).
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+
+from app.services.auth import normalize_email
 
 # Minimal email shape check. email-validator (pydantic[email]) is not installed
 # and the card says not to add a heavy dep just for this — a conservative regex
 # (one @, non-empty local/domain, a dotted TLD) is enough for the lead gate.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_and_validate_email(value: str) -> str:
+    normalized = normalize_email(value)
+
+    if not _EMAIL_RE.fullmatch(normalized):
+        raise ValueError("invalid email")
+
+    return normalized
+
+
+NormalizedEmail = Annotated[
+    str,
+    AfterValidator(_normalize_and_validate_email),
+]
 
 
 class CreateAnalysisRequest(BaseModel):
@@ -84,35 +101,15 @@ class WaitlistResponse(BaseModel):
 class SignupRequest(BaseModel):
     """Credentials required to create a user account."""
 
-    email: str
+    email: NormalizedEmail
     password: str = Field(min_length=8, max_length=128)
-
-    @field_validator("email")
-    @classmethod
-    def _valid_email(cls, value: str) -> str:
-        normalized = value.strip().lower()
-
-        if not _EMAIL_RE.fullmatch(normalized):
-            raise ValueError("invalid email")
-
-        return normalized
 
 
 class LoginRequest(BaseModel):
     """Credentials required to authenticate a user."""
 
-    email: str
+    email: NormalizedEmail
     password: str = Field(min_length=1, max_length=128)
-
-    @field_validator("email")
-    @classmethod
-    def _valid_email(cls, value: str) -> str:
-        normalized = value.strip().lower()
-
-        if not _EMAIL_RE.fullmatch(normalized):
-            raise ValueError("invalid email")
-
-        return normalized
 
 
 class UserOut(BaseModel):
@@ -123,6 +120,14 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: str
     created_at: datetime
+
+
+class LoginResponse(BaseModel):
+    """Authenticated user and token fields for the login flow."""
+
+    user: UserOut
+    access_token: str | None = None
+    token_type: str | None = None
 
 
 class PromptOut(BaseModel):

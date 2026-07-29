@@ -274,6 +274,17 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * LoginResponse
+         * @description Authenticated user and token fields for the login flow.
+         */
+        LoginResponse: {
+            /** Access Token */
+            access_token?: string | null;
+            /** Token Type */
+            token_type?: string | null;
+            user: components["schemas"]["UserOut"];
+        };
         /** PromptOut */
         PromptOut: {
             /** Category */
@@ -480,7 +491,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserOut"];
+                    "application/json": components["schemas"]["LoginResponse"];
                 };
             };
             /** @description Validation Error */

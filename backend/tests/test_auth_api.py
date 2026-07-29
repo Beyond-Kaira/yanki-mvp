@@ -16,7 +16,7 @@ def test_signup_creates_user_with_normalized_email_and_hashed_password(
     response = client.post(
         SIGNUP_URL,
         json={
-            "email": "  Yakup@Example.COM  ",
+            "email": "  Test@Example.COM  ",
             "password": "correct-horse",
         },
     )
@@ -24,10 +24,10 @@ def test_signup_creates_user_with_normalized_email_and_hashed_password(
     assert response.status_code == 201
 
     body = response.json()
-    assert body["email"] == "yakup@example.com"
+    assert body["email"] == "test@example.com"
     assert set(body) == {"id", "email", "created_at"}
 
-    user = db_session.scalar(select(User).where(User.email == "yakup@example.com"))
+    user = db_session.scalar(select(User).where(User.email == "test@example.com"))
 
     assert user is not None
     assert user.password_hash != "correct-horse"
@@ -41,14 +41,14 @@ def test_signup_rejects_duplicate_normalized_email(
     first_response = client.post(
         SIGNUP_URL,
         json={
-            "email": "yakup@example.com",
+            "email": "test@example.com",
             "password": "correct-horse",
         },
     )
     duplicate_response = client.post(
         SIGNUP_URL,
         json={
-            "email": " YAKUP@example.com ",
+            "email": " TEST@example.com ",
             "password": "another-password",
         },
     )
@@ -65,7 +65,7 @@ def test_login_accepts_valid_credentials(client) -> None:
     signup_response = client.post(
         SIGNUP_URL,
         json={
-            "email": "yakup@example.com",
+            "email": "test@example.com",
             "password": "correct-horse",
         },
     )
@@ -74,21 +74,35 @@ def test_login_accepts_valid_credentials(client) -> None:
     login_response = client.post(
         LOGIN_URL,
         json={
-            "email": " YAKUP@EXAMPLE.COM ",
+            "email": " TEST@EXAMPLE.COM ",
             "password": "correct-horse",
         },
     )
 
     assert login_response.status_code == 200
-    assert login_response.json()["email"] == "yakup@example.com"
-    assert set(login_response.json()) == {"id", "email", "created_at"}
+
+    body = login_response.json()
+
+    assert set(body) == {
+        "user",
+        "access_token",
+        "token_type",
+    }
+    assert body["user"]["email"] == "test@example.com"
+    assert set(body["user"]) == {
+        "id",
+        "email",
+        "created_at",
+    }
+    assert body["access_token"] is None
+    assert body["token_type"] is None
 
 
 def test_login_rejects_wrong_password_and_unknown_email(client) -> None:
     signup_response = client.post(
         SIGNUP_URL,
         json={
-            "email": "yakup@example.com",
+            "email": "test@example.com",
             "password": "correct-horse",
         },
     )
@@ -97,7 +111,7 @@ def test_login_rejects_wrong_password_and_unknown_email(client) -> None:
     wrong_password_response = client.post(
         LOGIN_URL,
         json={
-            "email": "yakup@example.com",
+            "email": "test@example.com",
             "password": "wrong-password",
         },
     )
@@ -129,14 +143,14 @@ def test_auth_request_validation(client) -> None:
     short_password_response = client.post(
         SIGNUP_URL,
         json={
-            "email": "yakup@example.com",
+            "email": "test@example.com",
             "password": "short",
         },
     )
     empty_login_password_response = client.post(
         LOGIN_URL,
         json={
-            "email": "yakup@example.com",
+            "email": "test@example.com",
             "password": "",
         },
     )

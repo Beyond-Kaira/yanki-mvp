@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.schemas import LoginRequest, SignupRequest, UserOut
+from app.api.schemas import LoginRequest, LoginResponse, SignupRequest, UserOut
 from app.db.session import get_session
 from app.services.auth import authenticate_user, create_user, get_user_by_email
 
@@ -48,12 +48,12 @@ def signup(
 
 @router.post(
     "/login",
-    response_model=UserOut,
+    response_model=LoginResponse,
 )
 def login(
     payload: LoginRequest,
     session: Session = Depends(get_session),
-) -> UserOut:
+) -> LoginResponse:
     """Validate a user's email and password."""
 
     user = authenticate_user(
@@ -68,4 +68,6 @@ def login(
             detail="invalid email or password",
         )
 
-    return UserOut.model_validate(user)
+    return LoginResponse(
+        user=UserOut.model_validate(user),
+    )

@@ -8,6 +8,8 @@ from app.db.models import User
 
 _password_hash = PasswordHash.recommended()
 
+_DUMMY_HASH = _password_hash.hash("dummy-password-for-timing-equalization")
+
 
 def normalize_email(email: str) -> str:
     """Normalize an email before storing or querying it."""
@@ -25,6 +27,14 @@ def verify_password(password: str, password_hash: str) -> bool:
     """Check a plain-text password against a stored password hash."""
 
     return _password_hash.verify(password, password_hash)
+
+
+def verify_and_update_password(
+    password: str,
+    password_hash: str,
+) -> tuple[bool, str | None]:
+    """Verify a password and return an upgraded hash when needed."""
+    return _password_hash.verify_and_update(password, password_hash)
 
 
 def get_user_by_email(session: Session, email: str) -> User | None:
@@ -65,10 +75,14 @@ def authenticate_user(
 
     user = get_user_by_email(session, email)
 
-    if user is None:
+    password_hash = user.password_hash if user is not None else _DUMMY_HASH
+    valid, updated_hash = verify_and_update_password(password, password_hash)
+
+    if user is None or not valid:
         return None
 
-    if not verify_password(password, user.password_hash):
-        return None
+    if updated_hash is not None:
+        user.password_hash = updated_hash
+        session.commit()
 
     return user

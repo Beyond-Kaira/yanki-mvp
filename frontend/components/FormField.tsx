@@ -1,0 +1,113 @@
+import type { InputHTMLAttributes, ReactNode } from 'react'
+
+// The input chrome, plus the error state the auth screens need.
+//
+// Scope, stated plainly: four existing forms inline this styling in two
+// shapes — UrlForm and CheckerForm match what is below, while WaitlistForm and
+// EmailGate use the inline-with-button variant (`min-h-[40px] py-2.5 sm:flex-1`).
+// This function covers the first shape only, so it is one definition for the
+// auth screens rather than one definition for the app. Folding the other four
+// in means giving this a variant argument, which is a change to working forms
+// and belongs in its own pass.
+export function fieldInputClass(hasError: boolean): string {
+  return [
+    'w-full rounded-lg border bg-white px-4 py-3 text-base text-surface-foreground',
+    'placeholder:text-surface-subtle focus-visible:outline-none focus-visible:ring-2',
+    'disabled:opacity-50',
+    hasError
+      ? 'border-danger focus-visible:ring-danger'
+      : 'border-surface-subtle focus-visible:ring-primary',
+  ].join(' ')
+}
+
+// The message ids a field publishes, so the control can point at whichever is
+// showing with aria-describedby and a screen reader reads it with the field.
+export function fieldErrorId(id: string): string {
+  return `${id}-error`
+}
+
+export function fieldHintId(id: string): string {
+  return `${id}-hint`
+}
+
+// What the control should be described by: the error while there is one, the
+// hint otherwise. Never both, so the reason a field is rejected is not buried
+// behind a rule the reader has already broken.
+export function fieldDescribedBy(
+  id: string,
+  error?: string | null,
+  hint?: string,
+): string | undefined {
+  if (error) return fieldErrorId(id)
+  if (hint) return fieldHintId(id)
+  return undefined
+}
+
+interface FieldShellProps {
+  id: string
+  label: string
+  error?: string | null
+  hint?: string
+  children: ReactNode
+}
+
+// Label, control, and the message under it. Shared with PasswordField, which
+// needs its own control markup for the reveal toggle.
+export function FieldShell({
+  id,
+  label,
+  error,
+  hint,
+  children,
+}: FieldShellProps) {
+  return (
+    <div className="space-y-1.5">
+      <label
+        htmlFor={id}
+        className="block text-sm font-medium text-surface-foreground"
+      >
+        {label}
+      </label>
+      {children}
+      {error ? (
+        <p id={fieldErrorId(id)} className="text-sm text-danger">
+          {error}
+        </p>
+      ) : hint ? (
+        <p id={fieldHintId(id)} className="text-xs text-surface-subtle">
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+interface FormFieldProps
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> {
+  id: string
+  label: string
+  error?: string | null
+  hint?: string
+}
+
+export default function FormField({
+  id,
+  label,
+  error,
+  hint,
+  ...rest
+}: FormFieldProps) {
+  const invalid = Boolean(error)
+
+  return (
+    <FieldShell id={id} label={label} error={error} hint={hint}>
+      <input
+        id={id}
+        aria-invalid={invalid || undefined}
+        aria-describedby={fieldDescribedBy(id, error, hint)}
+        className={fieldInputClass(invalid)}
+        {...rest}
+      />
+    </FieldShell>
+  )
+}

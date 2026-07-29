@@ -18,7 +18,9 @@ export class ApiError extends Error {
   }
 }
 
-async function readErrorMessage(res: Response): Promise<string> {
+// Exported so `lib/auth.ts` surfaces backend failures the same way as the rest
+// of the app instead of keeping a second copy of this shape handling.
+export async function readErrorMessage(res: Response): Promise<string> {
   try {
     const body = await res.json()
     // FastAPI/Pydantic validation errors: { detail: [{ msg }] } or { detail: "…" }.

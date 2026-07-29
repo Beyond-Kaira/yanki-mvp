@@ -71,6 +71,8 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
         geo_score=analysis.geo_score,
         footprint_count=analysis.footprint_count,
         total_responses=analysis.total_responses,
+        reliability_score=analysis.reliability_score,
+        interventions=analysis.interventions,
         engine_presence=engine_presence,
         competitors_appeared=competitors_appeared,
     )

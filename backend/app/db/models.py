@@ -51,9 +51,15 @@ class Analysis(Base):
     kyc: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+    # Composite GEO score on a 0–100 scale (mention × position × citation ×
+    # sentiment). Legacy MVP rows may still hold a 0–1 mention-rate fraction.
     geo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     footprint_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     total_responses: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    reliability_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    interventions: Mapped[list[Any] | dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -100,6 +106,11 @@ class Response(Base):
     raw_text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     footprint: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
     matched_snippet: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Measured-audit payload (search_visibility, citations, gaps, …). Null on
+    # legacy multi-engine panel rows.
+    audit: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     cost_usd: Mapped[Decimal] = mapped_column(sa.Numeric(10, 6), nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow

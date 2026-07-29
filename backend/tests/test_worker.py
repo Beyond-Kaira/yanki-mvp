@@ -45,7 +45,7 @@ def test_failed_job_marks_failed_and_keeps_partial_results(
     # prompts, execute and footprint have committed their rows.
     monkeypatch.setattr(discovery, "discover", lambda url: "Acme builds robots.")
 
-    def _boom(footprints, total):
+    def _boom(records, *, reliability_score=None):
         raise PipelineError("scoring exploded")
 
     monkeypatch.setattr(scoring, "geo_score", _boom)

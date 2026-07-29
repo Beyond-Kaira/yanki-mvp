@@ -133,12 +133,17 @@ function Results({ analysis }: { analysis: Analysis }) {
   const footprints =
     result.footprint_count ??
     result.responses.filter((response) => response.footprint).length
-  const percent = Math.round((result.geo_score ?? 0) * 100)
+  const percent = Math.round(result.geo_score ?? 0)
 
   return (
     <div className="space-y-8">
       <section className="rounded-xl border border-surface-border bg-white p-6 shadow-sm">
         <ScoreGauge score={percent} footprintCount={footprints} totalResponses={total} />
+        {result.reliability_score != null ? (
+          <p className="mt-3 text-center text-sm text-surface-subtle">
+            Reliability {Math.round(result.reliability_score * 100)}%
+          </p>
+        ) : null}
       </section>
 
       {result.kyc ? <KycCard kyc={result.kyc} /> : null}
@@ -174,6 +179,52 @@ function Results({ analysis }: { analysis: Analysis }) {
           </p>
         )}
       </section>
+
+      {Array.isArray(result.interventions) && result.interventions.length > 0 ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold text-surface-foreground">
+            Recommended interventions
+          </h2>
+          <ul className="space-y-3">
+            {result.interventions.slice(0, 8).map((item) => {
+              const intervention = item as {
+                id?: string
+                title?: string
+                description?: string
+                label?: string
+                priority_score?: number
+              }
+              return (
+                <li
+                  key={intervention.id ?? intervention.title}
+                  className="rounded-lg border border-surface-border bg-white p-4"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    {intervention.label ? (
+                      <span className="rounded-full bg-primary-soft px-2 py-0.5 text-xs font-medium text-primary-strong">
+                        {intervention.label}
+                      </span>
+                    ) : null}
+                    {intervention.priority_score != null ? (
+                      <span className="text-xs text-surface-subtle">
+                        priority {intervention.priority_score}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 font-medium text-surface-foreground">
+                    {intervention.title}
+                  </p>
+                  {intervention.description ? (
+                    <p className="mt-1 text-sm text-surface-subtle">
+                      {intervention.description}
+                    </p>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {/* Growth loop: once a score is on screen, invite the visitor to keep
           tracking it. Reuses WaitlistForm as-is (its own <section> landmark and

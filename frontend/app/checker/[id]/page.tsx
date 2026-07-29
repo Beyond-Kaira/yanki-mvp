@@ -168,8 +168,8 @@ function Results({
   const footprints =
     result.footprint_count ??
     result.responses.filter((response) => response.footprint).length
-  // geo_score is a 0–1 fraction; ScoreGauge takes a 0–100 percentage.
-  const percent = Math.round((result.geo_score ?? 0) * 100)
+  // geo_score is already a 0–100 composite percentage.
+  const percent = Math.round(result.geo_score ?? 0)
 
   // The email gate is the PRIMARY conversion here, so the waitlist section stays
   // hidden until the gate is out of the way — either unlocked by the visitor, or

@@ -5,6 +5,8 @@ null/empty until the pipeline produces them, so the frontend can render partial
 state (and failures keep their partial results queryable — FR-7).
 """
 
+from __future__ import annotations
+
 import re
 import uuid
 from datetime import datetime
@@ -100,6 +102,7 @@ class ResponseOut(BaseModel):
     footprint: bool | None
     matched_snippet: str | None
     cost_usd: float
+    audit: dict[str, Any] | None = None
 
 
 class EnginePresence(BaseModel):
@@ -129,9 +132,12 @@ class ResultOut(BaseModel):
     kyc: dict[str, Any] | None
     prompts: list[PromptOut]
     responses: list[ResponseOut]
+    # Composite GEO on 0–100 (measured path). Legacy rows may still be 0–1.
     geo_score: float | None
     footprint_count: int | None
     total_responses: int | None
+    reliability_score: float | None = None
+    interventions: list[dict[str, Any]] | dict[str, Any] | None = None
     # Checker-only read-time aggregates (P5.3); null for MVP / legacy rows.
     engine_presence: list[EnginePresence] | None
     competitors_appeared: list[CompetitorMention] | None

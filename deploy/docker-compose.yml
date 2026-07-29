@@ -30,8 +30,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://yanki:yanki@db:5432/yanki
     env_file:
-      - path: .env
-        required: false
+      - .env
     volumes:
       # Bind the source for --reload; the image already installed the deps.
       - ../backend/app:/app/app
@@ -47,8 +46,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://yanki:yanki@db:5432/yanki
     env_file:
-      - path: .env
-        required: false
+      - .env
     volumes:
       - ../backend/app:/app/app
       - ../backend/alembic:/app/alembic
@@ -66,8 +64,7 @@ services:
     environment:
       API_ORIGIN: http://api:8141
     env_file:
-      - path: .env
-        required: false
+      - .env
     volumes:
       - ../frontend:/app
       # Anonymous volumes keep the image's node_modules/.next, not the host's.

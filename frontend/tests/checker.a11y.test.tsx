@@ -85,7 +85,7 @@ describe('Checker screens accessibility', () => {
         current_step: null,
         result: {
           footprint_count: 16,
-          geo_score: 0.33,
+          geo_score: 33,
           kyc: null,
           prompts: [{ id: 'p1', category: 'comparison', text: 'Best note app?' }],
           responses: [
@@ -127,7 +127,7 @@ describe('Checker screens accessibility', () => {
         current_step: null,
         result: {
           footprint_count: 1,
-          geo_score: 0.5,
+          geo_score: 50,
           kyc: null,
           prompts: [{ id: 'p1', category: 'comparison', text: 'Best note app?' }],
           responses: [

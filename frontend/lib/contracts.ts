@@ -57,6 +57,8 @@ export type CompetitorMention = Schemas['CompetitorMention']
 
 export type AnalysisResult = Omit<Schemas['ResultOut'], 'kyc'> & {
   kyc: KYC | null
+  reliability_score?: number | null
+  interventions?: Array<Record<string, unknown>> | Record<string, unknown> | null
 }
 
 export type Analysis = Omit<

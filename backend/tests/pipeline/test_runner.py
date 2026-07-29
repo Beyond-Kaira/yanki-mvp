@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 
 
@@ -33,19 +34,21 @@ def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, m
     ).scalars().all()
     assert len(prompts) == settings.prompt_count
 
-    # Responses: one per prompt per panel engine (4 engines in DRY_RUN).
+    # Responses: one measured audit per prompt.
     responses = db_session.execute(
         select(models.Response).where(models.Response.analysis_id == analysis.id)
     ).scalars().all()
-    assert len(responses) == settings.prompt_count * 4
+    assert len(responses) == settings.prompt_count
     assert result.total_responses == len(responses)
+    assert all(response.engine == "measured" for response in responses)
+    assert all(isinstance(response.audit, dict) for response in responses)
 
-    # Footprint recorded on every response; score is consistent with the counts.
+    # Footprint recorded on every response; composite score in 0–100.
     assert all(response.footprint is not None for response in responses)
     hits = sum(1 for response in responses if response.footprint)
     assert result.footprint_count == hits
-    assert result.geo_score == (hits / len(responses))
-    assert 0.0 <= result.geo_score <= 1.0
+    assert result.geo_score is not None
+    assert 0.0 <= result.geo_score <= 100.0
 
 
 def test_rerun_replaces_rows_and_does_not_double_counts(

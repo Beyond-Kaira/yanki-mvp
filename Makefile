@@ -29,7 +29,7 @@ setup: ## Install uv (if missing) + backend/frontend deps + pre-commit hooks
 bootstrap: setup ## Alias for `make setup`
 
 dev: ## Start the full dev stack (db + api + worker + web, hot reload)
-	docker compose -f deploy/docker-compose.yml up --build
+	docker compose -f deploy/docker-compose.yml --env-file deploy/.env up --build
 
 test: ## Run backend (pytest) + frontend (vitest); starts a throwaway test Postgres
 	@set -e; \

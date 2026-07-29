@@ -8,6 +8,7 @@ calls it — the seed KYC comes from the brand + category, not an HTTP crawl.
 
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 
 
@@ -64,7 +65,7 @@ def test_checker_pipeline_walks_all_steps_without_crawl(
     )
     assert len(prompts) == 12
 
-    # 48 responses = 12 prompts x 4 mock engines, within MAX_RESPONSES_PER_JOB.
+    # 12 measured responses = 12 prompts × 1 measured engine.
     responses = (
         db_session.execute(
             select(models.Response).where(models.Response.analysis_id == analysis.id)
@@ -72,17 +73,18 @@ def test_checker_pipeline_walks_all_steps_without_crawl(
         .scalars()
         .all()
     )
-    assert len(responses) == 48
-    assert result.total_responses == 48
+    assert len(responses) == 12
+    assert result.total_responses == 12
+    assert all(r.engine == "measured" for r in responses)
+    assert all(isinstance(r.audit, dict) for r in responses)
 
-    # Footprint recorded on every response; a meaningful non-zero geo_score with
-    # no divide-by-zero, consistent with the footprint count.
+    # Footprint recorded on every response; composite GEO in 0–100.
     assert all(r.footprint is not None for r in responses)
     hits = sum(1 for r in responses if r.footprint)
     assert result.footprint_count == hits
     assert hits > 0
-    assert result.geo_score == hits / len(responses)
-    assert 0.0 < result.geo_score <= 1.0
+    assert result.geo_score is not None
+    assert 0.0 < result.geo_score <= 100.0
 
 
 def test_checker_rerun_is_idempotent(db_session, models, settings, monkeypatch):
@@ -111,6 +113,6 @@ def test_checker_rerun_is_idempotent(db_session, models, settings, monkeypatch):
         .all()
     )
     assert len(prompts) == 12
-    assert len(responses) == 48
-    assert second.total_responses == first.total_responses == 48
+    assert len(responses) == 12
+    assert second.total_responses == first.total_responses == 12
     assert second.footprint_count == first.footprint_count

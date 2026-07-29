@@ -41,9 +41,13 @@ export default function QuestionBreakdown({
       >
         Question by question
       </h2>
+      {/* "goes to", not "was asked to": an engine with no rows may have failed
+          mid-run, or may not have been on the panel for it, and the envelope
+          does not say which. Claiming it was asked settles a question the data
+          leaves open. */}
       <p className="text-sm text-surface-subtle">
-        Each question was asked to every engine on the panel. A green engine
-        named you in its answer.
+        Each question goes to every engine on the panel. A green engine named
+        you in its answer; grey means no answer came back.
       </p>
 
       <ul className="space-y-3">
@@ -117,7 +121,9 @@ export default function QuestionBreakdown({
                           ? 'named you'
                           : answered
                             ? 'did not name you'
-                            : 'did not answer'}
+                            : // Not "did not answer": that would assert this
+                              // engine was asked and failed to reply.
+                              'no answer'}
                       </span>
                     </li>
                   )

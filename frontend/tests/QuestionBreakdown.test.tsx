@@ -61,7 +61,7 @@ describe('QuestionBreakdown', () => {
     expect(screen.getByText(/Acme is a strong option\./)).toBeInTheDocument()
   })
 
-  it('counts against the panel, and marks an engine that never answered', () => {
+  it('counts against the panel, and lists an engine with nothing to show', () => {
     render(
       <QuestionBreakdown
         groups={groups}
@@ -72,7 +72,10 @@ describe('QuestionBreakdown', () => {
     // Denominator follows the panel, not the number of answers that arrived.
     expect(screen.getByText('1/3')).toBeInTheDocument()
     expect(screen.getByText('Gemini')).toBeInTheDocument()
-    expect(screen.getByText('did not answer')).toBeInTheDocument()
+    // "no answer", not "did not answer": whether the engine was asked is not
+    // something the envelope reports, so the badge does not settle it.
+    expect(screen.getByText('no answer')).toBeInTheDocument()
+    expect(screen.queryByText('did not answer')).not.toBeInTheDocument()
   })
 
   it('keeps the answers collapsed until asked for', async () => {

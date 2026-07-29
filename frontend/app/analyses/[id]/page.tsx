@@ -3,15 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useParams } from 'next/navigation'
-import Link from 'next/link'
 import { getAnalysis, ApiError } from '@/lib/api'
-import type { Analysis, PipelineStep } from '@/lib/contracts'
+import type { Analysis } from '@/lib/contracts'
 import {
   deriveEnginePresence,
   groupByQuestion,
   runEngineIds,
 } from '@/lib/results'
-import { STEP_PHRASES } from '@/lib/steps'
+import FailedState from '@/components/FailedState'
 import StepProgress from '@/components/StepProgress'
 import ScoreSummary from '@/components/ScoreSummary'
 import EnginePresenceMap from '@/components/EnginePresenceMap'
@@ -67,7 +66,17 @@ export default function AnalysisPage() {
 
   let content: ReactNode
   if (!analysis && loadError) {
-    content = <FailureCard reason={loadError} />
+    // Nothing loaded, so there is no run to point at a step within.
+    content = (
+      <FailedState
+        subject="analysis"
+        reason={loadError}
+        step={null}
+        progress={0}
+        retryHref="/"
+        retryLabel="Try another URL"
+      />
+    )
   } else if (!analysis) {
     content = (
       <p role="status" className="text-sm text-surface-subtle">
@@ -76,23 +85,14 @@ export default function AnalysisPage() {
     )
   } else if (analysis.status === 'failed') {
     content = (
-      <div className="space-y-6">
-        <FailureCard
-          reason={analysis.error ?? 'The analysis failed.'}
-          step={analysis.current_step}
-        />
-        {/* The trail exists to point at the step that broke. A run that failed
-            before claiming one reports current_step=null, leaving nothing to
-            point at — the alert above already carries the outcome, so render
-            no trail rather than a row of neutral "waiting" steps. */}
-        {analysis.current_step ? (
-          <StepProgress
-            status="failed"
-            progress={analysis.progress}
-            currentStep={analysis.current_step}
-          />
-        ) : null}
-      </div>
+      <FailedState
+        subject="analysis"
+        reason={analysis.error ?? 'The analysis failed.'}
+        step={analysis.current_step}
+        progress={analysis.progress}
+        retryHref="/"
+        retryLabel="Try another URL"
+      />
     )
   } else if (analysis.status === 'done') {
     content = <Results analysis={analysis} />
@@ -133,37 +133,6 @@ export default function AnalysisPage() {
   )
 }
 
-function FailureCard({
-  reason,
-  step,
-}: {
-  reason: string
-  step?: PipelineStep | null
-}) {
-  return (
-    <div
-      role="alert"
-      className="space-y-3 rounded-xl border border-danger bg-danger-soft p-6"
-    >
-      <h2 className="text-xl font-semibold text-danger-strong">
-        {"We couldn't finish this analysis."}
-      </h2>
-      {step ? (
-        <p className="text-sm font-medium text-surface-foreground">
-          It stopped while {STEP_PHRASES[step]}.
-        </p>
-      ) : null}
-      <p className="text-sm text-surface-foreground">{reason}</p>
-      <Link
-        href="/"
-        className="inline-flex min-h-[40px] items-center rounded text-sm font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        Try another URL
-      </Link>
-    </div>
-  )
-}
-
 function Results({ analysis }: { analysis: Analysis }) {
   const { result } = analysis
   const total = result.total_responses ?? result.responses.length
@@ -175,15 +144,15 @@ function Results({ analysis }: { analysis: Analysis }) {
   const percent =
     result.geo_score === null ? null : Math.round(result.geo_score * 100)
 
-  // `engine_presence` rides the envelope for checker rows only, so fall back to
-  // the same aggregate derived from the responses we already hold.
+  // One path whether or not the envelope carried an aggregate: reported numbers
+  // win, the panel still sets the roster, so a silent engine is listed either way.
   const presence = useMemo(
-    () => result.engine_presence ?? deriveEnginePresence(result.responses),
-    [result.engine_presence, result.responses],
+    () => deriveEnginePresence(result.responses, result.engine_presence),
+    [result.responses, result.engine_presence],
   )
   const engines = useMemo(
-    () => runEngineIds(result.responses),
-    [result.responses],
+    () => runEngineIds(result.responses, result.engine_presence),
+    [result.responses, result.engine_presence],
   )
   const questions = useMemo(
     () => groupByQuestion(result.prompts, result.responses),

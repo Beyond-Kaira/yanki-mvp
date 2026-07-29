@@ -76,6 +76,30 @@ describe('deriveEnginePresence', () => {
     expect(presence).toHaveLength(4)
   })
 
+  it('keeps the reported numbers while still seeding the roster', () => {
+    // What the checker route gets: the backend aggregate walks the responses it
+    // has, so an engine that answered nothing is absent from it entirely.
+    const presence = deriveEnginePresence(
+      [response({ id: 'a', engine: 'openai', footprint: true })],
+      [{ engine: 'openai', mentioned: 7, total: 12 }],
+    )
+
+    // Reported numbers win: the backend can count rows this client never sees.
+    expect(presence).toContainEqual({ engine: 'openai', mentioned: 7, total: 12 })
+    // And the silent engine is still listed, which is the whole guarantee.
+    expect(presence).toContainEqual({ engine: 'gemini', mentioned: 0, total: 0 })
+    expect(presence).toHaveLength(4)
+  })
+
+  it('keeps a reported engine that is not on the panel', () => {
+    const presence = deriveEnginePresence(
+      [],
+      [{ engine: 'mistral', mentioned: 1, total: 3 }],
+    )
+
+    expect(presence).toContainEqual({ engine: 'mistral', mentioned: 1, total: 3 })
+  })
+
   it('treats a null footprint as not mentioned', () => {
     const presence = deriveEnginePresence([
       response({ id: 'a', engine: 'gemini', footprint: null }),

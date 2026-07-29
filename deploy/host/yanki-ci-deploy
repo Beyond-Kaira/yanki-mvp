@@ -173,7 +173,7 @@ require_disk() {
     oops "  and 'docker buildx prune --filter until=168h' is the usual reclaim."
     return 1
   fi
-  info "disk: ${avail}GB free on / (floor ${MIN_FREE_GB}GB)"
+  say "disk: ${avail}GB free on / (floor ${MIN_FREE_GB}GB)"
 }
 
 do_deploy() {

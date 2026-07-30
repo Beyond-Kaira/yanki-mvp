@@ -8,7 +8,7 @@ state (and failures keep their partial results queryable — FR-7).
 import re
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
 
@@ -123,11 +123,18 @@ class UserOut(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """Authenticated user and token fields for the login flow."""
+    """Authenticated user and bearer token returned after login."""
 
     user: UserOut
-    access_token: str | None = None
-    token_type: str | None = None
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
+class RefreshResponse(BaseModel):
+    """New bearer token returned after refresh-token rotation."""
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
 
 
 class PromptOut(BaseModel):

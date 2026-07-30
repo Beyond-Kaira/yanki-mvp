@@ -240,36 +240,25 @@
         "type": "object"
       },
       "LoginResponse": {
-        "description": "Authenticated user and token fields for the login flow.",
+        "description": "Authenticated user and bearer token returned after login.",
         "properties": {
           "access_token": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Access Token"
+            "title": "Access Token",
+            "type": "string"
           },
           "token_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Token Type"
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
           },
           "user": {
             "$ref": "#/components/schemas/UserOut"
           }
         },
         "required": [
-          "user"
+          "user",
+          "access_token"
         ],
         "title": "LoginResponse",
         "type": "object"
@@ -296,6 +285,26 @@
           "category"
         ],
         "title": "PromptOut",
+        "type": "object"
+      },
+      "RefreshResponse": {
+        "description": "New bearer token returned after refresh-token rotation.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "RefreshResponse",
         "type": "object"
       },
       "ResponseOut": {
@@ -579,6 +588,12 @@
         "title": "WaitlistResponse",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -708,6 +723,70 @@
           }
         },
         "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "Revoke the current refresh-token family and clear its cookie.",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "description": "Return the user represented by the access bearer token.",
+        "operationId": "me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "description": "Rotate the refresh token and return a new access token.",
+        "operationId": "refresh_api_v1_auth_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh",
         "tags": [
           "auth"
         ]

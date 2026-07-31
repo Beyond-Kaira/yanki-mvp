@@ -259,7 +259,7 @@ hyphen tolerance in footprint matching, a free KYC parse repair plus one
 bounded retry, a Content-Type/size guard on page fetches, and a gate that
 refuses the ≤60-call `execute` fan-out on a profile with no company or no
 topic. ADR-26. **Steps 2b and 6 not built — operator decision A2.** Zero
-contract drift. Full detail: `sessions/2026-07-28-01.md`.
+contract drift. Full detail: `sessions/2026-07-28-02.md`.
 
 ➡️ **Next up: P5.11 (operator go-live)** — everything agent-buildable is done.
 Blockers are all operator items: A1 decisions, **A2 (new: rule on discovery/KYC

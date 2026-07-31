@@ -252,7 +252,8 @@ session close. Full detail: `sessions/2026-07-10-11.md`.
 
 ✅ **Session 14 (2026-07-28): P5.14 — discovery + KYC input quality**
 (`cf28cbc`, `f25462d`, `8ce7356`, `c74ccd3`, `8337045`, `684108a` on
-`feat/discovery-kyc-improvements`, **unpushed pending review**). Five of the
+`feat/discovery-kyc-improvements`, **[PR #10](https://github.com/Beyond-Kaira/yanki-mvp/pull/10),
+CI green**). Five of the
 six steps in `discovery-kyc-improvements.md`: JSON-LD extraction, diacritic +
 hyphen tolerance in footprint matching, a free KYC parse repair plus one
 bounded retry, a Content-Type/size guard on page fetches, and a gate that
@@ -1768,7 +1769,9 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   step-2a/2b boundary holds (suffixation still does **not** match).
 - **Status:** ✅ **done — session 14 (2026-07-28)**, six commits on
   `feat/discovery-kyc-improvements` (`cf28cbc`, `f25462d`, `8ce7356`,
-  `c74ccd3`, `8337045`, `684108a`). Backend 236 passed / 3 skipped
+  `c74ccd3`, `8337045`, `684108a`), shipped via
+  [PR #10](https://github.com/Beyond-Kaira/yanki-mvp/pull/10) with the docs
+  reconciliation commits that followed. Backend 236 passed / 3 skipped
   (Postgres-gated), frontend 68 passed, ruff + mypy clean. **Steps 2b and 6 of
   the document are deliberately NOT built** — they revive §2c scope parked by
   operator decision; see operator-expected **A2** and tech-debt #29.

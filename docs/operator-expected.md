@@ -7,11 +7,16 @@ work with zero keys and zero cost (DRY_RUN).*
 Last updated: 2026-07-28, **session 14 close.** That session was pipeline
 quality work, not ops: five of the six steps in
 `discovery-kyc-improvements.md` shipped on `feat/discovery-kyc-improvements`
-(**six commits, unpushed — awaiting your review**). Nothing changed in prod,
-nothing was deployed, no key or env var moved, and the checker is still dark.
+(**[PR #10](https://github.com/Beyond-Kaira/yanki-mvp/pull/10), CI green —
+awaiting your merge**). No key or env var moved and the checker is still dark,
+but **merging that PR auto-deploys to production**, and it carries one visible
+behaviour change: a crawl that used to return a meaningless-but-successful score
+(empty company, or no topic signal) now **fails** with an honest message. That
+is step 5's gate working as designed — expect a higher failure rate on the first
+live day, not a regression.
 **One new question for you: A2** (whether to revive two parked Turkish items) —
-it does not block P5.11, and "stay parked" is a complete answer. Everything
-below this paragraph is unchanged from the session-13 close.
+it does not block P5.11 or that merge, and "stay parked" is a complete answer.
+Everything below this paragraph is unchanged from the session-13 close.
 
 Earlier — 2026-07-10, **session 13 FINAL close (after five operator
 follow-ups, all shipped same day; last-good `d6514ee`, CI green).**

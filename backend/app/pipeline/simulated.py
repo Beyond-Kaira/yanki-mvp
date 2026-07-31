@@ -25,7 +25,7 @@ from app.providers.tavily import normalize_domain
 
 SCHEMA_VERSION = "2.0"
 
-DEFAULT_VISIBILITY_DRIVERS = {
+DEFAULT_VISIBILITY_DRIVERS: dict[str, list[str]] = {
     "product_strength": [],
     "distribution_strength": [],
     "trust_strength": [],
@@ -35,7 +35,7 @@ DEFAULT_VISIBILITY_DRIVERS = {
     "ux_strength": [],
 }
 
-DEFAULT_VISIBILITY_GAPS = {
+DEFAULT_VISIBILITY_GAPS: dict[str, list[str]] = {
     "low_discoverability": [],
     "weak_ranking": [],
     "category_mismatch": [],
@@ -305,9 +305,7 @@ def compute_citation_metrics(
     brand_lower = brand.lower()
     citations = citations or []
     target_citations = [
-        citation
-        for citation in citations
-        if _citation_mentions_brand(citation, brand_lower)
+        citation for citation in citations if _citation_mentions_brand(citation, brand_lower)
     ]
     owned_media_cited = any(
         _is_owned_domain(owned_domains, citation.get("source_domain", ""))
@@ -360,9 +358,7 @@ def normalize_record(
     record["visibility_drivers"] = _ensure_map(
         record.get("visibility_drivers"), DEFAULT_VISIBILITY_DRIVERS
     )
-    record["visibility_gaps"] = _ensure_map(
-        record.get("visibility_gaps"), DEFAULT_VISIBILITY_GAPS
-    )
+    record["visibility_gaps"] = _ensure_map(record.get("visibility_gaps"), DEFAULT_VISIBILITY_GAPS)
     record.setdefault("trust_signals", [])
     record.setdefault("entities_associated_with_brand", [])
     record.setdefault("competitors", [])

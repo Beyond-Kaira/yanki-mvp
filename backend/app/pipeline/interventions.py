@@ -18,11 +18,9 @@ import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-DEFAULT_LIBRARY = (
-    Path(__file__).resolve().parents[1] / "data/intervention_library.json"
-)
+DEFAULT_LIBRARY = Path(__file__).resolve().parents[1] / "data/intervention_library.json"
 DEFAULT_DATASET = None
 DEFAULT_OUTPUT = None
 
@@ -56,14 +54,14 @@ class MatchedIntervention:
     triggered_by: dict[str, Any] = field(default_factory=dict)
 
 
-def load_library(path: Optional[Path] = None) -> dict[str, Any]:
+def load_library(path: Path | None = None) -> dict[str, Any]:
     library_path = path or DEFAULT_LIBRARY
-    with open(library_path, "r", encoding="utf-8") as file_handle:
+    with open(library_path, encoding="utf-8") as file_handle:
         return json.load(file_handle)
 
 
 def load_dataset(path: Path) -> dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as file_handle:
+    with open(path, encoding="utf-8") as file_handle:
         return json.load(file_handle)
 
 
@@ -80,7 +78,7 @@ def _normalize_gaps(record: dict[str, Any]) -> dict[str, list[str]]:
     gaps = record.get("visibility_gaps", {})
     if isinstance(gaps, list):
         return {"low_discoverability": gaps}
-    normalized = {category: [] for category in GAP_CATEGORIES}
+    normalized: dict[str, list[str]] = {category: [] for category in GAP_CATEGORIES}
     if isinstance(gaps, dict):
         for category in GAP_CATEGORIES:
             items = gaps.get(category, []) or []
@@ -200,7 +198,7 @@ def template_matches_record(template: dict[str, Any], record: dict[str, Any]) ->
 
 def match_record(
     record: dict[str, Any],
-    library: Optional[dict[str, Any]] = None,
+    library: dict[str, Any] | None = None,
 ) -> list[MatchedIntervention]:
     library = library or load_library()
     matches: list[MatchedIntervention] = []
@@ -231,7 +229,9 @@ def match_record(
                 geo_theory_basis=template.get("geo_theory_basis", ""),
                 triggered_by={
                     "gap_categories": active_matched or gap_categories,
-                    "gap_claims": _gap_claims_for_categories(record, active_matched or gap_categories),
+                    "gap_claims": _gap_claims_for_categories(
+                        record, active_matched or gap_categories
+                    ),
                     "evidence": _build_evidence_refs(record, active_matched or gap_categories),
                     "prompt": record.get("prompt"),
                     "prompt_group": record.get("prompt_group"),
@@ -260,7 +260,7 @@ def _intervention_to_dict(intervention: MatchedIntervention) -> dict[str, Any]:
 
 def analyze_record(
     record: dict[str, Any],
-    library: Optional[dict[str, Any]] = None,
+    library: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     interventions = match_record(record, library=library)
     return {
@@ -306,7 +306,9 @@ def aggregate_interventions(
             existing["priority_score"] = round(existing["priority_score"] + boost, 3)
 
     items = list(aggregated.values())
-    items.sort(key=lambda item: (-item["priority_score"], item["applicability_score"], item["title"]))
+    items.sort(
+        key=lambda item: (-item["priority_score"], item["applicability_score"], item["title"])
+    )
     return items
 
 
@@ -333,7 +335,7 @@ def _applicability_tiers(interventions: list[dict[str, Any]]) -> dict[str, int]:
 
 def analyze_records(
     records: list[dict[str, Any]],
-    library: Optional[dict[str, Any]] = None,
+    library: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Match interventions across measured records; return aggregated report."""
     library = library or load_library()
@@ -357,8 +359,8 @@ def analyze_records(
 
 def analyze_dataset(
     dataset: dict[str, Any],
-    library: Optional[dict[str, Any]] = None,
-    brand: Optional[str] = None,
+    library: dict[str, Any] | None = None,
+    brand: str | None = None,
 ) -> dict[str, Any]:
     library = library or load_library()
     records = dataset.get("records", [])
@@ -368,7 +370,9 @@ def analyze_dataset(
     record_results = [analyze_record(record, library=library) for record in records]
     aggregated = aggregate_interventions(record_results)
 
-    brands = sorted({result.get("brand") for result in record_results if result.get("brand")})
+    brands = sorted(
+        str(result["brand"]) for result in record_results if result.get("brand")
+    )
 
     return {
         "metadata": {

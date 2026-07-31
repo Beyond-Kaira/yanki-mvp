@@ -19,7 +19,7 @@ from app.providers.tavily import mock_search, normalize_domain
 
 SCHEMA_VERSION = "3.0"
 
-DEFAULT_VISIBILITY_DRIVERS = {
+DEFAULT_VISIBILITY_DRIVERS: dict[str, list[str]] = {
     "product_strength": [],
     "distribution_strength": [],
     "trust_strength": [],
@@ -29,7 +29,7 @@ DEFAULT_VISIBILITY_DRIVERS = {
     "ux_strength": [],
 }
 
-DEFAULT_VISIBILITY_GAPS = {
+DEFAULT_VISIBILITY_GAPS: dict[str, list[str]] = {
     "low_discoverability": [],
     "weak_ranking": [],
     "category_mismatch": [],
@@ -295,9 +295,7 @@ def measure_search_visibility(
         for competitor in brands_in_result:
             if competitor.lower() == brand_lower:
                 continue
-            competitor_result_share[competitor] = (
-                competitor_result_share.get(competitor, 0) + 1
-            )
+            competitor_result_share[competitor] = competitor_result_share.get(competitor, 0) + 1
 
     return {
         "brand_in_results": len(matching_results) > 0,
@@ -352,9 +350,7 @@ def call_grounded_answer(
 
 
 def _build_result_lookup(search_payload: dict[str, Any]) -> dict[int, dict]:
-    return {
-        int(result["rank"]): result for result in search_payload.get("results", [])
-    }
+    return {int(result["rank"]): result for result in search_payload.get("results", [])}
 
 
 def normalize_grounded_citations(
@@ -375,9 +371,7 @@ def normalize_grounded_citations(
         domain = citation.get("source_domain") or source.get("domain", "")
         title = citation.get("source_title") or source.get("title", "")
         url = citation.get("url") or source.get("url", "")
-        brands_referenced = (
-            citation.get("brands_referenced") or source.get("brands_mentioned", [])
-        )
+        brands_referenced = citation.get("brands_referenced") or source.get("brands_mentioned", [])
         mentions_target = (
             _text_mentions_brand(title, brand, aliases)
             or _text_mentions_brand(url, brand, aliases)
@@ -427,11 +421,7 @@ def measure_answer_visibility(
         positions = []
         for match in re.finditer(r"\b\w[\w\s&.-]{0,30}\b", answer):
             window = answer[match.start() : match.start() + 120].lower()
-            if any(
-                (term or "").lower() in window
-                for term in [brand, *(aliases or [])]
-                if term
-            ):
+            if any((term or "").lower() in window for term in [brand, *(aliases or [])] if term):
                 positions.append(match.start())
         if positions:
             earlier_competitors = []
@@ -444,9 +434,7 @@ def measure_answer_visibility(
     citations = grounded_payload.get("citations") or []
     target_citations = [c for c in citations if c.get("mentions_target_brand")]
     citation_positions = [
-        c.get("citation_position", 0)
-        for c in target_citations
-        if c.get("citation_position", 0) > 0
+        c.get("citation_position", 0) for c in target_citations if c.get("citation_position", 0) > 0
     ]
 
     competitor_citation_share: dict[str, int] = {}
@@ -466,9 +454,7 @@ def measure_answer_visibility(
             "total_citations": len(citations),
             "target_brand_cited": len(target_citations) > 0,
             "target_brand_citation_count": len(target_citations),
-            "target_brand_citation_rank": (
-                min(citation_positions) if citation_positions else 0
-            ),
+            "target_brand_citation_rank": (min(citation_positions) if citation_positions else 0),
             "owned_media_cited": any(
                 _is_owned_domain(owned_domains, citation.get("source_domain", ""))
                 for citation in target_citations
@@ -542,9 +528,7 @@ def merge_measured_record(
     grounded_answer = grounded_payload.get("grounded_answer", "")
     mentioned = answer_visibility.get("mentioned", False)
     visibility_gaps = _ensure_visibility_gaps(audit_payload.get("visibility_gaps"))
-    visibility_drivers = _ensure_visibility_drivers(
-        audit_payload.get("visibility_drivers")
-    )
+    visibility_drivers = _ensure_visibility_drivers(audit_payload.get("visibility_drivers"))
 
     if not search_visibility.get("brand_in_results"):
         _append_unique(
@@ -614,9 +598,7 @@ def merge_measured_record(
         "visibility_drivers": visibility_drivers,
         "visibility_gaps": visibility_gaps,
         "trust_signals": audit_payload.get("trust_signals", []),
-        "entities_associated_with_brand": audit_payload.get(
-            "entities_associated_with_brand", []
-        ),
+        "entities_associated_with_brand": audit_payload.get("entities_associated_with_brand", []),
         "sentiment": audit_payload.get("sentiment", "neutral"),
         "content_improvement_opportunities": audit_payload.get(
             "content_improvement_opportunities", []
@@ -642,9 +624,7 @@ def mock_grounded_and_audit(
 ) -> dict[str, Any]:
     """Deterministic grounded + audit payloads for DRY_RUN (no LLM)."""
     mentioned = any(
-        _text_mentions_brand(
-            f"{r.get('title', '')} {r.get('snippet', '')}", brand, aliases
-        )
+        _text_mentions_brand(f"{r.get('title', '')} {r.get('snippet', '')}", brand, aliases)
         or _is_owned_domain(owned_domains, r.get("domain", ""))
         for r in search_payload.get("results", [])
     )
@@ -692,11 +672,9 @@ def mock_grounded_and_audit(
         known_competitors=known_competitors or ["Acme", "Globex"],
         aliases=aliases,
     )
-    audit = {
+    audit: dict[str, Any] = {
         "intent": "informational",
-        "mention_context": (
-            "primary_recommendation" if mentioned else "not_mentioned"
-        ),
+        "mention_context": ("primary_recommendation" if mentioned else "not_mentioned"),
         "recommendation_reasoning": "Mock audit reasoning.",
         "reasoning_trace": {
             "search_findings": "mock",
@@ -714,9 +692,9 @@ def mock_grounded_and_audit(
         "_cost_usd": 0.0,
     }
     if mentioned:
-        audit["visibility_drivers"]["brand_strength"] = [
-            f"{brand} appears in grounded answer."
-        ]
+        drivers = audit["visibility_drivers"]
+        assert isinstance(drivers, dict)
+        drivers["brand_strength"] = [f"{brand} appears in grounded answer."]
     return merge_measured_record(
         brand,
         prompt,

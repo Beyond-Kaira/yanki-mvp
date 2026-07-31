@@ -12,7 +12,8 @@ The score is derived only from deterministic / controlled fields:
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 POSITION_WEIGHTS: dict[str, float] = {
     "primary_recommendation": 1.0,
@@ -99,15 +100,12 @@ def per_prompt_score(
 
 
 def geo_score(
-    records: list[Mapping[str, Any]],
+    records: Sequence[Mapping[str, Any]],
     *,
     reliability_score: float | None = None,
 ) -> float:
     """Mean per-prompt score × 100, clamped to 0–100. Empty → 0.0."""
     if not records:
         return 0.0
-    total = sum(
-        per_prompt_score(record, reliability_score=reliability_score)
-        for record in records
-    )
+    total = sum(per_prompt_score(record, reliability_score=reliability_score) for record in records)
     return max(0.0, min(100.0, (total / len(records)) * 100.0))

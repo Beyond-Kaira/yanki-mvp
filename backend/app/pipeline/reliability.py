@@ -24,7 +24,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 DEFAULT_DATASET = None  # unused in Yanki (in-memory records)
 DEFAULT_OUTPUT = None
@@ -58,10 +58,10 @@ DRIVER_CATEGORIES = [
 
 # Maps audit status to numeric score for reliability_score averaging.
 STATUS_SCORES = {
-    "verified": 1.0,       # claim matches measured data exactly
-    "partial": 0.5,        # plausible but not fully provable
-    "unverified": 0.25,    # no evidence found
-    "contradicted": 0.0,   # claim conflicts with measured data
+    "verified": 1.0,  # claim matches measured data exactly
+    "partial": 0.5,  # plausible but not fully provable
+    "unverified": 0.25,  # no evidence found
+    "contradicted": 0.0,  # claim conflicts with measured data
     "not_applicable": None,
 }
 
@@ -78,6 +78,7 @@ class ClaimAudit:
         reason: Human-readable explanation of the verdict.
         evidence_refs: Which ground-truth fields supported the decision.
     """
+
     field_type: str
     category: str
     claim: str
@@ -95,7 +96,7 @@ def load_dataset(path: Path) -> dict:
     Returns:
         Parsed dataset dict with metadata, prompt_groups, and records.
     """
-    with open(path, "r", encoding="utf-8") as file_handle:
+    with open(path, encoding="utf-8") as file_handle:
         return json.load(file_handle)
 
 
@@ -120,22 +121,26 @@ def build_evidence_corpus(record: dict) -> dict[str, Any]:
     urls = []
 
     for result in record.get("search_results", []):
-        block = " ".join([
-            result.get("title", ""),
-            result.get("snippet", ""),
-            result.get("domain", ""),
-            " ".join(result.get("brands_mentioned", [])),
-        ])
+        block = " ".join(
+            [
+                result.get("title", ""),
+                result.get("snippet", ""),
+                result.get("domain", ""),
+                " ".join(result.get("brands_mentioned", [])),
+            ]
+        )
         search_texts.append(block)
         urls.append(result.get("url", ""))
 
     for citation in record.get("citations", []):
-        block = " ".join([
-            citation.get("source_title", ""),
-            citation.get("source_domain", ""),
-            citation.get("url", ""),
-            " ".join(citation.get("brands_referenced", [])),
-        ])
+        block = " ".join(
+            [
+                citation.get("source_title", ""),
+                citation.get("source_domain", ""),
+                citation.get("url", ""),
+                " ".join(citation.get("brands_referenced", [])),
+            ]
+        )
         citation_texts.append(block)
         urls.append(citation.get("url", ""))
 
@@ -164,7 +169,10 @@ def _claim_mentions_brand_absent(claim: str, brand_lower: str) -> bool:
     search_visibility.brand_in_results is True.
     """
     patterns = [
-        rf"{re.escape(brand_lower)} (?:is |was )?not (?:present|mentioned|surfaced|included|cited|in)",
+        (
+            rf"{re.escape(brand_lower)} (?:is |was )?not "
+            rf"(?:present|mentioned|surfaced|included|cited|in)"
+        ),
         rf"{re.escape(brand_lower)} did not appear",
         rf"{re.escape(brand_lower)} (?:has no|lacks) visibility",
         rf"no owned-domain result.*{re.escape(brand_lower)}",
@@ -188,7 +196,7 @@ def _claim_mentions_brand_present(claim: str, brand_lower: str) -> bool:
     return any(re.search(pattern, claim_lower) for pattern in patterns)
 
 
-def _extract_rank_from_claim(claim: str) -> Optional[int]:
+def _extract_rank_from_claim(claim: str) -> int | None:
     """Parse a numeric rank from free-text gap claims.
 
     Examples matched: "ranks 3rd", "ranking 2", "2nd in search results".
@@ -243,13 +251,17 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
         if claim.startswith("No owned-domain result"):
             ok = not visibility.get("owned_domain_in_results", False)
             return ClaimAudit(
-                "visibility_gaps", category, claim,
+                "visibility_gaps",
+                category,
+                claim,
                 "verified" if ok else "contradicted",
                 "Matches search_visibility.owned_domain_in_results.",
                 ["search_visibility.owned_domain_in_results"],
             )
         return ClaimAudit(
-            "visibility_gaps", category, claim,
+            "visibility_gaps",
+            category,
+            claim,
             "verified",
             "Deterministic competitor share line from measured search.",
             ["search_visibility.competitor_result_share"],
@@ -258,7 +270,9 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
     if "did not appear in the top" in claim.lower() and "search results" in claim.lower():
         ok = not visibility.get("brand_in_results", False)
         return ClaimAudit(
-            "visibility_gaps", category, claim,
+            "visibility_gaps",
+            category,
+            claim,
             "verified" if ok else "contradicted",
             f"brand_in_results={visibility.get('brand_in_results')}.",
             ["search_visibility.brand_in_results"],
@@ -267,7 +281,9 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
     if "not mentioned in the grounded answer" in claim.lower():
         ok = not evidence["mentioned"]
         return ClaimAudit(
-            "visibility_gaps", category, claim,
+            "visibility_gaps",
+            category,
+            claim,
             "verified" if ok else "contradicted",
             f"mentioned={evidence['mentioned']}.",
             ["grounded_answer.mentioned"],
@@ -276,7 +292,9 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
     if "not present in search results" in claim.lower():
         ok = not visibility.get("brand_in_results", False)
         return ClaimAudit(
-            "visibility_gaps", category, claim,
+            "visibility_gaps",
+            category,
+            claim,
             "verified" if ok else "contradicted",
             f"brand_in_results={visibility.get('brand_in_results')}.",
             ["search_visibility.brand_in_results"],
@@ -285,7 +303,9 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
     if "was not cited" in claim.lower() or "not cited in any" in claim.lower():
         ok = not metrics.get("target_brand_cited", False)
         return ClaimAudit(
-            "visibility_gaps", category, claim,
+            "visibility_gaps",
+            category,
+            claim,
             "verified" if ok else "contradicted",
             f"target_brand_cited={metrics.get('target_brand_cited')}.",
             ["citation_metrics.target_brand_cited"],
@@ -296,20 +316,26 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
         actual_rank = visibility.get("brand_best_rank", 0)
         if not visibility.get("brand_in_results"):
             return ClaimAudit(
-                "visibility_gaps", category, claim,
+                "visibility_gaps",
+                category,
+                claim,
                 "contradicted",
                 f"Claim cites rank {claimed_rank} but brand not in search results.",
                 ["search_visibility.brand_best_rank"],
             )
         if actual_rank == claimed_rank:
             return ClaimAudit(
-                "visibility_gaps", category, claim,
+                "visibility_gaps",
+                category,
+                claim,
                 "verified",
                 f"Matches search_visibility.brand_best_rank={actual_rank}.",
                 ["search_visibility.brand_best_rank"],
             )
         return ClaimAudit(
-            "visibility_gaps", category, claim,
+            "visibility_gaps",
+            category,
+            claim,
             "contradicted",
             f"Claim rank {claimed_rank} != measured brand_best_rank {actual_rank}.",
             ["search_visibility.brand_best_rank"],
@@ -318,7 +344,9 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
     if _claim_mentions_brand_absent(claim, brand_lower):
         if visibility.get("brand_in_results") or evidence["mentioned"]:
             return ClaimAudit(
-                "visibility_gaps", category, claim,
+                "visibility_gaps",
+                category,
+                claim,
                 "contradicted",
                 "Claim implies absence but brand appears in search and/or answer.",
                 ["search_visibility.brand_in_results", "grounded_answer.mentioned"],
@@ -327,7 +355,9 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
     if _claim_mentions_brand_present(claim, brand_lower):
         if not visibility.get("brand_in_results") and not evidence["mentioned"]:
             return ClaimAudit(
-                "visibility_gaps", category, claim,
+                "visibility_gaps",
+                category,
+                claim,
                 "contradicted",
                 "Claim implies presence but brand absent from search and answer.",
                 ["search_visibility.brand_in_results", "grounded_answer.mentioned"],
@@ -340,7 +370,9 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
             if top_name.lower() in claim.lower():
                 refs.append("search_visibility.competitor_result_share")
                 return ClaimAudit(
-                    "visibility_gaps", category, claim,
+                    "visibility_gaps",
+                    category,
+                    claim,
                     "partial",
                     f"Top competitor {top_name} referenced; qualitative dominance claim.",
                     refs,
@@ -349,14 +381,18 @@ def audit_gap_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
     overlap = _text_overlap_score(claim, evidence["full_text"])
     if overlap >= 0.35:
         return ClaimAudit(
-            "visibility_gaps", category, claim,
+            "visibility_gaps",
+            category,
+            claim,
             "partial",
             f"Qualitative claim with evidence term overlap ({overlap:.0%}).",
             ["search_results", "citations", "grounded_answer"],
         )
 
     return ClaimAudit(
-        "visibility_gaps", category, claim,
+        "visibility_gaps",
+        category,
+        claim,
         "unverified",
         "No deterministic rule matched; insufficient evidence overlap.",
         [],
@@ -381,7 +417,9 @@ def audit_driver_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
 
     if not evidence["mentioned"]:
         return ClaimAudit(
-            "visibility_drivers", category, claim,
+            "visibility_drivers",
+            category,
+            claim,
             "contradicted",
             "Drivers should be empty when brand is not mentioned in grounded answer.",
             ["grounded_answer.mentioned"],
@@ -389,7 +427,9 @@ def audit_driver_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
 
     if brand_lower not in claim.lower():
         return ClaimAudit(
-            "visibility_drivers", category, claim,
+            "visibility_drivers",
+            category,
+            claim,
             "partial",
             "Driver claim does not explicitly name the target brand.",
             ["grounded_answer"],
@@ -398,14 +438,18 @@ def audit_driver_claim(claim: str, category: str, evidence: dict) -> ClaimAudit:
     overlap = _text_overlap_score(claim, evidence["full_text"])
     if overlap >= 0.3:
         return ClaimAudit(
-            "visibility_drivers", category, claim,
+            "visibility_drivers",
+            category,
+            claim,
             "verified" if overlap >= 0.45 else "partial",
             f"Brand-specific driver with evidence overlap ({overlap:.0%}).",
             ["search_results", "citations", "grounded_answer"],
         )
 
     return ClaimAudit(
-        "visibility_drivers", category, claim,
+        "visibility_drivers",
+        category,
+        claim,
         "unverified",
         "Brand named but claim not supported by measured evidence text.",
         [],
@@ -436,7 +480,9 @@ def audit_entity(entity: str, evidence: dict) -> ClaimAudit:
 
     if entity_lower == brand_lower:
         return ClaimAudit(
-            "entities_associated_with_brand", "entity", entity,
+            "entities_associated_with_brand",
+            "entity",
+            entity,
             "partial",
             "Target brand listed as its own associated entity (redundant).",
             ["grounded_answer"],
@@ -446,23 +492,30 @@ def audit_entity(entity: str, evidence: dict) -> ClaimAudit:
         entity_lower in KNOWN_BRANDS and entity_lower != brand_lower
     ):
         return ClaimAudit(
-            "entities_associated_with_brand", "entity", entity,
+            "entities_associated_with_brand",
+            "entity",
+            entity,
             "contradicted",
-            "Competitor brand in entities_associated_with_brand — should be competitors field, not brand entities.",
+            "Competitor brand in entities_associated_with_brand — "
+            "should be competitors field, not brand entities.",
             ["citations", "grounded_answer"],
         )
 
     overlap = _text_overlap_score(entity, evidence["full_text"])
     if overlap >= 0.5 or entity_lower in evidence["full_text"]:
         return ClaimAudit(
-            "entities_associated_with_brand", "entity", entity,
+            "entities_associated_with_brand",
+            "entity",
+            entity,
             "verified",
             "Non-brand entity term appears in measured evidence.",
             ["search_results", "citations", "grounded_answer"],
         )
 
     return ClaimAudit(
-        "entities_associated_with_brand", "entity", entity,
+        "entities_associated_with_brand",
+        "entity",
+        entity,
         "unverified",
         "Entity not found in measured evidence corpus.",
         [],
@@ -479,8 +532,10 @@ def _text_overlap_score(claim: str, corpus: str) -> float:
         Float 0.0–1.0 (ratio of matched tokens).
     """
     tokens = {
-        token for token in re.findall(r"[a-z0-9]+", claim.lower())
-        if len(token) > 3 and token not in {"monzo", "that", "with", "from", "this", "have", "been", "were", "their"}
+        token
+        for token in re.findall(r"[a-z0-9]+", claim.lower())
+        if len(token) > 3
+        and token not in {"monzo", "that", "with", "from", "this", "have", "been", "were", "their"}
     }
     if not tokens:
         return 0.0
@@ -514,7 +569,11 @@ def _score_audits(audits: list[ClaimAudit]) -> dict:
     for audit in audits:
         counts[audit.status] = counts.get(audit.status, 0) + 1
 
-    scores = [STATUS_SCORES[audit.status] for audit in audits if STATUS_SCORES[audit.status] is not None]
+    scores: list[float] = [
+        score
+        for audit in audits
+        if (score := STATUS_SCORES[audit.status]) is not None
+    ]
     return {
         "total": len(audits),
         **counts,
@@ -546,11 +605,7 @@ def analyze_record(record: dict) -> dict:
             "reason": "error record",
         }
 
-    competitors = {
-        str(name).lower()
-        for name in (record.get("competitors") or [])
-        if name
-    }
+    competitors = {str(name).lower() for name in (record.get("competitors") or []) if name}
     evidence = build_evidence_corpus(record)
     evidence["competitor_names"] = competitors
     gap_audits: list[ClaimAudit] = []
@@ -573,12 +628,14 @@ def analyze_record(record: dict) -> dict:
     entity_summary = _score_audits(entity_audits)
 
     all_audits = gap_audits + driver_audits + entity_audits
-    overall_scores = [
-        STATUS_SCORES[audit.status]
+    overall_scores: list[float] = [
+        score
         for audit in all_audits
-        if STATUS_SCORES[audit.status] is not None
+        if (score := STATUS_SCORES[audit.status]) is not None
     ]
-    overall_score = round(sum(overall_scores) / len(overall_scores), 3) if overall_scores else None
+    overall_score = (
+        round(sum(overall_scores) / len(overall_scores), 3) if overall_scores else None
+    )
 
     return {
         "brand": record.get("brand"),
@@ -632,7 +689,7 @@ def analyze_dataset(dataset_path: Path) -> dict:
     analyses = [analyze_record(record) for record in records]
     active = [item for item in analyses if not item.get("skipped")]
 
-    def avg_score(key: str) -> Optional[float]:
+    def avg_score(key: str) -> float | None:
         """Average reliability_score for one summary field across all records."""
         scores = [
             item["summary"][key]["reliability_score"]
@@ -710,7 +767,9 @@ def print_report(report: dict) -> None:
 
         for audit in item["gap_audits"]:
             if audit["status"] == "contradicted":
-                print(f"    ! gap [{audit['category']}]: {audit['claim'][:70]}... — {audit['reason']}")
+                print(
+                    f"    ! gap [{audit['category']}]: {audit['claim'][:70]}... — {audit['reason']}"
+                )
 
 
 def main():
@@ -722,7 +781,10 @@ def main():
         python reliability_analyzer.py --no-write
     """
     parser = argparse.ArgumentParser(
-        description="Audit reliability of visibility_gaps, visibility_drivers, and entities against measured citations."
+        description=(
+            "Audit reliability of visibility_gaps, visibility_drivers, "
+            "and entities against measured citations."
+        )
     )
     parser.add_argument(
         "--input",
@@ -736,7 +798,9 @@ def main():
         default=DEFAULT_OUTPUT,
         help="Where to write full JSON report",
     )
-    parser.add_argument("--no-write", action="store_true", help="Print summary only, do not write JSON")
+    parser.add_argument(
+        "--no-write", action="store_true", help="Print summary only, do not write JSON"
+    )
     args = parser.parse_args()
 
     if not args.input.exists():

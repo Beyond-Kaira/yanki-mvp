@@ -23,18 +23,12 @@ def test_mention_rate_is_footprints_over_total():
 def test_position_and_citation_weights():
     assert position_weight("primary_recommendation") == 1.0
     assert position_weight("not_mentioned") == 0.0
-    assert citation_weight(
-        mentioned=True, target_brand_cited=True, owned_media_cited=True
-    ) == 1.0
-    assert citation_weight(
-        mentioned=True, target_brand_cited=True, owned_media_cited=False
-    ) == 0.85
-    assert citation_weight(
-        mentioned=True, target_brand_cited=False, owned_media_cited=False
-    ) == 0.6
-    assert citation_weight(
-        mentioned=False, target_brand_cited=False, owned_media_cited=False
-    ) == 0.0
+    assert citation_weight(mentioned=True, target_brand_cited=True, owned_media_cited=True) == 1.0
+    assert citation_weight(mentioned=True, target_brand_cited=True, owned_media_cited=False) == 0.85
+    assert citation_weight(mentioned=True, target_brand_cited=False, owned_media_cited=False) == 0.6
+    assert (
+        citation_weight(mentioned=False, target_brand_cited=False, owned_media_cited=False) == 0.0
+    )
 
 
 def test_sentiment_falls_back_when_reliability_low():
@@ -43,7 +37,9 @@ def test_sentiment_falls_back_when_reliability_low():
 
 
 def test_per_prompt_zero_when_not_mentioned():
-    assert per_prompt_score({"mentioned": False, "mention_context": "primary_recommendation"}) == 0.0
+    assert (
+        per_prompt_score({"mentioned": False, "mention_context": "primary_recommendation"}) == 0.0
+    )
 
 
 def test_geo_score_composite_ignores_gap_count():

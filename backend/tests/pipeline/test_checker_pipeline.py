@@ -8,7 +8,6 @@ calls it — the seed KYC comes from the brand + category, not an HTTP crawl.
 
 from __future__ import annotations
 
-import pytest
 from sqlalchemy import select
 
 

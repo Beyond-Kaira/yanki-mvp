@@ -152,6 +152,86 @@ class WaitlistSignup(Base):
     )
 
 
+class User(Base):
+    """A registered user account."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    email: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        unique=True,
+    )
+    password_hash: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+    )
+
+
+class AuthSession(Base):
+    """One refresh-token generation within a device/session family.
+
+    Every successful login starts a new ``family_id``. Refresh rotation consumes
+    the current row and creates a successor with the same family id. Reuse of a
+    consumed refresh token revokes the whole family.
+    """
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid,
+        nullable=False,
+        default=uuid.uuid4,
+        index=True,
+    )
+    refresh_jti_hash: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        unique=True,
+    )
+    replaced_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("auth_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
+
+
 class LlmCache(Base):
     __tablename__ = "llm_cache"
 

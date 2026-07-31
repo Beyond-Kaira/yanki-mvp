@@ -181,6 +181,7 @@ nginx proxies to the stack's loopback binds — 127.0.0.1:8142 (web) /
 | [docs/roadmap.md](docs/roadmap.md)                      | Leadership / engineers| Phased path from MVP to the Semrush alternative.        |
 | [docs/frontend-brandkit.md](docs/frontend-brandkit.md)  | Frontend              | Colors, type, spacing, components, voice/tone (EN + TR).|
 | [docs/test-suite.md](docs/test-suite.md)                | Every engineer        | Test pyramid, TDD workflow, fixtures, coverage targets. |
+| [docs/discovery-kyc-improvements.md](docs/discovery-kyc-improvements.md) | Pipeline engineers | Six steps for discovery + KYC; five shipped, 2b/6 await operator sign-off. |
 | [deploy/AUTODEPLOY.md](deploy/AUTODEPLOY.md)            | On-call / operators   | Merge-to-live chain, the forced-command deploy key, pruning, rotation. |
 
 See also [CONTRIBUTING.md](CONTRIBUTING.md) for the branch/PR/commit flow and

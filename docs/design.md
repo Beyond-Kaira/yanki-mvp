@@ -64,6 +64,13 @@ yanki/
   footprint, scoring — each is a plain sync function with a clear signature.
   A junior can read any single step end-to-end without holding the rest of the
   system in their head, and each step is unit-testable in isolation.
+  Two modules are **not** steps and say so in their docstrings:
+  `checker_prompts.py` (the fixed alternative to `prompts.py`, ADR-20) and
+  `textfold.py` (the ASCII fold shared by discovery and footprint, ADR-26).
+  A shared helper only earns its own module when two steps would otherwise
+  keep divergent copies of the same table — `textfold` also has an invariant
+  (1:1 length) that one caller's correctness depends on, which is easier to
+  state and test in one place than to re-derive at each call site.
 - **`providers/` behind one interface.** Every model (Claude, OpenAI, the two
   stubs, and the mock) implements the same `Provider` protocol, so the pipeline
   never branches on "which engine". Swapping a stub for a real engine is a
@@ -804,3 +811,66 @@ decision → consequences**, with one line on why the alternative was rejected.
   email failure surface (would lose an already-recorded signup or run); a
   separate salt for the waitlist `ip_hash` (reuses the existing `ip_hash_salt`,
   consistent with P5.6).
+
+### ADR-26 — Discovery + KYC input quality: JSON-LD, a length-preserving fold, a bounded KYC retry, and a pre-fan-out usability gate (2026-07-28)
+- **Context:** discovery and KYC feed every step after them — `prompts.py` writes
+  questions from the KYC profile, and `kyc.company` + `kyc.aliases` *are* what
+  `footprint.detect` counts. Garbage in these two steps never surfaces as an
+  error; it surfaces as a plausible-looking GEO score that is quietly wrong.
+  `docs/discovery-kyc-improvements.md` specifies six steps; this ADR records the
+  five that are implemented (1, 2a, 3, 4, 5). Steps 2b and 6 revive roadmap §2c
+  scope parked by operator decision and are deliberately **not** built.
+- **Decision:**
+  - **JSON-LD is read as a second, fetch-free pass** over the already-fetched
+    HTML (`_jsonld_text`). `_clean_text` still strips every `<script>` for the
+    visible-text pass; the new pass re-parses the same bytes for
+    `application/ld+json` only. Its output leads the combined text so it survives
+    the `MAX_CHARS` cut, is deduped across pages, and carries its own 4k budget
+    so it can never crowd out page copy. It never follows `sameAs` URLs — a fetch
+    would have to go through the SSRF-guarded client, and an unmocked request
+    would redden every `@respx.mock` discovery test.
+  - **The ASCII fold lives in one shared module** (`pipeline/textfold.py`), used
+    by discovery's keyword matching and footprint's brand matching. It is
+    **case-preserving and strictly 1:1** because `footprint.detect` matches
+    against folded text but slices the user-facing snippet out of the *original*
+    by index. `casefold()` cannot be used for this: `"İ".casefold()` is two
+    codepoints (`i` + U+0307), which would both shift every snippet after an `İ`
+    and stop `İşbank` matching `Isbank`. German `ß` is excluded for the same
+    reason (it expands to `ss`). Case-insensitivity comes from `re.IGNORECASE`,
+    which on `str` patterns is already Unicode-aware.
+  - **`generate_kyc` repairs before it retries.** A response that wraps valid
+    JSON in prose is recovered by taking the outermost `{ … }` span — a string
+    operation, no network, no cost. Only if that fails does it make **one**
+    bounded retry, re-sending the **same** prompt on purpose: `MockProvider`
+    returns its canned profile only because the prompt contains `"json object"`,
+    so a distinct repair prompt would silently break DRY_RUN and the e2e.
+  - **A usability gate runs between steps 2 and 3** (`kyc.require_usable`).
+    `company: str` has no `min_length`, so `company=""` validates and footprint
+    then matches nothing; separately, a profile with no keyword/service/industry
+    makes `_question_topics` fall back to the literal `"solutions"`. Either way
+    the job would continue into `execute` and spend up to
+    `max_responses_per_job` (default 60) paid calls on input already known to be
+    unusable. The gate raises only `PipelineError`, so the worker surfaces a
+    clean message rather than a stack trace.
+- **Consequences:** no Pydantic schema changed, so `make gen-types` is a
+  zero diff and there is no migration (`kyc` is schemaless JSONB) and no
+  `checker_prompts.VERSION` bump (methodology output is byte-identical). The
+  gate is a **new terminal failure mode**: a crawl that previously produced a
+  meaningless-but-successful score now fails with an honest message. It runs
+  *after* the KYC step commits, so the offending profile stays on the failed row
+  and is inspectable. `_fetch` now skips non-HTML and oversized responses, which
+  also means a non-HTML homepage fails the run instead of feeding mojibake into
+  KYC. Aliases gain ASCII-folded and legal-suffix-stripped forms of the company
+  name — visible to users as extra chips in `KycCard`, so they are minted only
+  when they actually differ from an alias already present.
+- **Rejected:** folding with `casefold()` (not length-preserving — see above);
+  keeping a second copy of `_TR_FOLD` in `footprint.py` (would drift, and
+  importing `discovery` would drag `httpx`/`bs4` into a module that is otherwise
+  pure); a *different* repair prompt on retry (breaks the `MockProvider`
+  coupling); unbounded retries (a per-job cost with no ceiling); gating *before*
+  the KYC commit (loses the evidence needed to diagnose the failure); applying
+  the topic half of the gate to checker rows without their submitted category
+  (would fail legitimate public submissions whose model reply is terse — they
+  pass `analysis.category` as `known_topic` instead); Content-Type strictness on
+  a missing header (fail-open matches `net_guard` and keeps header-less fixtures
+  and offline dev working — logged as tech-debt #28).

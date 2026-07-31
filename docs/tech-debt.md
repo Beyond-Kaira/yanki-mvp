@@ -4,7 +4,11 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-07-10 (session 12 close: three repayments — #6, #19, #21 —
+Last updated: 2026-07-28 (discovery + KYC pass: three new items — **#27**
+(KYC-stage spend counts toward no cost cap), **#28** (`_is_html` fails open on a
+missing Content-Type), **#29** (steps 2b/6 specified but parked on an operator
+decision). No repayments this pass. Earlier — 2026-07-10 (session 12 close:
+three repayments — #6, #19, #21 —
 and one new minor, **#22** (checker cost-cap window/kind-scope not test-pinned).
 P5.6: **item 21 REPAID** — `POST /api/v1/checker` now
 carries a salted `ip_hash`, a default-OFF `CHECKER_ENABLED` kill-switch, per-IP
@@ -279,3 +283,29 @@ devDependencies).)
     prices ($0.10/$0.40 per 1M) are pinned UNVERIFIED (folds into #23), and
     ListModels is NOT an availability signal — only a real generateContent
     probe is (the retired `gemini-2.5-flash` was still listed).
+27. **KYC-stage spend is invisible to every cost control** (2026-07-28,
+    discovery+KYC pass, surfaced while implementing step 3 of
+    `discovery-kyc-improvements.md`): `generate_kyc` discards
+    `result.cost_usd`, and the only dollar cap sums the *execute* step's
+    `responses.cost_usd` against `checker_daily_usd_cap` ($5 per rolling 24h,
+    `config.py` / `rate_limit.py`). So no KYC call has ever counted toward a
+    cap. That was already true before this change; step 3 adds at most one
+    extra ~$0.01 retry on failure paths only, which does not move a cap
+    nothing feeds. Recording KYC cost is worth doing, but it *re-tunes* what
+    the $5 cap actually measures, so it deserves its own change with its own
+    review rather than riding along here.
+28. **`_is_html` fails open on a missing Content-Type** (2026-07-28, step 4 of
+    `discovery-kyc-improvements.md`, accepted): a 200 that declares no type is
+    parsed as HTML. Deliberate — it matches `net_guard`'s stance of treating an
+    unresolvable host as public so CI and offline dev keep working, and many
+    respx fixtures set no header — but it means a header-less PDF still reaches
+    BeautifulSoup. Sniffing the first bytes for `%PDF`/magic numbers would
+    close it if a real site ever hits this.
+29. **Steps 2b and 6 of `discovery-kyc-improvements.md` are specified but not
+    built** (2026-07-28): Turkish suffix-aware matching and recording the
+    site's language. Not debt in the "we cut a corner" sense — they revive
+    roadmap §2c scope that the operator parked on 2026-07-10, and that call is
+    not engineering's to make. Listed here so the gap stays visible rather than
+    quietly forgotten. `test_footprint.py` pins the current (2a-only) suffix
+    behaviour, so approving 2b starts by changing a test that says exactly what
+    it does today.

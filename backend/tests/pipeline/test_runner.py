@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
+
+from app.pipeline.errors import PipelineError
+from app.providers.base import ProviderResult
 
 
 def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, monkeypatch):
@@ -46,6 +50,56 @@ def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, m
     assert result.footprint_count == hits
     assert result.geo_score == (hits / len(responses))
     assert 0.0 <= result.geo_score <= 1.0
+
+
+class _CannedKycProvider:
+    """Returns one fixed KYC payload for every call."""
+
+    name = "canned"
+    model = "canned"
+
+    def __init__(self, payload: str) -> None:
+        self._payload = payload
+
+    def generate(self, prompt: str) -> ProviderResult:
+        return ProviderResult(text=self._payload, model=self.model, cost_usd=0.0)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"company": "", "keywords": ["robots"]}',  # nothing for footprint to match
+        '{"company": "Acme"}',  # no topic signal -> questions about "solutions"
+    ],
+)
+def test_useless_profile_never_reaches_the_paid_fan_out(
+    db_session, models, settings, monkeypatch, payload
+):
+    from app.pipeline import discovery, runner
+    from app.pipeline import execute as execute_step
+    from app.providers import registry
+
+    monkeypatch.setattr(discovery, "discover", lambda url: "Some site text.")
+    monkeypatch.setattr(
+        registry, "get_analysis_provider", lambda _settings: _CannedKycProvider(payload)
+    )
+    calls: list[object] = []
+    monkeypatch.setattr(
+        execute_step, "run_execute", lambda *args, **kwargs: calls.append(args)
+    )
+
+    analysis = models.Analysis(url="https://example.com", status="running")
+    db_session.add(analysis)
+    db_session.flush()
+
+    with pytest.raises(PipelineError):
+        runner.run_pipeline(db_session, analysis.id, settings)
+
+    # The point of the gate: execute (up to max_responses_per_job paid calls)
+    # never started.
+    assert calls == []
+    # ...and the offending profile is still on the row, so it can be inspected.
+    assert analysis.kyc is not None
 
 
 def test_rerun_replaces_rows_and_does_not_double_counts(

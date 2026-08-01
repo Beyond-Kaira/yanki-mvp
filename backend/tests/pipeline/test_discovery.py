@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from app.pipeline.discovery import MAX_CHARS, discover
+from app.pipeline.discovery import MAX_CHARS, MAX_PAGE_BYTES, discover
 from app.pipeline.errors import PipelineError
 
 HOME = "https://example.com"
@@ -200,6 +200,151 @@ def test_non_spa_does_not_fetch_bundles():
     text = discover(HOME)
     assert "industrial robots" in text
     assert not bundle.called
+
+
+# A page whose visible copy is pure marketing prose, but whose JSON-LD states
+# the facts plainly — the shape SEO tooling emits on most commercial sites.
+_JSONLD_HOME = """<html><head>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Organization",
+ "name": "Globex Robotics",
+ "legalName": "Globex Robotics A.S.",
+ "description": "We build autonomous warehouse robots.",
+ "brand": {"@type": "Brand", "name": "PalletMover"},
+ "sameAs": ["https://www.linkedin.com/company/globex"],
+ "address": {"@type": "PostalAddress", "addressLocality": "Berlin",
+             "addressCountry": "DE"}}
+</script>
+</head><body><p>Imagine a world that just works. We dare to dream.</p></body></html>"""
+
+
+@respx.mock
+def test_jsonld_facts_are_extracted():
+    respx.get(HOME).mock(return_value=httpx.Response(200, html=_JSONLD_HOME))
+    text = discover(HOME)
+    assert "Globex Robotics" in text
+    assert "Globex Robotics A.S." in text  # legalName, an alias-worthy form
+    assert "We build autonomous warehouse robots." in text
+    assert "PalletMover" in text  # nested brand node
+    assert "linkedin.com/company/globex" in text  # sameAs, as text (never fetched)
+    assert "Berlin" in text  # nested address feeds `locations`
+    # The visible copy is still harvested; JSON-LD is a second read, not a swap.
+    assert "We dare to dream." in text
+
+
+@respx.mock
+def test_jsonld_survives_truncation():
+    # JSON-LD leads the combined text, so it is still there after the cut even
+    # when the page carries far more visible copy than MAX_CHARS.
+    big = "word " * 10_000  # ~50k chars
+    html = _JSONLD_HOME.replace("We dare to dream.", big)
+    respx.get(HOME).mock(return_value=httpx.Response(200, html=html))
+    text = discover(HOME)
+    assert len(text) == MAX_CHARS
+    assert "Globex Robotics" in text
+
+
+@respx.mock
+def test_jsonld_handles_graph_arrays_and_malformed_blocks():
+    html = (
+        "<html><head>"
+        # Malformed block first: it must not cost us the good one after it.
+        '<script type="application/ld+json">{"name": broken,,}</script>'
+        '<script type="application/ld+json">'
+        '{"@graph": [{"@type": "WebSite", "name": "globex.com"},'
+        ' {"@type": "Organization", "name": "Globex Robotics",'
+        '  "description": "Warehouse automation."}]}'
+        "</script>"
+        # A top-level array is equally legal schema.org.
+        '<script type="application/ld+json">'
+        '[{"@type": "Product", "name": "ArmBot"}]'
+        "</script>"
+        "</head><body><p>Home.</p></body></html>"
+    )
+    respx.get(HOME).mock(return_value=httpx.Response(200, html=html))
+    text = discover(HOME)
+    assert "Globex Robotics" in text
+    assert "Warehouse automation." in text
+    assert "ArmBot" in text
+
+
+@respx.mock
+def test_page_without_jsonld_is_unchanged():
+    # Existing fixtures carry no JSON-LD: the extra pass must be a no-op, not a
+    # stray separator or empty segment.
+    html = "<html><body><p>Real content here.</p></body></html>"
+    respx.get(HOME).mock(return_value=httpx.Response(200, html=html))
+    assert discover(HOME) == "Real content here."
+
+
+@respx.mock
+def test_non_html_link_is_skipped():
+    # A linked PDF's bytes must never reach BeautifulSoup/_clean_text, where the
+    # resulting mojibake would eat the MAX_CHARS budget real page copy needed.
+    home = "https://example.com/"
+    home_html = (
+        "<html><body><p>Home page.</p>"
+        '<a href="/brochure.pdf">Brochure</a>'
+        '<a href="/about">About</a>'
+        "</body></html>"
+    )
+    respx.get(home).mock(return_value=httpx.Response(200, html=home_html))
+    pdf = respx.get("https://example.com/brochure.pdf").mock(
+        return_value=httpx.Response(
+            200,
+            content=b"%PDF-1.4 \xff\xfe binary garbage endobj",
+            headers={"content-type": "application/pdf"},
+        )
+    )
+    respx.get("https://example.com/about").mock(
+        return_value=httpx.Response(200, html="<p>About us content.</p>")
+    )
+    text = discover(home)
+    assert "About us content." in text
+    assert pdf.called  # we only learn the type by asking...
+    assert "PDF-1.4" not in text  # ...but its bytes are dropped, not parsed
+    assert "endobj" not in text
+
+
+@respx.mock
+def test_link_without_content_type_is_still_parsed():
+    # Fail open on a missing/empty Content-Type, matching net_guard's stance and
+    # keeping header-less fixtures working.
+    home = "https://example.com/"
+    home_html = '<html><body><p>Home.</p><a href="/about">About</a></body></html>'
+    respx.get(home).mock(return_value=httpx.Response(200, html=home_html))
+    respx.get("https://example.com/about").mock(
+        return_value=httpx.Response(
+            200, content=b"<p>About us content.</p>", headers={"content-type": ""}
+        )
+    )
+    assert "About us content." in discover(home)
+
+
+@respx.mock
+def test_oversized_page_is_skipped():
+    home = "https://example.com/"
+    home_html = '<html><body><p>Home.</p><a href="/huge">Huge</a></body></html>'
+    respx.get(home).mock(return_value=httpx.Response(200, html=home_html))
+    respx.get("https://example.com/huge").mock(
+        return_value=httpx.Response(
+            200,
+            html="<p>Enormous page.</p>",
+            headers={"content-length": str(MAX_PAGE_BYTES + 1)},
+        )
+    )
+    assert "Enormous page." not in discover(home)
+
+
+@respx.mock
+def test_non_html_homepage_raises_pipeline_error():
+    respx.get(HOME).mock(
+        return_value=httpx.Response(
+            200, content=b"%PDF-1.4", headers={"content-type": "application/pdf"}
+        )
+    )
+    with pytest.raises(PipelineError):
+        discover(HOME)
 
 
 @respx.mock

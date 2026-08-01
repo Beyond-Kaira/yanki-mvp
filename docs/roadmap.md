@@ -86,6 +86,15 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 | Weighted AI Visibility Score 0–100: mention × position (1.0 / 0.7 / 0.4) × sentiment (1.0 / 0.9 / 0.5), averaged, ×100 | The defensible, published score the product sells on; the MVP's binary score is the honest placeholder until this lands. |
 | Sentiment + position extraction pass (cheap model) | Inputs to the weighted score; a cheap analysis model is one of the three cost protections. |
 
+> **Input side, partly delivered:** [`docs/discovery-kyc-improvements.md`](discovery-kyc-improvements.md)
+> lists six ordered steps for the discovery and KYC steps that feed this number.
+> **Steps 1, 2a, 3, 4 and 5 are implemented** — JSON-LD extraction, diacritic and
+> hyphen tolerance in footprint matching, a KYC parse repair plus one bounded
+> retry, a Content-Type guard on page fetches, and a gate that refuses the paid
+> execute fan-out on a profile with no company or no topic. **Steps 2b and 6 are
+> not built:** they would revive §2c scope and stay gated on an operator
+> decision — see §2c immediately below.
+
 ### 2c. Turkish as a first-class language — the wedge that can't be a sprint bolt-on
 
 > **⚠ Deferred to Later — operator decision, 2026-07-10.** The whole product
@@ -95,6 +104,17 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 > story until then, and the Arabic gate below ("Turkey delivers 20%+ of
 > signups") cannot trigger while Turkish is off. Engineering decomposition
 > (P5.8/P5.9) is preserved in implementation-plan.md as skipped cards.
+>
+> **Two items below now have a written, ready-to-build spec and are waiting only
+> on that word** (2026-07-28): "Turkish suffix-aware brand/footprint matching" is
+> step 2b of [`discovery-kyc-improvements.md`](discovery-kyc-improvements.md),
+> and step 6 (record `<html lang>` / ccTLD into the KYC profile) is the missing
+> *input* that native Turkish prompt generation needs. Neither is implemented.
+> The language-neutral half of the matching work (step 2a — diacritic folding and
+> hyphen/space equivalence, which helps Nestlé and Coca-Cola as much as anything
+> Turkish) **has** shipped and is not part of this deferral; a test asserts the
+> suffix behaviour stayed unchanged, so the line between the two is enforced in
+> CI rather than by memory.
 
 | Item | Rationale |
 |---|---|

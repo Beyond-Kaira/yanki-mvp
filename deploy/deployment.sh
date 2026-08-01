@@ -192,6 +192,31 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
   exit 0
 fi
 
+# ---------------------------------------------------------------------------
+# 1b. Take the machine-wide deploy lock (real runs only; --check exited above).
+#
+# There are now TWO drivers of the `yanki-prod` compose project: a human running
+# this script, and CI's forced command (~/.local/bin/yanki-ci-deploy) after a
+# merge to main. Both build sha-tagged images and `compose up -d` the same
+# project, so running them at once interleaves two releases — the surviving
+# containers and the recorded .last-good can end up describing different code.
+#
+# One lock file, in $HOME so both paths resolve it identically. The CI wrapper
+# takes it BEFORE it checks out a sha (that part has to be inside the lock too)
+# and passes YANKI_DEPLOY_LOCK_HELD=1 so we do not deadlock against it here.
+# ---------------------------------------------------------------------------
+if [ "${YANKI_DEPLOY_LOCK_HELD:-0}" != "1" ]; then
+  LOCK_FILE="${YANKI_DEPLOY_LOCK:-$HOME/.local/state/yanki-prod-deploy.lock}"
+  mkdir -p "$(dirname "$LOCK_FILE")"
+  exec 9>"$LOCK_FILE"
+  if ! flock -w 900 9; then
+    oops "another deploy is already running (CI or another shell) — timed out after 900s."
+    oops "  Wait for it to finish, or check ~/.local/state/yanki-ci-deploy.log."
+    exit 1
+  fi
+  info "deploy lock: acquired ($LOCK_FILE)"
+fi
+
 # The rollback closure — defined before the first step that can need it, invoked
 # ONLY from inside an `if !`. Reuses rollback.sh (the corpus reference for
 # .last-good rollback) for the compose mechanics, then re-asserts PUBLIC health

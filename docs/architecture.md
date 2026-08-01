@@ -86,20 +86,27 @@ queryable (FR-7).
   │
   ▼
 ┌───────────────┐  discovery.discover(url) -> str
-│ 1. discovery  │  httpx GET (15s, UA "YankiBot/0.1"); harvest title/description/
-│               │  keywords/OpenGraph + visible text (BeautifulSoup strip
-│               │  script/style/nav); homepage + ≤5 same-domain links, content-ful
-│               │  paths first (about/product/... incl. TR hakkinda/urun/hizmet).
+│ 1. discovery  │  httpx GET (15s, UA "YankiBot/0.1"); harvest schema.org JSON-LD
+│               │  (2nd fetch-free pass, leads the text, 4k cap, never follows
+│               │  sameAs) + title/description/keywords/OpenGraph + visible text
+│               │  (BeautifulSoup strip script/style/nav); homepage + ≤5
+│               │  same-domain links, content-ful paths first (about/product/...
+│               │  incl. TR hakkinda/urun/hizmet). Non-HTML + oversized responses
+│               │  skipped (missing Content-Type = HTML, fail-open).
 │               │  SPA fallback: if visible text <800 chars, mine ≤3 same-origin
 │               │  JS bundles for prose string literals (TR-safe). ~20k cap;
 │               │  unreachable/empty -> PipelineError("could not read the site")
 └──────┬────────┘  ── on complete: progress = 15, current_step advances
        ▼
 ┌───────────────┐  kyc.generate_kyc(text, url, provider) -> KYC
-│ 2. kyc        │  ONE LLM call, strict JSON (strip ```json fences), Pydantic
-│               │  KYC model. aliases always include company name + domain-sans-TLD
-│               │  persisted to analyses.kyc (jsonb)
-└──────┬────────┘  ── progress = 30
+│ 2. kyc        │  ONE LLM call, strict JSON (strip ```json fences, else the
+│               │  outermost {…} span); ONE bounded retry if still unusable.
+│               │  Pydantic KYC model. aliases always include company name +
+│               │  domain-sans-TLD, plus ASCII-folded / legal-suffix-stripped
+│               │  forms when they differ. persisted to analyses.kyc (jsonb)
+└──────┬────────┘  ── progress = 30, then kyc.require_usable gates step 3:
+       │              empty company or zero topics -> PipelineError BEFORE the
+       │              paid execute fan-out (checker rows pass their category)
        ▼
 ┌───────────────┐  prompts.generate_prompts(kyc, count) -> list[PromptSpec]
 │ 3. prompts    │  DETERMINISTIC natural-language templates, NO LLM. cycles
@@ -117,7 +124,10 @@ queryable (FR-7).
        ▼
 ┌───────────────┐  footprint.detect(raw_text, kyc) -> (bool, snippet|None)
 │ 5. footprint  │  PURE, deterministic, case-insensitive search of
-│               │  company/aliases/domain; ±60-char snippet on first hit
+│               │  company/aliases/domain, \b-anchored, with diacritics folded
+│               │  (textfold, 1:1 so snippet indices stay honest) and hyphen ==
+│               │  space; NOT suffix-tolerant (that is roadmap §2c / step 2b).
+│               │  ±60-char snippet on first hit, in its ORIGINAL spelling
 │               │  updates each responses.footprint + matched_snippet
 └──────┬────────┘  ── progress = 90
        ▼
@@ -421,6 +431,7 @@ reaching Yanki over the stack's loopback host binds:
 | Job stuck in `queued` | Is the **worker** process up? It's the same image as api, separate command. Check `make deploy-logs`. |
 | Job stuck in `running` forever | Worker crashed mid-step. It self-heals: the stale-claim reaper reclaims after `STALE_CLAIM_SECONDS` (300s). |
 | Job `failed` with an error | `analyses.error` holds `str(exc)` (≤500 chars). Discovery failures read "could not read the site". Partial rows remain. |
+| Job `failed` at "could not identify the company / what the company does" | The step-2 usability gate (`kyc.require_usable`) stopped the run **before** any paid execute call — working as designed, not a bug. The offending profile is on the row (`analyses.kyc`): look at it. Usual causes are a site whose only content is a JS-rendered shell the SPA fallback missed, or a non-HTML homepage. |
 | `max retries exceeded` | Job hit `attempts > 3` — a poison job. Inspect its `url` / `error`; don't just re-queue. |
 | Unexpected LLM spend | Confirm `DRY_RUN` and `PANEL_ENGINES`; check `MAX_RESPONSES_PER_JOB` and `llm_cache` hit rate. CI/tests must stay `DRY_RUN`. |
 | 404 on a valid-looking id | Unknown/never-created id. 422 instead means URL validation rejected the submit. |

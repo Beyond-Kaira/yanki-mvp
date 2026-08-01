@@ -74,6 +74,7 @@ backend/tests/
     ├── conftest.py        # pipeline-only fixtures (settings, sample_kyc, models, db_session, seeded_analysis)
     ├── test_discovery.py
     ├── test_kyc.py
+    ├── test_textfold.py   # ASCII fold: 1:1 length invariant (snippets depend on it)
     ├── test_prompts.py
     ├── test_execute.py
     ├── test_footprint.py
@@ -91,7 +92,8 @@ agent.
 ### 3.2 What each layer tests
 
 **Pure-function unit tests** (`pipeline/test_scoring.py`,
-`test_footprint.py`, `test_prompts.py`) — no fixtures beyond plain Python data.
+`test_footprint.py`, `test_prompts.py`, `test_textfold.py`) — no fixtures beyond
+plain Python data.
 Feed input, assert output. These are the red-green heart of the TDD loop.
 
 - `scoring`: `geo_score(footprints, total)` equals `footprints / total`; and

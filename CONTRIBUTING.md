@@ -14,6 +14,14 @@ operational checklist for every session (scope, ownership, definition of done).
 3. Open a PR into `main`. The template prompts you for the checklist below.
 4. Merge only when CI is green.
 
+> **Merging to `main` deploys to production.** Once CI passes on `main`, the
+> `Deploy` workflow ships that commit to <https://yanki.beyondkaira.com>
+> automatically — build, `alembic upgrade head`, public health check,
+> auto-rollback on failure. There is no separate release step and no staging
+> environment, so treat a merge as a release. Details, including how to roll
+> back and how to redeploy by hand, are in
+> [`deploy/AUTODEPLOY.md`](deploy/AUTODEPLOY.md).
+
 ## Slack notifications
 
 `.github/workflows/notify.yml` posts to Slack when a PR is opened, reviewed,

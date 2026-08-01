@@ -93,7 +93,14 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     # 2. kyc
     _start_step(session, analysis, "kyc")
     kyc = kyc_step.generate_kyc(
-        text, analysis.url, registry.get_analysis_provider(settings)
+        text,
+        analysis.url,
+        registry.get_analysis_provider(settings),
+        # Grounding checks the model's proper nouns against the crawl. A checker
+        # row has no crawl — its "text" is the brand + category sentence composed
+        # above — so verifying against it would delete every competitor the model
+        # knows and degrade the run to the neutral fallbacks.
+        verify_against_source=not is_checker,
     )
     analysis.kyc = kyc.model_dump()
     _complete_step(session, analysis, _KYC_DONE)

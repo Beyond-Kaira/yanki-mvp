@@ -1,5 +1,7 @@
-// Auth API surface, written against the contract on `feat/auth-endpoints`
-// (backend/app/api/auth_routes.py and the schemas beside it).
+// Auth API surface, written against `backend/app/api/auth_routes.py` and the
+// schemas beside it (landed in #9). Request and response types come from the
+// generated contract via `lib/contracts.ts`, so a schema change reaches these
+// call sites as a type error rather than a runtime surprise.
 //
 // Shape of the flow there, since it drives everything here:
 //   signup   201, returns the user and NOTHING else. It does not sign anyone in,
@@ -16,20 +18,10 @@
 //   path this app assumes; until it exists the call fails and the form says so.
 
 import { ApiError, authorizedFetch, readErrorMessage } from './api'
+import type { AuthUser, Credentials, LoginResponse } from './contracts'
 import { setAccessToken } from './session'
 
-// Mirrors `UserOut`. Hand-written for now: the generated `lib/types.ts` gains
-// these schemas when the backend branch lands, and this should switch to them.
-export interface AuthUser {
-  id: string
-  email: string
-  created_at: string
-}
-
-export interface Credentials {
-  email: string
-  password: string
-}
+export type { AuthUser, Credentials }
 
 export interface Session {
   user: AuthUser
@@ -77,11 +69,6 @@ async function failureMessage(res: Response): Promise<string> {
   return readErrorMessage(res)
 }
 
-interface LoginBody {
-  user: AuthUser
-  access_token: string
-}
-
 export async function login(credentials: Credentials): Promise<Session> {
   const res = await postJson(LOGIN_PATH, credentials)
   if (!res.ok) {
@@ -94,7 +81,7 @@ export async function login(credentials: Credentials): Promise<Session> {
     throw new ApiError(message, res.status)
   }
 
-  const body = (await res.json()) as LoginBody
+  const body = (await res.json()) as LoginResponse
   setAccessToken(body.access_token)
   return { user: body.user, accessToken: body.access_token }
 }

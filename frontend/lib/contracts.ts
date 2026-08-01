@@ -67,3 +67,13 @@ export type Analysis = Omit<
   current_step: PipelineStep | null
   result: AnalysisResult
 }
+
+// Accounts (PR #9). Signup and login take the same {email, password} pair, and
+// login answers with the user plus a bearer token while setting the refresh
+// cookie. Re-exported here rather than restated in `lib/auth.ts` so a schema
+// change reaches the auth screens through the generated types.
+export type AuthUser = Schemas['UserOut']
+
+export type Credentials = Schemas['LoginRequest']
+
+export type LoginResponse = Schemas['LoginResponse']

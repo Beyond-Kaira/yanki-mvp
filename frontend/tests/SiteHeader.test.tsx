@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 const push = vi.fn()
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace: vi.fn() }),
 }))
 
 vi.mock('@/lib/auth', () => ({

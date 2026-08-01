@@ -94,12 +94,15 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Signing out always succeeds locally. Whatever the request does, the token is
+  // dropped and the state clears, and the caller is given nothing to handle:
+  // there is no useful recovery from "we could not tell the server", and an
+  // error escaping here reaches a click handler that has no answer for it.
   const signOut = useCallback(async () => {
-    // `logout` swallows transport failures, but the local state must clear even
-    // if something above it throws: a header still showing an account after the
-    // token is gone is worse than a lost request.
     try {
       await logoutRequest()
+    } catch {
+      // Already signed out on this device; the server-side cookie expires.
     } finally {
       setUser(null)
       setStatus('anonymous')

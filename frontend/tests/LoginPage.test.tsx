@@ -5,9 +5,10 @@ import type { ReactNode } from 'react'
 import { axeCheck } from './a11y'
 
 const push = vi.fn()
+const replace = vi.fn()
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace }),
 }))
 
 // The network edge is mocked; the provider and the page are the real thing, so
@@ -30,7 +31,7 @@ vi.mock('@/lib/session', () => ({
 
 import AuthProvider from '@/components/AuthProvider'
 import LoginPage from '@/app/login/page'
-import { login } from '@/lib/auth'
+import { fetchCurrentUser, login } from '@/lib/auth'
 import { refreshAccessToken } from '@/lib/session'
 
 const mockedLogin = vi.mocked(login)
@@ -49,6 +50,8 @@ function renderPage(ui: ReactNode = <LoginPage />) {
 describe('LoginPage', () => {
   beforeEach(() => {
     push.mockReset()
+    replace.mockReset()
+    vi.mocked(fetchCurrentUser).mockReset()
     mockedLogin.mockReset()
     // No refresh cookie: the provider settles on anonymous.
     mockedRefresh.mockReset().mockResolvedValue(null)
@@ -149,6 +152,14 @@ describe('LoginPage', () => {
 
     await user.click(screen.getByRole('button', { name: /hide password/i }))
     expect(field).toHaveAttribute('type', 'password')
+  })
+
+  it('sends someone already signed in away from the form', async () => {
+    mockedRefresh.mockResolvedValue('tok')
+    vi.mocked(fetchCurrentUser).mockResolvedValue(USER)
+    renderPage()
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/'))
   })
 
   it('offers no remember-me control, since the endpoint takes no such flag', () => {

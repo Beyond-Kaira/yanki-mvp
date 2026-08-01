@@ -4,7 +4,21 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-07-28, **session 14 close.** That session was pipeline
+Last updated: 2026-08-01, **session 15 close.** Another pipeline-quality
+session, again no ops work: `docs/pipeline-quality-plan.md` (discovery, KYC and
+prompt quality, MVP → product) is implemented on
+`feat/pipeline-quality-production-grade`, **PR open, awaiting your review**.
+Nothing here needs a key, an env var or a decision from you — but **merging
+auto-deploys to production**, and three things change visibly on the first live
+day (session log §6): hallucinated products/competitors stop appearing in the
+KYC card, a profile whose only topic signal was a placeholder now fails instead
+of running, and prompts no longer name the brand they measure — which **lowers**
+the score for any site whose keywords contained its own brand. That last one is
+a correction: those questions were scoring the brand against itself. No new paid
+call was added on any path. **A2 is still open and still yours** (Turkish steps
+2b + 6); this work was language-neutral and left that decision untouched.
+
+Earlier — 2026-07-28, **session 14 close.** That session was pipeline
 quality work, not ops: five of the six steps in
 `discovery-kyc-improvements.md` shipped on `feat/discovery-kyc-improvements`
 (**[PR #10](https://github.com/Beyond-Kaira/yanki-mvp/pull/10), CI green —

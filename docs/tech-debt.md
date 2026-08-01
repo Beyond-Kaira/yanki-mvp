@@ -294,7 +294,7 @@ devDependencies).)
     nothing feeds. Recording KYC cost is worth doing, but it *re-tunes* what
     the $5 cap actually measures, so it deserves its own change with its own
     review rather than riding along here.
-28. **`_is_html` fails open on a missing Content-Type** (2026-07-28, step 4 of
+28. **`_is_html` fails open on a missing Content-Type** (superseded by #30) (2026-07-28, step 4 of
     `discovery-kyc-improvements.md`, accepted): a 200 that declares no type is
     parsed as HTML. Deliberate — it matches `net_guard`'s stance of treating an
     unresolvable host as public so CI and offline dev keep working, and many
@@ -309,3 +309,36 @@ devDependencies).)
     quietly forgotten. `test_footprint.py` pins the current (2a-only) suffix
     behaviour, so approving 2b starts by changing a test that says exactly what
     it does today.
+30. **`_is_html` fail-open is now backed by a byte sniff — #28 is closed for the
+    formats that matter** (2026-08-01, `pipeline-quality-plan.md` D2). A
+    header-less response whose first bytes are `%PDF`, a zip/office container,
+    PNG/GIF/JPEG, gzip, RIFF or PostScript — or that contains a NUL in the first
+    512 bytes — is skipped. What remains open: a header-less binary format
+    *not* on that list still reaches BeautifulSoup, and a genuinely UTF-16
+    encoded page is now misread as binary (accepted: vanishingly rare on the
+    public web, and parsing a PDF as page copy is the failure we actually saw).
+31. **SPA bundle extraction still welds object punctuation onto real copy**
+    (2026-08-01, measured live on beyondtech.com.tr): the string-literal
+    extractor drops minified code and framework diagnostics, but a span that
+    straddles an object literal arrives as `...tasarlarız.`,pillars:[{num:`01`...`.
+    It is cosmetic — an LLM reads through it — and the obvious fix (reject any
+    literal containing a backtick) was measured and **rejected**: it took the
+    corpus from 20 000 chars to 1 751 by deleting the site's real Turkish copy.
+    A proper fix parses the bundle rather than regexing it, which is a different
+    (and much larger) piece of work.
+32. **The prompt category filter is a heuristic, and says so** (2026-08-01,
+    `pipeline-quality-plan.md` P1): phrases with digits, spec symbols, attribute
+    tails ("payload capacity") or bare hyphenated adjectives ("anti-armor") are
+    rejected, but nothing separates "fiber optic" (an attribute) from "fiber
+    optics" (a category). The actual fix is `KYC.category`, which *asks* for the
+    category — the filter only protects the path where the model does not
+    supply one. Watch: a legitimate category containing a digit ("5G antennas",
+    "3D printers") is currently rejected. If real profiles hit this, narrow the
+    digit rule to model-code shapes (letter+digit runs) instead of any digit.
+33. **Grounding's 1 000-character floor is a guess** (2026-08-01,
+    `pipeline-quality-plan.md` K4): below `MIN_GROUNDING_CHARS` nothing is
+    dropped, on the principle that a thin crawl cannot prove a negative. It also
+    happens to be what keeps DRY_RUN's fictional profile intact against
+    `example.com`. The number was chosen by reasoning, not by measurement — if a
+    real one-page site ever ships a hallucinated alias through this door, tune it
+    with data rather than by feel.

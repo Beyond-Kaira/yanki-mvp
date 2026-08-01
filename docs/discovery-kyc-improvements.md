@@ -1,5 +1,11 @@
 # Discovery + KYC extraction — improvements
 
+> **Successor:** [`pipeline-quality-plan.md`](pipeline-quality-plan.md)
+> (2026-08-01) continues this work from MVP to product grade and covers prompt
+> generation as well. This document stays live: it is the record of steps 1–5
+> and the standing statement of why **2b and 6 remain parked**. That decision is
+> unchanged.
+
 **Status: steps 1, 2a, 3, 4 and 5 are implemented** (branch
 `feat/discovery-kyc-improvements`, one commit each, `make test` green and
 `make gen-types` a zero diff). **Steps 2b and 6 are not built** — they revive

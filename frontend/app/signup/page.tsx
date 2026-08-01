@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -9,11 +9,11 @@ import Checkbox from '@/components/Checkbox'
 import FormError from '@/components/FormError'
 import FormField from '@/components/FormField'
 import PasswordField from '@/components/PasswordField'
-import { signup } from '@/lib/auth'
+import { useAuth } from '@/components/AuthProvider'
+import { SignedUpButNotSignedInError } from '@/lib/auth'
 import {
   MIN_PASSWORD_LENGTH,
   validateEmail,
-  validateName,
   validateNewPassword,
   validatePasswordConfirmation,
   validateTermsAccepted,
@@ -22,7 +22,6 @@ import {
 const FORM_ERROR_ID = 'signup-error'
 
 interface FieldErrors {
-  name?: string | null
   email?: string | null
   password?: string | null
   confirmPassword?: string | null
@@ -31,7 +30,7 @@ interface FieldErrors {
 
 export default function SignupPage() {
   const router = useRouter()
-  const [name, setName] = useState('')
+  const { signUp, status } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -40,30 +39,50 @@ export default function SignupPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Someone already signed in has no business on this form.
+  useEffect(() => {
+    if (status === 'authenticated') router.replace('/')
+  }, [status, router])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setFormError(null)
 
     const errors: FieldErrors = {
-      name: validateName(name),
       email: validateEmail(email),
       password: validateNewPassword(password),
       confirmPassword: validatePasswordConfirmation(confirmPassword, password),
       terms: validateTermsAccepted(acceptedTerms),
     }
     setFieldErrors(errors)
-    if (Object.values(errors).some(Boolean)) return
+    const order = ['email', 'password', 'confirm-password', 'terms'] as const
+    const keys = ['email', 'password', 'confirmPassword', 'terms'] as const
+    const firstInvalid = order.find((_, i) => errors[keys[i]])
+    if (firstInvalid) {
+      // Moving focus is what announces the failure: a screen reader reads the
+      // label, the invalid state, and the message wired up by aria-describedby.
+      // Without it, submitting an empty form is silent.
+      document.getElementById(firstInvalid)?.focus()
+      return
+    }
 
     // Button disables itself while `loading`, so a second click cannot fire a
     // second request; this flag is what drives it.
     setSubmitting(true)
     try {
-      await signup({ name: name.trim(), email: email.trim(), password })
-      // TODO(auth): whether sign-up signs the person in or sends them to log in
-      // depends on the endpoint's response; returning home until that is known.
+      // The signup endpoint returns no session, so `signUp` creates the account
+      // and spends the same credentials on a login rather than asking for them
+      // twice. Either request failing lands in the catch below.
+      await signUp(email.trim(), password)
       router.push('/')
     } catch (err) {
       setSubmitting(false)
+      if (err instanceof SignedUpButNotSignedInError) {
+        setFormError(
+          'Your account was created, but we could not sign you in. Try logging in.',
+        )
+        return
+      }
       setFormError(
         err instanceof Error
           ? err.message
@@ -86,27 +105,12 @@ export default function SignupPage() {
 
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
           <FormField
-            id="name"
-            name="name"
-            type="text"
-            label="Full name"
-            autoComplete="name"
-            placeholder="Ada Lovelace"
-            value={name}
-            onChange={(event) => {
-              setName(event.target.value)
-              setFieldErrors((current) => ({ ...current, name: null }))
-            }}
-            disabled={submitting}
-            error={fieldErrors.name}
-          />
-
-          <FormField
             id="email"
             name="email"
             type="email"
             label="Work email"
             autoComplete="email"
+            maxLength={254}
             placeholder="you@company.com"
             value={email}
             onChange={(event) => {
@@ -122,6 +126,7 @@ export default function SignupPage() {
             name="password"
             label="Password"
             autoComplete="new-password"
+            maxLength={128}
             value={password}
             onChange={(event) => {
               setPassword(event.target.value)
@@ -137,6 +142,7 @@ export default function SignupPage() {
             name="confirmPassword"
             label="Confirm password"
             autoComplete="new-password"
+            maxLength={128}
             value={confirmPassword}
             onChange={(event) => {
               setConfirmPassword(event.target.value)
@@ -159,7 +165,8 @@ export default function SignupPage() {
             label={
               <>
                 I agree to the{' '}
-                {/* TODO(auth): /terms and /privacy have no pages yet. */}
+                {/* /terms is a placeholder until the real text is written, so
+                    this checkbox is not yet an agreement to anything. */}
                 <Link
                   href="/terms"
                   className="rounded font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

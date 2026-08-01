@@ -1,15 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Button from '@/components/Button'
-import Checkbox from '@/components/Checkbox'
 import FormError from '@/components/FormError'
 import FormField from '@/components/FormField'
 import PasswordField from '@/components/PasswordField'
-import { login } from '@/lib/auth'
+import { useAuth } from '@/components/AuthProvider'
 import { validateEmail, validateExistingPassword } from '@/lib/validation'
 
 const FORM_ERROR_ID = 'login-error'
@@ -21,12 +20,17 @@ interface FieldErrors {
 
 export default function LoginPage() {
   const router = useRouter()
+  const { signIn, status } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [remember, setRemember] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // Someone already signed in has no business on this form.
+  useEffect(() => {
+    if (status === 'authenticated') router.replace('/')
+  }, [status, router])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -37,15 +41,23 @@ export default function LoginPage() {
       password: validateExistingPassword(password),
     }
     setFieldErrors(errors)
-    if (errors.email || errors.password) return
+    const firstInvalid = errors.email ? 'email' : errors.password ? 'password' : null
+    if (firstInvalid) {
+      // Moving focus is what announces the failure: a screen reader reads the
+      // label, the invalid state, and the message wired up by aria-describedby.
+      // Without it, submitting an empty form is silent.
+      document.getElementById(firstInvalid)?.focus()
+      return
+    }
 
     // Button disables itself while `loading`, so a second click cannot fire a
     // second request; this flag is what drives it.
     setSubmitting(true)
     try {
-      await login({ email: email.trim(), password, remember })
-      // TODO(auth): there is no signed-in destination yet, so this returns to
-      // the home page. Point it at the account view once one exists.
+      await signIn(email.trim(), password)
+      // TODO(auth): no signed-in destination exists yet, so this returns to the
+      // home page, where the header now shows the account. Point it at an
+      // account view once there is one.
       router.push('/')
     } catch (err) {
       setSubmitting(false)
@@ -76,6 +88,7 @@ export default function LoginPage() {
             type="email"
             label="Email"
             autoComplete="email"
+            maxLength={254}
             placeholder="you@company.com"
             value={email}
             onChange={(event) => {
@@ -93,6 +106,7 @@ export default function LoginPage() {
             name="password"
             label="Password"
             autoComplete="current-password"
+            maxLength={128}
             value={password}
             onChange={(event) => {
               setPassword(event.target.value)
@@ -102,16 +116,7 @@ export default function LoginPage() {
             error={fieldErrors.password}
           />
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Checkbox
-              id="remember"
-              name="remember"
-              label="Remember me"
-              checked={remember}
-              onChange={(event) => setRemember(event.target.checked)}
-              disabled={submitting}
-            />
-            {/* TODO(auth): /forgot-password has no page yet. */}
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <Link
               href="/forgot-password"
               className="inline-flex min-h-[40px] items-center rounded text-sm font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

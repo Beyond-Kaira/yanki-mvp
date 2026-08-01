@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { axeCheck } from './a11y'
 
 const push = vi.fn()
@@ -9,37 +10,64 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push }),
 }))
 
+// The network edge is mocked; the provider and the page are the real thing, so
+// these exercise the wiring between them rather than a stand-in for it.
 vi.mock('@/lib/auth', () => ({
   login: vi.fn(),
   signup: vi.fn(),
+  logout: vi.fn(),
+  fetchCurrentUser: vi.fn(),
+  requestPasswordReset: vi.fn(),
+  // The pages branch on this class, so the mock has to carry the real shape.
+  SignedUpButNotSignedInError: class SignedUpButNotSignedInError extends Error {},
 }))
 
+vi.mock('@/lib/session', () => ({
+  refreshAccessToken: vi.fn(),
+  setAccessToken: vi.fn(),
+  getAccessToken: vi.fn(() => null),
+}))
+
+import AuthProvider from '@/components/AuthProvider'
 import LoginPage from '@/app/login/page'
 import { login } from '@/lib/auth'
+import { refreshAccessToken } from '@/lib/session'
 
 const mockedLogin = vi.mocked(login)
+const mockedRefresh = vi.mocked(refreshAccessToken)
+
+const USER = {
+  id: '11111111-1111-1111-1111-111111111111',
+  email: 'ada@example.com',
+  created_at: '2026-07-29T00:00:00Z',
+}
+
+function renderPage(ui: ReactNode = <LoginPage />) {
+  return render(<AuthProvider>{ui}</AuthProvider>)
+}
 
 describe('LoginPage', () => {
   beforeEach(() => {
     push.mockReset()
     mockedLogin.mockReset()
+    // No refresh cookie: the provider settles on anonymous.
+    mockedRefresh.mockReset().mockResolvedValue(null)
   })
 
   it('has no axe violations', async () => {
-    const { container } = render(<LoginPage />)
+    const { container } = renderPage()
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 
   it('reports each field under its own input and posts nothing', async () => {
     const user = userEvent.setup()
-    render(<LoginPage />)
+    renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Log in' }))
 
     expect(screen.getByText('Enter your email address.')).toBeInTheDocument()
     expect(screen.getByText('Enter your password.')).toBeInTheDocument()
     expect(mockedLogin).not.toHaveBeenCalled()
-    // The message is wired to the field it belongs to.
     expect(screen.getByLabelText('Email')).toHaveAttribute(
       'aria-describedby',
       'email-error',
@@ -48,7 +76,7 @@ describe('LoginPage', () => {
 
   it('rejects a malformed address without calling the API', async () => {
     const user = userEvent.setup()
-    render(<LoginPage />)
+    renderPage()
 
     await user.type(screen.getByLabelText('Email'), 'not-an-email')
     await user.type(screen.getByLabelText('Password'), 'hunter2!')
@@ -58,21 +86,21 @@ describe('LoginPage', () => {
     expect(mockedLogin).not.toHaveBeenCalled()
   })
 
-  it('sends the credentials and the remember choice, then redirects', async () => {
+  it('sends just the credentials the endpoint takes, then redirects', async () => {
     const user = userEvent.setup()
-    mockedLogin.mockResolvedValue(undefined)
-    render(<LoginPage />)
+    mockedLogin.mockResolvedValue({ user: USER, accessToken: 'tok' })
+    renderPage()
 
     await user.type(screen.getByLabelText('Email'), '  ada@example.com  ')
     await user.type(screen.getByLabelText('Password'), 'hunter2!')
-    await user.click(screen.getByLabelText('Remember me'))
     await user.click(screen.getByRole('button', { name: 'Log in' }))
 
-    expect(mockedLogin).toHaveBeenCalledWith({
-      email: 'ada@example.com',
-      password: 'hunter2!',
-      remember: true,
-    })
+    await waitFor(() =>
+      expect(mockedLogin).toHaveBeenCalledWith({
+        email: 'ada@example.com',
+        password: 'hunter2!',
+      }),
+    )
     expect(push).toHaveBeenCalledWith('/')
   })
 
@@ -81,7 +109,7 @@ describe('LoginPage', () => {
     mockedLogin.mockRejectedValue(
       new Error('That email and password do not match an account.'),
     )
-    render(<LoginPage />)
+    renderPage()
 
     await user.type(screen.getByLabelText('Email'), 'ada@example.com')
     await user.type(screen.getByLabelText('Password'), 'wrong-one')
@@ -90,15 +118,13 @@ describe('LoginPage', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/do not match an account/i)
     expect(push).not.toHaveBeenCalled()
-    // Submitting is over, so a retry is possible.
     expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled()
   })
 
   it('blocks a second submit while the first is in flight', async () => {
     const user = userEvent.setup()
-    // Never settles: the button has to stay disabled on its own.
     mockedLogin.mockReturnValue(new Promise(() => {}))
-    render(<LoginPage />)
+    renderPage()
 
     await user.type(screen.getByLabelText('Email'), 'ada@example.com')
     await user.type(screen.getByLabelText('Password'), 'hunter2!')
@@ -113,16 +139,21 @@ describe('LoginPage', () => {
 
   it('reveals and re-hides the password', async () => {
     const user = userEvent.setup()
-    render(<LoginPage />)
+    renderPage()
 
     const field = screen.getByLabelText('Password')
-    const toggle = screen.getByRole('button', { name: /show password/i })
-
     expect(field).toHaveAttribute('type', 'password')
-    await user.click(toggle)
+
+    await user.click(screen.getByRole('button', { name: /show password/i }))
     expect(field).toHaveAttribute('type', 'text')
 
     await user.click(screen.getByRole('button', { name: /hide password/i }))
     expect(field).toHaveAttribute('type', 'password')
+  })
+
+  it('offers no remember-me control, since the endpoint takes no such flag', () => {
+    renderPage()
+    // Session length is the refresh cookie's max_age, decided server-side.
+    expect(screen.queryByLabelText(/remember me/i)).not.toBeInTheDocument()
   })
 })

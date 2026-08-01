@@ -11,11 +11,6 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 export const MIN_PASSWORD_LENGTH = 8
 
-export function validateName(value: string): string | null {
-  if (!value.trim()) return 'Enter your name.'
-  return null
-}
-
 export function validateEmail(value: string): string | null {
   const trimmed = value.trim()
   if (!trimmed) return 'Enter your email address.'

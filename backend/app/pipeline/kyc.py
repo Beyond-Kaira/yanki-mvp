@@ -3,19 +3,35 @@
 Makes one LLM call asking for strict JSON, parses it tolerantly (stripping any
 ```json fences, then falling back to the outermost ``{ ... }`` span so a stray
 "Here is the profile:" prefix costs nothing), and validates against the ``KYC``
-model. If that still yields nothing usable it retries **once** before failing —
-discovery is already paid for by then, so a formatting slip should not burn the
-whole job. Aliases always include
+model. If that still yields nothing usable it retries **once**, with a short
+repair instruction prepended, before failing — discovery is already paid for by
+then, so a formatting slip should not burn the whole job. Aliases always include
 the company name and the registrable domain name (without TLD) so footprint
 detection has something to match on, plus — when they differ from what is
 already there — the ASCII-folded and legal-suffix-stripped forms of the company
 name, because an answer says "Globex Robotics", not "Globex Robotics A.Ş.".
 
+Two passes then run over the validated profile before anyone downstream sees it
+(see docs/pipeline-quality-plan.md, workstream K):
+
+* **sanitation** — trim, unwrap, drop placeholder junk ("N/A"), de-duplicate
+  case- and diacritic-insensitively, cap item counts and lengths, and remove the
+  company itself from its own competitor list;
+* **grounding** — drop any product, competitor or model-supplied alias that does
+  not actually appear in the crawled text. A hallucinated product invents a
+  prompt; a hallucinated *alias* inflates the GEO score, because ``footprint``
+  cannot tell an invented name from a real mention. Only proper nouns are
+  grounded: ``description``/``industry``/``keywords``/``category``/``use_cases``
+  are meant to be the model's own words (often an English rendering of Turkish
+  copy). Grounding is skipped below ``MIN_GROUNDING_CHARS`` — a thin crawl
+  cannot prove a negative — and is off for checker rows, whose "source text" is
+  a sentence we wrote ourselves rather than a crawl.
+
 When the model reports no locations, we fall back to the country implied by the
 URL's country-code TLD (``.com.tr`` -> Türkiye, ``.de`` -> Germany, ...). That
 is a fact about the domain, not a guess about the text, so prompts can still ask
 "in Türkiye" instead of "worldwide". A non-empty ``locations`` is never
-overridden, and the JSON contract/fields are unchanged.
+overridden.
 """
 
 from __future__ import annotations
@@ -26,28 +42,68 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, ValidationError
 
 from app.pipeline.errors import PipelineError
+from app.pipeline.sanitize import (
+    clean_str,
+    clean_values,
+    contains,
+    is_junk,
+    normalize_key,
+)
 from app.pipeline.textfold import fold_ascii
 
 
 class KYC(BaseModel):
+    """The company profile every later step reads.
+
+    ``category`` and ``use_cases`` exist because prompt generation needs the
+    buying category and could previously only guess it from ``keywords`` — a
+    field models happily fill with spec attributes ("payload capacity"), which
+    then became questions no buyer has ever asked. Both default, so
+    ``KYC(company="")`` (used by ``scripts/gen_methodology.py``) still builds.
+    """
+
     company: str
     description: str = ""
     industry: str = ""
+    # The one category a buyer would search for ("tactical UAVs").
+    category: str = ""
     aliases: list[str] = Field(default_factory=list)
     products: list[str] = Field(default_factory=list)
     services: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
+    # What customers use this company for ("warehouse automation").
+    use_cases: list[str] = Field(default_factory=list)
     locations: list[str] = Field(default_factory=list)
     competitors: list[str] = Field(default_factory=list)
 
 
 _PROMPT = """You are analysing a company from its website text.
 
-Return a single JSON object describing the company, with these fields:
-company (string), description (string), industry (string),
-aliases (array of strings), products (array of strings),
-services (array of strings), keywords (array of strings),
-locations (array of strings), competitors (array of strings).
+Return a single JSON object describing the company. Every field below must be
+present; use an empty string or an empty array when the text does not support a
+value.
+
+Fields, and what belongs in each:
+- company (string): the company's own name, exactly as the site writes it.
+- description (string): one or two sentences on what the company does.
+- industry (string): the industry it operates in, 1-4 words.
+- category (string): the ONE product or service category a buyer would search
+  for when looking for a company like this - 1-4 words, plural when it names
+  things. Good: "industrial robots", "tactical UAVs", "CRM software". Bad: the
+  company name, a model name ("BAZNA V10"), a spec attribute ("payload
+  capacity"), or a vague word ("solutions").
+- aliases (array): other names for THIS company that appear in the text (legal
+  name, short form, alternative spelling). Never a product name or a tagline.
+- products (array): specific product or model names exactly as written.
+- services (array): services the company offers, 1-4 words each.
+- keywords (array): category terms a buyer would search for - the kinds of
+  things this company makes or does. NOT spec attributes, feature phrases or
+  adjectives ("payload capacity", "EW immune", "high accuracy" are all wrong).
+- use_cases (array): 2-6 short phrases naming what customers use this for
+  ("warehouse automation", "border surveillance").
+- locations (array): countries or cities the company operates in.
+- competitors (array): other companies named in the text as competitors or
+  alternatives. Never this company itself.
 
 Rules:
 - Use ONLY facts stated in the website text. Do NOT guess, infer, or invent
@@ -65,9 +121,24 @@ Website text:
 {text}
 """
 
+# Prepended to the single retry. It keeps the literal "JSON object" phrase that
+# ``MockProvider`` keys off (mock.py), so DRY_RUN and the e2e still get a canned
+# profile on the repair attempt instead of a recommendation-shaped answer.
+_REPAIR_PREFIX = """Your previous reply could not be parsed as JSON.
+
+Reply with ONLY the JSON object described below: no prose, no explanation, no
+markdown fences. Start your reply with { and end it with }.
+
+"""
+
 
 def build_prompt(text: str, url: str) -> str:
     return _PROMPT.format(url=url, text=text)
+
+
+def build_repair_prompt(text: str, url: str) -> str:
+    """The retry prompt: the same request, with a repair instruction on top."""
+    return _REPAIR_PREFIX + build_prompt(text, url)
 
 
 def _strip_fences(raw: str) -> str:
@@ -262,6 +333,65 @@ def _read_profile(raw: str) -> tuple[KYC | None, str]:
     return None, reason
 
 
+# Per-field budgets. They exist so one verbose field cannot dominate the profile
+# (or the prompts built from it): a site that lists 60 "keywords" is doing SEO,
+# not describing itself. Item caps are generous enough that no honest profile
+# loses anything; the word caps drop sentences pasted into a name-shaped field.
+_LIMITS: dict[str, dict[str, int]] = {
+    "aliases": {"max_items": 8, "max_chars": 80, "max_words": 8},
+    "products": {"max_items": 15, "max_chars": 80, "max_words": 10},
+    "services": {"max_items": 10, "max_chars": 80, "max_words": 8},
+    "keywords": {"max_items": 20, "max_chars": 60, "max_words": 6},
+    "use_cases": {"max_items": 8, "max_chars": 60, "max_words": 6},
+    "locations": {"max_items": 6, "max_chars": 60, "max_words": 5},
+    "competitors": {"max_items": 10, "max_chars": 80, "max_words": 6},
+}
+
+# A crawl shorter than this is not evidence of absence: grounding is skipped
+# below it, so a one-paragraph site (or DRY_RUN's example.com) never has its
+# profile stripped just because we fetched too little to corroborate it.
+MIN_GROUNDING_CHARS = 1_000
+
+
+def _sanitize(kyc: KYC) -> None:
+    """Normalize every field in place: trim, de-junk, de-duplicate, cap.
+
+    Runs before grounding and before the minted aliases are added, so those two
+    steps operate on values that are already clean.
+    """
+    kyc.company = clean_str(kyc.company, max_chars=120)
+    kyc.description = clean_str(kyc.description, max_chars=600)
+    kyc.industry = clean_str(kyc.industry, max_chars=120)
+    kyc.category = clean_str(kyc.category, max_chars=60)
+    for field, limits in _LIMITS.items():
+        setattr(kyc, field, clean_values(getattr(kyc, field), **limits))
+
+    # A company is not its own competitor. Left in, it becomes an "alternatives
+    # to <us>" prompt and a self-mention counted as a competitor sighting.
+    own = {normalize_key(name) for name in [kyc.company, *kyc.aliases] if name}
+    kyc.competitors = [
+        name for name in kyc.competitors if normalize_key(name) not in own
+    ]
+
+
+def _ground(kyc: KYC, source_text: str) -> None:
+    """Drop proper nouns that do not appear in the crawled text.
+
+    Only the three fields where an invented value does real damage: ``products``
+    (invents a brand-probe prompt), ``competitors`` (invents an "alternatives
+    to X" prompt) and ``aliases`` (silently inflates the GEO score, because
+    ``footprint`` counts any answer containing one).
+
+    The inferred fields are deliberately untouched — the prompt *asks* for an
+    English description of possibly-Turkish copy, so requiring those words to
+    appear verbatim would delete the translation we requested.
+    """
+    haystack = normalize_key(source_text)
+    kyc.products = [name for name in kyc.products if contains(haystack, name)]
+    kyc.competitors = [name for name in kyc.competitors if contains(haystack, name)]
+    kyc.aliases = [name for name in kyc.aliases if contains(haystack, name)]
+
+
 def require_usable(kyc: KYC, known_topic: str = "") -> None:
     """Raise ``PipelineError`` if this profile is not worth paying to fan out on.
 
@@ -281,28 +411,59 @@ def require_usable(kyc: KYC, known_topic: str = "") -> None:
     ``known_topic`` lets a caller contribute a topic signal it already trusts:
     the checker's submitted category is real input even when the model does not
     echo it back into keywords/services/industry.
+
+    A placeholder is not a signal: the gate junk-checks each candidate itself
+    rather than trusting the caller to have sanitized, so a profile whose only
+    "keyword" is ``"N/A"`` is rejected here instead of buying 60 calls about
+    ``"solutions"``.
     """
-    if not (kyc.company or "").strip():
+    company = (kyc.company or "").strip()
+    if not company or is_junk(company):
         raise PipelineError("could not identify the company — nothing to measure")
-    signals = [*kyc.keywords, *kyc.services, kyc.industry, known_topic]
-    if not any((signal or "").strip() for signal in signals):
+    signals = [
+        kyc.category,
+        *kyc.use_cases,
+        *kyc.keywords,
+        *kyc.services,
+        kyc.industry,
+        known_topic,
+    ]
+    if not any(
+        (signal or "").strip() and not is_junk(signal) for signal in signals
+    ):
         raise PipelineError("could not identify what the company does")
 
 
-def generate_kyc(text: str, url: str, provider) -> KYC:
+def generate_kyc(
+    text: str, url: str, provider, *, verify_against_source: bool = True
+) -> KYC:
+    """Extract, sanitize and (when there is a crawl to check against) ground.
+
+    ``verify_against_source`` is False for checker rows: their "source text" is
+    the literal ``Brand: X. Category: Y.`` the runner composed, so grounding
+    against it would delete every competitor the model knows and quietly degrade
+    every checker run to the neutral fallbacks.
+    """
     prompt = build_prompt(text, url)
     kyc, reason = _read_profile(provider.generate(prompt).text)
     if kyc is None:
         # Discovery has already been paid for by the time we get here, so one
-        # stray prose prefix must not burn the whole job. The repair above costs
-        # nothing; this is the single bounded retry, and it deliberately re-sends
-        # the SAME prompt: MockProvider only returns its canned profile because
-        # the prompt contains "json object", so a different repair prompt would
-        # have to keep that phrase or break DRY_RUN and the e2e in lockstep.
-        kyc, reason = _read_profile(provider.generate(prompt).text)
+        # stray prose prefix must not burn the whole job. The free repair above
+        # costs nothing; this is the single bounded retry. The repair prompt
+        # keeps the literal "JSON object" phrase MockProvider keys off
+        # (mock.py), or DRY_RUN and the e2e would break in lockstep.
+        kyc, reason = _read_profile(
+            provider.generate(build_repair_prompt(text, url)).text
+        )
     if kyc is None:
         raise PipelineError(reason)
 
+    _sanitize(kyc)
+    if verify_against_source and len(text or "") >= MIN_GROUNDING_CHARS:
+        _ground(kyc, text)
+
+    # Minted after grounding: these are facts about the company name and the
+    # submitted URL, not claims the model made, so they are never dropped.
     _ensure_name_aliases(kyc, kyc.company)
     _ensure_alias(kyc, _registrable_name(url))
 

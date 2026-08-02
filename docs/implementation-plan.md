@@ -261,6 +261,21 @@ refuses the ≤60-call `execute` fan-out on a profile with no company or no
 topic. ADR-26. **Steps 2b and 6 not built — operator decision A2.** Zero
 contract drift. Full detail: `sessions/2026-07-28-02.md`.
 
+✅ **Session 15 (2026-08-01): P5.15 — pipeline quality, MVP → product**
+(branch `feat/pipeline-quality-production-grade`). The plan is
+[`pipeline-quality-plan.md`](pipeline-quality-plan.md) and all three of its
+workstreams shipped: **discovery** (meta-charset decoding, binary sniffing,
+one homepage retry, scored link selection, cross-page boilerplate removal,
+per-page budget, tighter SPA literal filtering), **KYC** (`sanitize.py` — one
+normalized key for dedupe/grounding/leak detection; per-field sanitation;
+grounding of products/competitors/model aliases against the crawl; the new
+`category` + `use_cases` fields; a repair-prompted retry; a junk-aware
+usability gate), and **prompts** (typed + filtered topic pool, kind- and
+number-aware phrasing, full topic × shape rotation, and a hard invariant that
+no scored question names the brand). ADR-27. Zero contract drift, no new paid
+call, `checker_prompts.VERSION` unchanged. Backend 321 passed / 3 skipped,
+frontend 70 passed. Full detail: `sessions/2026-08-01-01.md`.
+
 ➡️ **Next up: P5.11 (operator go-live)** — everything agent-buildable is done.
 Blockers are all operator items: A1 decisions, **A2 (new: rule on discovery/KYC
 steps 2b + 6)**, B1 Resend domain, B2 vendor ToS/pricing check, then the
@@ -1775,6 +1790,38 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   (Postgres-gated), frontend 68 passed, ruff + mypy clean. **Steps 2b and 6 of
   the document are deliberately NOT built** — they revive §2c scope parked by
   operator decision; see operator-expected **A2** and tech-debt #29.
+
+### P5.15 — Pipeline quality: crawl fidelity, grounded profiles, question realism (added 2026-08-01, session 15)
+- **Goal:** take discovery, KYC and prompt generation from MVP plumbing to a
+  measurement instrument, per [pipeline-quality-plan.md](pipeline-quality-plan.md):
+  **D** decode by the declared charset, sniff binary, retry the homepage once,
+  score links instead of substring-matching them, read each block of copy once;
+  **K** sanitize every field, ground proper nouns against the crawl, add
+  `category` + `use_cases`, repair-prompt the single retry; **P** filter topics
+  that cannot be a category, phrase by topic kind and number, rotate over every
+  topic × shape pair, and never name the brand in a scored question.
+- **Why now:** ADR-26 fixed *how much* of a site we read and whether the KYC
+  call survives a formatting slip. It did not address wrong *content* — an
+  invented product, an alias that was never on the site (which inflates the GEO
+  score, because `footprint` cannot tell it from a real mention), or a "keyword"
+  that is a spec attribute and becomes a question nobody asks.
+- **Dependencies:** P5.14 (builds on `textfold`, the parse/retry path and the
+  usability gate).
+- **Complexity:** L
+- **Deliverables:** `backend/app/pipeline/sanitize.py` (**new**),
+  `discovery.py`, `kyc.py`, `prompts.py`, `checker_prompts.py`, `runner.py`,
+  `providers/mock.py`, `frontend/lib/contracts.ts`, `frontend/components/KycCard.tsx`,
+  tests in `test_sanitize.py` (**new**) / `test_discovery.py` / `test_kyc.py` /
+  `test_prompts.py` / `test_checker_prompts.py` / `KycCard.test.tsx`, ADR-27 in
+  [design.md](design.md), tech-debt #30–#33.
+- **Acceptance:** backend + frontend suites green; `make gen-types` a **zero
+  diff**; `checker_prompts.VERSION` unchanged and the published methodology
+  prompts byte-identical (pinned by a test); no new paid provider call on any
+  path; a test proves a brand in the keywords never reaches a scored question.
+- **Status:** ✅ **done — session 15 (2026-08-01)** on
+  `feat/pipeline-quality-production-grade`. Steps 2b and 6 of
+  `discovery-kyc-improvements.md` remain **not built** (operator item A2); this
+  work is language-neutral and does not touch that decision.
 
 ---
 

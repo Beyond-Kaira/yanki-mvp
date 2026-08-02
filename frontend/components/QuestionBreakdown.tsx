@@ -100,8 +100,11 @@ export default function QuestionBreakdown({
                   >
                     engines
                   </span>
+                  {/* "engines", not "answers": the denominator is the panel
+                      roster, so a run where two of four engines answered would
+                      otherwise be read out as four answers. */}
                   <span className="sr-only">
-                    named you in {mentioned} of {engines.length} answers
+                    {mentioned} of {engines.length} engines named you
                   </span>
                 </p>
               </div>

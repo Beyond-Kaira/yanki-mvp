@@ -71,6 +71,9 @@ describe('QuestionBreakdown', () => {
 
     // Denominator follows the panel, not the number of answers that arrived.
     expect(screen.getByText('1/3')).toBeInTheDocument()
+    // And the spoken count says so: this fixture holds two answers, so calling
+    // the denominator "answers" would claim one gemini never produced.
+    expect(screen.getByText('1 of 3 engines named you')).toBeInTheDocument()
     expect(screen.getByText('Gemini')).toBeInTheDocument()
     // "no answer", not "did not answer": whether the engine was asked is not
     // something the envelope reports, so the badge does not settle it.

@@ -174,30 +174,38 @@ export default function QuestionBreakdown({
                   id={answersId}
                   className="space-y-3 border-t border-surface-border pt-3"
                 >
-                  {responses.map((response) => (
-                    <li key={`answer-${response.id}`} className="space-y-1">
-                      <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-surface-foreground">
-                        {engineLabel(response.engine)}
-                        <span className="font-mono text-xs font-normal text-surface-subtle">
-                          {response.model}
-                        </span>
-                      </p>
-                      {response.matched_snippet?.trim() ? (
-                        <p className="border-l-2 border-success-soft pl-3 text-xs text-success-strong">
-                          “{response.matched_snippet}”
+                  {responses.map((response) => {
+                    // Guarded and quoted from the same trimmed value.
+                    // groupQuestions already trims the collapsed preview
+                    // (lib/results.ts), so quoting the raw field here would put
+                    // the same evidence on screen two different ways.
+                    const evidence = response.matched_snippet?.trim()
+
+                    return (
+                      <li key={`answer-${response.id}`} className="space-y-1">
+                        <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-surface-foreground">
+                          {engineLabel(response.engine)}
+                          <span className="font-mono text-xs font-normal text-surface-subtle">
+                            {response.model}
+                          </span>
                         </p>
-                      ) : null}
-                      {response.raw_text.trim().length > 0 ? (
-                        <pre className="max-w-prose whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-surface-foreground">
-                          {response.raw_text}
-                        </pre>
-                      ) : (
-                        <p className="text-xs italic text-surface-subtle">
-                          (empty answer)
-                        </p>
-                      )}
-                    </li>
-                  ))}
+                        {evidence ? (
+                          <p className="border-l-2 border-success-soft pl-3 text-xs text-success-strong">
+                            “{evidence}”
+                          </p>
+                        ) : null}
+                        {response.raw_text.trim().length > 0 ? (
+                          <pre className="max-w-prose whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-surface-foreground">
+                            {response.raw_text}
+                          </pre>
+                        ) : (
+                          <p className="text-xs italic text-surface-subtle">
+                            (empty answer)
+                          </p>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               ) : null}
             </li>

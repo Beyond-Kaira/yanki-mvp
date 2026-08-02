@@ -113,6 +113,32 @@ describe('QuestionBreakdown', () => {
     expect(spoken).toHaveTextContent('no answer came back')
   })
 
+  it('quotes the snippet without the whitespace around it', async () => {
+    const user = userEvent.setup()
+    // The collapsed preview keeps its own text so the two quotes stay
+    // distinguishable; only the expanded one carries the padding.
+    const padded: QuestionGroup[] = [
+      {
+        ...groups[0],
+        responses: [
+          {
+            ...groups[0].responses[0],
+            matched_snippet: '  Acme leads the list.\n',
+          },
+        ],
+      },
+    ]
+    render(<QuestionBreakdown groups={padded} engines={engines} />)
+
+    await user.click(screen.getByRole('button', { name: /show answers/i }))
+
+    // textContent, not getByText: the default matcher normalizes whitespace
+    // away, so it would pass on the untrimmed value too.
+    expect(screen.getByText(/Acme leads the list/).textContent).toBe(
+      '“Acme leads the list.”',
+    )
+  })
+
   it('keeps the answers collapsed until asked for', async () => {
     const user = userEvent.setup()
     render(<QuestionBreakdown groups={groups} engines={engines} />)

@@ -44,10 +44,24 @@ export default function QuestionBreakdown({
       {/* "goes to", not "was asked to": an engine with no rows may have failed
           mid-run, or may not have been on the panel for it, and the envelope
           does not say which. Claiming it was asked settles a question the data
-          leaves open. */}
+          leaves open.
+
+          Three entries because the grid renders three chip states. The middle
+          one is an answer that left the brand out — the ordinary miss, and on a
+          low-scoring run most of the grid. Folding it into "no answer came
+          back" would read an outage into what is really a bad score. The marks
+          carry the same aria-hidden / sr-only split as the chips they explain,
+          so a screen reader hears the states rather than the glyphs. */}
       <p className="text-sm text-surface-subtle">
-        Each question goes to every engine on the panel. A green engine named
-        you in its answer; grey means no answer came back.
+        Each question goes to every engine on the panel:{' '}
+        <span aria-hidden="true">
+          ✓ named you in its answer, ✕ answered without naming you, – no answer
+          came back.
+        </span>
+        <span className="sr-only">
+          a green engine named you in its answer, a solid grey engine answered
+          without naming you, and a dashed outline means no answer came back.
+        </span>
       </p>
 
       <ul className="space-y-3">

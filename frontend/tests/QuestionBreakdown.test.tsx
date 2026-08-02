@@ -78,6 +78,38 @@ describe('QuestionBreakdown', () => {
     expect(screen.queryByText('did not answer')).not.toBeInTheDocument()
   })
 
+  it('explains every chip state the grid can render', () => {
+    render(
+      <QuestionBreakdown
+        groups={groups}
+        engines={['anthropic', 'openai', 'gemini']}
+      />,
+    )
+
+    // This fixture puts all three states on screen at once: anthropic named the
+    // brand, openai answered without naming it, gemini has no row. A legend
+    // that covers two of them tells the reader a grid full of grey means the
+    // engines never answered, when the middle state is the ordinary miss.
+    expect(
+      screen.getByText(/Each question goes to every engine/),
+    ).toBeInTheDocument()
+
+    // Each copy is asserted on its own element, not on the paragraph wrapping
+    // both: the paragraph's textContent is the two of them concatenated, so a
+    // state dropped from one still reads back from the other and the assertion
+    // survives a legend that no longer says it.
+    const seen = screen.getByText(/✓ named you in its answer/)
+    // The marks are decoration over the words, same split as the chips: a
+    // screen reader should hear the states, not "check mark, cross, dash".
+    expect(seen).toHaveAttribute('aria-hidden', 'true')
+    expect(seen).toHaveTextContent('answered without naming you')
+    expect(seen).toHaveTextContent('no answer came back')
+
+    const spoken = screen.getByText(/a green engine named you in its answer/)
+    expect(spoken).toHaveTextContent('answered without naming you')
+    expect(spoken).toHaveTextContent('no answer came back')
+  })
+
   it('keeps the answers collapsed until asked for', async () => {
     const user = userEvent.setup()
     render(<QuestionBreakdown groups={groups} engines={engines} />)

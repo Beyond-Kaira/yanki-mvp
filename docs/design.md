@@ -1170,3 +1170,79 @@ decision → consequences**, with one line on why the alternative was rejected.
   (fails identically on rollback, see above); leaving it alone because it is
   pre-existing (it is pre-existing *and* it is the safety net the docs claim to
   have — the next migration was already queued behind it).
+### ADR-31 — The SEO audit is a second reading of the crawl we already paid for (2026-08-03)
+- **Context:** the GEO score says whether AI engines name a company and SERP
+  visibility says whether search results do. Neither says **why** when the answer
+  is no, and "why" is the only part a customer can act on. Meanwhile `discovery`
+  was already fetching the homepage plus five pages, parsing JSON-LD, meta tags
+  and Open Graph — and throwing all of the structure away to return one flat
+  string. The audit is that structure, read a second time.
+- **Decision:**
+  - **`discover_detailed()` beside `discover()`, not instead of it.** It returns
+    a `CrawlResult` carrying `.text` (byte-identical to before) and `.pages`.
+    `discover()` is now `discover_detailed(url).text`. Counted before choosing:
+    one non-test caller, 34 assertions in `test_discovery.py` that assume a
+    `str`, and four monkeypatch fakes in other test files that return one. The
+    alternative — changing `discover`'s return type — churns five files to move
+    a string behind an attribute. This is the same move ADR-28 made when SERP was
+    added *beside* `footprint` rather than inside it.
+  - **It runs inside the discovery step.** No seventh step; `current_step`, the
+    progress mapping and `StepProgress` are untouched, for the third time.
+  - **The headline is a grade, not a score, and the grade is capped.** `geo_score`
+    is a *measurement* — a counted ratio (ADR-11). An audit score is a *rubric*:
+    the weights are editorial choices, not observations. Worse, a weighted
+    average **averages a fatal problem away** — a site that is `noindex` *and*
+    blocks every AI crawler can still bank enough minor passes to look like a C.
+    So: one critical failure caps the grade at C, two or more cap it at F, and
+    the rule is published rather than hidden. The failing checks are the real
+    output; the score is a supporting number.
+  - **Three severity tiers as the weights** (critical 5, important 3, minor 1)
+    rather than per-check coefficients. Three numbers are publishable; thirty
+    hand-tuned ones are unauditable and drift.
+  - **Five per-check states**, not two. `not_measured` (we could not read the
+    input) and `not_applicable` (the check does not apply here) are dropped from
+    **both** sides of the ratio, exactly as an unreadable SERP page is dropped
+    from its denominator — and they are kept distinct from each other, because
+    "we could not check" and "there was nothing to check" say different things.
+  - **The flagship checks are the ones no classic SEO tool performs.** Whether
+    `robots.txt` admits the AI crawlers (`pipeline/robots.py`), and whether the
+    server sends any text at all — most AI crawlers do not execute JavaScript, so
+    a client-rendered SPA is invisible to them with `robots.txt` wide open.
+    Discovery already knows when that happened; it is what triggers its bundle
+    fallback. The audit just says so.
+  - **Retrieval and training crawlers are reported separately.** Blocking
+    `GPTBot` opts out of *training*; `OAI-SearchBot` is what governs live ChatGPT
+    answers. A training-only block is a WARN, because declining to be training
+    data is a legitimate choice and calling it a failure would be alarmist.
+    `Perplexity-User` is reported but never scored — Perplexity documents that it
+    generally ignores `robots.txt`, and telling someone they had blocked it would
+    be false. `Googlebot` counts as a *retrieval* crawler because Google
+    documents it as the control for AI Overviews, with no separate opt-in.
+  - **Checks that are just SEO say so in their own text.** `meta_description`,
+    `canonical` and `open_graph` are minor and their descriptions begin "Mostly
+    classic SEO". Dressing hygiene up as AI-critical is how this category earned
+    its reputation.
+- **Consequences:** one extra HTTP fetch per analysis (`/robots.txt`), through
+  discovery's own SSRF-guarded client; no LLM call, no third-party API, no
+  vendor. Migration `0008` is additive (three nullable columns, one table, two
+  indexes) — the second index is on `(check_id, status)`, because the question
+  this table exists to make answerable is cross-sectional: *how many audited
+  sites block GPTBot?* That is a publishable statistic and a marketing asset the
+  product can generate from its own data. `ResultOut` gains a nullable `seo`
+  object, so `make gen-types` is a real diff. Checker rows are not audited —
+  a brand name is not a site. Measured against wise.com the audit returns 97.8/A
+  with one genuine failure (109 of 143 images carry no alt text).
+- **Rejected:** a seventh pipeline step (churns the locked contract for a pass
+  that needs nothing but the crawl); changing `discover`'s signature (five files
+  of churn, and it contradicts the docstring's stated contract); a single JSONB
+  `seo_audit` column (simpler, and it cannot answer the cross-sectional question
+  that makes the data worth having); a raw 0–100 as the headline (it hides the
+  only two checks that decide whether a company is visible at all); per-check
+  weights (unauditable); scoring `Perplexity-User` (a directive the vendor says
+  it will ignore is not a control); listing `anthropic-ai`, `Claude-Web` or
+  `Bytespider` (the first two are deprecated, the third has no vendor
+  documentation — a list padded with plausible tokens looks thorough and is less
+  true); and parsing `robots.txt` by hand (the stdlib parser already implements
+  RFC 9309's group selection and `Allow` precedence, and a second implementation
+  is a second thing to get subtly wrong — it is fed already-fetched text so it
+  cannot re-fetch around the SSRF guard).

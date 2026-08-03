@@ -11,6 +11,7 @@ import ScoreGauge from '@/components/ScoreGauge'
 import ResultsTable from '@/components/ResultsTable'
 import KycCard from '@/components/KycCard'
 import SerpVisibility from '@/components/SerpVisibility'
+import SeoAudit from '@/components/SeoAudit'
 import WaitlistForm from '@/components/WaitlistForm'
 
 const POLL_MS = 2000
@@ -145,6 +146,8 @@ function Results({ analysis }: { analysis: Analysis }) {
       {result.kyc ? <KycCard kyc={result.kyc} /> : null}
 
       {result.serp ? <SerpVisibility serp={result.serp} /> : null}
+
+      {result.seo ? <SeoAudit seo={result.seo} /> : null}
 
       {result.prompts.length > 0 ? (
         <section className="space-y-3">

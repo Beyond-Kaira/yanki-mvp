@@ -50,6 +50,7 @@ function makeAnalysis(overrides: Partial<Analysis>): Analysis {
       engine_presence: null,
       competitors_appeared: null,
           serp: null,
+          seo: null,
     },
     ...overrides,
   } as Analysis
@@ -111,6 +112,7 @@ describe('Checker screens accessibility', () => {
             { name: 'Globex', mentions: 48 },
           ],
           serp: null,
+          seo: null,
         },
       }),
     )
@@ -158,6 +160,7 @@ describe('Checker screens accessibility', () => {
           engine_presence: null,
           competitors_appeared: null,
           serp: null,
+          seo: null,
         },
       }),
     )

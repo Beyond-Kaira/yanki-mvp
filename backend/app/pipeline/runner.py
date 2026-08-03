@@ -27,13 +27,14 @@ from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 
-from app.db.models import Analysis, Prompt, Response, SerpCheck
+from app.db.models import Analysis, Prompt, Response, SeoCheck, SerpCheck
 from app.pipeline import checker_prompts, discovery
 from app.pipeline import execute as execute_step
 from app.pipeline import footprint as footprint_step
 from app.pipeline import kyc as kyc_step
 from app.pipeline import prompts as prompts_step
 from app.pipeline import scoring as scoring_step
+from app.pipeline import seo_audit as seo_step
 from app.pipeline import serp_visibility as serp_step
 from app.providers import registry
 from app.serp import registry as serp_registry
@@ -77,6 +78,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     session.execute(delete(Response).where(Response.analysis_id == analysis.id))
     session.execute(delete(Prompt).where(Prompt.analysis_id == analysis.id))
     session.execute(delete(SerpCheck).where(SerpCheck.analysis_id == analysis.id))
+    session.execute(delete(SeoCheck).where(SeoCheck.analysis_id == analysis.id))
     # The SERP summary is cleared with the evidence it summarises, not alongside
     # the code that writes it. Otherwise a re-run with SERP switched off since
     # the last attempt drops the ``serp_checks`` rows and keeps the old score —
@@ -87,6 +89,9 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     analysis.serp_query_count = None
     analysis.serp_status = None
     analysis.serp_source = None
+    analysis.seo_score = None
+    analysis.seo_grade = None
+    analysis.seo_status = None
     session.commit()
 
     is_checker = analysis.kind == "checker"
@@ -100,7 +105,17 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
         # so the locked StepProgress contract is untouched.
         text = f"Brand: {analysis.brand}. Category: {analysis.category}."
     else:
-        text = discovery.discover(analysis.url)
+        crawl = discovery.discover_detailed(analysis.url)
+        text = crawl.text
+        # The SEO audit rides in this step (ADR-31): it is a second reading of
+        # the crawl we just paid for, so it belongs where the crawl is and adds
+        # no pipeline step. A checker row has no site to audit. ``run_audit``
+        # never raises — an audit defect costs the run its grade and nothing
+        # else — and the one extra fetch is robots.txt.
+        seo = seo_step.run_audit(session, analysis, crawl)
+        analysis.seo_status = seo.status
+        analysis.seo_score = seo.score
+        analysis.seo_grade = seo.grade
     _complete_step(session, analysis, _DISCOVERY_DONE)
 
     # 2. kyc

@@ -4,12 +4,16 @@
 You submit a company website URL; a background job crawls the site, builds a
 structured company profile (KYC JSON), generates prompts, runs them across
 multiple AI models, checks whether the company is mentioned, and computes a
-primitive **GEO score** (mentions ÷ total responses). A second pass measures
-**SERP visibility** — whether the company shows up in ordinary search results —
-via a self-hosted open-source metasearch instance; it stays off by default for
-anyone deploying this repo (a compose profile you opt into), but this
-deployment runs it on. Long-term goal: an affordable, transparent Semrush
-alternative for AI-answer rank tracking.
+primitive **GEO score** (mentions ÷ total responses). Two more surfaces round
+out the picture. **SERP visibility** measures whether the company shows up in
+ordinary search results, via a self-hosted open-source metasearch instance; it
+stays off by default for anyone deploying this repo (a compose profile you opt
+into), but this deployment runs it on. And an **SEO / AI-readiness audit** grades
+(A–F) *why* an answer engine can or can't read the site itself — are the AI
+crawlers allowed in, is the content in the HTML or only in JavaScript — reusing
+the crawl already performed for the cost of one extra `/robots.txt` fetch.
+Long-term goal: an affordable, transparent Semrush alternative for AI-answer rank
+tracking.
 
 This README is the front door. It gets a new engineer from `git clone` to a
 running local stack in about five minutes. Deeper docs live in [`docs/`](#documentation).
@@ -114,7 +118,7 @@ yanki/
 │       ├── services/   # orchestration glue between api ⇄ db ⇄ queue
 │       ├── db/         # SQLAlchemy models + query helpers
 │       ├── jobs/       # Postgres job queue (FOR UPDATE SKIP LOCKED)
-│       ├── pipeline/   # the GEO engine (discovery → kyc → prompts → execute → footprint → scoring)
+│       ├── pipeline/   # the GEO engine (discovery → kyc → prompts → execute → footprint → scoring); the SEO/AI-readiness audit — seo_audit.py + robots.py — rides inside discovery
 │       ├── providers/  # LLM adapters behind one Provider interface (+ mock)
 │       ├── serp/       # SERP sources behind one SerpSource interface (+ mock)
 │       └── worker.py   # polls the queue, runs the pipeline

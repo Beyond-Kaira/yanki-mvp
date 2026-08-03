@@ -4,7 +4,11 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-03 (migrate-before-serve, ADR-30 / GitHub issue #16:
+Last updated: 2026-08-03 (SEO audit, ADR-31: four new items — **#45** (the
+audit sees at most six pages but its findings read as site-wide), **#46**
+(the severity weights are editorial and uncalibrated), **#47** (one extra
+HTML parse per page), **#48** (no llms.txt check)). Earlier the same day —
+(migrate-before-serve, ADR-30 / GitHub issue #16:
 docs-only follow-through, no new numbered items. **#16 repaid in prod** — the
 migration now runs as a one-shot driver step that finishes before any app
 container starts, so the worker's first-boot `UndefinedTable` race is gone in
@@ -522,3 +526,36 @@ devDependencies).)
     score as a four-engine consensus. If Google CSE ever starts refusing too,
     expect pages to go unmeasurable rather than to silently report zeros; that is
     the design working, but it will look like an outage.
+45. **The audit sees at most six pages, but its findings read as site-wide**
+    (2026-08-03, ADR-31): `discovery` crawls the homepage plus `MAX_LINKS` (5)
+    scored links, so every check except `ai_crawler_access` and `sitemap` is
+    really a statement about those pages — and the page-level ones
+    (`indexable`, `thin_content`, `server_rendered_content`, `title_present`,
+    `h1_present`, `lang_declared`, `canonical`, `meta_description`) are
+    homepage-only. A site with a perfect homepage and 400 thin product pages
+    grades A. The check titles do not currently carry that caveat, which is the
+    honest gap: the numbers are right about what they measured and the wording
+    implies more. Cheapest fix is wording; the real fix is sampling more pages,
+    which costs crawl budget the pipeline deliberately caps.
+46. **The severity weights are editorial and will not survive contact with data**
+    (2026-08-03, ADR-31): critical/important/minor = 5/3/1 was chosen by
+    reasoning, and the grade cap exists precisely because we do not trust the
+    weighted average on its own. Three tiers are defensible and publishable,
+    which is why they were picked over per-check coefficients — but nothing has
+    yet been calibrated against real outcomes, because the outcome that would
+    calibrate them (does a better grade actually correlate with a better GEO
+    score?) needs a corpus of audited sites we do not have yet. `seo_checks` is
+    indexed on `(check_id, status)` specifically so that question becomes
+    answerable once there is data.
+47. **`discovery` now parses each page one extra time** (2026-08-03, ADR-31):
+    `_page_audit` runs its own `BeautifulSoup` pass alongside the existing
+    `_visible_blocks` / `_jsonld_text` / `_meta_text` passes. That is a fourth
+    parse of the same bytes per page, for up to six pages. Parsing once and
+    sharing the soup is a real win and was deliberately left out of this change,
+    because it would touch the honesty-critical text path that produces the GEO
+    score in the same diff that adds a new feature.
+48. **No `llms.txt` check** (2026-08-03, ADR-31): the emerging convention for
+    telling an LLM what a site is about. Left out because adoption is still thin
+    and a check nobody passes teaches a customer nothing — but if it becomes
+    real, it is one more cheap same-origin fetch and belongs next to
+    `robots.txt`.

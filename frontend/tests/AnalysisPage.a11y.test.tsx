@@ -45,6 +45,7 @@ function makeAnalysis(overrides: Partial<Analysis>): Analysis {
       engine_presence: null,
       competitors_appeared: null,
           serp: null,
+          seo: null,
     },
     ...overrides,
   } as Analysis
@@ -108,6 +109,7 @@ describe('AnalysisPage accessibility', () => {
           engine_presence: null,
           competitors_appeared: null,
           serp: null,
+          seo: null,
         },
       }),
     )

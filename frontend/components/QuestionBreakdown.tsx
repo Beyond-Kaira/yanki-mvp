@@ -89,7 +89,10 @@ export default function QuestionBreakdown({
               <li key={prompt.id}>
                 <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3">
                   <div className="min-w-0 space-y-1.5">
-                    <p className="truncate font-medium text-surface-foreground">
+                    {/* No truncate: the question is the reason the row exists,
+                        so it wraps to however many lines it needs instead of
+                        ending in an ellipsis a reader can't recover from. */}
+                    <p className="font-medium leading-snug text-surface-foreground">
                       {prompt.text}
                     </p>
                     <span className="inline-block rounded-full bg-primary-soft px-2 py-0.5 text-xs font-medium text-primary-strong">

@@ -1,0 +1,67 @@
+# SearXNG configuration for the Yanki SERP source — EXAMPLE / TEMPLATE.
+#
+#   Copy to deploy/searxng/settings.yml and put a real key in it:
+#     cp deploy/searxng/settings.example.yml deploy/searxng/settings.yml
+#     sed -i "s/ultrasecretkey/$(openssl rand -hex 32)/" deploy/searxng/settings.yml
+#
+#   *** NEVER COMMIT THE REAL FILE ***
+#   deploy/searxng/settings.yml is gitignored, exactly like deploy/.env. This
+#   repo is public and CI scans its full history with gitleaks.
+#
+# The container only creates a settings file (and only then generates a secret)
+# when one does not already exist. A mounted file is used verbatim — nothing is
+# substituted for you — which is why the key has to be put in by hand once.
+#
+# Four settings here are load-bearing. Each was verified against a running
+# instance, not inferred from the docs:
+
+use_default_settings:
+  engines:
+    # Only the four real WEB-SEARCH engines. The other six SearXNG enables by
+    # default in the `general` category (currency, dictzone, lingva, mymemory
+    # translated, wikidata, wikipedia) are translation, currency and
+    # encyclopedia widgets: they cannot produce an organic commercial result, so
+    # for a question about buying visibility they are pure latency and noise.
+    #
+    # Measured from the production VPS on 2026-08-03, 8 buyer-style queries:
+    # `google cse` answered 8/8, `duckduckgo` 5/8, and `brave` / `startpage`
+    # refused 8/8 (this egress IP is blocked by both). The two blocked ones are
+    # kept anyway — they cost almost nothing once SearXNG suspends them, and if
+    # the IP situation ever changes we get the extra coverage for free. Their
+    # names showing up in `unresponsive_engines` is accurate, not noise.
+    keep_only:
+      - google cse
+      - duckduckgo
+      - brave
+      - startpage
+
+server:
+  # Replaced with a real value by the sed above. `ultrasecretkey` is SearXNG's
+  # own placeholder and is deliberately low-entropy so it cannot look like a
+  # credential to a secret scanner.
+  secret_key: "ultrasecretkey"
+  # Safe ONLY because this service publishes no ports: it is reachable only from
+  # the compose network, by Yanki's api and worker. The limiter answers 403 to a
+  # bot-shaped client, and Yanki identifies as YankiBot/0.1 — with the limiter on
+  # every single query would come back "unavailable". Do NOT enable this and
+  # then publish a port; pick one.
+  limiter: false
+  public_instance: false
+
+search:
+  # REQUIRED. JSON is OFF by default in SearXNG; without it the instance serves
+  # the HTML results page and Yanki reports "the search instance did not return
+  # JSON" on every query.
+  formats:
+    - html
+    - json
+  safe_search: 0
+
+outgoing:
+  # A whole analysis runs a handful of queries in series, so a slow upstream
+  # engine is latency the user waits on. Yanki's own client gives up at
+  # SERP_TIMEOUT_SECONDS (10s) regardless.
+  request_timeout: 6.0
+  max_request_timeout: 12.0
+  pool_connections: 10
+  pool_maxsize: 10

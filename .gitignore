@@ -24,6 +24,10 @@ playwright/.cache/
 deploy/.env
 !.env.example
 !deploy/.env.example
+# The SearXNG instance config carries a real secret_key, so it lives on the host
+# beside deploy/.env and only the template is tracked.
+deploy/searxng/settings.yml
+!deploy/searxng/settings.example.yml
 
 # --- Local deploy state -----------------------------------------------------
 deploy/.last-good

@@ -1,0 +1,206 @@
+name: Notifications
+
+# Posts an English Slack message when a pull request is opened, reviewed,
+# closed, or merged, and when any workflow run fails.
+#
+# ACTIVATION: every trigger below (pull_request_target, pull_request_review,
+# workflow_run) runs the copy of this file that lives on the DEFAULT BRANCH, not
+# the copy on a PR branch. Nothing fires while this is still an open PR — the
+# first notification lands on the next PR opened after this merges to main.
+
+on:
+  # pull_request_target, not pull_request: a PR from a fork runs `pull_request`
+  # with secrets stripped, so the webhook would be empty and every fork PR would
+  # silently notify nothing. pull_request_target runs in the base-repo context
+  # where the secret exists. That is safe HERE only because this workflow never
+  # checks out or executes PR code — it reads event metadata and posts it, and
+  # every attacker-controlled field (title, branch, login) reaches the shell as
+  # an env var and reaches Slack via jq --rawfile, never as command text.
+  # Do not add actions/checkout to this file, and do not run anything from the
+  # PR head in it.
+  pull_request_target:
+    types: [opened, closed]
+  pull_request_review:
+    types: [submitted]
+  workflow_run:
+    # `workflows:` is REQUIRED. Omitting it does not mean "every workflow" — it
+    # makes the whole file schema-invalid, and GitHub then refuses to run ANY
+    # trigger in it, not just this one. The symptom is silent: a 0s failed run
+    # attributed to `push` (an event this file does not even declare), no jobs
+    # in it, nothing on the PR's check list, and the workflow listed under its
+    # path instead of its name in `gh workflow list`.
+    #
+    # It matches literal workflow `name:` values — no globs, no patterns — so
+    # every workflow that should page Slack on failure has to be named here.
+    # Add new ones as they land; `gh workflow list` prints the current names.
+    #
+    # Deploy is in this list because a failed production deploy is the single
+    # most important thing to hear about: it means the VPS either rolled back to
+    # deploy/.last-good or needs hands-on recovery.
+    # SERP is here because its scheduled `upstream drift` job is the only thing
+    # watching for a SearXNG release that breaks our adapter, and a nightly job
+    # nobody is told about is a nightly job nobody reads.
+    workflows: [CI, Deploy, SERP]
+    types: [completed]
+
+permissions: {}
+
+env:
+  # Single swap point for the webhook. Set it once with:
+  #   gh secret set SLACK_WEBHOOK_URL --repo Beyond-Kaira/yanki-mvp
+  # It is a secret rather than a literal because this repo is public AND the
+  # `secrets` job in ci.yml runs gitleaks over the full history with
+  # --exit-code 1: a literal hooks.slack.com URL is a gitleaks finding, so
+  # inlining one turns main red and hands the webhook to anyone who reads it.
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+jobs:
+  notify:
+    name: post to Slack
+    # Every event except workflow_run is always worth a message. workflow_run
+    # fires on every completed run, so filter it down to failures here. The
+    # name check is belt-and-braces: `workflows:` above already excludes this
+    # workflow, but if someone ever adds "Notifications" to that list, a failed
+    # notification would notify about the failed notification, forever.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.name != 'Notifications')
+    runs-on: ubuntu-latest
+    permissions:
+      # Only to resolve which pull request a failed workflow run belongs to.
+      pull-requests: read
+    steps:
+      # Each build step below writes the same five raw files, and the final step
+      # renders them. Untrusted, PR-controlled values (title, branch, login) are
+      # bound to env vars, written with printf '%s', and read back by
+      # `jq --rawfile` — so no PR can inject shell, break out of the JSON, or
+      # smuggle a second line into $GITHUB_ENV. Never interpolate ${{ ... }} for
+      # those fields directly into a `run:` body.
+      - name: Check the webhook is configured
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::error::SLACK_WEBHOOK_URL is unset. Add it with:" \
+                 "gh secret set SLACK_WEBHOOK_URL --repo ${GITHUB_REPOSITORY}"
+            exit 1
+          fi
+
+      - name: Build message — pull request opened / closed / merged
+        if: github.event_name == 'pull_request_target'
+        env:
+          ACTION: ${{ github.event.action }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$ACTION" = "opened" ]; then
+            headline=":sparkles: *Pull request opened*"
+            detail="Opened by ${AUTHOR} into \`${BASE_REF}\`"
+          elif [ "$MERGED" = "true" ]; then
+            headline=":white_check_mark: *Pull request merged*"
+            detail="Merged into \`${BASE_REF}\` — opened by ${AUTHOR}"
+          else
+            headline=":no_entry_sign: *Pull request closed without merging*"
+            detail="Closed without merging — opened by ${AUTHOR}"
+          fi
+          printf '%s' "$headline" > "$RUNNER_TEMP/headline"
+          printf '%s' "$detail"   > "$RUNNER_TEMP/detail"
+          printf '%s' "$NUMBER"   > "$RUNNER_TEMP/pr_number"
+          printf '%s' "$TITLE"    > "$RUNNER_TEMP/pr_title"
+          printf '%s' "$PR_URL"   > "$RUNNER_TEMP/pr_url"
+
+      - name: Build message — pull request reviewed
+        if: github.event_name == 'pull_request_review'
+        env:
+          STATE: ${{ github.event.review.state }}
+          REVIEWER: ${{ github.event.review.user.login }}
+          REVIEW_URL: ${{ github.event.review.html_url }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          # GitHub sends this state lowercased, but normalise anyway so a future
+          # casing change cannot silently fall through to the generic default.
+          case "$(printf '%s' "$STATE" | tr '[:upper:]' '[:lower:]')" in
+            approved)          headline=":white_check_mark: *Pull request approved*" ;;
+            changes_requested) headline=":warning: *Changes requested on a pull request*" ;;
+            commented)         headline=":speech_balloon: *New review comment on a pull request*" ;;
+            *)                 headline=":mag: *Pull request reviewed*" ;;
+          esac
+          printf '%s' "$headline" > "$RUNNER_TEMP/headline"
+          printf '%s' "Reviewed by ${REVIEWER} — <${REVIEW_URL}|read the review>" \
+                                  > "$RUNNER_TEMP/detail"
+          printf '%s' "$NUMBER"   > "$RUNNER_TEMP/pr_number"
+          printf '%s' "$TITLE"    > "$RUNNER_TEMP/pr_title"
+          printf '%s' "$PR_URL"   > "$RUNNER_TEMP/pr_url"
+
+      - name: Build message — workflow run failed
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # The payload carries pull_requests[] only for same-repo PRs, and its
+          # entries have no html_url — just a number. Fall back to the
+          # commit->PRs endpoint, which also resolves fork PRs, then build the
+          # web URL by hand. Both lookups can legitimately come up empty (a push
+          # straight to main has no PR), which is why the PR line is optional
+          # for this event and the run link is what always carries the message.
+          pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$GITHUB_EVENT_PATH")"
+          if [ -z "$pr_number" ]; then
+            pr_number="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" \
+              --jq '.[0].number // empty' 2>/dev/null || true)"
+          fi
+
+          pr_url=""
+          pr_title=""
+          if [ -n "$pr_number" ]; then
+            pr_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${pr_number}"
+            pr_title="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" \
+              --jq '.title // empty' 2>/dev/null || true)"
+          fi
+
+          printf '%s' ":rotating_light: *Workflow failed*" > "$RUNNER_TEMP/headline"
+          printf '%s' "Workflow \`${RUN_NAME}\` failed on \`${HEAD_BRANCH}\` — <${RUN_URL}|view the failed run>" \
+                                    > "$RUNNER_TEMP/detail"
+          printf '%s' "$pr_number"  > "$RUNNER_TEMP/pr_number"
+          printf '%s' "$pr_title"   > "$RUNNER_TEMP/pr_title"
+          printf '%s' "$pr_url"     > "$RUNNER_TEMP/pr_url"
+
+      - name: Post to Slack
+        run: |
+          set -euo pipefail
+          jq -n \
+            --rawfile headline  "$RUNNER_TEMP/headline" \
+            --rawfile detail    "$RUNNER_TEMP/detail" \
+            --rawfile pr_number "$RUNNER_TEMP/pr_number" \
+            --rawfile pr_title  "$RUNNER_TEMP/pr_title" \
+            --rawfile pr_url    "$RUNNER_TEMP/pr_url" \
+            --arg     repo      "$GITHUB_REPOSITORY" \
+            '
+            # < > | are Slack mrkdwn link syntax, so strip them from the title
+            # rather than let a crafted PR title mangle the rendered link.
+            ($pr_title | gsub("[<>|]"; "") | sub("^\\s+"; "") | sub("\\s+$"; "")) as $title
+            | (if $pr_url == "" then "No associated pull request."
+               else "Pull request: <\($pr_url)|#\($pr_number) \($title)>" end) as $pr_line
+            | { text: "\($headline)\n\($detail)\n\($pr_line)\nRepository: \($repo)" }
+            ' > "$RUNNER_TEMP/payload.json"
+
+          # --fail-with-body so a rejected webhook fails the job loudly and the
+          # reason ("no_service", "invalid_payload", ...) lands in the log.
+          curl --fail-with-body -sS -X POST \
+            -H 'Content-type: application/json' \
+            --retry 3 --retry-connrefused --max-time 30 \
+            --data @"$RUNNER_TEMP/payload.json" \
+            "$SLACK_WEBHOOK_URL"

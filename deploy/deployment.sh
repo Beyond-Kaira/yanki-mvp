@@ -3,20 +3,20 @@
 # deployment.sh — Yanki prod deploy for the HOST-nginx edge (nginx-aware variant
 # of deploy/deploy.sh).
 #
-# WHY A SECOND SCRIPT (additive, not a replacement)
-# -------------------------------------------------
-# deploy/deploy.sh is the CADDY-era deploy: it builds, `compose up`s, and
-# health-checks the api's PRIVATE loopback port (127.0.0.1:8143/healthz) — it
-# proves the CONTAINER is up, but not that the edge routes to it, because the
-# edge (shared containerised Caddy) was owned by another repo.
+# WHY A SECOND SCRIPT (this is the deploy path; deploy.sh is the engine's origin)
+# -------------------------------------------------------------------------------
+# deploy/deploy.sh builds, `compose up`s, and health-checks the api's PRIVATE
+# loopback port (127.0.0.1:8143/healthz) — it proves the CONTAINER is up, but
+# not that the edge routes to it.
 #
 # This script keeps deploy.sh's exact docker-compose engine and its .last-good
 # rollback discipline, but moves the health gate to the PUBLIC url
 # (https://yanki.beyondkaira.com/healthz). That single change is what makes it
 # "nginx-aware": a green run proves the whole host-nginx path-split
-# (/api/* + /healthz -> api, else -> web) actually serves, end to end. Use this
-# once the Caddy -> nginx :443 cutover in deploy/MIGRATION.md is done; before
-# that, deploy.sh remains the deploy path (or override HEALTH_URL, see below).
+# (/api/* + /healthz -> api, else -> web) actually serves, end to end. The
+# host-nginx edge (deploy/nginx/yanki.beyondkaira.com.conf) is live, so THIS
+# is the standard deploy; deploy.sh remains for container-only health checks
+# (or override HEALTH_URL, see below).
 #
 # deploy.sh is left UNTOUCHED. This file adds nothing to the live edge on its
 # own; it is a deploy driver you run by hand.
@@ -33,10 +33,13 @@
 #   1. preflight   tools, .env, secrets sanity, clean tree
 #   2. build       compose build (images tagged by git SHA)
 #   3. last-good   read the SHA the box currently serves, BEFORE changing it
-#   4. apply       compose up -d (api migrates on boot: alembic upgrade head)
-#   5. health      bounded curl loop vs the PUBLIC url, asserting a real body
+#   4. migrate     alembic upgrade head in a one-shot container, BEFORE any
+#                  running container is replaced (issue #16). Fail -> exit,
+#                  previous release untouched.
+#   5. apply       compose up -d (containers serve; they no longer migrate)
+#   6. health      bounded curl loop vs the PUBLIC url, asserting a real body
 #                  marker ("status"/"ok"), hard-fail timeout. Fail -> rollback.
-#   6. record      write .last-good = new SHA (only after it is proven healthy)
+#   7. record      write .last-good = new SHA (only after it is proven healthy)
 #
 # CONFIG (env or deploy/.env; values never printed):
 #   HEALTH_URL     public health url. Default https://yanki.beyondkaira.com/healthz
@@ -130,7 +133,7 @@ health_probe() {
 # ---------------------------------------------------------------------------
 # 1. preflight
 # ---------------------------------------------------------------------------
-say "1/6 preflight"
+say "1/7 preflight"
 
 for tool in git curl docker; do
   command -v "$tool" >/dev/null 2>&1 || { oops "$tool is not on PATH"; exit 1; }
@@ -180,7 +183,7 @@ info "health url   : $HEALTH_URL"
 if [ "$CHECK_ONLY" -eq 1 ]; then
   say "--check"
   info "would build images yanki-api:$GIT_SHA / yanki-web:$GIT_SHA"
-  info "would compose up -d (api runs: alembic upgrade head && uvicorn ...)"
+  info "would migrate (one-shot alembic upgrade head), then compose up -d"
   info "would health-probe $HEALTH_URL, rolling back to ${PREVIOUS:-none} on failure"
   # Validate the compose file parses without starting anything.
   if ! dc config -q; then
@@ -190,6 +193,31 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
   info "compose config: valid"
   printf '\ndeployment --check: preflight passed, compose valid. NOTHING was changed.\n'
   exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# 1b. Take the machine-wide deploy lock (real runs only; --check exited above).
+#
+# There are now TWO drivers of the `yanki-prod` compose project: a human running
+# this script, and CI's forced command (~/.local/bin/yanki-ci-deploy) after a
+# merge to main. Both build sha-tagged images and `compose up -d` the same
+# project, so running them at once interleaves two releases — the surviving
+# containers and the recorded .last-good can end up describing different code.
+#
+# One lock file, in $HOME so both paths resolve it identically. The CI wrapper
+# takes it BEFORE it checks out a sha (that part has to be inside the lock too)
+# and passes YANKI_DEPLOY_LOCK_HELD=1 so we do not deadlock against it here.
+# ---------------------------------------------------------------------------
+if [ "${YANKI_DEPLOY_LOCK_HELD:-0}" != "1" ]; then
+  LOCK_FILE="${YANKI_DEPLOY_LOCK:-$HOME/.local/state/yanki-prod-deploy.lock}"
+  mkdir -p "$(dirname "$LOCK_FILE")"
+  exec 9>"$LOCK_FILE"
+  if ! flock -w 900 9; then
+    oops "another deploy is already running (CI or another shell) — timed out after 900s."
+    oops "  Wait for it to finish, or check ~/.local/state/yanki-ci-deploy.log."
+    exit 1
+  fi
+  info "deploy lock: acquired ($LOCK_FILE)"
 fi
 
 # The rollback closure — defined before the first step that can need it, invoked
@@ -217,7 +245,7 @@ rollback() {
 # ---------------------------------------------------------------------------
 # 2. build
 # ---------------------------------------------------------------------------
-say "2/6 build"
+say "2/7 build"
 if ! dc build; then
   oops "the build failed. Nothing has been deployed."
   exit 1
@@ -227,13 +255,37 @@ info "built yanki-api:$GIT_SHA / yanki-web:$GIT_SHA"
 # ---------------------------------------------------------------------------
 # 3. last-good (rollback point already captured in \$PREVIOUS above)
 # ---------------------------------------------------------------------------
-say "3/6 rollback point"
+say "3/7 rollback point"
 info "rollback target is ${PREVIOUS:-none (first deploy)}"
 
 # ---------------------------------------------------------------------------
-# 4. apply — compose up (api container migrates on boot, then serves)
+# 4. migrate — BEFORE any container is replaced (issue #16)
 # ---------------------------------------------------------------------------
-say "4/6 apply"
+# The api used to migrate on boot. That fused a schema change to a container
+# swap, with two consequences: a bad migration took the site down before anyone
+# could see it, and a GOOD migration made rollback impossible (the previous
+# image's alembic exits 255 on a revision it has never heard of).
+#
+# Running it here, against the still-serving old stack, inverts both. A failed
+# migration now costs nothing: the previous release is still up, and we exit
+# without touching it. A successful one leaves a schema the old code can still
+# serve, because it only ever adds.
+say "4/7 migrate"
+if ! dc up -d --wait db; then
+  oops "the database did not come up. Nothing has been deployed."
+  exit 1
+fi
+if ! dc run --rm --no-deps api alembic upgrade head; then
+  oops "the migration failed. NOTHING has been deployed — the previous release"
+  oops "  ($PREVIOUS) is still serving and the schema is unchanged."
+  exit 1
+fi
+info "schema migrated to head"
+
+# ---------------------------------------------------------------------------
+# 5. apply — compose up (containers serve; they no longer migrate)
+# ---------------------------------------------------------------------------
+say "5/7 apply"
 if ! dc up -d; then
   oops "compose up failed."
   if rollback; then oops "rolled back to $PREVIOUS."; fi
@@ -244,7 +296,7 @@ info "stack up — new containers running $GIT_SHA"
 # ---------------------------------------------------------------------------
 # 5. health — against the PUBLIC url (proves the nginx path-split serves)
 # ---------------------------------------------------------------------------
-say "5/6 health"
+say "6/7 health"
 if ! health_probe "$HEALTH_URL"; then
   oops "the deployed release is not healthy at the edge."
   if rollback; then oops "rolled back to $PREVIOUS."; fi
@@ -254,7 +306,7 @@ fi
 # ---------------------------------------------------------------------------
 # 6. record — only now is this SHA the known-good one
 # ---------------------------------------------------------------------------
-say "6/6 record"
+say "7/7 record"
 printf '%s\n' "$GIT_SHA" > "$HERE/.last-good"
 info "recorded .last-good = $GIT_SHA"
 

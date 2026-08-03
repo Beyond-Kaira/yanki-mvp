@@ -8,14 +8,31 @@ state (and failures keep their partial results queryable — FR-7).
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, field_validator
+from pydantic import AfterValidator, AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+
+from app.services.auth import normalize_email
 
 # Minimal email shape check. email-validator (pydantic[email]) is not installed
 # and the card says not to add a heavy dep just for this — a conservative regex
 # (one @, non-empty local/domain, a dotted TLD) is enough for the lead gate.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_and_validate_email(value: str) -> str:
+    normalized = normalize_email(value)
+
+    if not _EMAIL_RE.fullmatch(normalized):
+        raise ValueError("invalid email")
+
+    return normalized
+
+
+NormalizedEmail = Annotated[
+    str,
+    AfterValidator(_normalize_and_validate_email),
+]
 
 
 class CreateAnalysisRequest(BaseModel):
@@ -81,6 +98,45 @@ class WaitlistResponse(BaseModel):
     ok: bool
 
 
+class SignupRequest(BaseModel):
+    """Credentials required to create a user account."""
+
+    email: NormalizedEmail
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    """Credentials required to authenticate a user."""
+
+    email: NormalizedEmail
+    password: str = Field(min_length=1, max_length=128)
+
+
+class UserOut(BaseModel):
+    """Public user fields returned by authentication endpoints."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    created_at: datetime
+
+
+class LoginResponse(BaseModel):
+    """Authenticated user and bearer token returned after login."""
+
+    user: UserOut
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
+class RefreshResponse(BaseModel):
+    """New bearer token returned after refresh-token rotation."""
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
 class PromptOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -125,6 +181,81 @@ class CompetitorMention(BaseModel):
     mentions: int
 
 
+class SerpCheckOut(BaseModel):
+    """One search query run for an analysis, and what the results page showed.
+
+    ``hit`` is nullable and the distinction matters to anyone reading this: NULL
+    is a page we could not read (the search instance was unreachable, or every
+    upstream engine refused it) and is excluded from the score; ``false`` is a
+    real, counted miss.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    query: str
+    source: str
+    hit: bool | None
+    rank: int | None
+    matched_url: str | None
+    matched_snippet: str | None
+    matched_via: str | None
+    result_count: int
+    unresponsive_engines: str | None
+
+
+class SerpVisibilityOut(BaseModel):
+    """SERP visibility for one analysis (ADR-28).
+
+    Present only on runs where the feature was switched on; ``ResultOut.serp``
+    stays null otherwise, so "we did not look" is never rendered as a zero.
+    ``score`` is separately nullable *within* a present summary: that is the run
+    where we did look and could not read the results.
+    """
+
+    status: str
+    source: str | None
+    score: float | None
+    hits: int
+    queries: int
+    checks: list[SerpCheckOut]
+
+
+class SeoCheckOut(BaseModel):
+    """One SEO / AI-readiness check and the evidence behind its verdict.
+
+    ``status`` is one of ``pass`` / ``warn`` / ``fail`` / ``not_measured`` /
+    ``not_applicable``. The last two are excluded from the score and mean
+    different things — "we could not read the input" versus "this does not apply
+    here" — so the UI must not collapse them into each other or into a failure.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    check_id: str
+    title: str
+    severity: str
+    status: str
+    detail: str | None
+    evidence: str | None
+
+
+class SeoAuditOut(BaseModel):
+    """The SEO audit for one analysis (ADR-31).
+
+    ``grade`` is the headline rather than ``score``, because a weighted average
+    can hide a fatal problem: the grade is capped by critical failures, so a site
+    that blocks AI crawlers cannot present as healthy. Null on runs that did not
+    audit — a checker submission has no site to look at.
+    """
+
+    status: str
+    score: float | None
+    grade: str | None
+    checks: list[SeoCheckOut]
+
+
 class ResultOut(BaseModel):
     kyc: dict[str, Any] | None
     prompts: list[PromptOut]
@@ -135,6 +266,10 @@ class ResultOut(BaseModel):
     # Checker-only read-time aggregates (P5.3); null for MVP / legacy rows.
     engine_presence: list[EnginePresence] | None
     competitors_appeared: list[CompetitorMention] | None
+    # SERP visibility (ADR-28); null on every run that did not measure it.
+    serp: SerpVisibilityOut | None
+    # SEO / AI-readiness audit (ADR-31); null on every run that did not audit.
+    seo: SeoAuditOut | None
 
 
 class AnalysisOut(BaseModel):

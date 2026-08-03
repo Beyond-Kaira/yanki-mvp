@@ -33,6 +33,12 @@ export interface KYC {
   keywords: string[]
   locations: string[]
   competitors: string[]
+  // Added with the pipeline quality pass (docs/pipeline-quality-plan.md, K1):
+  // the buying category and the use cases prompt generation is built from.
+  // Optional because analyses run before that change have no such key in their
+  // stored JSON — KycCard already coerces every field defensively.
+  category?: string
+  use_cases?: string[]
 }
 
 export type Prompt = Schemas['PromptOut']
@@ -54,6 +60,25 @@ export type WaitlistSignupResponse = Schemas['WaitlistResponse']
 export type EnginePresence = Schemas['EnginePresence']
 
 export type CompetitorMention = Schemas['CompetitorMention']
+
+// SERP visibility (ADR-28) — whether the brand also shows up in ordinary search
+// results, read from an open-source metasearch instance. `AnalysisResult.serp`
+// is null on every run that did not measure it, and `serp.score` is separately
+// null on a run that measured and could not read the results: "we did not look"
+// and "we looked and could not see" are both distinct from a zero.
+export type SerpVisibility = Schemas['SerpVisibilityOut']
+
+export type SerpCheck = Schemas['SerpCheckOut']
+
+// SEO / AI-readiness audit (ADR-31) — why an answer engine can or cannot read
+// the site, computed from the crawl discovery already performed. `AnalysisResult.seo`
+// is null on every run that did not audit (e.g. checker submissions — no site to
+// look at). Within a present audit, `seo.grade`/`seo.score` are separately null on
+// a run that produced no scorable checks. The grade is the headline, capped by
+// critical failures so a fatal problem can't be averaged away.
+export type SeoAudit = Schemas['SeoAuditOut']
+
+export type SeoCheck = Schemas['SeoCheckOut']
 
 export type AnalysisResult = Omit<Schemas['ResultOut'], 'kyc'> & {
   kyc: KYC | null

@@ -4,8 +4,16 @@
 You submit a company website URL; a background job crawls the site, builds a
 structured company profile (KYC JSON), generates prompts, runs them across
 multiple AI models, checks whether the company is mentioned, and computes a
-primitive **GEO score** (mentions ÷ total responses). Long-term goal: an
-affordable, transparent Semrush alternative for AI-answer rank tracking.
+primitive **GEO score** (mentions ÷ total responses). Two more surfaces round
+out the picture. **SERP visibility** measures whether the company shows up in
+ordinary search results, via a self-hosted open-source metasearch instance; it
+stays off by default for anyone deploying this repo (a compose profile you opt
+into), but this deployment runs it on. And an **SEO / AI-readiness audit** grades
+(A–F) *why* an answer engine can or can't read the site itself — are the AI
+crawlers allowed in, is the content in the HTML or only in JavaScript — reusing
+the crawl already performed for the cost of one extra `/robots.txt` fetch.
+Long-term goal: an affordable, transparent Semrush alternative for AI-answer rank
+tracking.
 
 This README is the front door. It gets a new engineer from `git clone` to a
 running local stack in about five minutes. Deeper docs live in [`docs/`](#documentation).
@@ -76,20 +84,25 @@ time to list everything.
 
 | Service        | Host port           | Notes                                                |
 | -------------- | ------------------- | ---------------------------------------------------- |
-| Frontend (web) | **8140**            | Next.js. Public via Caddy in prod.                   |
+| Frontend (web) | **8140**            | Next.js. Public via host nginx in prod.              |
 | Backend (api)  | **8141**            | FastAPI. `/api/*` and `/healthz` routed here.        |
 | Postgres (db)  | 5432 (**dev only**) | Never published in production; internal network only.|
+| SearXNG (serp) | 8144 (**dev only**) | `serp` profile only; prod publishes no port.         |
 
 Host ports for `make dev` are parameterized — set `YANKI_WEB_PORT`, `YANKI_API_PORT`,
 or `YANKI_DB_PORT` in `deploy/.env` to dodge conflicts with something already
 running (defaults 8140 / 8141 / 5432; container-internal ports are unaffected).
 
-In production the shared **pulse-prod Caddy** terminates TLS on
-`yanki.beyondkaira.com` and path-routes `/api/*` + `/healthz` → api and
-everything else → web, reaching both **over the shared docker network**
-(aliases `yanki-api:8141` / `yanki-web:8140` — a containerized Caddy can't hit
-host-loopback binds). The prod stack's own `127.0.0.1` binds are health-check/
-debug only and parameterized (`YANKI_PROD_WEB_PORT`=8142,
+The optional dev `searxng` (the `serp` compose profile — `make dev` does not
+start it) publishes a loopback debug port too, `YANKI_SEARXNG_PORT` (default
+8144). In production nothing is published for it: only `api` and `worker` reach
+it over the compose network at `http://searxng:8080`.
+
+In production the **host nginx** vhost
+(`deploy/nginx/yanki.beyondkaira.com.conf`) terminates TLS on
+`yanki.beyondkaira.com` (certbot HTTP-01 webroot) and path-routes `/api/*` +
+`/healthz` → api and everything else → web, over the prod stack's loopback
+binds. Those binds are parameterized (`YANKI_PROD_WEB_PORT`=8142,
 `YANKI_PROD_API_PORT`=8143 — 8140 is taken by another tenant on the VPS).
 Same origin, so there is no CORS.
 
@@ -105,12 +118,14 @@ yanki/
 │       ├── services/   # orchestration glue between api ⇄ db ⇄ queue
 │       ├── db/         # SQLAlchemy models + query helpers
 │       ├── jobs/       # Postgres job queue (FOR UPDATE SKIP LOCKED)
-│       ├── pipeline/   # the GEO engine (discovery → kyc → prompts → execute → footprint → scoring)
+│       ├── pipeline/   # the GEO engine (discovery → kyc → prompts → execute → footprint → scoring); the SEO/AI-readiness audit — seo_audit.py + robots.py — rides inside discovery
 │       ├── providers/  # LLM adapters behind one Provider interface (+ mock)
+│       ├── serp/       # SERP sources behind one SerpSource interface (+ mock)
 │       └── worker.py   # polls the queue, runs the pipeline
 ├── frontend/     # Next.js 15 + TypeScript — 3 screens (submit, progress, results)
 ├── shared/       # cross-language contract (contracts/openapi.json)
 ├── deploy/       # Docker Compose + deploy/rollback scripts (ams-pulse pattern)
+│   └── searxng/  # SearXNG SERP-instance config (tracked template + gitignored settings.yml)
 ├── scripts/      # repo-level dev utilities (gen_openapi.py, check_env.py)
 ├── .github/      # CI/CD workflows + PR template
 └── docs/         # design, architecture, MVP scope, roadmap, brandkit, tests
@@ -130,16 +145,25 @@ friendly names over the generated schemas and narrows the loosely-typed fields.
 
 ## Deploy
 
-Deployment reuses the proven ams-pulse pattern. One command from your laptop
-builds, deploys, migrates, health-checks, and auto-rolls-back on failure —
-**first exercised for real 2026-07-10; the site is live at
-<https://yanki.beyondkaira.com>** (in DRY_RUN mock mode until the operator
-flips it):
+**Merging to `main` deploys itself.** Once CI is green on `main`, the `Deploy`
+workflow SSHes to the VPS and ships that exact commit — build, migrate, public
+health check, auto-rollback on failure. Nobody has to touch the server. The site
+is live at <https://yanki.beyondkaira.com>. See
+[`deploy/AUTODEPLOY.md`](deploy/AUTODEPLOY.md) for the chain, the forced-command
+key that makes it safe on a shared VPS, and what is still manual (edge config
+and secrets).
+
+Deployment itself reuses the proven ams-pulse pattern — **first exercised for
+real 2026-07-10** — and the same driver is still there to run by hand when you
+need it (a rehearsal, a rollback, or a host with CI down):
 
 ```bash
 make deploy      # build + deploy + migrate + health check (auto-rollback on failure)
 make rollback    # redeploy the last-good SHA if something slips through
 ```
+
+Run those from `~/repo/yanki-mvp`; auto-deploy drives a **separate** checkout at
+`~/deploy/yanki-mvp` so it can never disturb your working tree.
 
 **One-time prerequisites** (all **done** as of 2026-07-10 — see [`docs/architecture.md`](docs/architecture.md)):
 
@@ -150,18 +174,26 @@ make rollback    # redeploy the last-good SHA if something slips through
    (verified 2026-07-10). Yanki serves from the **same VPS** as the other
    beyondkaira sites (pulse-prod, Ant Media, brier) — deploys must never
    disturb them.
-3. ~~Add the site block~~ **done:** the block from
-   `deploy/caddy/yanki.beyondkaira.com.caddy` now lives in the shared Caddy's
-   config (`~/repo/ams-pulse/deploy/config/Caddyfile.prod` — it has **no
-   import dir**), validated in-container and **reloaded** (never restart)
-   in `pulse-prod-caddy-1`. Don't append it twice — a duplicate site key
-   fails validation.
+3. ~~Install the edge~~ **done:** the nginx vhost
+   `deploy/nginx/yanki.beyondkaira.com.conf` is installed under
+   `/etc/nginx/sites-available/` (enabled via symlink), validated with
+   `nginx -t` and **reloaded** (never restart). TLS renews via certbot
+   HTTP-01 webroot. (Originally published through the shared pulse-prod
+   Caddy; migrated to host nginx per `deploy/MIGRATION.md`.)
 
-Compose project name is `yanki-prod`. Yanki runs **no** Caddy of its own: web +
-api join the shared Caddy's network (`pulse-prod_default`) as `yanki-web` /
-`yanki-api`, and the only host binds are loopback health-check ports
-(8142/8143 by default). The pulse-prod stack must be up first (its network is
-`external` to Yanki's compose).
+Compose project name is `yanki-prod`. Yanki runs no edge of its own: host
+nginx proxies to the stack's loopback binds — 127.0.0.1:8142 (web) /
+127.0.0.1:8143 (api) by default — which are the only published host ports.
+
+This deployment also runs the optional **SERP** pass (ADR-29). `deploy/.env`
+carries three more lines — `COMPOSE_PROFILES=serp`, `SERP_ENABLED=1`, and
+`SERP_BASE_URL=http://searxng:8080` — which stand up a fifth container,
+`searxng`, behind the `serp` compose profile (so `deployment.sh` needs no
+change). It needs a host-side `deploy/searxng/settings.yml` — gitignored (it
+holds a real `secret_key`) and symlinked into the auto-deploy checkout exactly
+like `deploy/.env`, created from the tracked `settings.example.yml`. Prod
+publishes no port for it; only `api` and `worker` reach it over the compose
+network.
 
 ---
 
@@ -175,6 +207,9 @@ api join the shared Caddy's network (`pulse-prod_default`) as `yanki-web` /
 | [docs/roadmap.md](docs/roadmap.md)                      | Leadership / engineers| Phased path from MVP to the Semrush alternative.        |
 | [docs/frontend-brandkit.md](docs/frontend-brandkit.md)  | Frontend              | Colors, type, spacing, components, voice/tone (EN + TR).|
 | [docs/test-suite.md](docs/test-suite.md)                | Every engineer        | Test pyramid, TDD workflow, fixtures, coverage targets. |
+| [docs/discovery-kyc-improvements.md](docs/discovery-kyc-improvements.md) | Pipeline engineers | Six steps for discovery + KYC; five shipped, 2b/6 await operator sign-off. |
+| [docs/pipeline-quality-plan.md](docs/pipeline-quality-plan.md) | Pipeline engineers | MVP → product for discovery, KYC and prompts: crawl fidelity, grounded profiles, question realism. |
+| [deploy/AUTODEPLOY.md](deploy/AUTODEPLOY.md)            | On-call / operators   | Merge-to-live chain, the forced-command deploy key, pruning, rotation. |
 
 See also [CONTRIBUTING.md](CONTRIBUTING.md) for the branch/PR/commit flow and
 [SECURITY.md](SECURITY.md) for the secret policy and how to report issues.

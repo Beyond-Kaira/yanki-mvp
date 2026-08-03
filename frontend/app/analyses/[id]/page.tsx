@@ -16,6 +16,8 @@ import ScoreSummary from '@/components/ScoreSummary'
 import EnginePresenceMap from '@/components/EnginePresenceMap'
 import QuestionBreakdown from '@/components/QuestionBreakdown'
 import KycCard from '@/components/KycCard'
+import SerpVisibility from '@/components/SerpVisibility'
+import SeoAudit from '@/components/SeoAudit'
 import WaitlistForm from '@/components/WaitlistForm'
 
 const POLL_MS = 2000
@@ -170,6 +172,10 @@ function Results({ analysis }: { analysis: Analysis }) {
       />
 
       {result.kyc ? <KycCard kyc={result.kyc} /> : null}
+
+      {result.serp ? <SerpVisibility serp={result.serp} /> : null}
+
+      {result.seo ? <SeoAudit seo={result.seo} /> : null}
 
       {presence.length > 0 ? <EnginePresenceMap presence={presence} /> : null}
 

@@ -54,6 +54,23 @@ class Analysis(Base):
     geo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     footprint_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     total_responses: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    # SERP visibility (ADR-28). All nullable, and they stay null on every run
+    # where SERP was switched off or could not be measured — which is the point:
+    # a null here means "we did not measure", and only a number means "we did".
+    # ``serp_query_count`` counts the queries that produced a *usable* page, so
+    # ``serp_score == serp_hit_count / serp_query_count`` always holds.
+    serp_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    serp_hit_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    serp_query_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    serp_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    serp_source: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # SEO / AI-readiness audit (ADR-31). Null on every run that did not audit —
+    # the same discipline as the serp_* columns above. ``seo_grade`` is the
+    # headline because a weighted average can hide a fatal problem; the score is
+    # the supporting number and the failing checks are the real output.
+    seo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    seo_grade: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    seo_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -68,6 +85,12 @@ class Analysis(Base):
     )
     responses: Mapped[list["Response"]] = relationship(
         cascade="all, delete-orphan", order_by="Response.created_at"
+    )
+    serp_checks: Mapped[list["SerpCheck"]] = relationship(
+        cascade="all, delete-orphan", order_by="SerpCheck.created_at"
+    )
+    seo_checks: Mapped[list["SeoCheck"]] = relationship(
+        cascade="all, delete-orphan", order_by="SeoCheck.created_at"
     )
 
 
@@ -101,6 +124,81 @@ class Response(Base):
     footprint: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
     matched_snippet: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     cost_usd: Mapped[Decimal] = mapped_column(sa.Numeric(10, 6), nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class SerpCheck(Base):
+    """One search query run for an analysis, and what the results page showed.
+
+    Stored rather than recomputed, for two reasons. The product's wedge is
+    showing its work, so the evidence behind the SERP number — which query, which
+    result, at what rank — has to be one click away like every raw LLM answer
+    already is. And a SERP is a snapshot of something that moves: running the
+    same query tomorrow answers a different question, so the observation is only
+    meaningful with the moment attached.
+
+    ``hit`` is deliberately nullable. NULL means the page could not be measured
+    (every upstream engine refused, or the instance was unreachable) and is
+    excluded from the score entirely; ``False`` is a real, counted miss.
+    """
+
+    __tablename__ = "serp_checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+    )
+    query: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    source: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    hit: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
+    rank: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    matched_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    matched_snippet: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # 'domain' (the company's own site ranked) or 'text' (something else's page
+    # named it). Null on a miss or an unmeasurable page.
+    matched_via: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    result_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    # Comma-joined engine names that refused to answer this query. Plain Text
+    # rather than JSON because it is a diagnostic breadcrumb, not a queryable
+    # structure, and Text keeps the model SQLite-compatible (see module docstring).
+    unresponsive_engines: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class SeoCheck(Base):
+    """One SEO / AI-readiness check for an analysis, and its evidence (ADR-31).
+
+    Stored per check rather than as one JSON blob, for the same reason
+    ``serp_checks`` is: the product's wedge is showing its work, so "why is this
+    site invisible" has to be one click away — and because the interesting
+    product question is cross-sectional ("how many sites block GPTBot?"), which a
+    blob cannot answer.
+
+    ``status`` carries five values, not two. ``not_measured`` (the input was
+    unreadable) and ``not_applicable`` (the check does not apply here) are both
+    excluded from the score, and are deliberately distinct from each other and
+    from ``fail`` — the UI says something different for each.
+    """
+
+    __tablename__ = "seo_checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+    )
+    # Stable identifier for the check, e.g. 'ai_crawler_access'. Plain text
+    # rather than an enum: the catalogue will gain and lose checks between
+    # releases, and a stored row must stay readable when its check is retired.
+    check_id: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    title: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    severity: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    detail: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    evidence: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -149,6 +247,86 @@ class WaitlistSignup(Base):
     ip_hash: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class User(Base):
+    """A registered user account."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    email: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        unique=True,
+    )
+    password_hash: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+    )
+
+
+class AuthSession(Base):
+    """One refresh-token generation within a device/session family.
+
+    Every successful login starts a new ``family_id``. Refresh rotation consumes
+    the current row and creates a successor with the same family id. Reuse of a
+    consumed refresh token revokes the whole family.
+    """
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid,
+        nullable=False,
+        default=uuid.uuid4,
+        index=True,
+    )
+    refresh_jti_hash: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        unique=True,
+    )
+    replaced_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("auth_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
     )
 
 

@@ -1,5 +1,11 @@
 # Yanki — Caddy → host-nginx edge migration
 
+> **Status: COMPLETE (2026-07).** The cutover has been executed: host nginx
+> (`deploy/nginx/yanki.beyondkaira.com.conf`, TLS via certbot HTTP-01 webroot)
+> is the live edge, proxying to the loopback binds 127.0.0.1:8142 (web) /
+> 127.0.0.1:8143 (api). The retired Caddy block (`deploy/caddy/`) has been
+> deleted from the repo. This document is retained as the executed runbook.
+
 Move `yanki.beyondkaira.com` off the **shared containerised Caddy** and onto
 **host nginx** with **wildcard TLS** and **private-loopback** upstreams. Every
 artifact here is **additive** — the existing Caddy block, `deploy.sh`,
@@ -15,7 +21,7 @@ you run the cutover, which is **reversible**.
 
 ## What changes, and what does NOT
 
-| | Caddy (today) | nginx (after) |
+| | Caddy (before) | nginx (now) |
 |---|---|---|
 | Edge | shared **container** `pulse-prod-caddy-1`, one hand-edited Caddyfile | host **nginx**, `deploy/nginx/yanki.beyondkaira.com.conf`, one file |
 | TLS | terminated on the shared Caddy | wildcard `*.beyondkaira.com` cert on nginx |
@@ -148,8 +154,9 @@ sudo systemctl stop nginx                  # (or remove yanki's :443 listen)
 sudo docker start pulse-prod-caddy-1       # Caddy back on :443, unchanged
 ```
 
-Keep the Caddy block (`deploy/caddy/yanki.beyondkaira.com.caddy`) in the repo
-until every site is proven on nginx. Do NOT delete it as part of this migration.
+The Caddy block (`deploy/caddy/yanki.beyondkaira.com.caddy`) was kept in the
+repo until the site was proven on nginx, then deleted (see the status note at
+the top).
 
 ## 5. 🤖 Deploy from now on
 
@@ -158,7 +165,7 @@ url, so a green run proves the whole nginx path-split serves:
 
 ```bash
 deploy/deployment.sh --check    # preflight + validate compose, change nothing
-deploy/deployment.sh            # build -> up -> public health -> record .last-good
+deploy/deployment.sh            # build -> migrate -> up -> public health -> record .last-good
 ```
 
 Pre-cutover, `deploy/deploy.sh` remains the deploy path (loopback health check),
@@ -183,7 +190,7 @@ tuning vars, all with safe defaults (set them in `deploy/.env` only to override)
 | `HEALTH_URL` | `https://yanki.beyondkaira.com/healthz` | public url the deploy health-gates against |
 | `HEALTH_EXPECT` | `ok` | substring the health body must contain |
 | `HEALTH_KEY` | `status` | second substring the health body must contain |
-| `HEALTH_TRIES` | `45` | curl attempts, 2s apart (covers `alembic upgrade head`) |
+| `HEALTH_TRIES` | `45` | curl attempts, 2s apart (covers the api container coming up; `alembic upgrade head` already ran, before the swap) |
 | `HEALTH_CURL_OPTS` | *(empty)* | extra curl args, e.g. `--resolve yanki.beyondkaira.com:443:161.97.172.146` |
 | `DEPLOY_ALLOW_DIRTY` | `0` | `1` skips the clean-tree guard (rehearsal only) |
 | `YANKI_PROD_API_PORT` | `8143` | host loopback port for api (must match the nginx `yanki_api` upstream) |

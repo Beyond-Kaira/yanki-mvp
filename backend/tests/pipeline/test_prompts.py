@@ -218,3 +218,202 @@ def test_beyondtech_cctld_fallback_feeds_location_into_prompts():
     texts = [spec.text for spec in generate_prompts(kyc, 10)]
     assert any("in Türkiye" in text for text in texts)
     assert all("worldwide" not in text for text in texts)
+
+
+# --- Workstream P: topic quality + invariants (pipeline-quality-plan.md) ----
+
+
+# The spec attributes the real beyondtech KYC returned as "keywords". Every one
+# of them produced a question no buyer has ever asked, at four paid calls each.
+_SPEC_ATTRIBUTES = [
+    "payload capacity",
+    "flight endurance",
+    "EW immune",
+    "RPG-7 capability",
+    "anti-armor",
+]
+
+
+def test_spec_attributes_never_become_questions():
+    kyc = _beyondtech_kyc(locations=["Türkiye"])
+    texts = [spec.text for spec in generate_prompts(kyc, 12)]
+    for attribute in _SPEC_ATTRIBUTES:
+        assert all(attribute not in text for text in texts), attribute
+
+
+def test_category_is_the_first_topic_when_the_profile_has_one():
+    # The field exists precisely so the category is not inferred from keywords.
+    kyc = KYC(
+        company="Globex",
+        category="industrial robots",
+        keywords=["automation", "logistics"],
+    )
+    first = generate_prompts(kyc, 1)[0]
+    assert "industrial robots" in first.text
+
+
+def test_use_cases_are_used_as_topics():
+    kyc = KYC(company="Globex", use_cases=["warehouse automation"], keywords=[])
+    texts = [spec.text for spec in generate_prompts(kyc, 6)]
+    assert any("warehouse automation" in text for text in texts)
+
+
+def test_a_brand_in_the_keywords_never_reaches_a_question():
+    # SEO copy is full of the brand. Asking "What are the best Globex options?"
+    # and then counting Globex in the answers is a self-fulfilling score.
+    kyc = KYC(
+        company="Globex Robotics",
+        aliases=["Globex Robotics", "Globex", "globexrobotics"],
+        keywords=["Globex Robotics", "globex robotics solutions", "warehouse robots"],
+        competitors=["Globex Robotics Holding"],
+    )
+    specs = generate_prompts(kyc, 12)
+    assert len(specs) == 12
+    for spec in specs:
+        if spec.category == BRAND_PROBE:
+            continue
+        assert "globex" not in spec.text.casefold(), spec.text
+
+
+def test_brand_probes_may_still_name_the_company():
+    # They are the one exempt shape: naming the product and the vendor is the
+    # question, and they are tagged so scoring can tell them apart.
+    kyc = KYC(
+        company="Globex",
+        keywords=["warehouse robots"],
+        products=["PalletMover", "ArmBot"],
+    )
+    probes = [s for s in generate_prompts(kyc, 12) if s.category == BRAND_PROBE]
+    assert probes
+    assert all("Globex" in probe.text for probe in probes)
+
+
+def test_six_topics_no_longer_collapse_to_six_questions():
+    # Category and topic used to advance in lockstep, so a profile with exactly
+    # six topics only ever produced six distinct questions before falling
+    # through to the padders. All 36 pairs must be reachable.
+    kyc = KYC(
+        company="Globex",
+        keywords=[
+            "warehouse robots",
+            "conveyor systems",
+            "picking arms",
+            "fleet software",
+            "storage racks",
+            "sorting machines",
+        ],
+    )
+    specs = generate_prompts(kyc, 36)
+    assert len(specs) == 36
+    assert len({spec.text for spec in specs}) == 36
+    # Every topic is actually asked about, not just the first few.
+    for keyword in kyc.keywords:
+        assert any(keyword in spec.text for spec in specs), keyword
+    # And no padder was needed to get there.
+    assert all("worth considering (" not in spec.text for spec in specs)
+
+
+def test_maker_noun_matches_what_the_topic_is():
+    goods = generate_prompts(KYC(company="A", keywords=["warehouse robots"]), 6)
+    assert any("robots manufacturers" in spec.text for spec in goods)
+
+    software = generate_prompts(KYC(company="B", category="CRM software"), 6)
+    assert all("manufacturers" not in spec.text for spec in software)
+
+    services = generate_prompts(KYC(company="C", services=["system integration"]), 6)
+    assert any("providers" in spec.text for spec in services)
+
+
+def test_placeholder_topics_never_reach_a_question():
+    kyc = KYC(company="Globex", keywords=["N/A", "unknown"], category="robots")
+    texts = [spec.text for spec in generate_prompts(kyc, 6)]
+    assert all("N/A" not in text and "unknown" not in text for text in texts)
+
+
+def test_sparse_profile_still_fills_the_panel():
+    specs = generate_prompts(KYC(company="Solo Co"), 20)
+    assert len(specs) == 20
+    assert len({spec.text for spec in specs}) == 20
+
+
+def test_phrasing_agrees_with_the_topic_number():
+    plural = [s.text for s in generate_prompts(KYC(company="A", category="tactical UAVs"), 6)]
+    assert "What are the best tactical UAVs available today?" in plural
+    assert all("UAVs options" not in text for text in plural)
+
+    singular = [
+        s.text
+        for s in generate_prompts(KYC(company="B", category="warehouse automation"), 6)
+    ]
+    assert "What are the best warehouse automation options available today?" in singular
+
+
+def test_a_service_topic_is_not_asked_as_if_it_were_a_product():
+    # "Which Software development would you recommend and why?" was the shape
+    # this replaces.
+    texts = [
+        s.text for s in generate_prompts(KYC(company="A", services=["software development"]), 6)
+    ]
+    assert any(
+        text == "Which providers would you recommend for software development, and why?"
+        for text in texts
+    )
+
+
+# --------------------------------------------------------------------------
+# Locations: a coverage claim is not a place (issue #18)
+# --------------------------------------------------------------------------
+
+
+def test_a_coverage_claim_is_skipped_for_the_real_place_behind_it(sample_kyc):
+    """Measured on wise.com, whose profile led with a marketing number.
+
+    ``locations`` came back ['160+ countries', 'United Kingdom', 'Estonia'].
+    Taking [0] put "in 160+ countries" into three of ten *paid* questions.
+    """
+    from app.pipeline.prompts import primary_location
+
+    kyc = sample_kyc.model_copy(
+        update={"locations": ["160+ countries", "United Kingdom", "Estonia"]}
+    )
+    assert primary_location(kyc) == "United Kingdom"
+
+
+@pytest.mark.parametrize(
+    "junk",
+    ["160+ countries", "40 currencies", "multiple countries", "global markets", "worldwide"],
+)
+def test_coverage_claims_never_count_as_places(sample_kyc, junk):
+    from app.pipeline.prompts import primary_location
+
+    kyc = sample_kyc.model_copy(update={"locations": [junk]})
+    assert primary_location(kyc) == ""
+
+
+def test_a_profile_with_only_coverage_claims_falls_back_to_worldwide(sample_kyc):
+    kyc = sample_kyc.model_copy(update={"locations": ["160+ countries"], "category": "robots"})
+    texts = " ".join(spec.text for spec in generate_prompts(kyc, 8))
+    assert "160+" not in texts
+    assert "worldwide" in texts
+
+
+def test_real_places_still_reach_the_questions(sample_kyc):
+    kyc = sample_kyc.model_copy(update={"locations": ["Berlin"], "category": "robots"})
+    assert "in Berlin" in " ".join(spec.text for spec in generate_prompts(kyc, 8))
+
+
+@pytest.mark.parametrize(
+    ("place", "expected"),
+    [
+        ("Berlin", "Berlin"),
+        ("Türkiye", "Türkiye"),
+        ("United Kingdom", "the United Kingdom"),
+        ("Netherlands", "the Netherlands"),
+        ("USA", "the USA"),
+    ],
+)
+def test_only_the_places_that_take_an_article_get_one(place, expected):
+    """"in United Kingdom" is the kind of thing a reader clocks as machine-written."""
+    from app.pipeline.prompts import location_phrase
+
+    assert location_phrase(place) == expected

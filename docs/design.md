@@ -35,7 +35,8 @@ yanki/
 │   │   ├── db/              # SQLAlchemy 2.0 models, Base, and the session factory
 │   │   ├── jobs/            # the Postgres job queue (FOR UPDATE SKIP LOCKED claim + stale reaper)
 │   │   ├── pipeline/        # the GEO engine: discovery → kyc → prompts → execute → footprint → scoring
-│   │   └── providers/       # LLM adapters behind one Provider interface (+ deterministic mock)
+│   │   ├── providers/       # LLM adapters behind one Provider interface (+ deterministic mock)
+│   │   └── serp/            # open-source SERP adapters behind one SerpSource interface (+ mock)
 │   └── tests/               # pytest: api + queue tests (incl. real-Postgres SKIP LOCKED tests),
 │                            #   plus the pipeline/ subtree owned by the pipeline agent
 ├── frontend/               # Next.js 15 (App Router) + TypeScript + Tailwind — 3 screens
@@ -64,10 +65,26 @@ yanki/
   footprint, scoring — each is a plain sync function with a clear signature.
   A junior can read any single step end-to-end without holding the rest of the
   system in their head, and each step is unit-testable in isolation.
+  Two modules are **not** steps and say so in their docstrings:
+  `checker_prompts.py` (the fixed alternative to `prompts.py`, ADR-20) and
+  `textfold.py` (the ASCII fold shared by discovery and footprint, ADR-26).
+  A third, `serp_visibility.py`, is a step's *second half* rather than a step of
+  its own: it runs inside footprint, because footprint is the step that asks
+  where the brand appears and this asks it of search results (ADR-28).
+  A shared helper only earns its own module when two steps would otherwise
+  keep divergent copies of the same table — `textfold` also has an invariant
+  (1:1 length) that one caller's correctness depends on, which is easier to
+  state and test in one place than to re-derive at each call site.
 - **`providers/` behind one interface.** Every model (Claude, OpenAI, the two
   stubs, and the mock) implements the same `Provider` protocol, so the pipeline
   never branches on "which engine". Swapping a stub for a real engine is a
   one-file change and touches nothing else.
+- **`serp/` is the same shape, one layer out.** SERP sources (SearXNG, plus a
+  deterministic mock) implement one `SerpSource` protocol, exactly as
+  `providers/` does for models. It is a sibling of `providers/` rather than a
+  module inside it because a results page is not a generated answer: the
+  interface returns ranked results and the evidence needed to trust them, not
+  text and a cost (ADR-28).
 - **`shared/contracts/`** exists so the frontend and backend agree on the API
   shape via a checked-in artifact, not by reading each other's code.
 - **`deploy/`, `scripts/`, `.github/`** are the operational surface, kept out of
@@ -170,7 +187,7 @@ narrowings are exactly the parts that must **not** be blown away on the next
   (the token families are `primary`, `surface`, `success`, `danger`). This keeps
   the UI consistent and re-themeable.
 - **Fetch relative paths only** (`/api/v1/...`, `/healthz`). Next.js `rewrites()`
-  proxy them to the API in dev; Caddy path-routes them in prod. Never hard-code
+  proxy them to the API in dev; host nginx path-routes them in prod. Never hard-code
   the API origin in a component. (Rationale: ADR-6.)
 - **Types come from the contract.** Import request/response types from
   `lib/contracts.ts` (the hand-maintained alias layer over the generated
@@ -233,7 +250,7 @@ decision → consequences**, with one line on why the alternative was rejected.
 - **Context:** in dev the web (8140) and api (8141) are different origins.
 - **Decision:** Next.js `rewrites()` proxy `/api/:path*` and `/healthz` to
   `API_ORIGIN` (default `http://localhost:8141`); the frontend always fetches
-  relative paths. In prod, Caddy path-routes on one origin.
+  relative paths. In prod, the host nginx edge path-routes on one origin.
 - **Consequences:** no CORS config anywhere; dev and prod use identical relative
   URLs in the frontend.
 - **Rejected:** enabling CORS on the API — extra config, wildcard/security
@@ -647,7 +664,7 @@ decision → consequences**, with one line on why the alternative was rejected.
   is closed, but residual overshoot is a small multiple of the cap if the true
   per-run cost drifts above `_EST_CHECKER_RUN_COST_USD` (retune it with the price
   tables and at P5.7); (b) the per-IP hash comes from the first `X-Forwarded-For`
-  entry, which is **client-controlled** even behind the shared Caddy (same caveat
+  entry, which is **client-controlled** even behind the edge proxy (same caveat
   as tech-debt #2), so the per-IP cap is spoofable — the per-brand cap and the
   projected cost cap are the real backstops against a spoofed-IP burst; (c)
   because a cache hit is exempt from the per-IP limit too, an abuser hammering an
@@ -804,3 +821,428 @@ decision → consequences**, with one line on why the alternative was rejected.
   email failure surface (would lose an already-recorded signup or run); a
   separate salt for the waitlist `ip_hash` (reuses the existing `ip_hash_salt`,
   consistent with P5.6).
+
+### ADR-26 — Discovery + KYC input quality: JSON-LD, a length-preserving fold, a bounded KYC retry, and a pre-fan-out usability gate (2026-07-28)
+- **Context:** discovery and KYC feed every step after them — `prompts.py` writes
+  questions from the KYC profile, and `kyc.company` + `kyc.aliases` *are* what
+  `footprint.detect` counts. Garbage in these two steps never surfaces as an
+  error; it surfaces as a plausible-looking GEO score that is quietly wrong.
+  `docs/discovery-kyc-improvements.md` specifies six steps; this ADR records the
+  five that are implemented (1, 2a, 3, 4, 5). Steps 2b and 6 revive roadmap §2c
+  scope parked by operator decision and are deliberately **not** built.
+- **Decision:**
+  - **JSON-LD is read as a second, fetch-free pass** over the already-fetched
+    HTML (`_jsonld_text`). `_clean_text` still strips every `<script>` for the
+    visible-text pass; the new pass re-parses the same bytes for
+    `application/ld+json` only. Its output leads the combined text so it survives
+    the `MAX_CHARS` cut, is deduped across pages, and carries its own 4k budget
+    so it can never crowd out page copy. It never follows `sameAs` URLs — a fetch
+    would have to go through the SSRF-guarded client, and an unmocked request
+    would redden every `@respx.mock` discovery test.
+  - **The ASCII fold lives in one shared module** (`pipeline/textfold.py`), used
+    by discovery's keyword matching and footprint's brand matching. It is
+    **case-preserving and strictly 1:1** because `footprint.detect` matches
+    against folded text but slices the user-facing snippet out of the *original*
+    by index. `casefold()` cannot be used for this: `"İ".casefold()` is two
+    codepoints (`i` + U+0307), which would both shift every snippet after an `İ`
+    and stop `İşbank` matching `Isbank`. German `ß` is excluded for the same
+    reason (it expands to `ss`). Case-insensitivity comes from `re.IGNORECASE`,
+    which on `str` patterns is already Unicode-aware.
+  - **`generate_kyc` repairs before it retries.** A response that wraps valid
+    JSON in prose is recovered by taking the outermost `{ … }` span — a string
+    operation, no network, no cost. Only if that fails does it make **one**
+    bounded retry, re-sending the **same** prompt on purpose: `MockProvider`
+    returns its canned profile only because the prompt contains `"json object"`,
+    so a distinct repair prompt would silently break DRY_RUN and the e2e.
+  - **A usability gate runs between steps 2 and 3** (`kyc.require_usable`).
+    `company: str` has no `min_length`, so `company=""` validates and footprint
+    then matches nothing; separately, a profile with no keyword/service/industry
+    makes `_question_topics` fall back to the literal `"solutions"`. Either way
+    the job would continue into `execute` and spend up to
+    `max_responses_per_job` (default 60) paid calls on input already known to be
+    unusable. The gate raises only `PipelineError`, so the worker surfaces a
+    clean message rather than a stack trace.
+- **Consequences:** no Pydantic schema changed, so `make gen-types` is a
+  zero diff and there is no migration (`kyc` is schemaless JSONB) and no
+  `checker_prompts.VERSION` bump (methodology output is byte-identical). The
+  gate is a **new terminal failure mode**: a crawl that previously produced a
+  meaningless-but-successful score now fails with an honest message. It runs
+  *after* the KYC step commits, so the offending profile stays on the failed row
+  and is inspectable. `_fetch` now skips non-HTML and oversized responses, which
+  also means a non-HTML homepage fails the run instead of feeding mojibake into
+  KYC. Aliases gain ASCII-folded and legal-suffix-stripped forms of the company
+  name — visible to users as extra chips in `KycCard`, so they are minted only
+  when they actually differ from an alias already present.
+- **Rejected:** folding with `casefold()` (not length-preserving — see above);
+  keeping a second copy of `_TR_FOLD` in `footprint.py` (would drift, and
+  importing `discovery` would drag `httpx`/`bs4` into a module that is otherwise
+  pure); a *different* repair prompt on retry (breaks the `MockProvider`
+  coupling); unbounded retries (a per-job cost with no ceiling); gating *before*
+  the KYC commit (loses the evidence needed to diagnose the failure); applying
+  the topic half of the gate to checker rows without their submitted category
+  (would fail legitimate public submissions whose model reply is terse — they
+  pass `analysis.category` as `known_topic` instead); Content-Type strictness on
+  a missing header (fail-open matches `net_guard` and keeps header-less fixtures
+  and offline dev working — logged as tech-debt #28).
+
+### ADR-27 — Pipeline input quality, part two: a grounded profile, a category field, and prompts that cannot name the brand (2026-08-01)
+- **Context:** ADR-26 fixed how much of a site we read and whether the KYC call
+  survives a formatting slip. It did not address what happens when the *content*
+  is wrong: a model that invents a product, an alias that was never on the site,
+  or a "keyword" that is a spec attribute. All three produce a confident,
+  meaningless GEO score, and one of them (an invented alias) inflates it —
+  `footprint.detect` cannot tell a hallucinated name from a real mention. Plan:
+  [`pipeline-quality-plan.md`](pipeline-quality-plan.md).
+- **Decision:**
+  - **One normalized key, three jobs** (`pipeline/sanitize.py`). Dedupe,
+    grounding containment and brand-leak detection all compare the same folded,
+    casefolded, punctuation-free form, built on the existing `textfold.fold`. If
+    they disagreed, a name could ground under one spelling and leak under
+    another.
+  - **Every KYC field is sanitized before anyone reads it**: trimmed, unwrapped,
+    junk-filtered (`"N/A"`, `"unknown"`, `"-"`), de-duplicated case- and
+    diacritic-insensitively, and capped per field. The company is removed from
+    its own competitor list.
+  - **Proper nouns are grounded against the crawl.** `products`, `competitors`
+    and model-supplied `aliases` must appear in the crawled text or they are
+    dropped. Deliberately narrow: `description` / `industry` / `keywords` /
+    `category` / `use_cases` are *meant* to be the model's own words (the prompt
+    asks for an English rendering of possibly-Turkish copy), and the minted
+    aliases (company name, folded form, legal stem, registrable domain) are
+    facts about the submission, so both are exempt. Grounding is skipped below
+    `MIN_GROUNDING_CHARS` (1 000) — a thin crawl cannot prove a negative — and
+    is off for `kind='checker'` rows, whose "source text" is the brand+category
+    sentence the runner composed rather than a crawl.
+  - **The KYC model gains `category` and `use_cases`** (both defaulted). Prompt
+    generation needed the buying category and could previously only infer it
+    from `keywords`, which is where models put spec attributes. Asking the
+    *existing* call for the field we actually need costs nothing extra.
+  - **Prompts may never name the brand outside `brand-probe`.** Topics are
+    brand-filtered and each finished question is re-checked, because a
+    competitor named after the company can reintroduce the name through the
+    `alternatives` slot. Asking "What are the best <Brand> options?" and then
+    counting the brand in the answers is a self-fulfilling score.
+  - **Category and topic advance on different strides.** They used to move in
+    lockstep, so a profile with exactly six topics produced six distinct
+    questions out of a possible thirty-six.
+- **Consequences:** no Pydantic schema changed, so `make gen-types` stays a zero
+  diff, there is no migration (`kyc` is schemaless JSONB), and
+  `checker_prompts.VERSION` is **not** bumped — the 12 templates are
+  byte-identical and `checker_methodology.json` is generated from `KYC(company="")`,
+  where every source is empty and the published neutral fallbacks still stand
+  in (pinned by a test). Live checker runs get a better substituted topic, which
+  is per-run data, not a new template set. The KYC step still makes exactly one
+  paid call on the happy path. Visible changes: a profile whose only topic
+  signal was a placeholder now fails the usability gate instead of buying 60
+  calls about "solutions"; a hallucinated product or competitor no longer
+  appears in `KycCard`; and `KycCard` shows two new rows (Category, Use cases)
+  for analyses run after this change. The frontend's hand-maintained `KYC`
+  interface adds both as **optional** fields, because rows persisted earlier
+  have no such key.
+- **Rejected:** LLM-generated prompts (higher ceiling, but it adds an unmetered
+  paid call while tech-debt #27 is open, makes the prompt set non-deterministic
+  and therefore unauditable against the published methodology, and would make
+  the brand-leak invariant load-bearing rather than a backstop — revisit after
+  #27); grounding the inferred fields (would delete the English rendering the
+  prompt asks for); grounding on every crawl regardless of size (a
+  one-paragraph site cannot prove absence, and it would strip DRY_RUN's
+  fictional profile); grounding checker rows (their source text is ours, not the
+  site's); rejecting bundle literals that contain a backtick (measured on
+  beyondtech.com.tr: it removed the site's real Turkish copy along with the
+  object punctuation — 20 000 chars of corpus down to 1 751); www/apex/scheme
+  fallbacks on a failed homepage (`follow_redirects` already covers the common
+  case, and each variant is a request to a URL the caller never gave us).
+
+### ADR-28 — SERP visibility from an open-source metasearch instance, inside the footprint step (2026-08-03)
+- **Context:** the GEO score measures one surface — what AI engines say. Buyers
+  still use the other one, and [`roadmap.md`](roadmap.md) names the gap out loud
+  ("Google AI Overviews tracking … our biggest admitted gap vs Semrush; needs
+  SERP scraping or a paid SERP API"). Both of the options that sentence lists
+  cost us something we are not willing to spend: a commercial SERP API bills per
+  query, which puts a per-analysis invoice in front of the "affordable"
+  wedge, and scraping Google ourselves is a blocklist maintenance project
+  wearing a feature's clothes. There is a third option the sentence predates —
+  **SearXNG** (AGPL-3.0), an open-source metasearch engine that puts the public
+  engines behind one self-hostable JSON API. The operator runs a container; we
+  read it.
+- **Decision:**
+  - **A `serp/` package mirroring `providers/`.** `SerpSource` is one protocol
+    with one `search(query)` call; `SearxngSource` reads the instance,
+    `MockSerpSource` is the deterministic DRY_RUN source, and `registry` picks
+    between them. Sibling of `providers/` rather than a member: the return value
+    is ranked results plus reliability evidence, not text plus a cost.
+  - **A page carries the evidence needed to trust it.** A live instance answers
+    `200 OK` with an empty result list when its upstream engines rate-limit or
+    CAPTCHA it — measured, not hypothesised: one ordinary query came back with
+    `brave`, `duckduckgo`, `startpage` and `wikipedia` all refused. So
+    `SerpPage` also carries `unresponsive_engines`, and `measurable` refuses to
+    read an empty page from a broken panel as evidence of absence. Unmeasurable
+    queries are dropped from the denominator, never counted as misses.
+  - **Three different nulls, three different meanings.** `serp` absent from the
+    result envelope = the run never measured (feature off, and every row written
+    before this change). `serp.score` null inside a present summary = we looked
+    and could not read the results. `0.0` = we read them and the brand was in
+    none. Collapsing any pair of these into a zero would tell a customer they
+    rank nowhere when we simply did not look.
+  - **The queries may never name the brand**, enforced by reusing
+    `prompts.topic_pool` and re-checking each finished query with
+    `prompts.leaks_brand`. This is ADR-27's invariant on the other surface, and
+    the temptation is stronger here because "brand + category" is the obvious
+    thing an SEO tool would search. `_brand_keys`/`_leaks_brand` were made
+    public for this rather than copied, for the reason ADR-26 refused to copy
+    the fold map.
+  - **A hit is a domain match OR a text match.** A result is mostly a URL and
+    two lines of snippet, so the company's own site ranking is the strongest
+    available signal and needs no text — which makes this the one place in the
+    pipeline that can see a company the LLM panel never names. A listicle naming
+    it in the snippet counts too, through the same `footprint.detect` the panel
+    uses, so both surfaces agree on what a mention is.
+  - **It runs inside the footprint step, not as a seventh one.** Footprint is
+    the step that asks where the brand actually appears; this asks it of a
+    second corpus. `current_step`, the progress mapping and `StepProgress` are
+    untouched.
+  - **Fail-open, and off by default.** `run_serp` never raises: by the time it
+    runs, the analysis has paid for a crawl, a KYC call and up to
+    `max_responses_per_job` LLM calls, and an instance being down must cost the
+    run its SERP number and nothing else (the stance `services/emailer` takes,
+    ADR-25). `serp_enabled` defaults False like `checker_enabled` and
+    `emails_enabled`, because unlike the LLM panel this needs infrastructure no
+    environment has until somebody stands it up.
+  - **No SSRF guard on the instance URL**, deliberately. `net_guard` exists
+    because discovery fetches a URL a stranger submitted; this one is the
+    operator's own config, and the intended deployment (`http://searxng:8080` on
+    the compose network) is exactly the private space the guard rejects.
+  - **The observations are stored** (`serp_checks`, one row per query) rather
+    than recomputed. The wedge is showing our work, so the evidence behind the
+    number belongs one click away like every raw answer already is — and a SERP
+    is a snapshot of something that moves, so it only means anything with the
+    moment attached.
+- **Consequences:** the API contract gains a nullable `serp` object, so
+  `make gen-types` is a real diff (`openapi.json` + `types.ts`);
+  `checker_methodology.json` is untouched, since `gen_methodology.py` never
+  imports the API schemas. Migration `0007` is additive (five nullable columns
+  with **no** server default — backfilling them to 0 would claim we looked — plus
+  one table). Three existing frontend test fixtures gained `serp: null`, the
+  price of `ResultOut` fields being required-and-nullable rather than optional.
+  A new `SERP` workflow covers the three things `CI` structurally cannot: our
+  adapter against a real SearXNG, migrations applying **and reverting** on
+  Postgres (CI had never run alembic at all), and one whole analysis through the
+  compose stack. Its scheduled `upstream drift` job runs the same suite against
+  `searxng/searxng:latest` and is deliberately outside the PR gate, so an
+  upstream release pages us instead of reddening someone's unrelated PR — which
+  is why `SERP` is now in `notify.yml`'s `workflows:` list. Nothing changes for
+  an existing deployment until an operator sets `SERP_ENABLED=1` and a base URL.
+- **Rejected:** a paid SERP API (per-query bill in front of the pricing wedge,
+  and it makes the number unauditable — we could not publish how it was
+  obtained); scraping the engines directly (a maintenance treadmill against
+  parties actively trying to stop us); a seventh pipeline step (churns the
+  locked progress contract and `StepProgress` for a step that asks footprint's
+  own question); counting an unreadable page as a miss (the fabricated zero this
+  whole ADR is organised against); returning `0.0` instead of `None` from
+  `serp_score` on an empty denominator (same fabrication, one layer down);
+  guarding the instance URL with `net_guard` (breaks every correct deployment to
+  protect against an operator who already sets `DATABASE_URL`); running the
+  integration tests against real public engines (measured: four of four refused
+  a CI-shaped client, so the gate would be a coin flip — the fixture engine
+  makes both the results *and* the failure modes deterministic); duplicating the
+  brand-key helpers into `serp_visibility` (ADR-26 already settled that
+  argument); and adding a SearXNG service to the production compose file (the
+  VPS is shared with three other tenants and the feature is off by default —
+  standing up the instance is an operator decision, recorded in
+  `operator-expected.md`).
+
+### ADR-29 — The SearXNG instance is a profile-gated compose service, opt-in from `deploy/.env` (2026-08-03)
+- **Context:** ADR-28 shipped SERP visibility but deliberately left the instance
+  itself unbuilt, because standing one up costs real resources on a VPS shared
+  with four other production tenants and that spend is the operator's call, not
+  engineering's. The operator made the call the same day: turn it on. That
+  converts a rejected option into a decision that needs its own record — and
+  measuring the thing first changed several of its parameters.
+- **Decision:**
+  - **A compose service behind the `serp` profile**, not a hand-run container.
+    A snowflake container nobody can see in a file is how infrastructure gets
+    lost. The profile is the opt-in, and compose reads `COMPOSE_PROFILES` from
+    the project-directory env file — which here *is* `deploy/.env` — so turning
+    it on costs **no change to `deployment.sh`**, and any other deployment of
+    this repo never creates a container it did not ask for.
+  - **No published ports, and the limiter off — as one decision, not two.**
+    Nothing but `api` and `worker` may reach it, over the compose network at
+    `http://searxng:8080`. SearXNG's limiter answers 403 to a bot-shaped client
+    and Yanki identifies as `YankiBot/0.1`, so with the limiter on every query
+    would read as unavailable. Turning it off is safe *because* there is no port;
+    whoever changes one must change the other.
+  - **Only the four real web-search engines** (`google cse`, `duckduckgo`,
+    `brave`, `startpage`). The other six SearXNG enables by default in the
+    `general` category are translation, currency and encyclopedia widgets which
+    cannot produce an organic commercial result. Measured from this VPS across 8
+    buyer-style queries: `google cse` answered 8/8, `duckduckgo` 5/8, `brave` and
+    `startpage` refused 8/8. The two blocked ones are **kept anyway** — a later
+    probe from inside the compose network had `brave` answering and `duckduckgo`
+    refusing, so availability is genuinely intermittent per query, and a set
+    narrowed to today's winners would be tuned to noise.
+  - **Hard caps: 512 MiB memory, 0.5 CPU, bounded json-file logs.** Measured
+    steady state is ~105–150 MiB. The box had ~3 GB available with Ant Media at
+    1.1 GB and two ClickHouse instances beside it; an unbounded search aggregator
+    on that box is a neighbour-killer waiting for a slow day.
+  - **`deploy/searxng/settings.yml` lives on the host, gitignored, and is
+    symlinked into the auto-deploy checkout** — exactly the arrangement
+    `deploy/.env` already uses, for exactly the same reason: it carries a real
+    `secret_key`, the repo is public, and CI scans full history with gitleaks.
+    Only `settings.example.yml` is tracked, with SearXNG's own low-entropy
+    `ultrasecretkey` placeholder. The container generates a key **only** when no
+    settings file exists; a mounted one is used verbatim, so the substitution is
+    a one-time host action.
+  - **Not a `depends_on` of api/worker.** A profile-gated dependency is awkward
+    for compose, and it is unnecessary: the SERP pass is fail-open, so a query in
+    the seconds before the instance is ready is recorded as "not measured" and
+    costs the run nothing else. The fail-open design paying for itself here is
+    the reason it was built that way.
+- **Consequences:** production now runs a fifth container (~150 MiB). SERP is
+  live: measured against real results, Salesforce scores 4/4, HubSpot 4/4 and
+  Baykar 3/4 on their own categories, at ~0.5 s median per query. Because two of
+  the four engines are usually refused from this egress IP,
+  `unresponsive_engines` will be non-empty on most stored rows — that is accurate
+  reporting, not a fault, and it is exactly the field `SerpPage.measurable`
+  exists to weigh. `deploy/.env` gains three lines (`COMPOSE_PROFILES=serp`,
+  `SERP_ENABLED=1`, `SERP_BASE_URL`). The dev compose file gains the same service
+  behind the same profile, publishing a loopback port so it can be curled while
+  debugging.
+- **Rejected:** a hand-run container outside compose (invisible infrastructure —
+  it survives until the day someone needs to know it exists); an always-on
+  service with no profile (makes every deployment of a public repo pay for a
+  container it never asked for); publishing a port (would force the limiter back
+  on, which blocks our own client); narrowing to `google cse` + `duckduckgo`
+  (measured intermittency says today's winners are not tomorrow's); committing a
+  settings file with a real key (gitleaks, public repo — and it would be a lie in
+  the template); adding the usual valkey/redis cache sidecar (a second container
+  on a tight box, for a handful of queries per analysis).
+
+### ADR-30 — Migrate before serve, so a rollback can actually roll back (2026-08-03)
+- **Context:** the api container booted with `sh -c "alembic upgrade head && uvicorn ..."`.
+  [`AUTODEPLOY.md`](../deploy/AUTODEPLOY.md) already warned that a *broken* migration
+  reaching production is not something the health-gate rollback can undo. Auditing
+  the ADR-28 merge found the sharper half of that: a **successful** migration
+  breaks rollback too. Once the DB is stamped at a revision the previous image
+  has never heard of, that image's `alembic upgrade head` exits 255 with
+  `Can't locate revision identified by …`, the `&&` stops uvicorn from ever
+  starting, and `restart: unless-stopped` turns it into a crash loop.
+  `rollback.sh` re-runs `compose up -d` and never downgrades, so the recovery
+  path is the thing that fails. Filed as issue #16; it applied to every
+  migration since `0002`.
+- **Decision:** split the two. The **prod** api command is now just
+  `uvicorn ...`, and both deploy drivers (`deployment.sh`, `deploy.sh`) run
+  `alembic upgrade head` as a one-shot `compose run --rm --no-deps api` step
+  *before* any running container is replaced.
+  - The **dev** compose file deliberately keeps the fused form. It has no
+    rollback to protect, no driver to hang a step off, and CI's e2e job relies
+    on the stack migrating itself. The divergence is in the safest possible
+    direction: the thing prod does is strictly less than what dev does.
+  - The migration is **not** a compose service with
+    `service_completed_successfully`. That was the obvious shape and it is
+    wrong: rollback's `compose up -d` would run the *old* image's migrate
+    container and fail in exactly the same way, just one service earlier.
+    Only a step the driver owns — which knows a forward deploy from a
+    rollback — actually separates them.
+- **Consequences:** rollback works. Proven, not argued: with a database at
+  `0007`, the pre-0007 image under the old fused command dies with
+  `Can't locate revision identified by '0007_serp_visibility'`, and under the
+  new serve-only command boots in 4 s, answers `/healthz`, and serves a real
+  `analyses` row whose five extra columns it does not model. That last part is
+  what makes the whole thing safe: SQLAlchemy maps only declared columns and
+  emits explicit column lists, never `SELECT *`, so old code is already
+  compatible with a newer *additive* schema. It was never the ORM that broke —
+  only alembic's boot-time revision guard.
+  A second, unlooked-for improvement: a **bad** migration now costs nothing.
+  It fails while the previous release is still serving, and the driver exits
+  without touching a container — where before it would replace the api, crash-
+  loop it, fail the health gate, and only then attempt a rollback that could not
+  work. The deploy grew from six steps to seven.
+  This does **not** make rollback safe across a *destructive* migration; nothing
+  here changes that dropping a column still strands old code. The rule the
+  repo already follows — migrations are additive — is now load-bearing rather
+  than merely tidy, and that is worth saying out loud.
+- **Rejected:** having `rollback.sh` run `alembic downgrade` (it would need the
+  target release's head revision, which it has no way to know, and it makes the
+  emergency lever destructive — the wrong property for the thing you reach for
+  when everything else is broken); making the api tolerate a newer DB by only
+  upgrading when behind (cheapest, and it silently masks genuine drift, which is
+  how you find out during the *next* incident); a `migrate` compose service
+  (fails identically on rollback, see above); leaving it alone because it is
+  pre-existing (it is pre-existing *and* it is the safety net the docs claim to
+  have — the next migration was already queued behind it).
+### ADR-31 — The SEO audit is a second reading of the crawl we already paid for (2026-08-03)
+- **Context:** the GEO score says whether AI engines name a company and SERP
+  visibility says whether search results do. Neither says **why** when the answer
+  is no, and "why" is the only part a customer can act on. Meanwhile `discovery`
+  was already fetching the homepage plus five pages, parsing JSON-LD, meta tags
+  and Open Graph — and throwing all of the structure away to return one flat
+  string. The audit is that structure, read a second time.
+- **Decision:**
+  - **`discover_detailed()` beside `discover()`, not instead of it.** It returns
+    a `CrawlResult` carrying `.text` (byte-identical to before) and `.pages`.
+    `discover()` is now `discover_detailed(url).text`. Counted before choosing:
+    one non-test caller, 34 assertions in `test_discovery.py` that assume a
+    `str`, and four monkeypatch fakes in other test files that return one. The
+    alternative — changing `discover`'s return type — churns five files to move
+    a string behind an attribute. This is the same move ADR-28 made when SERP was
+    added *beside* `footprint` rather than inside it.
+  - **It runs inside the discovery step.** No seventh step; `current_step`, the
+    progress mapping and `StepProgress` are untouched, for the third time.
+  - **The headline is a grade, not a score, and the grade is capped.** `geo_score`
+    is a *measurement* — a counted ratio (ADR-11). An audit score is a *rubric*:
+    the weights are editorial choices, not observations. Worse, a weighted
+    average **averages a fatal problem away** — a site that is `noindex` *and*
+    blocks every AI crawler can still bank enough minor passes to look like a C.
+    So: one critical failure caps the grade at C, two or more cap it at F, and
+    the rule is published rather than hidden. The failing checks are the real
+    output; the score is a supporting number.
+  - **Three severity tiers as the weights** (critical 5, important 3, minor 1)
+    rather than per-check coefficients. Three numbers are publishable; thirty
+    hand-tuned ones are unauditable and drift.
+  - **Five per-check states**, not two. `not_measured` (we could not read the
+    input) and `not_applicable` (the check does not apply here) are dropped from
+    **both** sides of the ratio, exactly as an unreadable SERP page is dropped
+    from its denominator — and they are kept distinct from each other, because
+    "we could not check" and "there was nothing to check" say different things.
+  - **The flagship checks are the ones no classic SEO tool performs.** Whether
+    `robots.txt` admits the AI crawlers (`pipeline/robots.py`), and whether the
+    server sends any text at all — most AI crawlers do not execute JavaScript, so
+    a client-rendered SPA is invisible to them with `robots.txt` wide open.
+    Discovery already knows when that happened; it is what triggers its bundle
+    fallback. The audit just says so.
+  - **Retrieval and training crawlers are reported separately.** Blocking
+    `GPTBot` opts out of *training*; `OAI-SearchBot` is what governs live ChatGPT
+    answers. A training-only block is a WARN, because declining to be training
+    data is a legitimate choice and calling it a failure would be alarmist.
+    `Perplexity-User` is reported but never scored — Perplexity documents that it
+    generally ignores `robots.txt`, and telling someone they had blocked it would
+    be false. `Googlebot` counts as a *retrieval* crawler because Google
+    documents it as the control for AI Overviews, with no separate opt-in.
+  - **Checks that are just SEO say so in their own text.** `meta_description`,
+    `canonical` and `open_graph` are minor and their descriptions begin "Mostly
+    classic SEO". Dressing hygiene up as AI-critical is how this category earned
+    its reputation.
+- **Consequences:** one extra HTTP fetch per analysis (`/robots.txt`), through
+  discovery's own SSRF-guarded client; no LLM call, no third-party API, no
+  vendor. Migration `0008` is additive (three nullable columns, one table, two
+  indexes) — the second index is on `(check_id, status)`, because the question
+  this table exists to make answerable is cross-sectional: *how many audited
+  sites block GPTBot?* That is a publishable statistic and a marketing asset the
+  product can generate from its own data. `ResultOut` gains a nullable `seo`
+  object, so `make gen-types` is a real diff. Checker rows are not audited —
+  a brand name is not a site. Measured against wise.com the audit returns 97.8/A
+  with one genuine failure (109 of 143 images carry no alt text).
+- **Rejected:** a seventh pipeline step (churns the locked contract for a pass
+  that needs nothing but the crawl); changing `discover`'s signature (five files
+  of churn, and it contradicts the docstring's stated contract); a single JSONB
+  `seo_audit` column (simpler, and it cannot answer the cross-sectional question
+  that makes the data worth having); a raw 0–100 as the headline (it hides the
+  only two checks that decide whether a company is visible at all); per-check
+  weights (unauditable); scoring `Perplexity-User` (a directive the vendor says
+  it will ignore is not a control); listing `anthropic-ai`, `Claude-Web` or
+  `Bytespider` (the first two are deprecated, the third has no vendor
+  documentation — a list padded with plausible tokens looks thorough and is less
+  true); and parsing `robots.txt` by hand (the stdlib parser already implements
+  RFC 9309's group selection and `Allow` precedence, and a second implementation
+  is a second thing to get subtly wrong — it is fed already-fetched text so it
+  cannot re-fetch around the SSRF guard).

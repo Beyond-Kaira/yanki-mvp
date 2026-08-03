@@ -218,6 +218,51 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "LoginRequest": {
+        "description": "Credentials required to authenticate a user.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "LoginResponse": {
+        "description": "Authenticated user and bearer token returned after login.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "required": [
+          "user",
+          "access_token"
+        ],
+        "title": "LoginResponse",
+        "type": "object"
+      },
       "PromptOut": {
         "properties": {
           "category": {
@@ -240,6 +285,26 @@
           "category"
         ],
         "title": "PromptOut",
+        "type": "object"
+      },
+      "RefreshResponse": {
+        "description": "New bearer token returned after refresh-token rotation.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "RefreshResponse",
         "type": "object"
       },
       "ResponseOut": {
@@ -384,6 +449,26 @@
             "title": "Responses",
             "type": "array"
           },
+          "seo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeoAuditOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "serp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SerpVisibilityOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "total_responses": {
             "anyOf": [
               {
@@ -404,9 +489,321 @@
           "footprint_count",
           "total_responses",
           "engine_presence",
-          "competitors_appeared"
+          "competitors_appeared",
+          "serp",
+          "seo"
         ],
         "title": "ResultOut",
+        "type": "object"
+      },
+      "SeoAuditOut": {
+        "description": "The SEO audit for one analysis (ADR-31).\n\n``grade`` is the headline rather than ``score``, because a weighted average\ncan hide a fatal problem: the grade is capped by critical failures, so a site\nthat blocks AI crawlers cannot present as healthy. Null on runs that did not\naudit \u2014 a checker submission has no site to look at.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SeoCheckOut"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "score",
+          "grade",
+          "checks"
+        ],
+        "title": "SeoAuditOut",
+        "type": "object"
+      },
+      "SeoCheckOut": {
+        "description": "One SEO / AI-readiness check and the evidence behind its verdict.\n\n``status`` is one of ``pass`` / ``warn`` / ``fail`` / ``not_measured`` /\n``not_applicable``. The last two are excluded from the score and mean\ndifferent things \u2014 \"we could not read the input\" versus \"this does not apply\nhere\" \u2014 so the UI must not collapse them into each other or into a failure.",
+        "properties": {
+          "check_id": {
+            "title": "Check Id",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "check_id",
+          "title",
+          "severity",
+          "status",
+          "detail",
+          "evidence"
+        ],
+        "title": "SeoCheckOut",
+        "type": "object"
+      },
+      "SerpCheckOut": {
+        "description": "One search query run for an analysis, and what the results page showed.\n\n``hit`` is nullable and the distinction matters to anyone reading this: NULL\nis a page we could not read (the search instance was unreachable, or every\nupstream engine refused it) and is excluded from the score; ``false`` is a\nreal, counted miss.",
+        "properties": {
+          "hit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "matched_snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Snippet"
+          },
+          "matched_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Url"
+          },
+          "matched_via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Via"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "result_count": {
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "unresponsive_engines": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresponsive Engines"
+          }
+        },
+        "required": [
+          "id",
+          "query",
+          "source",
+          "hit",
+          "rank",
+          "matched_url",
+          "matched_snippet",
+          "matched_via",
+          "result_count",
+          "unresponsive_engines"
+        ],
+        "title": "SerpCheckOut",
+        "type": "object"
+      },
+      "SerpVisibilityOut": {
+        "description": "SERP visibility for one analysis (ADR-28).\n\nPresent only on runs where the feature was switched on; ``ResultOut.serp``\nstays null otherwise, so \"we did not look\" is never rendered as a zero.\n``score`` is separately nullable *within* a present summary: that is the run\nwhere we did look and could not read the results.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SerpCheckOut"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "hits": {
+            "title": "Hits",
+            "type": "integer"
+          },
+          "queries": {
+            "title": "Queries",
+            "type": "integer"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "source",
+          "score",
+          "hits",
+          "queries",
+          "checks"
+        ],
+        "title": "SerpVisibilityOut",
+        "type": "object"
+      },
+      "SignupRequest": {
+        "description": "Credentials required to create a user account.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "SignupRequest",
+        "type": "object"
+      },
+      "UserOut": {
+        "description": "Public user fields returned by authentication endpoints.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "created_at"
+        ],
+        "title": "UserOut",
         "type": "object"
       },
       "ValidationError": {
@@ -475,6 +872,12 @@
         ],
         "title": "WaitlistResponse",
         "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -565,6 +968,154 @@
         "summary": "Read Analysis",
         "tags": [
           "analyses"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "description": "Validate a user's email and password.",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "Revoke the current refresh-token family and clear its cookie.",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "description": "Return the user represented by the access bearer token.",
+        "operationId": "me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "description": "Rotate the refresh token and return a new access token.",
+        "operationId": "refresh_api_v1_auth_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/signup": {
+      "post": {
+        "description": "Create a user account with a hashed password.",
+        "operationId": "signup_api_v1_auth_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signup",
+        "tags": [
+          "auth"
         ]
       }
     },

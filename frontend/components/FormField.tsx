@@ -70,7 +70,13 @@ export function FieldShell({
       </label>
       {children}
       {error ? (
-        <p id={fieldErrorId(id)} className="text-sm text-danger">
+        // `role="alert"` for the same reason UrlForm and EmailGate carry it: the
+        // message has to announce itself. Moving focus to the field is not
+        // enough — the focus call in the submit handler runs before React has
+        // committed the error, so the control the reader lands on has neither
+        // aria-invalid nor aria-describedby on it yet, and only the label is
+        // read. This live region says why.
+        <p id={fieldErrorId(id)} role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : hint ? (

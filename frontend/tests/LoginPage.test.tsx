@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { axeCheck } from './a11y'
 
 const push = vi.fn()
 const replace = vi.fn()
@@ -57,10 +56,7 @@ describe('LoginPage', () => {
     mockedRefresh.mockReset().mockResolvedValue(null)
   })
 
-  it('has no axe violations', async () => {
-    const { container } = renderPage()
-    expect(await axeCheck(container)).toHaveNoViolations()
-  })
+  // Accessibility lives in LoginPage.a11y.test.tsx, beside the other nine.
 
   it('reports each field under its own input and posts nothing', async () => {
     const user = userEvent.setup()

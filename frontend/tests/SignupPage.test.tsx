@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { axeCheck } from './a11y'
 
 const push = vi.fn()
 
@@ -67,10 +66,7 @@ describe('SignupPage', () => {
     mockedRefresh.mockReset().mockResolvedValue(null)
   })
 
-  it('has no axe violations', async () => {
-    const { container } = renderPage()
-    expect(await axeCheck(container)).toHaveNoViolations()
-  })
+  // Accessibility lives in SignupPage.a11y.test.tsx, beside the other nine.
 
   it('collects no name, because the account has no such field', () => {
     renderPage()

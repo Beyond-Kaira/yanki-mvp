@@ -453,8 +453,13 @@ check:
 - **`integration`** — the live-instance tier of §3.4 against a **real** SearXNG,
   pinned to a known tag: it boots the instance with `serp-instance.sh`, sets
   `SERP_TEST_BASE_URL`, and runs `pytest tests/integration`.
-- **`migration`** — `alembic upgrade head`, then `downgrade -1`, then upgrade
-  again, on a real Postgres, asserting the SERP schema appears, fully reverts,
+- **`migration`** — applies every migration on real Postgres, snapshots the
+  schema, steps back one revision, and comes forward again, asserting the
+  schema **round-trips exactly**. It asserts a property rather than a list of
+  table names on purpose: the first version named SERP's tables and duly
+  failed on the next migration for the wrong reason. A separate step checks
+  the downgrade actually changed something, so a `downgrade()` that does
+  nothing cannot round-trip its way to a pass.
   and re-applies (via `.github/scripts/serp_schema_check.py`). CI's ordinary
   pytest runs on SQLite and had never applied a migration at all, so a downgrade
   that cannot revert had nowhere to be caught.

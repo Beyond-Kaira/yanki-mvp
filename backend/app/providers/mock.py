@@ -28,10 +28,14 @@ _KYC_PROFILE = {
     "company": MOCK_COMPANY,
     "description": "A fictional company used for zero-cost demo runs.",
     "industry": "Software",
+    # The buyer-facing category and use cases the real prompt asks for, so a
+    # DRY_RUN run exercises the same fields prompt generation prefers.
+    "category": "AI visibility tools",
     "aliases": [MOCK_COMPANY, "Yanki"],
     "products": ["Demo Platform", "Insights API"],
     "services": ["Consulting"],
     "keywords": ["analytics", "geo", "visibility"],
+    "use_cases": ["brand visibility tracking", "AI answer monitoring"],
     "locations": ["Istanbul"],
     "competitors": ["Acme", "Globex"],
 }

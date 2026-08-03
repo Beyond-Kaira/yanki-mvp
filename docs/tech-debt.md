@@ -4,13 +4,20 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-03 (account screens, PR #13 review response: five new
-items — **#30** (password reset has no endpoint, so it ships no screen), **#31**
-(no terms text, so sign-up asks for no agreement), **#32** (every cold load POSTs
-`/auth/refresh`, anonymous visitors included), **#33** (an account grants
-nothing — no route is protected and there is no signed-in destination), **#34**
+Last updated: 2026-08-03 (account screens, PR #13 review response, merged
+against main after items #30-33 landed there: five new items — **#34**
+(password reset has no endpoint, so it ships no screen), **#35**
+(no terms text, so sign-up asks for no agreement), **#36** (every cold load POSTs
+`/auth/refresh`, anonymous visitors included), **#37** (an account grants
+nothing — no route is protected and there is no signed-in destination), **#38**
 (the cross-tab refresh guard degrades on browsers without Web Locks). No
-repayments this pass. Earlier — 2026-07-28 (discovery + KYC pass: three new items — **#27**
+repayments this pass. Earlier — 2026-08-01 (pipeline quality part two,
+`pipeline-quality-plan.md`: three new items — **#30** (`_is_html` byte-sniff
+closes #28 for known binary formats, not all), **#31** (SPA bundle extraction
+still welds punctuation onto real copy), **#32** (the prompt category filter is
+a heuristic pending real-profile data), **#33** (grounding's 1 000-char floor is
+a guess, not measured). No repayments this pass. Earlier — 2026-07-28
+(discovery + KYC pass: three new items — **#27**
 (KYC-stage spend counts toward no cost cap), **#28** (`_is_html` fails open on a
 missing Content-Type), **#29** (steps 2b/6 specified but parked on an operator
 decision). No repayments this pass. Earlier — 2026-07-10 (session 12 close:
@@ -300,7 +307,7 @@ devDependencies).)
     nothing feeds. Recording KYC cost is worth doing, but it *re-tunes* what
     the $5 cap actually measures, so it deserves its own change with its own
     review rather than riding along here.
-28. **`_is_html` fails open on a missing Content-Type** (2026-07-28, step 4 of
+28. **`_is_html` fails open on a missing Content-Type** (superseded by #30) (2026-07-28, step 4 of
     `discovery-kyc-improvements.md`, accepted): a 200 that declares no type is
     parsed as HTML. Deliberate — it matches `net_guard`'s stance of treating an
     unresolvable host as public so CI and offline dev keep working, and many
@@ -315,7 +322,40 @@ devDependencies).)
     quietly forgotten. `test_footprint.py` pins the current (2a-only) suffix
     behaviour, so approving 2b starts by changing a test that says exactly what
     it does today.
-30. **Password reset has no endpoint, so it ships no screen** (2026-08-03,
+30. **`_is_html` fail-open is now backed by a byte sniff — #28 is closed for the
+    formats that matter** (2026-08-01, `pipeline-quality-plan.md` D2). A
+    header-less response whose first bytes are `%PDF`, a zip/office container,
+    PNG/GIF/JPEG, gzip, RIFF or PostScript — or that contains a NUL in the first
+    512 bytes — is skipped. What remains open: a header-less binary format
+    *not* on that list still reaches BeautifulSoup, and a genuinely UTF-16
+    encoded page is now misread as binary (accepted: vanishingly rare on the
+    public web, and parsing a PDF as page copy is the failure we actually saw).
+31. **SPA bundle extraction still welds object punctuation onto real copy**
+    (2026-08-01, measured live on beyondtech.com.tr): the string-literal
+    extractor drops minified code and framework diagnostics, but a span that
+    straddles an object literal arrives as `...tasarlarız.`,pillars:[{num:`01`...`.
+    It is cosmetic — an LLM reads through it — and the obvious fix (reject any
+    literal containing a backtick) was measured and **rejected**: it took the
+    corpus from 20 000 chars to 1 751 by deleting the site's real Turkish copy.
+    A proper fix parses the bundle rather than regexing it, which is a different
+    (and much larger) piece of work.
+32. **The prompt category filter is a heuristic, and says so** (2026-08-01,
+    `pipeline-quality-plan.md` P1): phrases with digits, spec symbols, attribute
+    tails ("payload capacity") or bare hyphenated adjectives ("anti-armor") are
+    rejected, but nothing separates "fiber optic" (an attribute) from "fiber
+    optics" (a category). The actual fix is `KYC.category`, which *asks* for the
+    category — the filter only protects the path where the model does not
+    supply one. Watch: a legitimate category containing a digit ("5G antennas",
+    "3D printers") is currently rejected. If real profiles hit this, narrow the
+    digit rule to model-code shapes (letter+digit runs) instead of any digit.
+33. **Grounding's 1 000-character floor is a guess** (2026-08-01,
+    `pipeline-quality-plan.md` K4): below `MIN_GROUNDING_CHARS` nothing is
+    dropped, on the principle that a thin crawl cannot prove a negative. It also
+    happens to be what keeps DRY_RUN's fictional profile intact against
+    `example.com`. The number was chosen by reasoning, not by measurement — if a
+    real one-page site ever ships a hallucinated alias through this door, tune it
+    with data rather than by feel.
+34. **Password reset has no endpoint, so it ships no screen** (2026-08-03,
     account screens, PR #13): the auth router is signup / login / refresh /
     logout / me and nothing else. The `/forgot-password` route and the "Forgot
     password?" link on `/login` were **removed** rather than shipped, because a
@@ -328,7 +368,7 @@ devDependencies).)
     session log). One requirement carries over in the client's comment: an
     unknown address must answer exactly like a known one, or the endpoint
     becomes a way to test which emails are registered.
-31. **There are no terms, so sign-up asks for no agreement** (2026-08-03,
+35. **There are no terms, so sign-up asks for no agreement** (2026-08-03,
     account screens, PR #13): the form shipped a **required** checkbox pointing
     at a `/terms` page that said, honestly, that nothing on it was binding. A
     forced consent to an unwritten document is not consent, and merging `main`
@@ -337,7 +377,7 @@ devDependencies).)
     checkbox and no terms link, so putting one back is a deliberate act. **This
     is a legal/product blocker, not an engineering one** — the text has to be
     written before an account can be conditioned on it.
-32. **Every cold load POSTs `/api/v1/auth/refresh`, anonymous visitors
+36. **Every cold load POSTs `/api/v1/auth/refresh`, anonymous visitors
     included** (2026-08-03, account screens, PR #13): `AuthProvider.restore()`
     runs on every page, and a script cannot read an httpOnly cookie, so asking
     is the only way to learn whether a session exists. The cost lands on `/` and
@@ -347,7 +387,7 @@ devDependencies).)
     letting the client skip the call when there is obviously no session; it
     touches the backend (`auth_cookies.py`) as well as `AuthProvider`, which is
     why it is not in PR #13. **Close this before the checker goes loud.**
-33. **An account grants nothing** (2026-08-03, account screens, PR #13): no
+37. **An account grants nothing** (2026-08-03, account screens, PR #13): no
     route is protected, and there is no signed-in destination — `login/page.tsx`
     pushes to `/`, where the header shows the email. So the sign-up CTA now sits
     on every page, including `/checker`, next to the launch wedge, offering
@@ -355,7 +395,7 @@ devDependencies).)
     operator rather than a defect: the code is ready and can sit ready. Closing
     it means either the first thing worth signing in for (saved analyses,
     history) or holding the header CTA back until there is one.
-34. **The cross-tab refresh guard degrades where Web Locks are missing**
+38. **The cross-tab refresh guard degrades where Web Locks are missing**
     (2026-08-03, account screens, PR #13): `lib/session.ts` serialises rotation
     across tabs with `navigator.locks`, which closes the race where two tabs
     cold-loading together replay the same consumed refresh token and the backend
@@ -364,4 +404,4 @@ devDependencies).)
     that race. Deliberate: a rotation that never runs would be worse than one
     that can race, and the fallback is the behaviour every tab had before. A
     BroadcastChannel leader would cover them, at the cost of an election and
-    token material crossing a channel (ADR-27, "Rejected").
+    token material crossing a channel (ADR-28, "Rejected").

@@ -239,15 +239,20 @@ def test_happy_path_still_costs_exactly_one_call():
     assert len(provider.prompts) == 1
 
 
-def test_retry_resends_the_prompt_the_mock_provider_keys_off():
+def test_retry_repairs_but_keeps_the_mock_provider_coupling():
     # MockProvider returns its canned profile only when the prompt contains
-    # "json object" (mock.py:46-50). If the retry ever stops re-sending the same
-    # prompt, DRY_RUN and the e2e break — so pin it here.
+    # "json object" (mock.py:46-50). The retry now leads with a repair
+    # instruction — but if it ever stops carrying that phrase, DRY_RUN and the
+    # e2e break in lockstep, so pin the coupling rather than byte-equality.
     provider = _ScriptedProvider("nope", _VALID)
     generate_kyc("text", "https://globex.com", provider)
     assert len(provider.prompts) == 2
-    assert provider.prompts[0] == provider.prompts[1]
     assert all("json object" in prompt.lower() for prompt in provider.prompts)
+    # The retry is a repair, not a replay: it says what went wrong, and it still
+    # carries the original request underneath.
+    assert provider.prompts[1] != provider.prompts[0]
+    assert "could not be parsed" in provider.prompts[1]
+    assert provider.prompts[1].endswith(provider.prompts[0])
 
 
 def test_validation_failure_keeps_its_own_message():
@@ -258,3 +263,183 @@ def test_validation_failure_keeps_its_own_message():
         generate_kyc("text", "https://x.com", _CannedProvider(raw))
     with pytest.raises(PipelineError, match="could not read"):
         generate_kyc("text", "https://x.com", _CannedProvider("not json at all"))
+
+
+# --- Workstream K: sanitation + grounding (docs/pipeline-quality-plan.md) ---
+
+
+# Long enough to clear MIN_GROUNDING_CHARS, so grounding is actually in play.
+def _corpus(*extra: str) -> str:
+    body = (
+        "Globex Robotics builds autonomous warehouse robots for European "
+        "distribution centres. Our fleet software coordinates every unit. "
+    )
+    return body * 12 + " ".join(extra)
+
+
+def test_new_category_and_use_case_fields_are_parsed():
+    raw = json.dumps(
+        {
+            "company": "Globex",
+            "category": "industrial robots",
+            "use_cases": ["warehouse automation", "order picking"],
+        }
+    )
+    kyc = generate_kyc("text", "https://globex.com", _CannedProvider(raw))
+    assert kyc.category == "industrial robots"
+    assert kyc.use_cases == ["warehouse automation", "order picking"]
+
+
+def test_new_fields_default_so_an_empty_kyc_still_builds():
+    # scripts/gen_methodology.py builds KYC(company="") — a required new field
+    # would fail the contract job rather than a test.
+    empty = KYC(company="")
+    assert empty.category == ""
+    assert empty.use_cases == []
+
+
+def test_placeholder_values_are_dropped_not_persisted():
+    raw = json.dumps(
+        {
+            "company": "Globex",
+            "industry": "N/A",
+            "category": "unknown",
+            "keywords": ["robots", "N/A", "  ", "none"],
+            "services": ["not specified"],
+        }
+    )
+    kyc = generate_kyc("text", "https://globex.com", _CannedProvider(raw))
+    assert kyc.industry == ""
+    assert kyc.category == ""
+    assert kyc.keywords == ["robots"]
+    assert kyc.services == []
+
+
+def test_values_are_deduped_across_spellings_and_capped():
+    raw = json.dumps(
+        {
+            "company": "Globex",
+            "keywords": ["Türk robotları", "turk robotlari", "TÜRK ROBOTLARI", "robots"],
+            "products": [f"Model {i}" for i in range(40)],
+        }
+    )
+    kyc = generate_kyc("text", "https://globex.com", _CannedProvider(raw))
+    assert kyc.keywords == ["Türk robotları", "robots"]
+    assert len(kyc.products) <= 15
+
+
+def test_a_company_is_never_its_own_competitor():
+    # Left in, it becomes an "alternatives to <us>" prompt and a self-mention
+    # counted as a competitor sighting.
+    raw = json.dumps(
+        {
+            "company": "Globex Robotics",
+            "aliases": ["Globex"],
+            "competitors": ["Globex Robotics", "globex", "Acme"],
+        }
+    )
+    kyc = generate_kyc("text", "https://globex.com", _CannedProvider(raw))
+    assert kyc.competitors == ["Acme"]
+
+
+def test_invented_proper_nouns_are_dropped_from_a_real_corpus():
+    raw = json.dumps(
+        {
+            "company": "Globex Robotics",
+            "products": ["PalletMover", "Imaginary Quantum Drive"],
+            "competitors": ["Initech", "Nonexistent Corp"],
+            "aliases": ["Globex Robotics", "GlobexFake Holdings"],
+        }
+    )
+    text = _corpus("Our PalletMover outsells Initech in every region.")
+    kyc = generate_kyc(text, "https://globex.com", _CannedProvider(raw))
+    assert kyc.products == ["PalletMover"]
+    assert kyc.competitors == ["Initech"]
+    assert "GlobexFake Holdings" not in kyc.aliases
+
+
+def test_grounding_tolerates_diacritics_and_separators():
+    raw = json.dumps(
+        {
+            "company": "Globex",
+            "products": ["Coca Cola dispenser", "Nestle line"],
+            "competitors": ["Turk Holding"],
+        }
+    )
+    text = _corpus("We supply the Coca-Cola dispenser and the Nestlé line to Türk Holding.")
+    kyc = generate_kyc(text, "https://globex.com", _CannedProvider(raw))
+    assert kyc.products == ["Coca Cola dispenser", "Nestle line"]
+    assert kyc.competitors == ["Turk Holding"]
+
+
+def test_grounding_never_touches_the_inferred_fields():
+    # The prompt asks for an English rendering of possibly-Turkish copy, so
+    # requiring those words verbatim would delete the translation we requested.
+    raw = json.dumps(
+        {
+            "company": "Globex Robotics",
+            "description": "An English summary that appears nowhere on the site.",
+            "industry": "Warehouse automation",
+            "category": "industrial robots",
+            "keywords": ["autonomous forklifts"],
+            "use_cases": ["night-shift picking"],
+        }
+    )
+    kyc = generate_kyc(_corpus(), "https://globex.com", _CannedProvider(raw))
+    assert kyc.description.startswith("An English summary")
+    assert kyc.industry == "Warehouse automation"
+    assert kyc.category == "industrial robots"
+    assert kyc.keywords == ["autonomous forklifts"]
+    assert kyc.use_cases == ["night-shift picking"]
+
+
+def test_minted_aliases_survive_grounding():
+    # Company name, folded form, legal stem and registrable domain are facts
+    # about the submission, not claims the model made.
+    raw = json.dumps({"company": "Türk Robotik A.Ş.", "aliases": ["Invented Name"]})
+    kyc = generate_kyc(_corpus(), "https://turkrobotik.com.tr", _CannedProvider(raw))
+    assert "Türk Robotik A.Ş." in kyc.aliases
+    assert "Turk Robotik A.S." in kyc.aliases
+    assert "Türk Robotik" in kyc.aliases
+    assert "turkrobotik" in kyc.aliases
+    assert "Invented Name" not in kyc.aliases
+
+
+def test_a_thin_crawl_grounds_nothing():
+    # Too little text to prove a negative — and this is what keeps DRY_RUN's
+    # fictional profile intact against example.com's one paragraph.
+    raw = json.dumps(
+        {"company": "Globex", "products": ["PalletMover"], "competitors": ["Initech"]}
+    )
+    kyc = generate_kyc("Example Domain.", "https://globex.com", _CannedProvider(raw))
+    assert kyc.products == ["PalletMover"]
+    assert kyc.competitors == ["Initech"]
+
+
+def test_checker_rows_opt_out_of_grounding():
+    # A checker analysis has no crawl: its "source text" is a sentence the
+    # runner composed, so grounding against it would delete everything the model
+    # knows and degrade every run to the neutral fallbacks.
+    raw = json.dumps(
+        {"company": "Nike", "products": ["Air Max"], "competitors": ["Adidas"]}
+    )
+    seed = "Brand: Nike. Category: running shoes. " * 40
+    kyc = generate_kyc(
+        seed, "checker://nike", _CannedProvider(raw), verify_against_source=False
+    )
+    assert kyc.products == ["Air Max"]
+    assert kyc.competitors == ["Adidas"]
+
+
+def test_require_usable_accepts_the_new_topic_fields():
+    require_usable(KYC(company="Globex", category="industrial robots"))
+    require_usable(KYC(company="Globex", use_cases=["warehouse automation"]))
+
+
+def test_require_usable_rejects_placeholder_topics():
+    # "N/A" is not knowing what the company does; without this the run buys up
+    # to 60 calls asking about "solutions".
+    with pytest.raises(PipelineError, match="does"):
+        require_usable(KYC(company="Globex", keywords=["N/A"], industry="unknown"))
+    with pytest.raises(PipelineError, match="company"):
+        require_usable(KYC(company="N/A", keywords=["robots"]))

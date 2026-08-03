@@ -250,21 +250,24 @@ operator-directed card, waitlist + Resend emails** (`c521931`), P5.10
 (`93aa34a` + build fix `643e0ee`), all CI-green and deployed dark at
 session close. Full detail: `sessions/2026-07-10-11.md`.
 
-🔍 **Session 15 (2026-08-03): P6.1 — account screens + the browser session
+🔍 **Session 16 (2026-08-03): P6.1 — account screens + the browser session
 layer, in review.** The first slice of roadmap **§2d** (accounts), on
 `feat/auth-screens` /
 [PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13): sign up, log in,
 log out, a header that knows who you are, and `lib/session.ts` +
 `lib/api.ts` holding the access token in memory and rotating the httpOnly
-refresh cookie behind it (**ADR-27**). PR #9 landed the endpoints behind it and
+refresh cookie behind it (**ADR-28**). PR #9 landed the endpoints behind it and
 is recorded below as P6.0. The review returned **changes requested** (9 items)
 and this session answered all of them: the password-reset flow and the terms
-checkbox were **removed** rather than shipped (tech-debt #30, #31), the
+checkbox were **removed** rather than shipped (tech-debt #34, #35), the
 cross-tab refresh race is closed with a Web Lock, and the three untested claims
 the reviewer found — the 401 replay, the field-error announcement, the header's
 anonymous branch — are now pinned by tests that were each confirmed to fail
 without their fix. Frontend 122 passed across 26 files; tsc + eslint clean.
-Full detail: `sessions/2026-08-03-01.md`.
+Merged against `main` after this session closed, to pick up **P5.15**'s
+concurrent changes to `frontend/lib/contracts.ts` — no code conflict, two doc
+renumberings (this entry, ADR, tech-debt #30–33 → #34–38). Full detail:
+`sessions/2026-08-03-01.md`.
 
 ✅ **Session 14 (2026-07-28): P5.14 — discovery + KYC input quality**
 (`cf28cbc`, `f25462d`, `8ce7356`, `c74ccd3`, `8337045`, `684108a` on
@@ -276,6 +279,21 @@ bounded retry, a Content-Type/size guard on page fetches, and a gate that
 refuses the ≤60-call `execute` fan-out on a profile with no company or no
 topic. ADR-26. **Steps 2b and 6 not built — operator decision A2.** Zero
 contract drift. Full detail: `sessions/2026-07-28-02.md`.
+
+✅ **Session 15 (2026-08-01): P5.15 — pipeline quality, MVP → product**
+(branch `feat/pipeline-quality-production-grade`). The plan is
+[`pipeline-quality-plan.md`](pipeline-quality-plan.md) and all three of its
+workstreams shipped: **discovery** (meta-charset decoding, binary sniffing,
+one homepage retry, scored link selection, cross-page boilerplate removal,
+per-page budget, tighter SPA literal filtering), **KYC** (`sanitize.py` — one
+normalized key for dedupe/grounding/leak detection; per-field sanitation;
+grounding of products/competitors/model aliases against the crawl; the new
+`category` + `use_cases` fields; a repair-prompted retry; a junk-aware
+usability gate), and **prompts** (typed + filtered topic pool, kind- and
+number-aware phrasing, full topic × shape rotation, and a hard invariant that
+no scored question names the brand). ADR-27. Zero contract drift, no new paid
+call, `checker_prompts.VERSION` unchanged. Backend 321 passed / 3 skipped,
+frontend 70 passed. Full detail: `sessions/2026-08-01-01.md`.
 
 ➡️ **Next up: P5.11 (operator go-live)** — everything agent-buildable is done.
 Blockers are all operator items: A1 decisions, **A2 (new: rule on discovery/KYC
@@ -1792,6 +1810,38 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   the document are deliberately NOT built** — they revive §2c scope parked by
   operator decision; see operator-expected **A2** and tech-debt #29.
 
+### P5.15 — Pipeline quality: crawl fidelity, grounded profiles, question realism (added 2026-08-01, session 15)
+- **Goal:** take discovery, KYC and prompt generation from MVP plumbing to a
+  measurement instrument, per [pipeline-quality-plan.md](pipeline-quality-plan.md):
+  **D** decode by the declared charset, sniff binary, retry the homepage once,
+  score links instead of substring-matching them, read each block of copy once;
+  **K** sanitize every field, ground proper nouns against the crawl, add
+  `category` + `use_cases`, repair-prompt the single retry; **P** filter topics
+  that cannot be a category, phrase by topic kind and number, rotate over every
+  topic × shape pair, and never name the brand in a scored question.
+- **Why now:** ADR-26 fixed *how much* of a site we read and whether the KYC
+  call survives a formatting slip. It did not address wrong *content* — an
+  invented product, an alias that was never on the site (which inflates the GEO
+  score, because `footprint` cannot tell it from a real mention), or a "keyword"
+  that is a spec attribute and becomes a question nobody asks.
+- **Dependencies:** P5.14 (builds on `textfold`, the parse/retry path and the
+  usability gate).
+- **Complexity:** L
+- **Deliverables:** `backend/app/pipeline/sanitize.py` (**new**),
+  `discovery.py`, `kyc.py`, `prompts.py`, `checker_prompts.py`, `runner.py`,
+  `providers/mock.py`, `frontend/lib/contracts.ts`, `frontend/components/KycCard.tsx`,
+  tests in `test_sanitize.py` (**new**) / `test_discovery.py` / `test_kyc.py` /
+  `test_prompts.py` / `test_checker_prompts.py` / `KycCard.test.tsx`, ADR-27 in
+  [design.md](design.md), tech-debt #30–#33.
+- **Acceptance:** backend + frontend suites green; `make gen-types` a **zero
+  diff**; `checker_prompts.VERSION` unchanged and the published methodology
+  prompts byte-identical (pinned by a test); no new paid provider call on any
+  path; a test proves a brand in the keywords never reaches a scored question.
+- **Status:** ✅ **done — session 15 (2026-08-01)** on
+  `feat/pipeline-quality-production-grade`. Steps 2b and 6 of
+  `discovery-kyc-improvements.md` remain **not built** (operator item A2); this
+  work is language-neutral and does not touch that decision.
+
 ---
 
 ### Phase-5 assumptions
@@ -1924,21 +1974,21 @@ starts a new phase deliberately: Phase 5 is the free public checker (roadmap
   `lib/contracts.ts` (`AuthUser`, `Credentials`, `SignupCredentials`,
   `LoginResponse`), tests in `tests/{auth,session}.test.ts`,
   `tests/{LoginPage,SignupPage,SiteHeader}.test.tsx` and
-  `tests/{LoginPage,SignupPage}.a11y.test.tsx`, **ADR-27** in
+  `tests/{LoginPage,SignupPage}.a11y.test.tsx`, **ADR-28** in
   [design.md](design.md).
 - **Acceptance:** a reload keeps the session by rotating the cookie; the bearer
   is never persisted anywhere a script can read it; concurrent refreshes — in
   one tab and **across tabs** — produce exactly one rotation; a 401 refreshes
   once and replays the original request; every field error is announced; no
   screen ships a control the API cannot honour.
-- **Status:** 🔍 **in review — session 15 (2026-08-03)**,
+- **Status:** 🔍 **in review — session 16 (2026-08-03)**,
   [PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) on
   `feat/auth-screens`. Review returned changes-requested; all nine items are
   answered (`sessions/2026-08-03-01.md` §1). **Two features were deliberately
-  removed rather than shipped** — password reset (no endpoint: tech-debt #30)
-  and the terms checkbox (no terms: tech-debt #31). Frontend 122 passed / 26
+  removed rather than shipped** — password reset (no endpoint: tech-debt #34)
+  and the terms checkbox (no terms: tech-debt #35). Frontend 122 passed / 26
   files, tsc + eslint clean. Not deployed: merging `main` auto-deploys, and
-  tech-debt #33 (an account grants nothing yet) is an open timing question for
+  tech-debt #37 (an account grants nothing yet) is an open timing question for
   the operator.
 
 ---

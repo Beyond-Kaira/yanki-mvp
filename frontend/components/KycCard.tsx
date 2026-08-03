@@ -31,6 +31,9 @@ function asChips(value: unknown): string[] {
 
 export default function KycCard({ kyc }: KycCardProps) {
   const textRows: TextRow[] = [
+    // Category leads: it is the field the prompts are actually built from, so
+    // showing it is how a user can tell whether we understood their business.
+    { label: 'Category', value: asText(kyc.category) },
     { label: 'Industry', value: asText(kyc.industry) },
     { label: 'Locations', value: asChips(kyc.locations).join(', ') },
   ].filter((row) => row.value.trim().length > 0)
@@ -38,6 +41,7 @@ export default function KycCard({ kyc }: KycCardProps) {
   const chipRows: ChipRow[] = [
     { label: 'Aliases', items: asChips(kyc.aliases) },
     { label: 'Keywords', items: asChips(kyc.keywords) },
+    { label: 'Use cases', items: asChips(kyc.use_cases) },
     { label: 'Products', items: asChips(kyc.products) },
     { label: 'Services', items: asChips(kyc.services) },
     { label: 'Competitors', items: asChips(kyc.competitors) },

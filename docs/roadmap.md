@@ -86,14 +86,27 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 | Weighted AI Visibility Score 0–100: mention × position (1.0 / 0.7 / 0.4) × sentiment (1.0 / 0.9 / 0.5), averaged, ×100 | The defensible, published score the product sells on; the MVP's binary score is the honest placeholder until this lands. |
 | Sentiment + position extraction pass (cheap model) | Inputs to the weighted score; a cheap analysis model is one of the three cost protections. |
 
-> **Input side, partly delivered:** [`docs/discovery-kyc-improvements.md`](discovery-kyc-improvements.md)
-> lists six ordered steps for the discovery and KYC steps that feed this number.
-> **Steps 1, 2a, 3, 4 and 5 are implemented** — JSON-LD extraction, diacritic and
-> hyphen tolerance in footprint matching, a KYC parse repair plus one bounded
-> retry, a Content-Type guard on page fetches, and a gate that refuses the paid
-> execute fan-out on a profile with no company or no topic. **Steps 2b and 6 are
-> not built:** they would revive §2c scope and stay gated on an operator
-> decision — see §2c immediately below.
+> **Input side, delivered in two passes.**
+> [`docs/discovery-kyc-improvements.md`](discovery-kyc-improvements.md) was the
+> first: **steps 1, 2a, 3, 4 and 5 are implemented** — JSON-LD extraction,
+> diacritic and hyphen tolerance in footprint matching, a KYC parse repair plus
+> one bounded retry, a Content-Type guard on page fetches, and a gate that
+> refuses the paid execute fan-out on a profile with no company or no topic.
+> **Steps 2b and 6 are not built:** they would revive §2c scope and stay gated on
+> an operator decision — see §2c immediately below.
+>
+> [`docs/pipeline-quality-plan.md`](pipeline-quality-plan.md) is the second
+> (2026-08-01), and takes the same three steps from MVP to product grade:
+> encoding-correct decoding, binary sniffing, a homepage retry, scored link
+> selection and cross-page boilerplate removal (discovery); sanitation of every
+> field plus **grounding** — a product, competitor or alias the model returned
+> that is nowhere in the crawl is dropped, because a hallucinated alias inflates
+> the score and nothing downstream can tell — and two new profile fields
+> (`category`, `use_cases`) so the buying category is *asked for* rather than
+> inferred (KYC); a category filter that keeps spec attributes out of questions,
+> rotation that reaches every topic × shape pair, and a hard invariant that no
+> scored question may name the brand it measures (prompts). All of it is
+> language-neutral and adds **no** paid call.
 
 ### 2c. Turkish as a first-class language — the wedge that can't be a sprint bolt-on
 
@@ -129,9 +142,9 @@ Email/password endpoints landed in
 [PR #9](https://github.com/Beyond-Kaira/yanki-mvp/pull/9) and the screens for
 them are in review as
 [PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) (plan cards **P6.0**
-/ **P6.1**, ADR-27). Nothing else in this section is begun: there are no
+/ **P6.1**, ADR-28). Nothing else in this section is begun: there are no
 projects, no onboarding wizard, and **an account currently grants nothing** —
-no route is protected and there is no signed-in destination (tech-debt #33).
+no route is protected and there is no signed-in destination (tech-debt #37).
 The sequencing note below still holds; signing in becomes worth doing when the
 app has something behind it.
 

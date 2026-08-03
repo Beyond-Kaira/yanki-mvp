@@ -73,3 +73,32 @@ def test_prompts_use_category_topic_not_brand_name(sample_kyc):
     # appear in any question — it is searched for in the answers instead.
     specs = checker_prompts.generate(sample_kyc, "en")
     assert all(sample_kyc.company.lower() not in s.text.lower() for s in specs)
+
+
+def test_category_field_becomes_the_primary_topic():
+    # The checker shares prompts.topic_pool, so the KYC's own category outranks
+    # whatever the model happened to put in keywords.
+    kyc = KYC(company="Nike", category="running shoes", keywords=["footwear"])
+    specs = checker_prompts.generate(kyc, "en")
+    assert all("running shoes" in spec.text for spec in specs)
+
+
+def test_spec_attribute_keywords_do_not_become_the_topic():
+    # A single bad topic is repeated across all 12 checker questions, so the
+    # category filter matters more here than anywhere else.
+    kyc = KYC(company="Beyond", keywords=["payload capacity", "kamikaze drones"])
+    specs = checker_prompts.generate(kyc, "en")
+    assert all("payload capacity" not in spec.text for spec in specs)
+    assert any("kamikaze drones" in spec.text for spec in specs)
+
+
+def test_empty_kyc_still_yields_the_published_neutral_fallbacks():
+    # checker_methodology.json is generated from exactly this KYC. If these
+    # strings move, the published methodology page moves with them and VERSION
+    # must be bumped — so pin them here rather than discovering it in CI.
+    specs = checker_prompts.generate(KYC(company=""), "en")
+    assert specs[0].text == "What are the best solutions available today?"
+    assert specs[2].text == "Who are the leading solutions brands worldwide?"
+    assert specs[6].text == (
+        "What are good alternatives to the market leaders for solutions?"
+    )

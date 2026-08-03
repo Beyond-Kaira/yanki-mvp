@@ -875,7 +875,75 @@ decision → consequences**, with one line on why the alternative was rejected.
   a missing header (fail-open matches `net_guard` and keeps header-less fixtures
   and offline dev working — logged as tech-debt #28).
 
-### ADR-27 — Browser session layer: the access token lives in memory, and rotation is serialised across tabs (2026-08-03)
+### ADR-27 — Pipeline input quality, part two: a grounded profile, a category field, and prompts that cannot name the brand (2026-08-01)
+- **Context:** ADR-26 fixed how much of a site we read and whether the KYC call
+  survives a formatting slip. It did not address what happens when the *content*
+  is wrong: a model that invents a product, an alias that was never on the site,
+  or a "keyword" that is a spec attribute. All three produce a confident,
+  meaningless GEO score, and one of them (an invented alias) inflates it —
+  `footprint.detect` cannot tell a hallucinated name from a real mention. Plan:
+  [`pipeline-quality-plan.md`](pipeline-quality-plan.md).
+- **Decision:**
+  - **One normalized key, three jobs** (`pipeline/sanitize.py`). Dedupe,
+    grounding containment and brand-leak detection all compare the same folded,
+    casefolded, punctuation-free form, built on the existing `textfold.fold`. If
+    they disagreed, a name could ground under one spelling and leak under
+    another.
+  - **Every KYC field is sanitized before anyone reads it**: trimmed, unwrapped,
+    junk-filtered (`"N/A"`, `"unknown"`, `"-"`), de-duplicated case- and
+    diacritic-insensitively, and capped per field. The company is removed from
+    its own competitor list.
+  - **Proper nouns are grounded against the crawl.** `products`, `competitors`
+    and model-supplied `aliases` must appear in the crawled text or they are
+    dropped. Deliberately narrow: `description` / `industry` / `keywords` /
+    `category` / `use_cases` are *meant* to be the model's own words (the prompt
+    asks for an English rendering of possibly-Turkish copy), and the minted
+    aliases (company name, folded form, legal stem, registrable domain) are
+    facts about the submission, so both are exempt. Grounding is skipped below
+    `MIN_GROUNDING_CHARS` (1 000) — a thin crawl cannot prove a negative — and
+    is off for `kind='checker'` rows, whose "source text" is the brand+category
+    sentence the runner composed rather than a crawl.
+  - **The KYC model gains `category` and `use_cases`** (both defaulted). Prompt
+    generation needed the buying category and could previously only infer it
+    from `keywords`, which is where models put spec attributes. Asking the
+    *existing* call for the field we actually need costs nothing extra.
+  - **Prompts may never name the brand outside `brand-probe`.** Topics are
+    brand-filtered and each finished question is re-checked, because a
+    competitor named after the company can reintroduce the name through the
+    `alternatives` slot. Asking "What are the best <Brand> options?" and then
+    counting the brand in the answers is a self-fulfilling score.
+  - **Category and topic advance on different strides.** They used to move in
+    lockstep, so a profile with exactly six topics produced six distinct
+    questions out of a possible thirty-six.
+- **Consequences:** no Pydantic schema changed, so `make gen-types` stays a zero
+  diff, there is no migration (`kyc` is schemaless JSONB), and
+  `checker_prompts.VERSION` is **not** bumped — the 12 templates are
+  byte-identical and `checker_methodology.json` is generated from `KYC(company="")`,
+  where every source is empty and the published neutral fallbacks still stand
+  in (pinned by a test). Live checker runs get a better substituted topic, which
+  is per-run data, not a new template set. The KYC step still makes exactly one
+  paid call on the happy path. Visible changes: a profile whose only topic
+  signal was a placeholder now fails the usability gate instead of buying 60
+  calls about "solutions"; a hallucinated product or competitor no longer
+  appears in `KycCard`; and `KycCard` shows two new rows (Category, Use cases)
+  for analyses run after this change. The frontend's hand-maintained `KYC`
+  interface adds both as **optional** fields, because rows persisted earlier
+  have no such key.
+- **Rejected:** LLM-generated prompts (higher ceiling, but it adds an unmetered
+  paid call while tech-debt #27 is open, makes the prompt set non-deterministic
+  and therefore unauditable against the published methodology, and would make
+  the brand-leak invariant load-bearing rather than a backstop — revisit after
+  #27); grounding the inferred fields (would delete the English rendering the
+  prompt asks for); grounding on every crawl regardless of size (a
+  one-paragraph site cannot prove absence, and it would strip DRY_RUN's
+  fictional profile); grounding checker rows (their source text is ours, not the
+  site's); rejecting bundle literals that contain a backtick (measured on
+  beyondtech.com.tr: it removed the site's real Turkish copy along with the
+  object punctuation — 20 000 chars of corpus down to 1 751); www/apex/scheme
+  fallbacks on a failed homepage (`follow_redirects` already covers the common
+  case, and each variant is a request to a URL the caller never gave us).
+
+### ADR-28 — Browser session layer: the access token lives in memory, and rotation is serialised across tabs (2026-08-03)
 
 - **Context:** the auth endpoints (PR #9) pair a short-lived bearer token with an
   httpOnly refresh cookie scoped to `/api/v1/auth`. The account screens (PR #13)
@@ -919,11 +987,11 @@ decision → consequences**, with one line on why the alternative was rejected.
 - **Consequences:** a signed-in visitor pays one `POST /auth/refresh` per cold
   load, and so does an anonymous one — a script cannot read an httpOnly cookie,
   so asking is the only way to know. That is a real cost on public routes and is
-  logged as tech-debt #32 with the fix (a non-httpOnly `has_session` hint cookie
+  logged as tech-debt #36 with the fix (a non-httpOnly `has_session` hint cookie
   set at login). Where a browser has no Web Locks (pre-15.4 Safari, pre-96
   Firefox) the cross-tab guard degrades to the single-tab one rather than failing
-  the refresh — tech-debt #34. Nothing in the auth screens is protected by a
-  route guard, because nothing is behind auth yet (tech-debt #33).
+  the refresh — tech-debt #38. Nothing in the auth screens is protected by a
+  route guard, because nothing is behind auth yet (tech-debt #37).
 - **Rejected:** `localStorage` for the bearer (defeats the point of the httpOnly
   pairing); a BroadcastChannel leader that elects one tab and broadcasts the new
   token (closes the same race, but adds an election, a fallback path, and token

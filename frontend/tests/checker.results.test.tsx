@@ -49,6 +49,8 @@ function makeAnalysis(overrides: Partial<Analysis>): Analysis {
       total_responses: null,
       engine_presence: null,
       competitors_appeared: null,
+      serp: null,
+      seo: null,
     },
     ...overrides,
   }
@@ -137,6 +139,8 @@ describe('Checker results screen', () => {
             { engine: 'openai', mentioned: 0, total: 1 },
           ],
           competitors_appeared: [],
+          serp: null,
+          seo: null,
         },
       }),
     )

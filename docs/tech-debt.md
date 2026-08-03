@@ -4,7 +4,15 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-07-28 (discovery + KYC pass: three new items — **#27**
+Last updated: 2026-08-03 (SERP visibility pass, ADR-28: seven new items —
+**#34** (SERP score is binary and unweighted, like the GEO score), **#35** (a
+SERP is a one-shot snapshot, never re-measured), **#36** (`serp_query_count`=6
+is a politeness budget, not a measured one), **#37** (domain matching is
+host-suffix, not eTLD+1), **#38** (the measurable/miss split trusts
+`unresponsive_engines`), **#39** (query shapes are hardcoded English), **#40**
+(integration tests pin one SearXNG tag — the schedule-only `upstream` job is
+what catches drift)). No repayments this pass. Earlier —
+2026-07-28 (discovery + KYC pass: three new items — **#27**
 (KYC-stage spend counts toward no cost cap), **#28** (`_is_html` fails open on a
 missing Content-Type), **#29** (steps 2b/6 specified but parked on an operator
 decision). No repayments this pass. Earlier — 2026-07-10 (session 12 close:
@@ -342,3 +350,78 @@ devDependencies).)
     `example.com`. The number was chosen by reasoning, not by measurement — if a
     real one-page site ever ships a hallucinated alias through this door, tune it
     with data rather than by feel.
+34. **The SERP score is binary and unweighted, exactly like the MVP GEO score**
+    (2026-08-03, ADR-28): `serp_score` is `hits / measured`, so a domain hit at
+    rank 1 and a snippet mention at rank 18 count identically. `detect` already
+    records the rank of the brand's first appearance on every page and stores it
+    on the `serp_checks` row, so the evidence to weight by position is captured —
+    it is the scoring that deliberately ignores it. Position weighting is the
+    obvious next lever, and the sibling of the roadmap's weighted AI-visibility
+    score; left unbuilt on purpose so the first cut ships one honest number.
+35. **A SERP number is a one-shot snapshot that nothing ever re-measures**
+    (2026-08-03, ADR-28): `run_serp` fires once, at analysis time; nothing
+    schedules a re-run, so the number ages silently the moment the results move
+    under it — which, for a search page, is continuously. Each `serp_checks` row
+    carries the moment it was taken (ADR-28: a SERP "only means anything with the
+    moment attached"), but there is no second reading to compare it against. Rank
+    tracking over time is the product this eventually becomes; today it is a
+    point measurement wearing a timestamp.
+36. **`serp_query_count` is a politeness budget chosen by reasoning, not
+    measurement** (2026-08-03, ADR-28): the default is 6 (`config.py`,
+    `DEFAULT_QUERY_COUNT`). Each query is a single HTTP GET to the operator's
+    *own* SearXNG instance, so — unlike the LLM panel — there is no vendor invoice
+    to tune the count against; the only cost signals are the instance's upstream
+    rate-limits and the worker latency the queries add to a run. 6 is a guess at
+    "enough shapes to be representative without hammering a self-hosted box";
+    retune it against a real instance's behaviour if one ever complains.
+37. **Domain matching is host-suffix based, not registrable-domain based**
+    (2026-08-03, ADR-28): `_is_own_site` counts a result as the company's own
+    site when its host equals — or is a dotted subdomain of — the exact host of
+    the submitted URL (`www.` stripped). There is no public-suffix list in the
+    dependency tree, so no eTLD+1 is ever computed. The error direction is at
+    least conservative: it *under*-matches and never fabricates a hit — a company
+    whose ranking pages live on a sibling ccTLD (`example.de` when `example.com`
+    was submitted), or on the apex when a subdomain was submitted, is simply not
+    recognised as a domain hit and falls through to text detection or a miss. But
+    it does mean the domain signal is only ever as complete as the one host the
+    buyer typed. A real PSL (e.g. `publicsuffix2`) is the fix if multi-domain
+    brands turn out to matter.
+38. **The measurable/miss split trusts `unresponsive_engines`** (2026-08-03,
+    ADR-28): `SerpPage.measurable` (`serp/base.py`) is `bool(results) or not
+    unresponsive_engines`, so an empty page is dropped from the denominator only
+    when the instance *told us* which engines refused. An instance that returns
+    an empty result list **without** populating that field is scored as a genuine
+    miss (`measured += 1`, `hits` unchanged). The realistic way to trip this is a
+    misconfigured instance with zero engines enabled, or a future SearXNG that
+    stops emitting the field — both are indistinguishable from "searched and
+    found nothing". This whole feature is organised against manufacturing a zero,
+    and this is the one seam where a manufactured zero can still slip in; accepted
+    because "results present, no failures reported" genuinely has to read as an
+    answer, and a healthy instance really does return empty pages that mean
+    exactly that.
+39. **The query shapes are hardcoded English, so home-market visibility can be
+    under-measured** (2026-08-03, ADR-28, found while reading the code):
+    `_QUERY_SHAPES` and `_LOCATION_SHAPE` ("best {topic}", "best {topic} in
+    {location}") are English literals, and `serp_language` defaults to `"en"`.
+    The language is at least an operator setting; the shapes are not — so even
+    pointing the instance at Turkish results would still search English keyword
+    forms. The irony is on the label: `_LOCATION_SHAPE`'s own comment motivates
+    itself with "a Turkish manufacturer that ranks nowhere globally may well own
+    its home results", yet that manufacturer is queried in English. This is the
+    SERP-side twin of debt #19a / #29 (the pipeline's English-centric
+    assumptions). Localising the shapes — probably keyed off the site language
+    that #29 would record — is the real fix; declined here to keep the first cut
+    to one language.
+40. **The integration tests pin one SearXNG image tag, so the PR gate cannot
+    catch upstream drift on its own** (2026-08-03, ADR-28): `serp.yml`'s
+    `integration` job — the one that runs on `pull_request` — boots a
+    fixture-backed instance from a pinned image tag, which is exactly what makes
+    it deterministic, and therefore blind to a breaking change in a newer
+    SearXNG. The `upstream` job re-runs the same suite against
+    `searxng/searxng:latest`, but it is gated to `schedule`/`workflow_dispatch`
+    only (so it runs from the default branch), deliberately outside the PR gate
+    so an upstream release pages the team instead of reddening an unrelated PR —
+    which is why `SERP` is in `notify.yml`'s `workflows:` list. The accepted
+    consequence: a SearXNG release that breaks our adapter is caught by the
+    nightly, on a lag of up to a day, never by whichever PR happens to be open
+    when it lands.

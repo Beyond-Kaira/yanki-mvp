@@ -4,7 +4,22 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-01, **session 15 close.** Another pipeline-quality
+Last updated: 2026-08-03, **session 16 close.** This session added **SERP
+visibility** — whether the company also turns up in ordinary search results,
+shown next to the AI-answer GEO score. The source is a **self-hostable SearXNG
+instance** (open-source metasearch, AGPL-3.0) that you run and we read. It ships
+**off by default** and stays completely dark until you both stand an instance up
+and set two env vars, so this is the first session in a while where **merging
+changes nothing on the live site** — no key, no visible behaviour change, no
+forced decision. What it does add is one *optional* thing that is genuinely
+yours: whether to run a SearXNG instance at all (**B6** below). Nothing breaks if
+you never do — the GEO score is unaffected. Work is on `feat/serp-visibility`,
+awaiting your review; merging still auto-deploys, and the deploy applies an
+additive migration (one table + five nullable columns, all empty until you turn
+it on). **A1 and A2 remain open and still yours**, untouched by this work — which
+is English-only too, the SERP language pinned to `en`.
+
+Earlier — 2026-08-01, **session 15 close.** Another pipeline-quality
 session, again no ops work: `docs/pipeline-quality-plan.md` (discovery, KYC and
 prompt quality, MVP → product) is implemented on
 `feat/pipeline-quality-production-grade`, **PR open, awaiting your review**.
@@ -123,6 +138,35 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   `cd frontend && sudo npx playwright install-deps chromium` — enables
   local `make e2e` + native screenshots. Fully skippable: CI proves the
   e2e on every push; screenshots are done via dockerized Chrome.
+- [ ] **B6. (Optional) SERP visibility — stand up a SearXNG instance, or
+  don't.** New this session and entirely your call. The feature ships **off**
+  (`SERP_ENABLED=0`); leaving it off is a complete answer — the GEO score does
+  not depend on it and nothing else changes. To turn it on:
+  (a) **Run a SearXNG instance with the JSON format enabled.** JSON is **off by
+  default** in SearXNG; without it the app reports *"the search instance did not
+  return JSON"* and every SERP number stays null. In the instance's
+  `settings.yml`:
+  ```yaml
+  search:
+    formats: [html, json]
+  ```
+  Also: SearXNG's `limiter` answers **403** to a bot-shaped client, and Yanki
+  identifies as `YankiBot/0.1`. On an instance only Yanki reaches, turn the
+  limiter off (or allowlist our egress); otherwise every query reads as
+  unavailable.
+  (b) **Set `SERP_ENABLED=1` and `SERP_BASE_URL`** in `deploy/.env` on the
+  server (e.g. `SERP_BASE_URL=http://searxng:8080` on the compose network),
+  then redeploy.
+  (c) **Why there is no SearXNG in the production compose file, and why standing
+  one up is a real decision:** the prod VPS is shared with other production
+  tenants, so a new container is not free — it carries a genuine resource cost
+  on a box that is not only ours. That cost is exactly why the service was left
+  out of the committed stack: adding it is a deliberate operator choice, not a
+  default that ships for you.
+  (d) **A public SearXNG instance is not a suitable target.** Most disable the
+  JSON format (so it would read as unavailable anyway), and pointing production
+  traffic at somebody else's volunteer-run instance is both rude and unreliable
+  — run your own.
 
 ## C. Done (compacted history)
 

@@ -35,7 +35,8 @@ yanki/
 │   │   ├── db/              # SQLAlchemy 2.0 models, Base, and the session factory
 │   │   ├── jobs/            # the Postgres job queue (FOR UPDATE SKIP LOCKED claim + stale reaper)
 │   │   ├── pipeline/        # the GEO engine: discovery → kyc → prompts → execute → footprint → scoring
-│   │   └── providers/       # LLM adapters behind one Provider interface (+ deterministic mock)
+│   │   ├── providers/       # LLM adapters behind one Provider interface (+ deterministic mock)
+│   │   └── serp/            # open-source SERP adapters behind one SerpSource interface (+ mock)
 │   └── tests/               # pytest: api + queue tests (incl. real-Postgres SKIP LOCKED tests),
 │                            #   plus the pipeline/ subtree owned by the pipeline agent
 ├── frontend/               # Next.js 15 (App Router) + TypeScript + Tailwind — 3 screens
@@ -67,6 +68,9 @@ yanki/
   Two modules are **not** steps and say so in their docstrings:
   `checker_prompts.py` (the fixed alternative to `prompts.py`, ADR-20) and
   `textfold.py` (the ASCII fold shared by discovery and footprint, ADR-26).
+  A third, `serp_visibility.py`, is a step's *second half* rather than a step of
+  its own: it runs inside footprint, because footprint is the step that asks
+  where the brand appears and this asks it of search results (ADR-28).
   A shared helper only earns its own module when two steps would otherwise
   keep divergent copies of the same table — `textfold` also has an invariant
   (1:1 length) that one caller's correctness depends on, which is easier to
@@ -75,6 +79,12 @@ yanki/
   stubs, and the mock) implements the same `Provider` protocol, so the pipeline
   never branches on "which engine". Swapping a stub for a real engine is a
   one-file change and touches nothing else.
+- **`serp/` is the same shape, one layer out.** SERP sources (SearXNG, plus a
+  deterministic mock) implement one `SerpSource` protocol, exactly as
+  `providers/` does for models. It is a sibling of `providers/` rather than a
+  module inside it because a results page is not a generated answer: the
+  interface returns ranked results and the evidence needed to trust them, not
+  text and a cost (ADR-28).
 - **`shared/contracts/`** exists so the frontend and backend agree on the API
   shape via a checked-in artifact, not by reading each other's code.
 - **`deploy/`, `scripts/`, `.github/`** are the operational surface, kept out of
@@ -942,3 +952,101 @@ decision → consequences**, with one line on why the alternative was rejected.
   object punctuation — 20 000 chars of corpus down to 1 751); www/apex/scheme
   fallbacks on a failed homepage (`follow_redirects` already covers the common
   case, and each variant is a request to a URL the caller never gave us).
+
+### ADR-28 — SERP visibility from an open-source metasearch instance, inside the footprint step (2026-08-03)
+- **Context:** the GEO score measures one surface — what AI engines say. Buyers
+  still use the other one, and [`roadmap.md`](roadmap.md) names the gap out loud
+  ("Google AI Overviews tracking … our biggest admitted gap vs Semrush; needs
+  SERP scraping or a paid SERP API"). Both of the options that sentence lists
+  cost us something we are not willing to spend: a commercial SERP API bills per
+  query, which puts a per-analysis invoice in front of the "affordable"
+  wedge, and scraping Google ourselves is a blocklist maintenance project
+  wearing a feature's clothes. There is a third option the sentence predates —
+  **SearXNG** (AGPL-3.0), an open-source metasearch engine that puts the public
+  engines behind one self-hostable JSON API. The operator runs a container; we
+  read it.
+- **Decision:**
+  - **A `serp/` package mirroring `providers/`.** `SerpSource` is one protocol
+    with one `search(query)` call; `SearxngSource` reads the instance,
+    `MockSerpSource` is the deterministic DRY_RUN source, and `registry` picks
+    between them. Sibling of `providers/` rather than a member: the return value
+    is ranked results plus reliability evidence, not text plus a cost.
+  - **A page carries the evidence needed to trust it.** A live instance answers
+    `200 OK` with an empty result list when its upstream engines rate-limit or
+    CAPTCHA it — measured, not hypothesised: one ordinary query came back with
+    `brave`, `duckduckgo`, `startpage` and `wikipedia` all refused. So
+    `SerpPage` also carries `unresponsive_engines`, and `measurable` refuses to
+    read an empty page from a broken panel as evidence of absence. Unmeasurable
+    queries are dropped from the denominator, never counted as misses.
+  - **Three different nulls, three different meanings.** `serp` absent from the
+    result envelope = the run never measured (feature off, and every row written
+    before this change). `serp.score` null inside a present summary = we looked
+    and could not read the results. `0.0` = we read them and the brand was in
+    none. Collapsing any pair of these into a zero would tell a customer they
+    rank nowhere when we simply did not look.
+  - **The queries may never name the brand**, enforced by reusing
+    `prompts.topic_pool` and re-checking each finished query with
+    `prompts.leaks_brand`. This is ADR-27's invariant on the other surface, and
+    the temptation is stronger here because "brand + category" is the obvious
+    thing an SEO tool would search. `_brand_keys`/`_leaks_brand` were made
+    public for this rather than copied, for the reason ADR-26 refused to copy
+    the fold map.
+  - **A hit is a domain match OR a text match.** A result is mostly a URL and
+    two lines of snippet, so the company's own site ranking is the strongest
+    available signal and needs no text — which makes this the one place in the
+    pipeline that can see a company the LLM panel never names. A listicle naming
+    it in the snippet counts too, through the same `footprint.detect` the panel
+    uses, so both surfaces agree on what a mention is.
+  - **It runs inside the footprint step, not as a seventh one.** Footprint is
+    the step that asks where the brand actually appears; this asks it of a
+    second corpus. `current_step`, the progress mapping and `StepProgress` are
+    untouched.
+  - **Fail-open, and off by default.** `run_serp` never raises: by the time it
+    runs, the analysis has paid for a crawl, a KYC call and up to
+    `max_responses_per_job` LLM calls, and an instance being down must cost the
+    run its SERP number and nothing else (the stance `services/emailer` takes,
+    ADR-25). `serp_enabled` defaults False like `checker_enabled` and
+    `emails_enabled`, because unlike the LLM panel this needs infrastructure no
+    environment has until somebody stands it up.
+  - **No SSRF guard on the instance URL**, deliberately. `net_guard` exists
+    because discovery fetches a URL a stranger submitted; this one is the
+    operator's own config, and the intended deployment (`http://searxng:8080` on
+    the compose network) is exactly the private space the guard rejects.
+  - **The observations are stored** (`serp_checks`, one row per query) rather
+    than recomputed. The wedge is showing our work, so the evidence behind the
+    number belongs one click away like every raw answer already is — and a SERP
+    is a snapshot of something that moves, so it only means anything with the
+    moment attached.
+- **Consequences:** the API contract gains a nullable `serp` object, so
+  `make gen-types` is a real diff (`openapi.json` + `types.ts`);
+  `checker_methodology.json` is untouched, since `gen_methodology.py` never
+  imports the API schemas. Migration `0007` is additive (five nullable columns
+  with **no** server default — backfilling them to 0 would claim we looked — plus
+  one table). Three existing frontend test fixtures gained `serp: null`, the
+  price of `ResultOut` fields being required-and-nullable rather than optional.
+  A new `SERP` workflow covers the three things `CI` structurally cannot: our
+  adapter against a real SearXNG, migrations applying **and reverting** on
+  Postgres (CI had never run alembic at all), and one whole analysis through the
+  compose stack. Its scheduled `upstream drift` job runs the same suite against
+  `searxng/searxng:latest` and is deliberately outside the PR gate, so an
+  upstream release pages us instead of reddening someone's unrelated PR — which
+  is why `SERP` is now in `notify.yml`'s `workflows:` list. Nothing changes for
+  an existing deployment until an operator sets `SERP_ENABLED=1` and a base URL.
+- **Rejected:** a paid SERP API (per-query bill in front of the pricing wedge,
+  and it makes the number unauditable — we could not publish how it was
+  obtained); scraping the engines directly (a maintenance treadmill against
+  parties actively trying to stop us); a seventh pipeline step (churns the
+  locked progress contract and `StepProgress` for a step that asks footprint's
+  own question); counting an unreadable page as a miss (the fabricated zero this
+  whole ADR is organised against); returning `0.0` instead of `None` from
+  `serp_score` on an empty denominator (same fabrication, one layer down);
+  guarding the instance URL with `net_guard` (breaks every correct deployment to
+  protect against an operator who already sets `DATABASE_URL`); running the
+  integration tests against real public engines (measured: four of four refused
+  a CI-shaped client, so the gate would be a coin flip — the fixture engine
+  makes both the results *and* the failure modes deterministic); duplicating the
+  brand-key helpers into `serp_visibility` (ADR-26 already settled that
+  argument); and adding a SearXNG service to the production compose file (the
+  VPS is shared with three other tenants and the feature is off by default —
+  standing up the instance is an operator decision, recorded in
+  `operator-expected.md`).

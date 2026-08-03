@@ -276,6 +276,27 @@ no scored question names the brand). ADR-27. Zero contract drift, no new paid
 call, `checker_prompts.VERSION` unchanged. Backend 321 passed / 3 skipped,
 frontend 70 passed. Full detail: `sessions/2026-08-01-01.md`.
 
+✅ **Session 16 (2026-08-03): P5.16 — SERP visibility from an open-source
+metasearch instance** (branch `feat/serp-visibility`). Yanki now measures the
+*organic* search surface next to the AI-answer GEO score: a self-hostable
+**SearXNG** instance (AGPL-3.0) read over its JSON API tells us whether the
+company also shows up in ordinary results for brand-free buyer queries — the one
+place in the pipeline that can see a company the LLM panel never names. Shipped
+whole and **inside the existing footprint step** (no seventh step): the source
+adapter (`serp/` — one `SerpSource` protocol, SearXNG + deterministic mock +
+registry), the pipeline pass (`serp_visibility.py`, brand-free queries reusing
+ADR-27's leak filter), persistence (`SerpCheck` + five nullable `serp_*` columns,
+migration `0007`), the API contract (a nullable `serp` object), the UI
+(`SerpVisibility` on both results pages), the tests, and a **new `SERP` CI
+workflow** (real-SearXNG integration, scheduled upstream-drift, alembic up **and**
+down on Postgres, one whole analysis through the DRY_RUN stack). ADR-28. **Off by
+default** (`SERP_ENABLED=False`) — nothing changes for an existing deployment
+until an operator turns it on and stands up an instance; **Google AI Overviews
+itself stays open** (no $0 source). One real contract diff (`openapi.json` +
+`types.ts`); `checker_methodology.json` unchanged. Backend 383 passed / 7 skipped
+(the SERP integration tier, which needs a live instance), frontend 79 passed. Full detail:
+`sessions/2026-08-03-01.md`.
+
 ➡️ **Next up: P5.11 (operator go-live)** — everything agent-buildable is done.
 Blockers are all operator items: A1 decisions, **A2 (new: rule on discovery/KYC
 steps 2b + 6)**, B1 Resend domain, B2 vendor ToS/pricing check, then the
@@ -1822,6 +1843,68 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   `feat/pipeline-quality-production-grade`. Steps 2b and 6 of
   `discovery-kyc-improvements.md` remain **not built** (operator item A2); this
   work is language-neutral and does not touch that decision.
+
+### P5.16 — SERP visibility from an open-source metasearch instance (added 2026-08-03, session 16)
+- **Goal:** measure the *organic* search surface alongside the AI-answer GEO
+  score — whether the company also shows up in ordinary search results for
+  brand-free buyer queries. The source is a self-hostable **SearXNG** instance
+  (AGPL-3.0) read over its JSON API, chosen over a paid SERP API (a per-query
+  bill in front of the pricing wedge) and over scraping the engines directly
+  (a maintenance treadmill). It runs **inside the footprint step**, not as a
+  seventh one, and is **off by default**. Per ADR-28.
+- **Why now:** the GEO score measures one surface — what AI engines say. Buyers
+  still use the other one, and [roadmap.md](roadmap.md) named the gap out loud
+  ("Google AI Overviews tracking … our biggest admitted gap vs Semrush; needs
+  SERP scraping or a paid SERP API"). SearXNG is a third option that sentence
+  predates: it puts the public engines behind one self-hostable JSON API for
+  $0, closing the *organic* half of the gap. The AI Overviews box itself has no
+  $0 source and stays open (roadmap Later).
+- **Dependencies:** ADR-27's brand-leak invariant — SERP query generation
+  reuses `prompts.topic_pool` and re-checks each finished query with
+  `prompts.leaks_brand` (`_brand_keys`/`_leaks_brand` made public for this
+  rather than copied) so no scored query can name the brand. Additive to the
+  existing pipeline otherwise.
+- **Complexity:** L
+- **Deliverables:** `backend/app/serp/` (**new** package — `base.py`
+  (`SerpSource` protocol, `SerpResult`/`SerpPage`, `SerpUnavailable`),
+  `searxng.py`, `mock.py`, `registry.py`);
+  `backend/app/pipeline/serp_visibility.py` (**new** — brand-free query
+  generation, hit detection, scoring and the run pass, all inside the footprint
+  step); `prompts.py` (`_brand_keys`/`_leaks_brand` made public as
+  `brand_keys`/`leaks_brand`); `backend/app/db/models.py` (**new** `SerpCheck`
+  model / table `serp_checks`, one row per query, plus five nullable `serp_*`
+  columns on `analyses`); `backend/alembic/versions/0007_serp_visibility.py`
+  (**new**, additive); `backend/app/api/schemas.py` + `routes.py` (nullable
+  `serp` object — `SerpVisibilityOut` / `SerpCheckOut`); `backend/app/config.py`
+  (nine `serp_*` settings, `serp_enabled` default **False**);
+  `frontend/components/SerpVisibility.tsx` (**new**, rendered on **both** results
+  pages) + `frontend/lib/contracts.ts` aliases; tests in `backend/tests/serp/`
+  (**new**) / `test_serp_visibility.py` (**new**) / `test_runner.py` /
+  `test_api.py` / `SerpVisibility.test.tsx` + `.a11y.test.tsx` (**new**), plus a
+  **new** `backend/tests/integration/` tier against a real SearXNG (skipped
+  unless `SERP_TEST_BASE_URL` is set, so `make test` stays hermetic);
+  `.github/workflows/serp.yml` (**new** `SERP` workflow — four jobs: real-SearXNG
+  integration, scheduled upstream-drift on `:latest`, alembic up **and** down on
+  Postgres, one whole analysis through the DRY_RUN compose stack) +
+  `.github/scripts/`; `SERP` added to `notify.yml`'s `workflows:`; ADR-28 in
+  [design.md](design.md).
+- **Acceptance:** backend + frontend suites green; `make gen-types` a **real
+  diff** this time (`openapi.json` + `types.ts` gain the nullable `serp`
+  object); migration `0007` applies **and reverts** on Postgres;
+  `checker_methodology.json` untouched; the three distinct nulls preserved and
+  asserted (`serp` absent = never measured, `serp.score` null = we looked and
+  could not read, `0.0` = read and found nothing); unmeasurable pages dropped
+  from the denominator, never counted as misses; `run_serp` never raises (an
+  instance being down costs the run its SERP number and nothing else);
+  `SERP_ENABLED` defaults **False** so an existing deployment is unchanged until
+  an operator flips it and stands up an instance.
+- **Status:** ✅ **done — session 16 (2026-08-03)** on `feat/serp-visibility`.
+  Backend 382 passed / 7 skipped (the new SERP integration tier, which needs a
+  live instance), frontend 79 passed. **Not built, deliberately:** Google AI
+  Overviews tracking (the AI answer box itself — no $0 source yet, still roadmap
+  Later), a weighted / position-aware SERP score, scheduled re-measurement over
+  time, and a production SearXNG instance (an operator action, recorded in
+  [operator-expected.md](operator-expected.md)).
 
 ---
 

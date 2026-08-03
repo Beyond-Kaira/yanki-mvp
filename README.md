@@ -4,8 +4,11 @@
 You submit a company website URL; a background job crawls the site, builds a
 structured company profile (KYC JSON), generates prompts, runs them across
 multiple AI models, checks whether the company is mentioned, and computes a
-primitive **GEO score** (mentions ÷ total responses). Long-term goal: an
-affordable, transparent Semrush alternative for AI-answer rank tracking.
+primitive **GEO score** (mentions ÷ total responses). An optional,
+off-by-default pass also measures **SERP visibility** — whether the company
+shows up in ordinary search results — via a self-hosted open-source metasearch
+instance. Long-term goal: an affordable, transparent Semrush alternative for
+AI-answer rank tracking.
 
 This README is the front door. It gets a new engineer from `git clone` to a
 running local stack in about five minutes. Deeper docs live in [`docs/`](#documentation).
@@ -106,6 +109,7 @@ yanki/
 │       ├── jobs/       # Postgres job queue (FOR UPDATE SKIP LOCKED)
 │       ├── pipeline/   # the GEO engine (discovery → kyc → prompts → execute → footprint → scoring)
 │       ├── providers/  # LLM adapters behind one Provider interface (+ mock)
+│       ├── serp/       # SERP sources behind one SerpSource interface (+ mock)
 │       └── worker.py   # polls the queue, runs the pipeline
 ├── frontend/     # Next.js 15 + TypeScript — 3 screens (submit, progress, results)
 ├── shared/       # cross-language contract (contracts/openapi.json)

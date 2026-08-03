@@ -1,0 +1,185 @@
+name: SERP
+
+# Tests the SERP visibility feature (ADR-28) in the three ways `CI` structurally
+# cannot, rather than re-running what it already covers:
+#
+#   1. `integration` — our adapter against a REAL SearXNG. The unit tests mock
+#      the HTTP layer, so they prove we parse the payload we *believe* upstream
+#      sends. Only a real instance proves we parse the one it does.
+#   2. `migration` — alembic up AND back down on Postgres. `CI` runs pytest on
+#      SQLite and never applies a migration; the only thing that currently
+#      exercises one is the api container booting in the e2e job, which would
+#      not catch a downgrade that cannot revert.
+#   3. `stack` — a whole analysis through the real compose stack with SERP on,
+#      asserting the summary and its evidence come back out of the API.
+#
+# A fourth job, `upstream`, runs the same integration suite against
+# `searxng/searxng:latest` on a schedule. It is deliberately NOT part of the PR
+# gate: an upstream release overnight must page us, not turn everyone's PR red.
+# (Scheduled runs only ever execute the copy of this file on the default branch,
+# so that job starts working when this merges, not on the PR that adds it.)
+#
+# If this workflow is renamed, update `workflows:` in notify.yml — that list
+# matches literal names, and a workflow missing from it fails silently.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 04:17 UTC daily. Off-the-hour on purpose: the top of the hour is when
+    # GitHub's scheduler is most congested and runs get delayed or dropped.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: serp integration (real SearXNG, pinned)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        # v7, not v8: the setup-uv v8 line dropped floating major tags (supply-
+        # chain hardening), so @v8 does not resolve — v7 is the newest major
+        # that keeps the repo's @vN pin style, and it already runs on node24.
+        uses: astral-sh/setup-uv@v7
+      - name: Sync deps
+        working-directory: backend
+        run: uv sync
+      - name: Boot SearXNG federating only the fixture engine
+        run: .github/scripts/serp-instance.sh up
+      - name: Run the live-instance integration tests
+        working-directory: backend
+        env:
+          SERP_TEST_BASE_URL: http://127.0.0.1:19099
+        run: uv run pytest tests/integration -v
+      - name: Dump instance logs on failure
+        if: failure()
+        run: |
+          docker logs yanki-serp-searxng || true
+          docker logs yanki-serp-fixture || true
+      - name: Tear down the instance
+        if: always()
+        run: .github/scripts/serp-instance.sh down
+
+  upstream:
+    name: serp upstream drift (SearXNG latest)
+    runs-on: ubuntu-latest
+    # Schedule / manual only. Never gates a PR: this job exists to tell us that
+    # upstream changed, and the honest place to learn that is a nightly failure
+    # notification, not somebody else's unrelated pull request.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Sync deps
+        working-directory: backend
+        run: uv sync
+      - name: Boot the newest SearXNG release
+        env:
+          SEARXNG_IMAGE: searxng/searxng:latest
+        run: .github/scripts/serp-instance.sh up
+      - name: Run the live-instance integration tests
+        working-directory: backend
+        env:
+          SERP_TEST_BASE_URL: http://127.0.0.1:19099
+        run: uv run pytest tests/integration -v
+      - name: Report the version that broke us
+        if: failure()
+        run: |
+          docker exec yanki-serp-searxng \
+            cat /usr/local/searxng/searx/version_frozen.py || true
+          docker logs yanki-serp-searxng || true
+      - name: Tear down the instance
+        if: always()
+        run: .github/scripts/serp-instance.sh down
+
+  migration:
+    name: migrations apply and revert (postgres)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: yanki
+          POSTGRES_PASSWORD: yanki
+          POSTGRES_DB: yanki_migrations
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U yanki -d yanki_migrations"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://yanki:yanki@localhost:5434/yanki_migrations
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Sync deps
+        working-directory: backend
+        run: uv sync
+      - name: Apply every migration
+        working-directory: backend
+        run: uv run alembic upgrade head
+      - name: The SERP schema exists after upgrade
+        working-directory: backend
+        run: uv run python ../.github/scripts/serp_schema_check.py present
+      - name: Revert the SERP migration
+        working-directory: backend
+        run: uv run alembic downgrade -1
+      - name: The SERP schema is gone after downgrade
+        # A downgrade that silently leaves half the schema behind is how a
+        # rollback turns one bad deploy into two.
+        working-directory: backend
+        run: uv run python ../.github/scripts/serp_schema_check.py absent
+      - name: Re-apply, so the migration is proven idempotent end to end
+        working-directory: backend
+        run: uv run alembic upgrade head
+      - name: The SERP schema is back
+        working-directory: backend
+        run: uv run python ../.github/scripts/serp_schema_check.py present
+
+  stack:
+    name: serp end to end (DRY_RUN stack)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pin the stack to DRY_RUN with SERP switched on
+        # deploy/.env is gitignored; the compose file reads it via env_file.
+        # DRY_RUN keeps every LLM call on the deterministic mock ($0, no keys),
+        # and SERP_ENABLED=1 with it selects the mock SERP source — so this
+        # exercises the whole path without needing a search instance at all.
+        run: |
+          printf 'DRY_RUN=1\nSERP_ENABLED=1\nSERP_QUERY_COUNT=4\n' > deploy/.env
+      - name: Boot the stack
+        run: docker compose -f deploy/docker-compose.yml up -d --build
+      - name: Wait for API health
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8141/healthz >/dev/null 2>&1; then
+              echo "api healthy after ${i} tries"; exit 0
+            fi
+            sleep 5
+          done
+          echo "api /healthz never came up"; exit 1
+      - name: Run one analysis and assert its SERP summary
+        # DRY_RUN mocks the LLM providers and the SERP source, but pipeline step
+        # 1 (discovery) really fetches the submitted URL — so a red here after a
+        # green health wait is a possible egress flake before it is a bug.
+        run: python3 .github/scripts/serp_stack_check.py
+      - name: Dump stack logs on failure
+        if: failure()
+        run: docker compose -f deploy/docker-compose.yml logs
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f deploy/docker-compose.yml down -v

@@ -17,7 +17,9 @@ export default function EnginePresenceMap({ presence }: EnginePresenceMapProps) 
       >
         Where you show up
       </h2>
-      <ul className="space-y-3">
+      {/* One row per engine instead of a stacked card: name, bar, and count
+          share a line so N engines cost N rows of height, not N cards. */}
+      <ul className="divide-y divide-surface-border rounded-lg border border-surface-border bg-white">
         {presence.map((engine) => {
           const label = engineLabel(engine.engine)
           const pct =
@@ -33,27 +35,30 @@ export default function EnginePresenceMap({ presence }: EnginePresenceMapProps) 
           return (
             <li
               key={engine.engine}
-              className="rounded-lg border border-surface-border bg-white p-4"
+              className="flex items-center gap-3 px-4 py-2.5"
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium text-surface-foreground">
-                  {label}
-                </span>
-                <span className="text-sm text-surface-subtle">{countText}</span>
-              </div>
+              <span className="w-20 shrink-0 truncate text-sm font-medium text-surface-foreground">
+                {label}
+              </span>
               <div
                 role="progressbar"
                 aria-label={`${label}: ${countText}`}
                 aria-valuenow={pct}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-border"
+                className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-border"
               >
                 <div
                   className="h-full rounded-full bg-primary motion-safe:transition-[width] motion-safe:duration-500"
                   style={{ width: `${pct}%` }}
                 />
               </div>
+              <span className="w-24 shrink-0 text-right text-xs tabular-nums text-surface-subtle">
+                {engine.total > 0 ? `${engine.mentioned} / ${engine.total}` : '—'}
+              </span>
+              {/* Screen readers get the full sentence the visible row now only
+                  implies in numbers. */}
+              <span className="sr-only">{countText}</span>
             </li>
           )
         })}

@@ -141,3 +141,73 @@ def test_get_done_analysis_serializes_full_result(client, db_session, make_analy
     assert hit["matched_snippet"] == "Acme is a strong option."
     assert isinstance(hit["cost_usd"], float)
     assert hit["cost_usd"] == 0.001234
+
+
+def test_get_reports_no_serp_summary_when_the_run_never_measured_it(client, make_analysis):
+    """ADR-28: a null summary means "we did not look", never "we found nothing"."""
+    analysis = make_analysis()
+
+    body = client.get(f"/api/v1/analyses/{analysis.id}").json()
+
+    assert body["result"]["serp"] is None
+
+
+def test_get_serializes_the_serp_summary_and_its_evidence(client, db_session, make_analysis):
+    from app.db.models import SerpCheck
+
+    analysis = make_analysis(
+        status="done",
+        serp_status="ok",
+        serp_source="searxng",
+        serp_score=0.5,
+        serp_hit_count=1,
+        serp_query_count=2,
+    )
+    db_session.add_all(
+        [
+            SerpCheck(
+                analysis_id=analysis.id,
+                query="best warehouse robots",
+                source="searxng",
+                hit=True,
+                rank=3,
+                matched_url="https://acme.example/",
+                matched_snippet="Acme Robotics — Home",
+                matched_via="domain",
+                result_count=10,
+            ),
+            SerpCheck(
+                analysis_id=analysis.id,
+                query="warehouse robots comparison",
+                source="searxng",
+                hit=False,
+                result_count=10,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    serp = client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]["serp"]
+
+    assert serp["status"] == "ok"
+    assert serp["source"] == "searxng"
+    assert serp["score"] == 0.5
+    assert (serp["hits"], serp["queries"]) == (1, 2)
+    assert len(serp["checks"]) == 2
+    hit = next(check for check in serp["checks"] if check["hit"])
+    assert hit["rank"] == 3
+    assert hit["matched_via"] == "domain"
+
+
+def test_a_measured_but_unreadable_run_serializes_a_null_score(client, make_analysis):
+    """Present summary, null score — "we looked and could not see"."""
+    analysis = make_analysis(
+        status="done", serp_status="unavailable", serp_source="searxng", serp_hit_count=0,
+        serp_query_count=0,
+    )
+
+    serp = client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]["serp"]
+
+    assert serp["status"] == "unavailable"
+    assert serp["score"] is None
+    assert serp["checks"] == []

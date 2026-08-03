@@ -181,6 +181,46 @@ class CompetitorMention(BaseModel):
     mentions: int
 
 
+class SerpCheckOut(BaseModel):
+    """One search query run for an analysis, and what the results page showed.
+
+    ``hit`` is nullable and the distinction matters to anyone reading this: NULL
+    is a page we could not read (the search instance was unreachable, or every
+    upstream engine refused it) and is excluded from the score; ``false`` is a
+    real, counted miss.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    query: str
+    source: str
+    hit: bool | None
+    rank: int | None
+    matched_url: str | None
+    matched_snippet: str | None
+    matched_via: str | None
+    result_count: int
+    unresponsive_engines: str | None
+
+
+class SerpVisibilityOut(BaseModel):
+    """SERP visibility for one analysis (ADR-28).
+
+    Present only on runs where the feature was switched on; ``ResultOut.serp``
+    stays null otherwise, so "we did not look" is never rendered as a zero.
+    ``score`` is separately nullable *within* a present summary: that is the run
+    where we did look and could not read the results.
+    """
+
+    status: str
+    source: str | None
+    score: float | None
+    hits: int
+    queries: int
+    checks: list[SerpCheckOut]
+
+
 class ResultOut(BaseModel):
     kyc: dict[str, Any] | None
     prompts: list[PromptOut]
@@ -191,6 +231,8 @@ class ResultOut(BaseModel):
     # Checker-only read-time aggregates (P5.3); null for MVP / legacy rows.
     engine_presence: list[EnginePresence] | None
     competitors_appeared: list[CompetitorMention] | None
+    # SERP visibility (ADR-28); null on every run that did not measure it.
+    serp: SerpVisibilityOut | None
 
 
 class AnalysisOut(BaseModel):

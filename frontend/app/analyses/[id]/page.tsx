@@ -10,6 +10,7 @@ import StepProgress from '@/components/StepProgress'
 import ScoreGauge from '@/components/ScoreGauge'
 import ResultsTable from '@/components/ResultsTable'
 import KycCard from '@/components/KycCard'
+import SerpVisibility from '@/components/SerpVisibility'
 import WaitlistForm from '@/components/WaitlistForm'
 
 const POLL_MS = 2000
@@ -142,6 +143,8 @@ function Results({ analysis }: { analysis: Analysis }) {
       </section>
 
       {result.kyc ? <KycCard kyc={result.kyc} /> : null}
+
+      {result.serp ? <SerpVisibility serp={result.serp} /> : null}
 
       {result.prompts.length > 0 ? (
         <section className="space-y-3">

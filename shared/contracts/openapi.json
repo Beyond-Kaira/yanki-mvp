@@ -449,6 +449,16 @@
             "title": "Responses",
             "type": "array"
           },
+          "serp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SerpVisibilityOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "total_responses": {
             "anyOf": [
               {
@@ -469,9 +479,168 @@
           "footprint_count",
           "total_responses",
           "engine_presence",
-          "competitors_appeared"
+          "competitors_appeared",
+          "serp"
         ],
         "title": "ResultOut",
+        "type": "object"
+      },
+      "SerpCheckOut": {
+        "description": "One search query run for an analysis, and what the results page showed.\n\n``hit`` is nullable and the distinction matters to anyone reading this: NULL\nis a page we could not read (the search instance was unreachable, or every\nupstream engine refused it) and is excluded from the score; ``false`` is a\nreal, counted miss.",
+        "properties": {
+          "hit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "matched_snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Snippet"
+          },
+          "matched_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Url"
+          },
+          "matched_via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Via"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "result_count": {
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "unresponsive_engines": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresponsive Engines"
+          }
+        },
+        "required": [
+          "id",
+          "query",
+          "source",
+          "hit",
+          "rank",
+          "matched_url",
+          "matched_snippet",
+          "matched_via",
+          "result_count",
+          "unresponsive_engines"
+        ],
+        "title": "SerpCheckOut",
+        "type": "object"
+      },
+      "SerpVisibilityOut": {
+        "description": "SERP visibility for one analysis (ADR-28).\n\nPresent only on runs where the feature was switched on; ``ResultOut.serp``\nstays null otherwise, so \"we did not look\" is never rendered as a zero.\n``score`` is separately nullable *within* a present summary: that is the run\nwhere we did look and could not read the results.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SerpCheckOut"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "hits": {
+            "title": "Hits",
+            "type": "integer"
+          },
+          "queries": {
+            "title": "Queries",
+            "type": "integer"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "source",
+          "score",
+          "hits",
+          "queries",
+          "checks"
+        ],
+        "title": "SerpVisibilityOut",
         "type": "object"
       },
       "SignupRequest": {

@@ -61,6 +61,15 @@ export type EnginePresence = Schemas['EnginePresence']
 
 export type CompetitorMention = Schemas['CompetitorMention']
 
+// SERP visibility (ADR-28) — whether the brand also shows up in ordinary search
+// results, read from an open-source metasearch instance. `AnalysisResult.serp`
+// is null on every run that did not measure it, and `serp.score` is separately
+// null on a run that measured and could not read the results: "we did not look"
+// and "we looked and could not see" are both distinct from a zero.
+export type SerpVisibility = Schemas['SerpVisibilityOut']
+
+export type SerpCheck = Schemas['SerpCheckOut']
+
 export type AnalysisResult = Omit<Schemas['ResultOut'], 'kyc'> & {
   kyc: KYC | null
 }

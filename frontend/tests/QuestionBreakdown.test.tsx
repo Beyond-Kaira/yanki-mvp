@@ -43,25 +43,40 @@ const groups: QuestionGroup[] = [
 const engines = ['anthropic', 'openai']
 
 describe('QuestionBreakdown', () => {
-  it('shows the question, its category, and the per-engine outcome', () => {
+  it('shows the question, its category, and the per-engine count collapsed', () => {
     render(<QuestionBreakdown groups={groups} engines={engines} />)
 
     expect(screen.getByText('Best analytics tools?')).toBeInTheDocument()
     expect(screen.getByText('recommendation')).toBeInTheDocument()
     expect(screen.getByText('1/2')).toBeInTheDocument()
-    // Engine ids are rendered as the product names people recognize.
-    expect(screen.getByText('Claude')).toBeInTheDocument()
-    expect(screen.getByText('ChatGPT')).toBeInTheDocument()
-    expect(screen.queryByText('anthropic')).not.toBeInTheDocument()
+    // The chip grid is the expanded content, not the collapsed row: a table
+    // of N questions should cost N rows, not N rows of chips.
+    expect(screen.queryByText('Claude')).not.toBeInTheDocument()
+    expect(screen.queryByText('ChatGPT')).not.toBeInTheDocument()
   })
 
-  it('quotes the matched snippet as the evidence behind a mention', () => {
+  it('reveals the per-engine outcome and evidence once expanded', async () => {
+    const user = userEvent.setup()
     render(<QuestionBreakdown groups={groups} engines={engines} />)
 
-    expect(screen.getByText(/Acme is a strong option\./)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /expand/i }))
+
+    // Engine ids are rendered as the product names people recognize. Both the
+    // chip grid and the full-answer list name each engine, so this counts
+    // occurrences rather than asserting a single match.
+    expect(screen.getAllByText('Claude').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('ChatGPT').length).toBeGreaterThan(0)
+    expect(screen.queryByText('anthropic')).not.toBeInTheDocument()
+    // The fixture's group-level snippet and its per-response evidence happen
+    // to share the same text, so both the summary quote and the full-answer
+    // quote render it — hence a count, not a single match.
+    expect(
+      screen.getAllByText(/Acme is a strong option\./).length,
+    ).toBeGreaterThan(0)
   })
 
-  it('counts against the panel, and lists an engine with nothing to show', () => {
+  it('counts against the panel, and lists an engine with nothing to show', async () => {
+    const user = userEvent.setup()
     render(
       <QuestionBreakdown
         groups={groups}
@@ -74,6 +89,9 @@ describe('QuestionBreakdown', () => {
     // And the spoken count says so: this fixture holds two answers, so calling
     // the denominator "answers" would claim one gemini never produced.
     expect(screen.getByText('1 of 3 engines named you')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /expand/i }))
+
     expect(screen.getByText('Gemini')).toBeInTheDocument()
     // "no answer", not "did not answer": whether the engine was asked is not
     // something the envelope reports, so the badge does not settle it.
@@ -115,8 +133,8 @@ describe('QuestionBreakdown', () => {
 
   it('quotes the snippet without the whitespace around it', async () => {
     const user = userEvent.setup()
-    // The collapsed preview keeps its own text so the two quotes stay
-    // distinguishable; only the expanded one carries the padding.
+    // Both quotes live in the expanded section now, so this fixture holds a
+    // single response — nothing here depends on telling two quotes apart.
     const padded: QuestionGroup[] = [
       {
         ...groups[0],
@@ -130,16 +148,15 @@ describe('QuestionBreakdown', () => {
     ]
     render(<QuestionBreakdown groups={padded} engines={engines} />)
 
-    await user.click(screen.getByRole('button', { name: /show answers/i }))
+    await user.click(screen.getByRole('button', { name: /expand/i }))
 
-    // textContent, not getByText: the default matcher normalizes whitespace
-    // away, so it would pass on the untrimmed value too.
-    expect(screen.getByText(/Acme leads the list/).textContent).toBe(
-      '“Acme leads the list.”',
-    )
+    // Matching on the exact quote (not a substring match) is what makes this
+    // fail on the untrimmed value — the default text matcher normalizes
+    // whitespace away, so a substring match would pass either way.
+    expect(screen.getByText('“Acme leads the list.”')).toBeInTheDocument()
   })
 
-  it('keeps the answers collapsed until asked for', async () => {
+  it('keeps the row collapsed until asked to expand', async () => {
     const user = userEvent.setup()
     render(<QuestionBreakdown groups={groups} engines={engines} />)
 
@@ -147,13 +164,13 @@ describe('QuestionBreakdown', () => {
       screen.queryByText(/Acme is a strong option and/),
     ).not.toBeInTheDocument()
 
-    const toggle = screen.getByRole('button', { name: /show answers/i })
+    const toggle = screen.getByRole('button', { name: /expand/i })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
     await user.click(toggle)
 
     expect(screen.getByText(/Acme is a strong option and/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /hide answers/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /collapse/i })).toHaveAttribute(
       'aria-expanded',
       'true',
     )

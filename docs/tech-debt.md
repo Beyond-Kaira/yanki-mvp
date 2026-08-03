@@ -4,14 +4,17 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-03 (SERP visibility pass, ADR-28: seven new items —
+Last updated: 2026-08-03 (SERP visibility pass, ADR-28: nine new items —
 **#34** (SERP score is binary and unweighted, like the GEO score), **#35** (a
 SERP is a one-shot snapshot, never re-measured), **#36** (`serp_query_count`=6
 is a politeness budget, not a measured one), **#37** (domain matching is
 host-suffix, not eTLD+1), **#38** (the measurable/miss split trusts
 `unresponsive_engines`), **#39** (query shapes are hardcoded English), **#40**
 (integration tests pin one SearXNG tag — the schedule-only `upstream` job is
-what catches drift)). No repayments this pass. Earlier —
+what catches drift), plus **#41** (own-site matching compares raw host strings,
+so an IDN domain can miss) and **#42** (the SERP response is read without a byte
+cap) — both raised by an adversarial review of the branch before merge. No
+repayments this pass. Earlier —
 2026-07-28 (discovery + KYC pass: three new items — **#27**
 (KYC-stage spend counts toward no cost cap), **#28** (`_is_html` fails open on a
 missing Content-Type), **#29** (steps 2b/6 specified but parked on an operator
@@ -425,3 +428,29 @@ devDependencies).)
     consequence: a SearXNG release that breaks our adapter is caught by the
     nightly, on a lag of up to a day, never by whichever PR happens to be open
     when it lands.
+41. **Own-site domain matching compares raw host strings, so a Unicode domain
+    can miss** (2026-08-03, ADR-28, found by review before merge): `_host` in
+    `pipeline/serp_visibility.py` lowercases `urlparse(...).hostname` and
+    `_is_own_site` compares the result as a plain string. It applies no IDNA
+    normalisation, so a submitted URL written in Unicode (`https://köln.example`)
+    and a SERP result the instance returns in punycode
+    (`https://xn--kln-sna.example`) are two different strings and the company's
+    own site is not recognised as its own. The failure is silent and one-sided —
+    it under-matches, never fabricates a hit, and the result usually still
+    catches on the text match — but the domain signal, which is the strongest one
+    this feature has, quietly stops working for exactly the non-ASCII brands the
+    product's Turkish wedge is aimed at. The fix is one `.encode("idna")` on
+    both sides; not applied here only because it wants a test corpus of real IDN
+    sites rather than an invented one.
+42. **The SERP response is read without a byte cap** (2026-08-03, ADR-28, found
+    by review before merge): `SearxngSource.search` calls `response.json()` on
+    whatever the instance sends, with no equivalent of discovery's
+    `MAX_PAGE_BYTES`. Post-parse the adapter is careful — `max_results` caps the
+    rows and every field is length-capped — but the whole body is materialised in
+    the worker first. It is deliberately not treated as a threat (the instance is
+    the operator's own container, not a stranger's URL — that asymmetry is the
+    same one that justifies skipping `net_guard` here), so this is an
+    inconsistency with `discovery`'s posture rather than a live risk: a
+    misbehaving or compromised instance could make a worker allocate a lot of
+    memory. A streamed read with a cap would close it cheaply if the instance
+    ever stops being trusted infrastructure.

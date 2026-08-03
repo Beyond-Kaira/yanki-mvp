@@ -77,6 +77,16 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     session.execute(delete(Response).where(Response.analysis_id == analysis.id))
     session.execute(delete(Prompt).where(Prompt.analysis_id == analysis.id))
     session.execute(delete(SerpCheck).where(SerpCheck.analysis_id == analysis.id))
+    # The SERP summary is cleared with the evidence it summarises, not alongside
+    # the code that writes it. Otherwise a re-run with SERP switched off since
+    # the last attempt drops the ``serp_checks`` rows and keeps the old score —
+    # a number with nothing under it, which is the exact thing this feature
+    # exists not to produce (ADR-28). Only a completed pass writes them back.
+    analysis.serp_score = None
+    analysis.serp_hit_count = None
+    analysis.serp_query_count = None
+    analysis.serp_status = None
+    analysis.serp_source = None
     session.commit()
 
     is_checker = analysis.kind == "checker"

@@ -264,3 +264,41 @@ def test_a_rerun_replaces_serp_checks_rather_than_accumulating_them(
     assert len(_serp_checks(db_session, models, analysis)) == 3
     assert second.serp_query_count == first.serp_query_count
     assert second.serp_hit_count == first.serp_hit_count
+
+
+def test_a_rerun_with_serp_switched_off_leaves_no_score_without_evidence(
+    db_session, models, settings, monkeypatch
+):
+    """A summary and the evidence under it are cleared together, or not at all.
+
+    The reachable path: a run measures SERP, the operator turns the feature off,
+    and the stale-claim reaper re-runs the job. The re-run drops the serp_checks
+    rows; if the summary columns survived that, the API would serve a score with
+    an empty evidence table behind it — a number with no working shown, which is
+    the one thing this feature exists not to produce.
+    """
+    from app.pipeline import discovery, runner
+
+    monkeypatch.setattr(
+        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
+    )
+    settings.serp_enabled = True
+    settings.serp_query_count = 3
+
+    analysis = models.Analysis(url="https://example.com", status="running")
+    db_session.add(analysis)
+    db_session.flush()
+
+    measured = runner.run_pipeline(db_session, analysis.id, settings)
+    assert measured.serp_score is not None
+    assert _serp_checks(db_session, models, analysis)
+
+    settings.serp_enabled = False
+    rerun = runner.run_pipeline(db_session, analysis.id, settings)
+
+    assert _serp_checks(db_session, models, analysis) == []
+    assert rerun.serp_score is None
+    assert rerun.serp_status is None
+    assert rerun.serp_source is None
+    assert rerun.serp_hit_count is None
+    assert rerun.serp_query_count is None

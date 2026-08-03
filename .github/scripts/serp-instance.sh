@@ -29,10 +29,15 @@ IMAGE="${SEARXNG_IMAGE:-searxng/searxng:2026.8.1-8892414dc}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE_DIR="${REPO_ROOT}/backend/tests/integration/searxng"
+# The rendered settings file has to outlive `up` — it is bind-mounted, so the
+# container needs it on disk for its whole life. Kept in one directory so `down`
+# can take it away again rather than leaving it in /tmp forever.
+STATE_DIR="${TMPDIR:-/tmp}/yanki-serp-instance"
 
 down() {
   docker rm -f "${INSTANCE}" "${FIXTURE}" >/dev/null 2>&1 || true
   docker network rm "${NETWORK}" >/dev/null 2>&1 || true
+  rm -rf "${STATE_DIR}"
 }
 
 up() {
@@ -42,8 +47,15 @@ up() {
   # The committed settings.yml carries a placeholder where SearXNG wants a
   # secret_key. It is generated here instead: this repo is public and CI scans
   # its full history with gitleaks, so a literal key would be both a lie and a
-  # build failure. 644 so the container's own user can read the mount.
-  settings="$(mktemp)"
+  # build failure.
+  #
+  # The generated value is world-readable (644, so the container's own user can
+  # read the bind mount) and that is fine: it signs sessions for a throwaway
+  # instance that federates a fixture server and is destroyed at the end of the
+  # job. It guards nothing. `down` removes it either way.
+  mkdir -p "${STATE_DIR}"
+  chmod 755 "${STATE_DIR}"
+  settings="${STATE_DIR}/settings.yml"
   sed "s/REPLACED_AT_RUNTIME/$(openssl rand -hex 32)/" "${FIXTURE_DIR}/settings.yml" >"${settings}"
   chmod 644 "${settings}"
 

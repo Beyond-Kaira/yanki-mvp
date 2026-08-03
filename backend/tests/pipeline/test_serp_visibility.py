@@ -371,3 +371,43 @@ def test_a_source_that_raises_anything_at_all_still_cannot_fail_the_run(
     # Still recorded, so the gap is visible rather than looking like queries we
     # never ran.
     assert len(_checks(db_session, models, analysis)) == 3
+
+
+# --------------------------------------------------------------------------
+# Query form (issue #18)
+# --------------------------------------------------------------------------
+
+
+def test_a_coverage_claim_never_reaches_a_search_query(sample_kyc):
+    """"best X in 160+ countries" is a string nobody has ever typed."""
+    kyc = sample_kyc.model_copy(
+        update={
+            "category": "warehouse robots",
+            "locations": ["160+ countries", "United Kingdom"],
+        }
+    )
+    queries = build_queries(kyc, 6)
+    assert queries
+    assert not any("160" in q for q in queries)
+    assert any("in the United Kingdom" in q for q in queries)
+
+
+def test_topics_are_lowercased_the_way_someone_types_them(sample_kyc):
+    kyc = sample_kyc.model_copy(
+        update={"category": "", "use_cases": ["Relocating internationally"], "keywords": []}
+    )
+    queries = build_queries(kyc, 3)
+    assert queries
+    assert all("Relocating" not in q for q in queries)
+    assert any("relocating internationally" in q for q in queries)
+
+
+def test_acronyms_keep_their_capitals(sample_kyc):
+    """"crm software" is fine to search, but the evidence table shows this."""
+    kyc = sample_kyc.model_copy(update={"category": "CRM software", "locations": []})
+    assert "CRM software" in build_queries(kyc, 1)[0]
+
+
+def test_a_lowercase_topic_is_left_alone(sample_kyc):
+    kyc = sample_kyc.model_copy(update={"category": "warehouse robots", "locations": []})
+    assert build_queries(kyc, 1)[0] == "best warehouse robots"

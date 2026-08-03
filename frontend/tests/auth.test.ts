@@ -150,6 +150,33 @@ describe('fetchCurrentUser', () => {
 
     await expect(fetchCurrentUser()).resolves.toBeNull()
   })
+
+  it('replays the request with the token the refresh just earned', async () => {
+    setAccessToken('stale')
+    const fetchMock = vi
+      .fn()
+      // The bearer has expired, which is the expected end of a short-lived
+      // token rather than an error to surface…
+      .mockResolvedValueOnce(jsonResponse(401, {}))
+      // …so the cookie is rotated for a new one…
+      .mockResolvedValueOnce(jsonResponse(200, { access_token: 'fresh' }))
+      // …and the original request runs again, this time carrying it.
+      .mockResolvedValueOnce(jsonResponse(200, USER))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // Dropping the replay leaves this null: the session is alive and the user
+    // is signed out anyway, which is the whole failure this covers.
+    await expect(fetchCurrentUser()).resolves.toEqual(USER)
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const [refreshPath] = fetchMock.mock.calls[1]
+    expect(refreshPath).toBe('/api/v1/auth/refresh')
+    const [replayPath, replayInit] = fetchMock.mock.calls[2]
+    expect(replayPath).toBe('/api/v1/auth/me')
+    expect(new Headers(replayInit.headers).get('Authorization')).toBe(
+      'Bearer fresh',
+    )
+  })
 })
 
 describe('logout', () => {

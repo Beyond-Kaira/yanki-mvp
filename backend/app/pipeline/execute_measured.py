@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Any
 
 from app.db.models import Response
+from app.pipeline import geo_records as geo_records_step
 from app.pipeline import measured as measured_step
 from app.pipeline import simulated as simulated_step
 from app.providers.tavily import owned_domains_from_url
@@ -120,6 +121,15 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
         )
         session.add(row)
         rows.append(row)
+        session.flush()
+        # Columnar Kaira-record twin (responses.audit stays as opaque JSON).
+        session.add(
+            geo_records_step.geo_record_from_audit(
+                record,
+                analysis_id=analysis.id,
+                response_id=row.id,
+            )
+        )
         session.flush()
 
     return rows

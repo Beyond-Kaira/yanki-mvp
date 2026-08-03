@@ -46,6 +46,13 @@ def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, m
     assert all(response.engine == "measured" for response in responses)
     assert all(isinstance(response.audit, dict) for response in responses)
 
+    geo_rows = db_session.execute(
+        select(models.GeoRecord).where(models.GeoRecord.analysis_id == analysis.id)
+    ).scalars().all()
+    assert len(geo_rows) == settings.prompt_count
+    assert result.citation_summary is not None
+    assert result.citation_summary["record_count"] == settings.prompt_count
+
     # Footprint recorded on every response; composite score in 0–100.
     assert all(response.footprint is not None for response in responses)
     hits = sum(1 for response in responses if response.footprint)

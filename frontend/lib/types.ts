@@ -319,6 +319,96 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * GeoRecordOut
+         * @description One Kaira-style audit record persisted columnar in ``geo_records``.
+         */
+        GeoRecordOut: {
+            /** Answer Summary */
+            answer_summary?: string | null;
+            /** Brand */
+            brand: string;
+            /** Citation Metrics */
+            citation_metrics?: {
+                [key: string]: unknown;
+            } | null;
+            /** Citations */
+            citations?: unknown[] | null;
+            /** Competitors */
+            competitors?: unknown[] | null;
+            /** Content Improvement Opportunities */
+            content_improvement_opportunities?: unknown[] | null;
+            /** Entities Associated With Brand */
+            entities_associated_with_brand?: unknown[] | null;
+            /** Error */
+            error?: boolean | null;
+            /** Generated At */
+            generated_at?: string | null;
+            /** Grounded Answer */
+            grounded_answer?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Intent */
+            intent?: string | null;
+            /** Measurement Mode */
+            measurement_mode?: string | null;
+            /** Mention Context */
+            mention_context?: string | null;
+            /** Mentioned */
+            mentioned?: boolean | null;
+            /** Model */
+            model?: string | null;
+            /** Owned Domains */
+            owned_domains?: unknown[] | null;
+            /** Prompt */
+            prompt: string;
+            /** Prompt Group */
+            prompt_group?: string | null;
+            /** Rank Position */
+            rank_position?: number | null;
+            /** Reasoning Trace */
+            reasoning_trace?: {
+                [key: string]: unknown;
+            } | null;
+            /** Recommendation Reasoning */
+            recommendation_reasoning?: string | null;
+            /**
+             * Response Id
+             * Format: uuid
+             */
+            response_id: string;
+            /** Schema Version */
+            schema_version?: string | null;
+            /** Search Provider */
+            search_provider?: string | null;
+            /** Search Results */
+            search_results?: unknown[] | {
+                [key: string]: unknown;
+            } | null;
+            /** Search Visibility */
+            search_visibility?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sector */
+            sector?: string | null;
+            /** Sentiment */
+            sentiment?: string | null;
+            /** Simulated Answer */
+            simulated_answer?: string | null;
+            /** Trust Signals */
+            trust_signals?: unknown[] | null;
+            /** Visibility Drivers */
+            visibility_drivers?: {
+                [key: string]: unknown;
+            } | null;
+            /** Visibility Gaps */
+            visibility_gaps?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -406,12 +496,21 @@ export interface components {
         };
         /** ResultOut */
         ResultOut: {
+            /** Citation Summary */
+            citation_summary?: {
+                [key: string]: unknown;
+            } | null;
             /** Competitors Appeared */
             competitors_appeared: components["schemas"]["CompetitorMention"][] | null;
             /** Engine Presence */
             engine_presence: components["schemas"]["EnginePresence"][] | null;
             /** Footprint Count */
             footprint_count: number | null;
+            /**
+             * Geo Records
+             * @default []
+             */
+            geo_records: components["schemas"]["GeoRecordOut"][];
             /** Geo Score */
             geo_score: number | null;
             /** Interventions */

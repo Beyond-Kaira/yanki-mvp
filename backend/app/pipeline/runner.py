@@ -24,9 +24,10 @@ from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 
-from app.db.models import Analysis, Prompt, Response
+from app.db.models import Analysis, GeoRecord, Prompt, Response
 from app.pipeline import checker_prompts, discovery
 from app.pipeline import execute_measured as execute_step
+from app.pipeline import geo_records as geo_records_step
 from app.pipeline import interventions as interventions_step
 from app.pipeline import kyc as kyc_step
 from app.pipeline import prompts as prompts_step
@@ -64,6 +65,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
         select(Analysis).where(Analysis.id == analysis_id)
     ).scalar_one()
 
+    session.execute(delete(GeoRecord).where(GeoRecord.analysis_id == analysis.id))
     session.execute(delete(Response).where(Response.analysis_id == analysis.id))
     session.execute(delete(Prompt).where(Prompt.analysis_id == analysis.id))
     session.commit()
@@ -154,6 +156,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
         )
     else:
         analysis.geo_score = scoring_step.mention_rate(footprint_count, total) * 100.0
+    analysis.citation_summary = geo_records_step.aggregate_citation_summary(audit_records)
     analysis.status = "done"
     analysis.current_step = None
     analysis.progress = _SCORING_DONE

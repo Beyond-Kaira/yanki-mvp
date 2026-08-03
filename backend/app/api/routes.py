@@ -14,6 +14,7 @@ from app.api.schemas import (
     CreateAnalysisRequest,
     CreateAnalysisResponse,
     EnginePresence,
+    GeoRecordOut,
     PromptOut,
     ResponseOut,
     ResultOut,
@@ -73,6 +74,8 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
         total_responses=analysis.total_responses,
         reliability_score=analysis.reliability_score,
         interventions=analysis.interventions,
+        citation_summary=analysis.citation_summary,
+        geo_records=[GeoRecordOut.model_validate(r) for r in analysis.geo_records],
         engine_presence=engine_presence,
         competitors_appeared=competitors_appeared,
     )

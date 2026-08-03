@@ -414,11 +414,15 @@ State-transition summary:
 
 `docker compose -f deploy/docker-compose.yml up --build` (compose project name
 `yanki`) brings up **db + api + worker + web** with bind-mounts for hot reload.
-The api container command runs **`alembic upgrade head` before uvicorn**, so
-schema migrations apply automatically on every api boot (same in prod). **No
-CORS**: the frontend always fetches relative paths, and Next.js `rewrites()`
-proxies `/api/:path*` and `/healthz` to the api (`API_ORIGIN`, default
-`http://localhost:8141`). Postgres publishes 5432 for local psql only.
+The **dev** api container command runs **`alembic upgrade head` before
+uvicorn**, so schema migrations apply automatically on every api boot. **Prod
+no longer does this**: its api serves only, and the deploy driver migrates as a
+separate one-shot step *before* any container is replaced (ADR-30; see §Prod).
+Dev keeps the fused form on purpose — it has no rollback to protect and CI's
+e2e job relies on the stack migrating itself. **No CORS**: the frontend always
+fetches relative paths, and Next.js `rewrites()` proxies `/api/:path*` and
+`/healthz` to the api (`API_ORIGIN`, default `http://localhost:8141`). Postgres
+publishes 5432 for local psql only.
 
 The three published **host** ports are overridable to dodge local conflicts
 (container ports stay fixed): `YANKI_WEB_PORT` (→8140), `YANKI_API_PORT` (→8141),
@@ -460,9 +464,17 @@ reaching Yanki over the stack's loopback host binds:
   8140); db + worker stay on the project-internal network and Postgres is
   never published in prod.
 - `make deploy` / `make rollback` follow the ams-pulse pattern: build, tag by git
-  SHA, `compose -p yanki-prod up`, `/healthz` check, roll back to the last-good
-  SHA file on failure. **First exercised for real 2026-07-10 (P4.2)** — both
-  paths ran clean on the shared VPS with co-tenants verified undisturbed.
+  SHA, **migrate (a one-shot `alembic upgrade head`, before any running container
+  is replaced)**, `compose -p yanki-prod up`, `/healthz` check, roll back to the
+  last-good SHA file on failure. Both drivers run the migration as this separate
+  step and the api serves only (ADR-30, issue #16): fused on boot, a
+  *successful* migration made rollback impossible — the previous image's alembic
+  exits 255 on a revision it has never heard of. The nginx-aware driver
+  (`deploy/deployment.sh`) numbers the sequence as **7 steps**: migrate is the
+  new step 4, so apply/health/record shift to 5/6/7. A bad migration now fails
+  while the previous release is still serving and touches no container.
+  **First exercised for real 2026-07-10 (P4.2)** — both paths ran clean on the
+  shared VPS with co-tenants verified undisturbed.
 - **A `searxng` service ships behind the `serp` profile (ADR-29).** The operator
   turned SERP on, so the `yanki-prod` compose file now defines a fifth container,
   `searxng` (`searxng/searxng:2026.8.1-8892414dc`, pinned like every other

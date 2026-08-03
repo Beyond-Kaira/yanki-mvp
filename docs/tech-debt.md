@@ -4,7 +4,15 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-03 (SERP visibility pass, ADR-28: nine new items —
+Last updated: 2026-08-03 (migrate-before-serve, ADR-30 / GitHub issue #16:
+docs-only follow-through, no new numbered items. **#16 repaid in prod** — the
+migration now runs as a one-shot driver step that finishes before any app
+container starts, so the worker's first-boot `UndefinedTable` race is gone in
+prod — but **kept open for dev**, whose compose still fuses `alembic upgrade
+head` into the api's boot command. **#17** gains a new wrinkle: rollback's
+pruned-image `git checkout` would resurrect that fused command and re-break the
+rollback path ADR-30 just fixed. No full repayments this pass. Earlier the same
+day — SERP visibility pass, ADR-28: nine new items —
 **#34** (SERP score is binary and unweighted, like the GEO score), **#35** (a
 SERP is a one-shot snapshot, never re-measured), **#36** (`serp_query_count`=6
 is a politeness budget, not a measured one), **#37** (domain matching is
@@ -170,20 +178,52 @@ devDependencies).)
     flake), and `postcss.config.mjs` stays unlinted (`.mjs` not in `--ext`;
     `next lint` never covered it either). Note: Next 16 also stops linting
     during `next build`, making this script the ONLY lint gate.
-16. **The worker logs one scary-looking `UndefinedTable` error at first prod
-    boot.** compose starts the worker on api `service_started`, but the api
-    runs `alembic upgrade head` before uvicorn — so the worker's first poll
-    can beat the migration and log a full traceback
-    (`relation "analyses" does not exist`), then recover on the next poll
-    (observed on the first deploy, 2026-07-10; RestartCount stayed 0). Purely
-    cosmetic noise today; fix = a db-schema wait or migration-completion gate
-    if it ever confuses an on-call human.
+16. **The worker's first-boot `UndefinedTable` race — now repaid in prod, still
+    present in dev.** (Tech-debt item #16, *not* GitHub issue #16: that one is
+    the rollback bug ADR-30 fixes, and the two numbers collide by coincidence.)
+    The original noise: compose started the worker on api `service_started`
+    while the api ran `alembic upgrade head` before uvicorn, so the worker's
+    first poll could beat the migration and log a full traceback
+    (`relation "analyses" does not exist`) before recovering on the next poll
+    (observed on the first prod deploy, 2026-07-10; RestartCount stayed 0).
+    **Prod (ADR-30): repaid.** The migration is now a one-shot driver step that
+    finishes *before* any app container starts, and the prod api command is
+    serve-only, so by the time the worker container exists the schema is already
+    at head — there is no longer a migration in flight for the first poll to
+    race. **Dev (`docker-compose.yml`): unchanged and still racy.** The api
+    keeps the fused `sh -c "alembic upgrade head && uvicorn …"` command and the
+    worker still `depends_on api: service_started` (which waits for the
+    container to *start*, not for the migration to *finish*), so a first-poll
+    traceback can still surface locally and in CI's e2e stack. Deliberate: dev
+    has no rollback to protect and CI relies on the stack migrating itself. The
+    old fix — a db-schema wait or migration-completion gate — now applies to the
+    dev half only, if the noise ever confuses anyone.
 17. **`rollback.sh`'s pruned-image branch is still unproven and mutates the
     working tree.** P4.2 exercised only the images-present path (same-SHA
     rollback, clean + healthy). If the last-good image was ever pruned,
     rollback does `git checkout <sha>` + rebuild — detached HEAD, fails on a
     dirty tree, and leaves the operator's checkout moved. Surfaced by the
     session-7 pre-flight review; accepted for now (rollbacks are supervised).
+    **New wrinkle (ADR-30):** that working-tree mutation is now a *correctness*
+    hazard, not just an ergonomic one. `git checkout <sha>` to a last-good SHA
+    that predates ADR-30 restores that SHA's `docker-compose.prod.yml` too — the
+    one whose api command is the fused `sh -c "alembic upgrade head &&
+    uvicorn …"`. So the pruned-image branch rebuilds and `compose up`s the old
+    serve-*and*-migrate command, re-introducing exactly the boot-time migration
+    ADR-30 removed from the serving path — and it does so in the one scenario
+    rollback exists for: a forward deploy that migrated the DB to a new head and
+    then failed the health gate. The DB is now past the old image's known
+    revisions, so the resurrected fused command's boot `alembic upgrade head`
+    exits 255 (`Can't locate revision …`) and crash-loops — the very failure
+    ADR-30 proved the serve-only command avoids. The images-present branch is
+    safe here: it never checks out, so it `compose up`s the already-built
+    last-good image under the *current* serve-only compose file (ADR-30's
+    proven-good case); only the `git checkout` branch resurrects the fused form.
+    Most acute in the transition window, while `.last-good` still points at a
+    pre-ADR-30 release — it fades once last-good is itself post-ADR-30, since
+    checking that out restores a serve-only compose. The clean fix keeps the
+    compose file out of the checkout: pin it, or roll the image tag back without
+    moving the tree at all.
 18. **The prod web image ships devDependencies.** Session 7's fix for the
     build failure (`npm ci --include=dev`, needed because NODE_ENV=production
     otherwise omits the typescript devDep that `next build` requires) means

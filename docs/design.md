@@ -1116,3 +1116,57 @@ decision → consequences**, with one line on why the alternative was rejected.
   settings file with a real key (gitleaks, public repo — and it would be a lie in
   the template); adding the usual valkey/redis cache sidecar (a second container
   on a tight box, for a handful of queries per analysis).
+
+### ADR-30 — Migrate before serve, so a rollback can actually roll back (2026-08-03)
+- **Context:** the api container booted with `sh -c "alembic upgrade head && uvicorn ..."`.
+  [`AUTODEPLOY.md`](../deploy/AUTODEPLOY.md) already warned that a *broken* migration
+  reaching production is not something the health-gate rollback can undo. Auditing
+  the ADR-28 merge found the sharper half of that: a **successful** migration
+  breaks rollback too. Once the DB is stamped at a revision the previous image
+  has never heard of, that image's `alembic upgrade head` exits 255 with
+  `Can't locate revision identified by …`, the `&&` stops uvicorn from ever
+  starting, and `restart: unless-stopped` turns it into a crash loop.
+  `rollback.sh` re-runs `compose up -d` and never downgrades, so the recovery
+  path is the thing that fails. Filed as issue #16; it applied to every
+  migration since `0002`.
+- **Decision:** split the two. The **prod** api command is now just
+  `uvicorn ...`, and both deploy drivers (`deployment.sh`, `deploy.sh`) run
+  `alembic upgrade head` as a one-shot `compose run --rm --no-deps api` step
+  *before* any running container is replaced.
+  - The **dev** compose file deliberately keeps the fused form. It has no
+    rollback to protect, no driver to hang a step off, and CI's e2e job relies
+    on the stack migrating itself. The divergence is in the safest possible
+    direction: the thing prod does is strictly less than what dev does.
+  - The migration is **not** a compose service with
+    `service_completed_successfully`. That was the obvious shape and it is
+    wrong: rollback's `compose up -d` would run the *old* image's migrate
+    container and fail in exactly the same way, just one service earlier.
+    Only a step the driver owns — which knows a forward deploy from a
+    rollback — actually separates them.
+- **Consequences:** rollback works. Proven, not argued: with a database at
+  `0007`, the pre-0007 image under the old fused command dies with
+  `Can't locate revision identified by '0007_serp_visibility'`, and under the
+  new serve-only command boots in 4 s, answers `/healthz`, and serves a real
+  `analyses` row whose five extra columns it does not model. That last part is
+  what makes the whole thing safe: SQLAlchemy maps only declared columns and
+  emits explicit column lists, never `SELECT *`, so old code is already
+  compatible with a newer *additive* schema. It was never the ORM that broke —
+  only alembic's boot-time revision guard.
+  A second, unlooked-for improvement: a **bad** migration now costs nothing.
+  It fails while the previous release is still serving, and the driver exits
+  without touching a container — where before it would replace the api, crash-
+  loop it, fail the health gate, and only then attempt a rollback that could not
+  work. The deploy grew from six steps to seven.
+  This does **not** make rollback safe across a *destructive* migration; nothing
+  here changes that dropping a column still strands old code. The rule the
+  repo already follows — migrations are additive — is now load-bearing rather
+  than merely tidy, and that is worth saying out loud.
+- **Rejected:** having `rollback.sh` run `alembic downgrade` (it would need the
+  target release's head revision, which it has no way to know, and it makes the
+  emergency lever destructive — the wrong property for the thing you reach for
+  when everything else is broken); making the api tolerate a newer DB by only
+  upgrading when behind (cheapest, and it silently masks genuine drift, which is
+  how you find out during the *next* incident); a `migrate` compose service
+  (fails identically on rollback, see above); leaving it alone because it is
+  pre-existing (it is pre-existing *and* it is the safety net the docs claim to
+  have — the next migration was already queued behind it).

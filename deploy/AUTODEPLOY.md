@@ -15,13 +15,21 @@ PR merged
             └─ ssh aytek@161.97.172.146  "deploy <40-hex-sha>"
                  └─ ~/.local/bin/yanki-ci-deploy      ← forced command, not a shell
                       └─ ~/deploy/yanki-mvp           ← dedicated prod checkout
-                           └─ deploy/deployment.sh    ← build · up · health · record
+                           └─ deploy/deployment.sh    ← build · migrate · up · health · record
 ```
 
 Roughly CI time + build time from merge to live. **Deploy waits for CI on
-purpose.** The api container runs `alembic upgrade head` on boot, so a broken
-migration reaching production is not something the health-gate rollback can
-undo — the cheap insurance is to never ship a red commit.
+purpose.** The reason used to be that the api ran `alembic upgrade head` on
+boot, so a broken migration reaching production was not something the
+health-gate rollback could undo. That is no longer how it works: the api serves
+only, and the deploy driver runs the migration as a one-shot step *before* it
+replaces any container (the `migrate` step in the chain above; ADR-30). A bad
+migration now fails while the previous release is still serving and costs
+nothing, and a rollback across an *additive* migration works. Waiting for CI is
+still the right call for what remains: a red commit can be broken in ways a
+green `/healthz` never catches, and the only rollback the gate has is to the
+last-good image — which cannot undo a *destructive* migration. The cheap
+insurance is still to never ship a red commit.
 
 ## Why the runner cannot do anything else to the host
 
@@ -165,9 +173,12 @@ gitleaks over the **full history** with `--exit-code 1`.
 
 ## When a deploy fails
 
-`deployment.sh` rolls back to `.last-good` on every failure path, then re-probes
-the public health url so a rollback that did not actually restore service still
-exits non-zero. Read, in order:
+`deployment.sh` rolls back to `.last-good` when the apply or health step fails —
+once it has actually started replacing containers — then re-probes the public
+health url so a rollback that did not restore service still exits non-zero. A
+failure *before* that, a bad build or a bad migration, needs no rollback: the
+previous release was never taken down, so the driver just exits and it keeps
+serving. Read, in order:
 
 1. The `Deploy` run in the Actions tab — distinguishes "could not reach the
    host" (the `Reach the host` step) from "the deploy itself failed".

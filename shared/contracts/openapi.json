@@ -244,6 +244,18 @@
       },
       "ResponseOut": {
         "properties": {
+          "audit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit"
+          },
           "cost_usd": {
             "title": "Cost Usd",
             "type": "number"
@@ -358,6 +370,25 @@
             ],
             "title": "Geo Score"
           },
+          "interventions": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interventions"
+          },
           "kyc": {
             "anyOf": [
               {
@@ -376,6 +407,17 @@
             },
             "title": "Prompts",
             "type": "array"
+          },
+          "reliability_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reliability Score"
           },
           "responses": {
             "items": {

@@ -238,6 +238,10 @@ export interface components {
         };
         /** ResponseOut */
         ResponseOut: {
+            /** Audit */
+            audit?: {
+                [key: string]: unknown;
+            } | null;
             /** Cost Usd */
             cost_usd: number;
             /** Engine */
@@ -271,12 +275,20 @@ export interface components {
             footprint_count: number | null;
             /** Geo Score */
             geo_score: number | null;
+            /** Interventions */
+            interventions?: {
+                [key: string]: unknown;
+            }[] | {
+                [key: string]: unknown;
+            } | null;
             /** Kyc */
             kyc: {
                 [key: string]: unknown;
             } | null;
             /** Prompts */
             prompts: components["schemas"]["PromptOut"][];
+            /** Reliability Score */
+            reliability_score?: number | null;
             /** Responses */
             responses: components["schemas"]["ResponseOut"][];
             /** Total Responses */

@@ -86,62 +86,67 @@ Rules:
 - maximum 5 citations.
 """
 
-AUDIT_EXTRACTION_SYSTEM_PROMPT = """
-You are a GEO audit analyst.
+AUDIT_EXTRACTION_SYSTEM_PROMPT = (
+    "\n"
+    "You are a GEO audit analyst.\n"
+    "\n"
+    "You receive measured visibility data from a real web search pass and a grounded answer.\n"
+    "Your job is to audit ONE target brand using ONLY the provided evidence.\n"
+    "\n"
+    "Rules:\n"
+    "- Every visibility_gaps item must be a string insight derived from evidence.\n"
+    "- recommendation_reasoning must cite whether absence is in search results, grounded "
+    "answer, or both.\n"
+    "- visibility_drivers must be empty if the brand is not mentioned in grounded_answer.\n"
+    "- Do not invent facts not supported by search_results or grounded_answer.\n"
+    "- Return ONLY valid JSON:\n"
+    "\n"
+    "{\n"
+    "  \"brand\": \"string\",\n"
+    "  \"sector\": \"string\",\n"
+    "  \"prompt\": \"string\",\n"
+    "  \"intent\": \"informational | comparison | transactional | alternative_search\",\n"
+    "  \"mention_context\": \"primary_recommendation | secondary_recommendation | "
+    "comparison_candidate | alternative_option | competitor_only | not_mentioned\",\n"
+    "  \"recommendation_reasoning\": \"string\",\n"
+    "  \"reasoning_trace\": {\n"
+    "    \"search_findings\": \"string\",\n"
+    "    \"answer_findings\": \"string\",\n"
+    "    \"brand_evaluation\": \"string\",\n"
+    "    \"confidence\": 0.0\n"
+    "  },\n"
+    "  \"visibility_drivers\": {\n"
+    "    \"product_strength\": [\"string\"],\n"
+    "    \"distribution_strength\": [\"string\"],\n"
+    "    \"trust_strength\": [\"string\"],\n"
+    "    \"brand_strength\": [\"string\"],\n"
+    "    \"content_strength\": [\"string\"],\n"
+    "    \"international_strength\": [\"string\"],\n"
+    "    \"ux_strength\": [\"string\"]\n"
+    "  },\n"
+    "  \"visibility_gaps\": {\n"
+    "    \"low_discoverability\": [\"string\"],\n"
+    "    \"weak_ranking\": [\"string\"],\n"
+    "    \"category_mismatch\": [\"string\"],\n"
+    "    \"weak_trust_signals\": [\"string\"],\n"
+    "    \"weak_feature_association\": [\"string\"],\n"
+    "    \"competitor_dominance\": [\"string\"],\n"
+    "    \"content_gap\": [\"string\"],\n"
+    "    \"international_positioning_gap\": [\"string\"],\n"
+    "    \"ux_positioning_gap\": [\"string\"],\n"
+    "    \"reputation_gap\": [\"string\"]\n"
+    "  },\n"
+    "  \"trust_signals\": [\"string\"],\n"
+    "  \"entities_associated_with_brand\": [\"string\"],\n"
+    "  \"sentiment\": \"positive | neutral | negative\",\n"
+    "  \"content_improvement_opportunities\": [\"string\"]\n"
+    "}\n"
+    "\n"
+    "Use predefined visibility_gaps keys exactly. Empty categories stay as empty arrays.\n"
+    "Maximum 3 items per drivers/gaps category. Maximum 5 trust_signals.\n"
+    ""
+)
 
-You receive measured visibility data from a real web search pass and a grounded answer.
-Your job is to audit ONE target brand using ONLY the provided evidence.
-
-Rules:
-- Every visibility_gaps item must be a string insight derived from evidence.
-- recommendation_reasoning must cite whether absence is in search results, grounded answer, or both.
-- visibility_drivers must be empty if the brand is not mentioned in grounded_answer.
-- Do not invent facts not supported by search_results or grounded_answer.
-- Return ONLY valid JSON:
-
-{
-  "brand": "string",
-  "sector": "string",
-  "prompt": "string",
-  "intent": "informational | comparison | transactional | alternative_search",
-  "mention_context": "primary_recommendation | secondary_recommendation | comparison_candidate | alternative_option | competitor_only | not_mentioned",
-  "recommendation_reasoning": "string",
-  "reasoning_trace": {
-    "search_findings": "string",
-    "answer_findings": "string",
-    "brand_evaluation": "string",
-    "confidence": 0.0
-  },
-  "visibility_drivers": {
-    "product_strength": ["string"],
-    "distribution_strength": ["string"],
-    "trust_strength": ["string"],
-    "brand_strength": ["string"],
-    "content_strength": ["string"],
-    "international_strength": ["string"],
-    "ux_strength": ["string"]
-  },
-  "visibility_gaps": {
-    "low_discoverability": ["string"],
-    "weak_ranking": ["string"],
-    "category_mismatch": ["string"],
-    "weak_trust_signals": ["string"],
-    "weak_feature_association": ["string"],
-    "competitor_dominance": ["string"],
-    "content_gap": ["string"],
-    "international_positioning_gap": ["string"],
-    "ux_positioning_gap": ["string"],
-    "reputation_gap": ["string"]
-  },
-  "trust_signals": ["string"],
-  "entities_associated_with_brand": ["string"],
-  "sentiment": "positive | neutral | negative",
-  "content_improvement_opportunities": ["string"]
-}
-
-Use predefined visibility_gaps keys exactly. Empty categories stay as empty arrays.
-Maximum 3 items per drivers/gaps category. Maximum 5 trust_signals.
-"""
 
 
 class ChatLLM(Protocol):

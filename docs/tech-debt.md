@@ -4,7 +4,11 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-07-10 (session 12 close: three repayments — #6, #19, #21 —
+Last updated: 2026-07-28 (discovery + KYC pass: three new items — **#27**
+(KYC-stage spend counts toward no cost cap), **#28** (`_is_html` fails open on a
+missing Content-Type), **#29** (steps 2b/6 specified but parked on an operator
+decision). No repayments this pass. Earlier — 2026-07-10 (session 12 close:
+three repayments — #6, #19, #21 —
 and one new minor, **#22** (checker cost-cap window/kind-scope not test-pinned).
 P5.6: **item 21 REPAID** — `POST /api/v1/checker` now
 carries a salted `ip_hash`, a default-OFF `CHECKER_ENABLED` kill-switch, per-IP
@@ -56,7 +60,7 @@ devDependencies).)
    of this item was REPAID in session 9 — the live endpoint now enforces
    5/IP/hour + 100/day rolling caps with 429 + `Retry-After` before any row
    is created). Accepted residue: XFF is client-controllable when a request
-   reaches the api without the shared Caddy in front, so the *per-IP* limit
+   reaches the api without the host nginx edge in front, so the *per-IP* limit
    is spoofable — the *global* daily cap (≈$1.62/day worst case at measured
    cost) is the deliberate backstop, and either limit set to `0` is a clean
    kill-switch (429 everything). Also: the daily-cap `COUNT` has no dedicated
@@ -84,20 +88,16 @@ devDependencies).)
    means a losing concurrent writer can drop a rival's just-committed fresh row
    and replace it with its own — harmless (both answers valid, timestamp stays
    fresh, response cost is recorded from the generated result, not the cache row).
-7. **The Caddy publish step is manual, non-idempotent, and coupled two-way to
-   pulse-prod** (rewritten session 7 — the wiring itself is now PROVEN live by
-   P4.2: aliases `yanki-web`/`yanki-api` on `pulse-prod_default`, loopback
-   binds 8142/8143 for health checks, TLS issued, co-tenants undisturbed).
-   What remains accepted debt: (a) `make deploy` does NOT publish — the yanki
-   site block lives inside the operator's
-   `~/repo/ams-pulse/deploy/config/Caddyfile.prod` (appended by hand
-   2026-07-10; the repo's `deploy/caddy/*.caddy` copy is documentation now,
-   and the two must be kept in sync manually); (b) appending twice = duplicate
-   site key = reload failure — always `caddy validate` in-container before
-   `caddy reload`, NEVER restart the shared Caddy; (c) the lifecycle coupling
-   is TWO-WAY — pulse-prod must be up before `make deploy`, and while
-   yanki-prod is attached a `pulse-prod down`/network recreate is blocked by
-   (or strands) yanki's endpoints.
+7. ~~**The Caddy publish step is manual, non-idempotent, and coupled two-way to
+   pulse-prod**~~ **LARGELY REPAID by the Caddy → nginx cutover** (see
+   `deploy/MIGRATION.md`): the shared containerised Caddy was retired; the edge
+   is now a host nginx vhost (`deploy/nginx/yanki.beyondkaira.com.conf`,
+   installed under `/etc/nginx`) proxying the loopback binds 8142/8143, and the
+   two-way pulse-prod lifecycle coupling is gone (yanki no longer joins
+   `pulse-prod_default`; the retired `deploy/caddy/` block was deleted).
+   Remaining accepted debt: `make deploy` still does NOT publish edge config —
+   the repo's nginx conf and the installed `/etc/nginx` copy must be kept in
+   sync manually (`sudo cp` + `nginx -t` + reload, never restart).
 8. **The e2e CI job depends on real runner egress to example.com.** DRY_RUN
    mocks only the LLM providers; pipeline step 1 (discovery) genuinely fetches
    the submitted URL, so the spec's `https://example.com` submission needs
@@ -230,7 +230,7 @@ devDependencies).)
     retune the estimate with the price tables and at P5.7 when Gemini/Perplexity
     stop being $0 stubs. **(b)** the per-IP hash is derived from the first
     `X-Forwarded-For` entry, which is **client-controlled** even behind the
-    shared Caddy (same caveat as item #2), so the per-IP cap is spoofable; the
+    edge proxy (same caveat as item #2), so the per-IP cap is spoofable; the
     per-brand cap and the projected daily cost cap are the real backstops against
     a spoofed-IP burst. **(c)** a cache hit is exempt from the per-IP limit too,
     so an abuser hammering an *already-cached* brand can still grow
@@ -283,3 +283,62 @@ devDependencies).)
     prices ($0.10/$0.40 per 1M) are pinned UNVERIFIED (folds into #23), and
     ListModels is NOT an availability signal — only a real generateContent
     probe is (the retired `gemini-2.5-flash` was still listed).
+27. **KYC-stage spend is invisible to every cost control** (2026-07-28,
+    discovery+KYC pass, surfaced while implementing step 3 of
+    `discovery-kyc-improvements.md`): `generate_kyc` discards
+    `result.cost_usd`, and the only dollar cap sums the *execute* step's
+    `responses.cost_usd` against `checker_daily_usd_cap` ($5 per rolling 24h,
+    `config.py` / `rate_limit.py`). So no KYC call has ever counted toward a
+    cap. That was already true before this change; step 3 adds at most one
+    extra ~$0.01 retry on failure paths only, which does not move a cap
+    nothing feeds. Recording KYC cost is worth doing, but it *re-tunes* what
+    the $5 cap actually measures, so it deserves its own change with its own
+    review rather than riding along here.
+28. **`_is_html` fails open on a missing Content-Type** (superseded by #30) (2026-07-28, step 4 of
+    `discovery-kyc-improvements.md`, accepted): a 200 that declares no type is
+    parsed as HTML. Deliberate — it matches `net_guard`'s stance of treating an
+    unresolvable host as public so CI and offline dev keep working, and many
+    respx fixtures set no header — but it means a header-less PDF still reaches
+    BeautifulSoup. Sniffing the first bytes for `%PDF`/magic numbers would
+    close it if a real site ever hits this.
+29. **Steps 2b and 6 of `discovery-kyc-improvements.md` are specified but not
+    built** (2026-07-28): Turkish suffix-aware matching and recording the
+    site's language. Not debt in the "we cut a corner" sense — they revive
+    roadmap §2c scope that the operator parked on 2026-07-10, and that call is
+    not engineering's to make. Listed here so the gap stays visible rather than
+    quietly forgotten. `test_footprint.py` pins the current (2a-only) suffix
+    behaviour, so approving 2b starts by changing a test that says exactly what
+    it does today.
+30. **`_is_html` fail-open is now backed by a byte sniff — #28 is closed for the
+    formats that matter** (2026-08-01, `pipeline-quality-plan.md` D2). A
+    header-less response whose first bytes are `%PDF`, a zip/office container,
+    PNG/GIF/JPEG, gzip, RIFF or PostScript — or that contains a NUL in the first
+    512 bytes — is skipped. What remains open: a header-less binary format
+    *not* on that list still reaches BeautifulSoup, and a genuinely UTF-16
+    encoded page is now misread as binary (accepted: vanishingly rare on the
+    public web, and parsing a PDF as page copy is the failure we actually saw).
+31. **SPA bundle extraction still welds object punctuation onto real copy**
+    (2026-08-01, measured live on beyondtech.com.tr): the string-literal
+    extractor drops minified code and framework diagnostics, but a span that
+    straddles an object literal arrives as `...tasarlarız.`,pillars:[{num:`01`...`.
+    It is cosmetic — an LLM reads through it — and the obvious fix (reject any
+    literal containing a backtick) was measured and **rejected**: it took the
+    corpus from 20 000 chars to 1 751 by deleting the site's real Turkish copy.
+    A proper fix parses the bundle rather than regexing it, which is a different
+    (and much larger) piece of work.
+32. **The prompt category filter is a heuristic, and says so** (2026-08-01,
+    `pipeline-quality-plan.md` P1): phrases with digits, spec symbols, attribute
+    tails ("payload capacity") or bare hyphenated adjectives ("anti-armor") are
+    rejected, but nothing separates "fiber optic" (an attribute) from "fiber
+    optics" (a category). The actual fix is `KYC.category`, which *asks* for the
+    category — the filter only protects the path where the model does not
+    supply one. Watch: a legitimate category containing a digit ("5G antennas",
+    "3D printers") is currently rejected. If real profiles hit this, narrow the
+    digit rule to model-code shapes (letter+digit runs) instead of any digit.
+33. **Grounding's 1 000-character floor is a guess** (2026-08-01,
+    `pipeline-quality-plan.md` K4): below `MIN_GROUNDING_CHARS` nothing is
+    dropped, on the principle that a thin crawl cannot prove a negative. It also
+    happens to be what keeps DRY_RUN's fictional profile intact against
+    `example.com`. The number was chosen by reasoning, not by measurement — if a
+    real one-page site ever ships a hallucinated alias through this door, tune it
+    with data rather than by feel.

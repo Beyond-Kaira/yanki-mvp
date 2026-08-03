@@ -250,10 +250,37 @@ operator-directed card, waitlist + Resend emails** (`c521931`), P5.10
 (`93aa34a` + build fix `643e0ee`), all CI-green and deployed dark at
 session close. Full detail: `sessions/2026-07-10-11.md`.
 
-➡️ **Next up: P5.11 only (operator go-live)** — everything agent-buildable
-is done. Blockers are all operator items: A1 decisions, B1 Resend domain,
-B2 vendor ToS/pricing check, then the `CHECKER_ENABLED=1` flip + live
-4-engine smoke + week-1 cost read (incl. the pinned-price retune).
+✅ **Session 14 (2026-07-28): P5.14 — discovery + KYC input quality**
+(`cf28cbc`, `f25462d`, `8ce7356`, `c74ccd3`, `8337045`, `684108a` on
+`feat/discovery-kyc-improvements`, **[PR #10](https://github.com/Beyond-Kaira/yanki-mvp/pull/10),
+CI green**). Five of the
+six steps in `discovery-kyc-improvements.md`: JSON-LD extraction, diacritic +
+hyphen tolerance in footprint matching, a free KYC parse repair plus one
+bounded retry, a Content-Type/size guard on page fetches, and a gate that
+refuses the ≤60-call `execute` fan-out on a profile with no company or no
+topic. ADR-26. **Steps 2b and 6 not built — operator decision A2.** Zero
+contract drift. Full detail: `sessions/2026-07-28-02.md`.
+
+✅ **Session 15 (2026-08-01): P5.15 — pipeline quality, MVP → product**
+(branch `feat/pipeline-quality-production-grade`). The plan is
+[`pipeline-quality-plan.md`](pipeline-quality-plan.md) and all three of its
+workstreams shipped: **discovery** (meta-charset decoding, binary sniffing,
+one homepage retry, scored link selection, cross-page boilerplate removal,
+per-page budget, tighter SPA literal filtering), **KYC** (`sanitize.py` — one
+normalized key for dedupe/grounding/leak detection; per-field sanitation;
+grounding of products/competitors/model aliases against the crawl; the new
+`category` + `use_cases` fields; a repair-prompted retry; a junk-aware
+usability gate), and **prompts** (typed + filtered topic pool, kind- and
+number-aware phrasing, full topic × shape rotation, and a hard invariant that
+no scored question names the brand). ADR-27. Zero contract drift, no new paid
+call, `checker_prompts.VERSION` unchanged. Backend 321 passed / 3 skipped,
+frontend 70 passed. Full detail: `sessions/2026-08-01-01.md`.
+
+➡️ **Next up: P5.11 (operator go-live)** — everything agent-buildable is done.
+Blockers are all operator items: A1 decisions, **A2 (new: rule on discovery/KYC
+steps 2b + 6)**, B1 Resend domain, B2 vendor ToS/pricing check, then the
+`CHECKER_ENABLED=1` flip + live 4-engine smoke + week-1 cost read (incl. the
+pinned-price retune).
 
 ### Readiness snapshot (updated at each session close)
 
@@ -807,7 +834,8 @@ happy path renders a score.**
   161.97.172.146` verified resolving 2026-07-10.
 - **Complexity:** M
 - **Topology facts (verified on the VPS 2026-07-10, drove the session-5
-  post-close deploy-config changes):**
+  post-close deploy-config changes; SUPERSEDED since — the edge moved from the
+  shared Caddy to host nginx, see `deploy/MIGRATION.md`):**
   - The shared Caddy is the container `pulse-prod-caddy-1`; it mounts ONE
     config file read-only (`~/repo/ams-pulse/deploy/config/Caddyfile.prod`) —
     there is **no import dir**, so publishing Yanki means adding the site
@@ -1414,7 +1442,7 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   check"). `POST /api/v1/checker` derives `ip_hash = sha256(RATE_LIMIT_SALT +
   X-Forwarded-For client IP)` into `checker_submissions.ip_hash`
   (privacy-preserving behind
-  the shared Caddy) and enforces all guards before enqueuing.
+  the nginx edge) and enforces all guards before enqueuing.
 - **Why now:** hard prerequisite for a public URL with real keys; a public,
   anonymous, LLM-spending endpoint without these is an open cost/abuse hole.
 - **Dependencies:** P5.1 (`ip_hash` column; the submit route).
@@ -1516,6 +1544,20 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   `checker_prompts.generate` already falls back to EN for unwired langs, so
   nothing breaks. When revived, also refresh the "P5.8 wires 'tr'" comment in
   `backend/app/pipeline/checker_prompts.py`.
+- **Scope reconciliation (2026-07-28, P5.14).** This card is now **smaller than
+  written**, and the difference should be read before reviving it. Rule (a), the
+  dotted/dotless-i casefold, **has landed** — `pipeline/textfold.py` folds `İ`→`I`
+  and `ı`→`i` for every run, ungated. It shipped as step 2a of
+  [discovery-kyc-improvements.md](discovery-kyc-improvements.md) on the argument
+  that mishandling `İ` is a Unicode correctness bug (Python's `casefold()` turns
+  it into two codepoints, which also corrupted match indices), not a Turkish
+  feature — the same change fixes Nestlé and Coca-Cola. That reasoning is
+  recorded rather than assumed: if the operator disagrees and wants it gated on
+  `lang`, it is one module to change. **Rule (b), suffix-aware matching, was
+  deliberately NOT built** and remains the deferred half, pinned by a test in
+  `test_footprint.py` asserting `Yankinin` does not match `Yanki`. So a revived
+  P5.8 = the native TR 12-prompt set + rule (b) + the `lang` parameter on
+  `detect`; the labelled TR fixture is still owed for rule (b).
 
 ### P5.9 — Turkish UI + i18n wiring
 - **Goal:** make the checker screens speak Turkish. Fill the `tr` dictionary in
@@ -1602,8 +1644,8 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   it against `CHECKER_DAILY_USD_CAP` and the pricing model (feeds the roadmap 2d
   pricing decision). Verify the kill-switch, both rate limits, and the daily cost cap
   fire live. Redeploy the existing stack to `yanki.beyondkaira.com` (the `/checker` +
-  `/methodology` + `/api/v1/checker*` routes need **no** Caddy change — the shared
-  Caddy already path-routes `/api/*` → api and everything else → web), then flip
+  `/methodology` + `/api/v1/checker*` routes need **no** edge change — the host
+  nginx vhost already path-routes `/api/*` → api and everything else → web), then flip
   `CHECKER_ENABLED=1`. Add a `DRY_RUN=1` checker-happy-path e2e job to CI. The
   **loud public launch** (Product Hunt / LinkedIn) is the go/no-go gated here on:
   real engines green, the abuse guards verified live, the methodology page live, and
@@ -1712,6 +1754,75 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   the operator verifies a Resend sending domain (testing mode: account
   email only); `EMAILS_ENABLED=1` set in prod env at the session-13 deploy.
 
+### P5.14 — Discovery + KYC input quality (added 2026-07-28, session 14)
+- **Goal:** fix the *input* side of "make the number trustworthy". Five of the
+  six steps in [discovery-kyc-improvements.md](discovery-kyc-improvements.md):
+  (1) parse `application/ld+json` instead of letting `_clean_text` throw it away;
+  (2a) fold diacritics and treat hyphen/space as interchangeable in
+  `footprint.detect`, and mint ASCII-folded + legal-suffix-stripped aliases;
+  (3) repair a prose-wrapped KYC response, then **one** bounded retry;
+  (4) guard `_fetch` on Content-Type and size; (5) `kyc.require_usable` refuses
+  the `execute` fan-out on a profile with no company or no topic.
+- **Why now:** these two steps feed everything after them — `prompts.py` writes
+  questions from the KYC profile, and `kyc.company` + `kyc.aliases` *are* what
+  `footprint.detect` counts. Bad input here never raises; it returns a
+  plausible-looking GEO score that is quietly wrong, which is the exact failure
+  mode roadmap 2b exists to eliminate.
+- **Dependencies:** none (all additive to existing pipeline modules).
+- **Complexity:** M
+- **Deliverables:** `backend/app/pipeline/discovery.py` (JSON-LD pass,
+  Content-Type/size guard), `backend/app/pipeline/textfold.py` (**new** — the
+  shared 1:1 ASCII fold), `backend/app/pipeline/footprint.py` (folded,
+  separator-tolerant matching), `backend/app/pipeline/kyc.py` (alias minting,
+  parse repair + retry, `require_usable`), `backend/app/pipeline/runner.py`
+  (the gate), tests in `test_discovery.py` / `test_footprint.py` /
+  `test_kyc.py` / `test_runner.py` / `test_textfold.py` (**new**), ADR-26 in
+  [design.md](design.md).
+- **Acceptance:** one commit per step, each leaving the repo runnable; backend
+  + frontend suites green; `make gen-types` a **zero diff** (no Pydantic schema
+  touched, no migration, no `checker_prompts.VERSION` bump); a test asserts the
+  step-2a/2b boundary holds (suffixation still does **not** match).
+- **Status:** ✅ **done — session 14 (2026-07-28)**, six commits on
+  `feat/discovery-kyc-improvements` (`cf28cbc`, `f25462d`, `8ce7356`,
+  `c74ccd3`, `8337045`, `684108a`), shipped via
+  [PR #10](https://github.com/Beyond-Kaira/yanki-mvp/pull/10) with the docs
+  reconciliation commits that followed. Backend 236 passed / 3 skipped
+  (Postgres-gated), frontend 68 passed, ruff + mypy clean. **Steps 2b and 6 of
+  the document are deliberately NOT built** — they revive §2c scope parked by
+  operator decision; see operator-expected **A2** and tech-debt #29.
+
+### P5.15 — Pipeline quality: crawl fidelity, grounded profiles, question realism (added 2026-08-01, session 15)
+- **Goal:** take discovery, KYC and prompt generation from MVP plumbing to a
+  measurement instrument, per [pipeline-quality-plan.md](pipeline-quality-plan.md):
+  **D** decode by the declared charset, sniff binary, retry the homepage once,
+  score links instead of substring-matching them, read each block of copy once;
+  **K** sanitize every field, ground proper nouns against the crawl, add
+  `category` + `use_cases`, repair-prompt the single retry; **P** filter topics
+  that cannot be a category, phrase by topic kind and number, rotate over every
+  topic × shape pair, and never name the brand in a scored question.
+- **Why now:** ADR-26 fixed *how much* of a site we read and whether the KYC
+  call survives a formatting slip. It did not address wrong *content* — an
+  invented product, an alias that was never on the site (which inflates the GEO
+  score, because `footprint` cannot tell it from a real mention), or a "keyword"
+  that is a spec attribute and becomes a question nobody asks.
+- **Dependencies:** P5.14 (builds on `textfold`, the parse/retry path and the
+  usability gate).
+- **Complexity:** L
+- **Deliverables:** `backend/app/pipeline/sanitize.py` (**new**),
+  `discovery.py`, `kyc.py`, `prompts.py`, `checker_prompts.py`, `runner.py`,
+  `providers/mock.py`, `frontend/lib/contracts.ts`, `frontend/components/KycCard.tsx`,
+  tests in `test_sanitize.py` (**new**) / `test_discovery.py` / `test_kyc.py` /
+  `test_prompts.py` / `test_checker_prompts.py` / `KycCard.test.tsx`, ADR-27 in
+  [design.md](design.md), tech-debt #30–#33.
+- **Acceptance:** backend + frontend suites green; `make gen-types` a **zero
+  diff**; `checker_prompts.VERSION` unchanged and the published methodology
+  prompts byte-identical (pinned by a test); no new paid provider call on any
+  path; a test proves a brand in the keywords never reaches a scored question.
+- **Status:** ✅ **done — session 15 (2026-08-01)** on
+  `feat/pipeline-quality-production-grade`. Steps 2b and 6 of
+  `discovery-kyc-improvements.md` remain **not built** (operator item A2); this
+  work is language-neutral and does not touch that decision.
+
 ---
 
 ### Phase-5 assumptions
@@ -1751,7 +1862,7 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   the `llm_cache` upsert (P5.2) removes the tech-debt #6 race so a second worker can
   be added later with no code change.
 - **`ip_hash` is a salted hash of the `X-Forwarded-For` client IP** (privacy behind
-  the shared Caddy), stored instead of a raw IP; the salt (`RATE_LIMIT_SALT`) is a
+  the nginx edge), stored instead of a raw IP; the salt (`RATE_LIMIT_SALT`) is a
   new env var.
 - **`CHECKER_ENABLED` defaults to `0`** — the public route is dark in every
   environment (`deploy/.env.example` ships `0`) until the operator flips it at
@@ -1780,7 +1891,7 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   numbers come from P5.11's Week-1 cost read and the pricing decision. Product to
   confirm the free-tier generosity vs spend.
 - **Behind-proxy client IP:** rate limiting keys on a salted hash of the client IP;
-  behind the shared Caddy the real client IP arrives via `X-Forwarded-For` — confirm
+  behind the host nginx edge the real client IP arrives via `X-Forwarded-For` — confirm
   the trusted-proxy handling so the hash keys on the visitor, not the proxy, and is
   spoof-resistant enough for per-IP limiting. (Infra detail for P5.6/P5.11.)
 - **Which brand gets the "≥1 full raw answer" shown free** — defaulting to the first

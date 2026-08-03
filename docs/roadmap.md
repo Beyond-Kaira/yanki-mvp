@@ -47,7 +47,7 @@ the session; nothing here is negotiable and nothing below it ships first.
 | Deterministic template prompts (no LLM prompt-gen) | Testable and free; LLM/native prompt generation is a Next-phase quality lever, not a loop blocker. |
 | `llm_cache` within a single job's runs | Proves the caching mechanism cheaply; the cross-account version (the real cost lever) is Next. |
 | `DRY_RUN=1` mock provider + cost caps (`PROMPT_COUNT`, `MAX_RESPONSES_PER_JOB`) | CI and first-run cost $0; makes Week-1 invoice validation possible before anything goes public. |
-| **Served at `https://yanki.beyondkaira.com`** from the shared beyondkaira VPS (161.97.172.146; DNS set 2026-07-10), behind the existing pulse-prod Caddy | Zero new infra for the MVP — reuse the box and TLS terminator we already run. **Hard constraint: the VPS's live sites (pulse, Ant Media, brier) must never be disturbed** — deploys are additive (a Caddy *reload*, an isolated compose project, no shared ports). Build detail: P4.2 in [implementation-plan.md](implementation-plan.md). |
+| **Served at `https://yanki.beyondkaira.com`** from the shared beyondkaira VPS (161.97.172.146; DNS set 2026-07-10), behind host nginx (originally the shared pulse-prod Caddy; migrated per `deploy/MIGRATION.md`) | Zero new infra for the MVP — reuse the box and TLS terminator we already run. **Hard constraint: the VPS's live sites (pulse, Ant Media, brier) must never be disturbed** — deploys are additive (an nginx *reload*, an isolated compose project, no shared ports). Build detail: P4.2 in [implementation-plan.md](implementation-plan.md). |
 
 **Sequencing:** the pipeline is strictly sequential (discovery must precede KYC,
 etc.); build and test each step behind `DRY_RUN` before wiring a real key. This
@@ -86,6 +86,28 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 | Weighted AI Visibility Score 0–100: mention × position (1.0 / 0.7 / 0.4) × sentiment (1.0 / 0.9 / 0.5), averaged, ×100 | The defensible, published score the product sells on; the MVP's binary score is the honest placeholder until this lands. |
 | Sentiment + position extraction pass (cheap model) | Inputs to the weighted score; a cheap analysis model is one of the three cost protections. |
 
+> **Input side, delivered in two passes.**
+> [`docs/discovery-kyc-improvements.md`](discovery-kyc-improvements.md) was the
+> first: **steps 1, 2a, 3, 4 and 5 are implemented** — JSON-LD extraction,
+> diacritic and hyphen tolerance in footprint matching, a KYC parse repair plus
+> one bounded retry, a Content-Type guard on page fetches, and a gate that
+> refuses the paid execute fan-out on a profile with no company or no topic.
+> **Steps 2b and 6 are not built:** they would revive §2c scope and stay gated on
+> an operator decision — see §2c immediately below.
+>
+> [`docs/pipeline-quality-plan.md`](pipeline-quality-plan.md) is the second
+> (2026-08-01), and takes the same three steps from MVP to product grade:
+> encoding-correct decoding, binary sniffing, a homepage retry, scored link
+> selection and cross-page boilerplate removal (discovery); sanitation of every
+> field plus **grounding** — a product, competitor or alias the model returned
+> that is nowhere in the crawl is dropped, because a hallucinated alias inflates
+> the score and nothing downstream can tell — and two new profile fields
+> (`category`, `use_cases`) so the buying category is *asked for* rather than
+> inferred (KYC); a category filter that keeps spec attributes out of questions,
+> rotation that reaches every topic × shape pair, and a hard invariant that no
+> scored question may name the brand it measures (prompts). All of it is
+> language-neutral and adds **no** paid call.
+
 ### 2c. Turkish as a first-class language — the wedge that can't be a sprint bolt-on
 
 > **⚠ Deferred to Later — operator decision, 2026-07-10.** The whole product
@@ -95,6 +117,17 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 > story until then, and the Arabic gate below ("Turkey delivers 20%+ of
 > signups") cannot trigger while Turkish is off. Engineering decomposition
 > (P5.8/P5.9) is preserved in implementation-plan.md as skipped cards.
+>
+> **Two items below now have a written, ready-to-build spec and are waiting only
+> on that word** (2026-07-28): "Turkish suffix-aware brand/footprint matching" is
+> step 2b of [`discovery-kyc-improvements.md`](discovery-kyc-improvements.md),
+> and step 6 (record `<html lang>` / ccTLD into the KYC profile) is the missing
+> *input* that native Turkish prompt generation needs. Neither is implemented.
+> The language-neutral half of the matching work (step 2a — diacritic folding and
+> hyphen/space equivalence, which helps Nestlé and Coca-Cola as much as anything
+> Turkish) **has** shipped and is not part of this deferral; a test asserts the
+> suffix behaviour stayed unchanged, so the line between the two is enforced in
+> CI rather than by memory.
 
 | Item | Rationale |
 |---|---|

@@ -76,7 +76,7 @@ time to list everything.
 
 | Service        | Host port           | Notes                                                |
 | -------------- | ------------------- | ---------------------------------------------------- |
-| Frontend (web) | **8140**            | Next.js. Public via Caddy in prod.                   |
+| Frontend (web) | **8140**            | Next.js. Public via host nginx in prod.              |
 | Backend (api)  | **8141**            | FastAPI. `/api/*` and `/healthz` routed here.        |
 | Postgres (db)  | 5432 (**dev only**) | Never published in production; internal network only.|
 
@@ -84,12 +84,11 @@ Host ports for `make dev` are parameterized — set `YANKI_WEB_PORT`, `YANKI_API
 or `YANKI_DB_PORT` in `deploy/.env` to dodge conflicts with something already
 running (defaults 8140 / 8141 / 5432; container-internal ports are unaffected).
 
-In production the shared **pulse-prod Caddy** terminates TLS on
-`yanki.beyondkaira.com` and path-routes `/api/*` + `/healthz` → api and
-everything else → web, reaching both **over the shared docker network**
-(aliases `yanki-api:8141` / `yanki-web:8140` — a containerized Caddy can't hit
-host-loopback binds). The prod stack's own `127.0.0.1` binds are health-check/
-debug only and parameterized (`YANKI_PROD_WEB_PORT`=8142,
+In production the **host nginx** vhost
+(`deploy/nginx/yanki.beyondkaira.com.conf`) terminates TLS on
+`yanki.beyondkaira.com` (certbot HTTP-01 webroot) and path-routes `/api/*` +
+`/healthz` → api and everything else → web, over the prod stack's loopback
+binds. Those binds are parameterized (`YANKI_PROD_WEB_PORT`=8142,
 `YANKI_PROD_API_PORT`=8143 — 8140 is taken by another tenant on the VPS).
 Same origin, so there is no CORS.
 
@@ -130,16 +129,25 @@ friendly names over the generated schemas and narrows the loosely-typed fields.
 
 ## Deploy
 
-Deployment reuses the proven ams-pulse pattern. One command from your laptop
-builds, deploys, migrates, health-checks, and auto-rolls-back on failure —
-**first exercised for real 2026-07-10; the site is live at
-<https://yanki.beyondkaira.com>** (in DRY_RUN mock mode until the operator
-flips it):
+**Merging to `main` deploys itself.** Once CI is green on `main`, the `Deploy`
+workflow SSHes to the VPS and ships that exact commit — build, migrate, public
+health check, auto-rollback on failure. Nobody has to touch the server. The site
+is live at <https://yanki.beyondkaira.com>. See
+[`deploy/AUTODEPLOY.md`](deploy/AUTODEPLOY.md) for the chain, the forced-command
+key that makes it safe on a shared VPS, and what is still manual (edge config
+and secrets).
+
+Deployment itself reuses the proven ams-pulse pattern — **first exercised for
+real 2026-07-10** — and the same driver is still there to run by hand when you
+need it (a rehearsal, a rollback, or a host with CI down):
 
 ```bash
 make deploy      # build + deploy + migrate + health check (auto-rollback on failure)
 make rollback    # redeploy the last-good SHA if something slips through
 ```
+
+Run those from `~/repo/yanki-mvp`; auto-deploy drives a **separate** checkout at
+`~/deploy/yanki-mvp` so it can never disturb your working tree.
 
 **One-time prerequisites** (all **done** as of 2026-07-10 — see [`docs/architecture.md`](docs/architecture.md)):
 
@@ -150,18 +158,16 @@ make rollback    # redeploy the last-good SHA if something slips through
    (verified 2026-07-10). Yanki serves from the **same VPS** as the other
    beyondkaira sites (pulse-prod, Ant Media, brier) — deploys must never
    disturb them.
-3. ~~Add the site block~~ **done:** the block from
-   `deploy/caddy/yanki.beyondkaira.com.caddy` now lives in the shared Caddy's
-   config (`~/repo/ams-pulse/deploy/config/Caddyfile.prod` — it has **no
-   import dir**), validated in-container and **reloaded** (never restart)
-   in `pulse-prod-caddy-1`. Don't append it twice — a duplicate site key
-   fails validation.
+3. ~~Install the edge~~ **done:** the nginx vhost
+   `deploy/nginx/yanki.beyondkaira.com.conf` is installed under
+   `/etc/nginx/sites-available/` (enabled via symlink), validated with
+   `nginx -t` and **reloaded** (never restart). TLS renews via certbot
+   HTTP-01 webroot. (Originally published through the shared pulse-prod
+   Caddy; migrated to host nginx per `deploy/MIGRATION.md`.)
 
-Compose project name is `yanki-prod`. Yanki runs **no** Caddy of its own: web +
-api join the shared Caddy's network (`pulse-prod_default`) as `yanki-web` /
-`yanki-api`, and the only host binds are loopback health-check ports
-(8142/8143 by default). The pulse-prod stack must be up first (its network is
-`external` to Yanki's compose).
+Compose project name is `yanki-prod`. Yanki runs no edge of its own: host
+nginx proxies to the stack's loopback binds — 127.0.0.1:8142 (web) /
+127.0.0.1:8143 (api) by default — which are the only published host ports.
 
 ---
 
@@ -175,6 +181,9 @@ api join the shared Caddy's network (`pulse-prod_default`) as `yanki-web` /
 | [docs/roadmap.md](docs/roadmap.md)                      | Leadership / engineers| Phased path from MVP to the Semrush alternative.        |
 | [docs/frontend-brandkit.md](docs/frontend-brandkit.md)  | Frontend              | Colors, type, spacing, components, voice/tone (EN + TR).|
 | [docs/test-suite.md](docs/test-suite.md)                | Every engineer        | Test pyramid, TDD workflow, fixtures, coverage targets. |
+| [docs/discovery-kyc-improvements.md](docs/discovery-kyc-improvements.md) | Pipeline engineers | Six steps for discovery + KYC; five shipped, 2b/6 await operator sign-off. |
+| [docs/pipeline-quality-plan.md](docs/pipeline-quality-plan.md) | Pipeline engineers | MVP → product for discovery, KYC and prompts: crawl fidelity, grounded profiles, question realism. |
+| [deploy/AUTODEPLOY.md](deploy/AUTODEPLOY.md)            | On-call / operators   | Merge-to-live chain, the forced-command deploy key, pruning, rotation. |
 
 See also [CONTRIBUTING.md](CONTRIBUTING.md) for the branch/PR/commit flow and
 [SECURITY.md](SECURITY.md) for the secret policy and how to report issues.

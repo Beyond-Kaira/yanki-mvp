@@ -10,14 +10,31 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, field_validator
+from pydantic import AfterValidator, AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+
+from app.services.auth import normalize_email
 
 # Minimal email shape check. email-validator (pydantic[email]) is not installed
 # and the card says not to add a heavy dep just for this — a conservative regex
 # (one @, non-empty local/domain, a dotted TLD) is enough for the lead gate.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_and_validate_email(value: str) -> str:
+    normalized = normalize_email(value)
+
+    if not _EMAIL_RE.fullmatch(normalized):
+        raise ValueError("invalid email")
+
+    return normalized
+
+
+NormalizedEmail = Annotated[
+    str,
+    AfterValidator(_normalize_and_validate_email),
+]
 
 
 class CreateAnalysisRequest(BaseModel):
@@ -81,6 +98,45 @@ class WaitlistRequest(BaseModel):
 
 class WaitlistResponse(BaseModel):
     ok: bool
+
+
+class SignupRequest(BaseModel):
+    """Credentials required to create a user account."""
+
+    email: NormalizedEmail
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    """Credentials required to authenticate a user."""
+
+    email: NormalizedEmail
+    password: str = Field(min_length=1, max_length=128)
+
+
+class UserOut(BaseModel):
+    """Public user fields returned by authentication endpoints."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    created_at: datetime
+
+
+class LoginResponse(BaseModel):
+    """Authenticated user and bearer token returned after login."""
+
+    user: UserOut
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
+class RefreshResponse(BaseModel):
+    """New bearer token returned after refresh-token rotation."""
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
 
 
 class PromptOut(BaseModel):

@@ -33,6 +33,12 @@ export interface KYC {
   keywords: string[]
   locations: string[]
   competitors: string[]
+  // Added with the pipeline quality pass (docs/pipeline-quality-plan.md, K1):
+  // the buying category and the use cases prompt generation is built from.
+  // Optional because analyses run before that change have no such key in their
+  // stored JSON — KycCard already coerces every field defensively.
+  category?: string
+  use_cases?: string[]
 }
 
 export type Prompt = Schemas['PromptOut']

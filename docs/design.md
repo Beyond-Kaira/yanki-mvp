@@ -64,6 +64,13 @@ yanki/
   footprint, scoring — each is a plain sync function with a clear signature.
   A junior can read any single step end-to-end without holding the rest of the
   system in their head, and each step is unit-testable in isolation.
+  Two modules are **not** steps and say so in their docstrings:
+  `checker_prompts.py` (the fixed alternative to `prompts.py`, ADR-20) and
+  `textfold.py` (the ASCII fold shared by discovery and footprint, ADR-26).
+  A shared helper only earns its own module when two steps would otherwise
+  keep divergent copies of the same table — `textfold` also has an invariant
+  (1:1 length) that one caller's correctness depends on, which is easier to
+  state and test in one place than to re-derive at each call site.
 - **`providers/` behind one interface.** Every model (Claude, OpenAI, the two
   stubs, and the mock) implements the same `Provider` protocol, so the pipeline
   never branches on "which engine". Swapping a stub for a real engine is a
@@ -170,7 +177,7 @@ narrowings are exactly the parts that must **not** be blown away on the next
   (the token families are `primary`, `surface`, `success`, `danger`). This keeps
   the UI consistent and re-themeable.
 - **Fetch relative paths only** (`/api/v1/...`, `/healthz`). Next.js `rewrites()`
-  proxy them to the API in dev; Caddy path-routes them in prod. Never hard-code
+  proxy them to the API in dev; host nginx path-routes them in prod. Never hard-code
   the API origin in a component. (Rationale: ADR-6.)
 - **Types come from the contract.** Import request/response types from
   `lib/contracts.ts` (the hand-maintained alias layer over the generated
@@ -233,7 +240,7 @@ decision → consequences**, with one line on why the alternative was rejected.
 - **Context:** in dev the web (8140) and api (8141) are different origins.
 - **Decision:** Next.js `rewrites()` proxy `/api/:path*` and `/healthz` to
   `API_ORIGIN` (default `http://localhost:8141`); the frontend always fetches
-  relative paths. In prod, Caddy path-routes on one origin.
+  relative paths. In prod, the host nginx edge path-routes on one origin.
 - **Consequences:** no CORS config anywhere; dev and prod use identical relative
   URLs in the frontend.
 - **Rejected:** enabling CORS on the API — extra config, wildcard/security
@@ -647,7 +654,7 @@ decision → consequences**, with one line on why the alternative was rejected.
   is closed, but residual overshoot is a small multiple of the cap if the true
   per-run cost drifts above `_EST_CHECKER_RUN_COST_USD` (retune it with the price
   tables and at P5.7); (b) the per-IP hash comes from the first `X-Forwarded-For`
-  entry, which is **client-controlled** even behind the shared Caddy (same caveat
+  entry, which is **client-controlled** even behind the edge proxy (same caveat
   as tech-debt #2), so the per-IP cap is spoofable — the per-brand cap and the
   projected cost cap are the real backstops against a spoofed-IP burst; (c)
   because a cache hit is exempt from the per-IP limit too, an abuser hammering an
@@ -804,3 +811,134 @@ decision → consequences**, with one line on why the alternative was rejected.
   email failure surface (would lose an already-recorded signup or run); a
   separate salt for the waitlist `ip_hash` (reuses the existing `ip_hash_salt`,
   consistent with P5.6).
+
+### ADR-26 — Discovery + KYC input quality: JSON-LD, a length-preserving fold, a bounded KYC retry, and a pre-fan-out usability gate (2026-07-28)
+- **Context:** discovery and KYC feed every step after them — `prompts.py` writes
+  questions from the KYC profile, and `kyc.company` + `kyc.aliases` *are* what
+  `footprint.detect` counts. Garbage in these two steps never surfaces as an
+  error; it surfaces as a plausible-looking GEO score that is quietly wrong.
+  `docs/discovery-kyc-improvements.md` specifies six steps; this ADR records the
+  five that are implemented (1, 2a, 3, 4, 5). Steps 2b and 6 revive roadmap §2c
+  scope parked by operator decision and are deliberately **not** built.
+- **Decision:**
+  - **JSON-LD is read as a second, fetch-free pass** over the already-fetched
+    HTML (`_jsonld_text`). `_clean_text` still strips every `<script>` for the
+    visible-text pass; the new pass re-parses the same bytes for
+    `application/ld+json` only. Its output leads the combined text so it survives
+    the `MAX_CHARS` cut, is deduped across pages, and carries its own 4k budget
+    so it can never crowd out page copy. It never follows `sameAs` URLs — a fetch
+    would have to go through the SSRF-guarded client, and an unmocked request
+    would redden every `@respx.mock` discovery test.
+  - **The ASCII fold lives in one shared module** (`pipeline/textfold.py`), used
+    by discovery's keyword matching and footprint's brand matching. It is
+    **case-preserving and strictly 1:1** because `footprint.detect` matches
+    against folded text but slices the user-facing snippet out of the *original*
+    by index. `casefold()` cannot be used for this: `"İ".casefold()` is two
+    codepoints (`i` + U+0307), which would both shift every snippet after an `İ`
+    and stop `İşbank` matching `Isbank`. German `ß` is excluded for the same
+    reason (it expands to `ss`). Case-insensitivity comes from `re.IGNORECASE`,
+    which on `str` patterns is already Unicode-aware.
+  - **`generate_kyc` repairs before it retries.** A response that wraps valid
+    JSON in prose is recovered by taking the outermost `{ … }` span — a string
+    operation, no network, no cost. Only if that fails does it make **one**
+    bounded retry, re-sending the **same** prompt on purpose: `MockProvider`
+    returns its canned profile only because the prompt contains `"json object"`,
+    so a distinct repair prompt would silently break DRY_RUN and the e2e.
+  - **A usability gate runs between steps 2 and 3** (`kyc.require_usable`).
+    `company: str` has no `min_length`, so `company=""` validates and footprint
+    then matches nothing; separately, a profile with no keyword/service/industry
+    makes `_question_topics` fall back to the literal `"solutions"`. Either way
+    the job would continue into `execute` and spend up to
+    `max_responses_per_job` (default 60) paid calls on input already known to be
+    unusable. The gate raises only `PipelineError`, so the worker surfaces a
+    clean message rather than a stack trace.
+- **Consequences:** no Pydantic schema changed, so `make gen-types` is a
+  zero diff and there is no migration (`kyc` is schemaless JSONB) and no
+  `checker_prompts.VERSION` bump (methodology output is byte-identical). The
+  gate is a **new terminal failure mode**: a crawl that previously produced a
+  meaningless-but-successful score now fails with an honest message. It runs
+  *after* the KYC step commits, so the offending profile stays on the failed row
+  and is inspectable. `_fetch` now skips non-HTML and oversized responses, which
+  also means a non-HTML homepage fails the run instead of feeding mojibake into
+  KYC. Aliases gain ASCII-folded and legal-suffix-stripped forms of the company
+  name — visible to users as extra chips in `KycCard`, so they are minted only
+  when they actually differ from an alias already present.
+- **Rejected:** folding with `casefold()` (not length-preserving — see above);
+  keeping a second copy of `_TR_FOLD` in `footprint.py` (would drift, and
+  importing `discovery` would drag `httpx`/`bs4` into a module that is otherwise
+  pure); a *different* repair prompt on retry (breaks the `MockProvider`
+  coupling); unbounded retries (a per-job cost with no ceiling); gating *before*
+  the KYC commit (loses the evidence needed to diagnose the failure); applying
+  the topic half of the gate to checker rows without their submitted category
+  (would fail legitimate public submissions whose model reply is terse — they
+  pass `analysis.category` as `known_topic` instead); Content-Type strictness on
+  a missing header (fail-open matches `net_guard` and keeps header-less fixtures
+  and offline dev working — logged as tech-debt #28).
+
+### ADR-27 — Pipeline input quality, part two: a grounded profile, a category field, and prompts that cannot name the brand (2026-08-01)
+- **Context:** ADR-26 fixed how much of a site we read and whether the KYC call
+  survives a formatting slip. It did not address what happens when the *content*
+  is wrong: a model that invents a product, an alias that was never on the site,
+  or a "keyword" that is a spec attribute. All three produce a confident,
+  meaningless GEO score, and one of them (an invented alias) inflates it —
+  `footprint.detect` cannot tell a hallucinated name from a real mention. Plan:
+  [`pipeline-quality-plan.md`](pipeline-quality-plan.md).
+- **Decision:**
+  - **One normalized key, three jobs** (`pipeline/sanitize.py`). Dedupe,
+    grounding containment and brand-leak detection all compare the same folded,
+    casefolded, punctuation-free form, built on the existing `textfold.fold`. If
+    they disagreed, a name could ground under one spelling and leak under
+    another.
+  - **Every KYC field is sanitized before anyone reads it**: trimmed, unwrapped,
+    junk-filtered (`"N/A"`, `"unknown"`, `"-"`), de-duplicated case- and
+    diacritic-insensitively, and capped per field. The company is removed from
+    its own competitor list.
+  - **Proper nouns are grounded against the crawl.** `products`, `competitors`
+    and model-supplied `aliases` must appear in the crawled text or they are
+    dropped. Deliberately narrow: `description` / `industry` / `keywords` /
+    `category` / `use_cases` are *meant* to be the model's own words (the prompt
+    asks for an English rendering of possibly-Turkish copy), and the minted
+    aliases (company name, folded form, legal stem, registrable domain) are
+    facts about the submission, so both are exempt. Grounding is skipped below
+    `MIN_GROUNDING_CHARS` (1 000) — a thin crawl cannot prove a negative — and
+    is off for `kind='checker'` rows, whose "source text" is the brand+category
+    sentence the runner composed rather than a crawl.
+  - **The KYC model gains `category` and `use_cases`** (both defaulted). Prompt
+    generation needed the buying category and could previously only infer it
+    from `keywords`, which is where models put spec attributes. Asking the
+    *existing* call for the field we actually need costs nothing extra.
+  - **Prompts may never name the brand outside `brand-probe`.** Topics are
+    brand-filtered and each finished question is re-checked, because a
+    competitor named after the company can reintroduce the name through the
+    `alternatives` slot. Asking "What are the best <Brand> options?" and then
+    counting the brand in the answers is a self-fulfilling score.
+  - **Category and topic advance on different strides.** They used to move in
+    lockstep, so a profile with exactly six topics produced six distinct
+    questions out of a possible thirty-six.
+- **Consequences:** no Pydantic schema changed, so `make gen-types` stays a zero
+  diff, there is no migration (`kyc` is schemaless JSONB), and
+  `checker_prompts.VERSION` is **not** bumped — the 12 templates are
+  byte-identical and `checker_methodology.json` is generated from `KYC(company="")`,
+  where every source is empty and the published neutral fallbacks still stand
+  in (pinned by a test). Live checker runs get a better substituted topic, which
+  is per-run data, not a new template set. The KYC step still makes exactly one
+  paid call on the happy path. Visible changes: a profile whose only topic
+  signal was a placeholder now fails the usability gate instead of buying 60
+  calls about "solutions"; a hallucinated product or competitor no longer
+  appears in `KycCard`; and `KycCard` shows two new rows (Category, Use cases)
+  for analyses run after this change. The frontend's hand-maintained `KYC`
+  interface adds both as **optional** fields, because rows persisted earlier
+  have no such key.
+- **Rejected:** LLM-generated prompts (higher ceiling, but it adds an unmetered
+  paid call while tech-debt #27 is open, makes the prompt set non-deterministic
+  and therefore unauditable against the published methodology, and would make
+  the brand-leak invariant load-bearing rather than a backstop — revisit after
+  #27); grounding the inferred fields (would delete the English rendering the
+  prompt asks for); grounding on every crawl regardless of size (a
+  one-paragraph site cannot prove absence, and it would strip DRY_RUN's
+  fictional profile); grounding checker rows (their source text is ours, not the
+  site's); rejecting bundle literals that contain a backtick (measured on
+  beyondtech.com.tr: it removed the site's real Turkish copy along with the
+  object punctuation — 20 000 chars of corpus down to 1 751); www/apex/scheme
+  fallbacks on a failed homepage (`follow_redirects` already covers the common
+  case, and each variant is a request to a URL the caller never gave us).

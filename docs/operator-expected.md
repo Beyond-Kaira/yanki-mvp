@@ -4,7 +4,35 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-07-10, **session 13 FINAL close (after five operator
+Last updated: 2026-08-01, **session 15 close.** Another pipeline-quality
+session, again no ops work: `docs/pipeline-quality-plan.md` (discovery, KYC and
+prompt quality, MVP → product) is implemented on
+`feat/pipeline-quality-production-grade`, **PR open, awaiting your review**.
+Nothing here needs a key, an env var or a decision from you — but **merging
+auto-deploys to production**, and three things change visibly on the first live
+day (session log §6): hallucinated products/competitors stop appearing in the
+KYC card, a profile whose only topic signal was a placeholder now fails instead
+of running, and prompts no longer name the brand they measure — which **lowers**
+the score for any site whose keywords contained its own brand. That last one is
+a correction: those questions were scoring the brand against itself. No new paid
+call was added on any path. **A2 is still open and still yours** (Turkish steps
+2b + 6); this work was language-neutral and left that decision untouched.
+
+Earlier — 2026-07-28, **session 14 close.** That session was pipeline
+quality work, not ops: five of the six steps in
+`discovery-kyc-improvements.md` shipped on `feat/discovery-kyc-improvements`
+(**[PR #10](https://github.com/Beyond-Kaira/yanki-mvp/pull/10), CI green —
+awaiting your merge**). No key or env var moved and the checker is still dark,
+but **merging that PR auto-deploys to production**, and it carries one visible
+behaviour change: a crawl that used to return a meaningless-but-successful score
+(empty company, or no topic signal) now **fails** with an honest message. That
+is step 5's gate working as designed — expect a higher failure rate on the first
+live day, not a regression.
+**One new question for you: A2** (whether to revive two parked Turkish items) —
+it does not block P5.11 or that merge, and "stay parked" is a complete answer.
+Everything below this paragraph is unchanged from the session-13 close.
+
+Earlier — 2026-07-10, **session 13 FINAL close (after five operator
 follow-ups, all shipped same day; last-good `d6514ee`, CI green).**
 The build is done: plan **43/44 ≈ 98%** — the only remaining card is
 **P5.11: your go-live**. Beyond the six build tasks, this session also
@@ -32,6 +60,32 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
     *Default: single unverified.* → Answer: ______
   - **The one free raw answer** — *default: first answer that mentions the
     brand.* → Answer: ______
+- [ ] **A2. Discovery/KYC steps 2b + 6 — revive parked Turkish scope?**
+  (added 2026-07-28, session 14; **not urgent, does not block P5.11**.)
+  Five of the six steps in
+  [discovery-kyc-improvements.md](discovery-kyc-improvements.md) shipped this
+  session. Two did **not**, because both revive scope you parked on 2026-07-10
+  ("the whole product ships English-only for now… revived only on the
+  operator's word"), and that is your call, not engineering's:
+  - **Step 2b — Turkish suffix-aware brand matching.** Today `Yankinin
+    ürünleri` does *not* count as a mention of `Yanki`, so a Turkish answer
+    that names the brand with a grammatical suffix scores as a miss. This is
+    roadmap §2c's "Turkish suffix-aware brand/footprint matching" verbatim, and
+    rule (b) of the skipped P5.8 card. Small change (~half a day) on top of what
+    already shipped. *Default: stay parked.* → Answer: ______
+  - **Step 6 — record the site's language** (`<html lang>` / ccTLD → a new
+    `KYC.language` field). Changes **no** behaviour on its own; it is the
+    missing input every localization effort needs, and it is the only step of
+    the six that touches the `KYC` model. Approve it as "record it from now on",
+    or decline it as premature. *Default: decline.* → Answer: ______
+  - **One thing that already shipped and is worth knowing.** The dotted-`İ`
+    fix (`İşbank` now matches `Isbank`) went in **ungated**, as part of the
+    language-neutral half, on the grounds that it is a Unicode correctness bug
+    — Python's `casefold()` turns `İ` into two characters, which corrupted
+    match positions in *every* language — and the same change fixes `Nestlé`
+    and `Škoda`. The P5.8 card lists it as a Turkish item, so flagging it: if
+    you'd rather it were gated on language, say so and it is one module to
+    change. → Objection? ______
 
 ## B. Actions only you can do (in priority order)
 
@@ -92,8 +146,8 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 - **Ports 5432 and 8140 are taken on this host.** Dev stack is
   parameterized: `YANKI_DB_PORT=5434 YANKI_WEB_PORT=8240 make dev`
   (web → http://localhost:8240, api on 8141). **Prod** loopback binds are
-  8142 (web) / 8143 (api) — health checks only; the shared Caddy reaches
-  containers via network aliases.
+  8142 (web) / 8143 (api) — the host nginx edge proxies to these (they also
+  serve deploy health checks).
 - **Node is v20 here; README recommends 22 LTS.** All green on 20 —
   upgrade optional.
 - **Docker group membership may not apply to long-lived sessions** —

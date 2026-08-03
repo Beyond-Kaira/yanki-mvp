@@ -14,6 +14,33 @@ operational checklist for every session (scope, ownership, definition of done).
 3. Open a PR into `main`. The template prompts you for the checklist below.
 4. Merge only when CI is green.
 
+> **Merging to `main` deploys to production.** Once CI passes on `main`, the
+> `Deploy` workflow ships that commit to <https://yanki.beyondkaira.com>
+> automatically — build, `alembic upgrade head`, public health check,
+> auto-rollback on failure. There is no separate release step and no staging
+> environment, so treat a merge as a release. Details, including how to roll
+> back and how to redeploy by hand, are in
+> [`deploy/AUTODEPLOY.md`](deploy/AUTODEPLOY.md).
+
+## Slack notifications
+
+`.github/workflows/notify.yml` posts to Slack when a PR is opened, reviewed,
+closed, or merged, and when any workflow run fails. It needs one repo secret,
+set once by a maintainer:
+
+```bash
+gh secret set SLACK_WEBHOOK_URL --repo Beyond-Kaira/yanki-mvp
+# paste the https://hooks.slack.com/services/... URL when prompted
+```
+
+The webhook URL is **not** inlined in the workflow: this repo is public, and the
+`secrets` job in `ci.yml` runs gitleaks over the full history, so a literal
+`hooks.slack.com` URL would both leak the webhook and fail CI. To rotate it,
+re-run the command above — no code change needed.
+
+Note that all three triggers run the copy of the workflow on `main`, so edits to
+`notify.yml` take effect once merged, not on the PR that changes them.
+
 ## Commits
 
 - Small, self-contained commits — each one leaves the repo runnable.

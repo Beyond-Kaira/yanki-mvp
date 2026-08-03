@@ -1,0 +1,172 @@
+name: Deploy
+
+# Ships main to the production VPS automatically.
+#
+# ACTIVATION: like notify.yml, the `workflow_run` trigger runs the copy of this
+# file that lives on the DEFAULT BRANCH. Nothing fires while this is an open PR;
+# the first deploy happens when CI completes on main after this merges.
+#
+# THE CHAIN: merge -> ci.yml runs on push:main -> if every job is green this
+# workflow SSHes to the VPS and asks it to deploy that exact sha. A red CI means
+# no deploy at all, which matters here because the api container runs
+# `alembic upgrade head` on boot: a broken migration reaching prod is not
+# something the health-gate rollback can undo.
+#
+# WHAT THE RUNNER CAN ACTUALLY DO ON THE HOST: nothing except this. The key in
+# DEPLOY_SSH_KEY is pinned to a forced command on the server
+# (~/.local/bin/yanki-ci-deploy, referenced from authorized_keys with
+# `command=...,restrict`). sshd ignores whatever command the client sends and
+# runs that wrapper, which accepts only `ping` or `deploy <40-hex-sha>` and
+# refuses any sha that is not already an ancestor of origin/main. So this
+# secret is a "redeploy main" button, not shell access — which is the whole
+# point on a box that also hosts pulse-prod, brier, antmedia and evrak-app.
+#
+# The deploy itself is the repo's own driver, deploy/deployment.sh: build ->
+# compose up -> public health probe against https://yanki.beyondkaira.com/healthz
+# -> record deploy/.last-good, with an automatic rollback on every failure path.
+#
+# NOT COVERED: deploy/nginx/*.conf. The edge config needs sudo to install and
+# the deploy key deliberately has none, so an nginx change is still a manual
+# `sudo cp` + `nginx -t` + `systemctl reload nginx` (see docs/tech-debt.md).
+
+on:
+  workflow_run:
+    # `workflows:` is REQUIRED and matches literal workflow `name:` values — see
+    # the long comment in notify.yml for what omitting it silently breaks.
+    workflows: [CI]
+    types: [completed]
+  # Manual re-deploy button (Actions -> Deploy -> Run workflow), for redeploying
+  # after a failed run without pushing an empty commit. The sha is validated
+  # against origin/main on the server regardless of what is typed here.
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full 40-char sha to deploy (blank = current tip of main)"
+        required: false
+        default: ""
+
+permissions: {}
+
+concurrency:
+  # Two merges landing minutes apart must not build and `compose up` the same
+  # project at once. Never cancel-in-progress: a half-applied deploy is worse
+  # than a slightly stale one, and the queued run ships the newer sha anyway.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ship main to the VPS
+    # Only a green CI run, only on main, only from a push to this repo. A fork
+    # PR's CI run has event == 'pull_request', so it can never reach this job.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    # 45, not 30: a cold-cache build of yanki-web plus the ~90s health probe can
+    # run long, and if the runner times out first it drops the SSH connection
+    # mid-deploy. The server's own lock wait is 900s so the two cannot add up to
+    # more than this.
+    timeout-minutes: 45
+    permissions:
+      # Only to resolve the tip of main for a manual run with a blank sha.
+      contents: read
+    env:
+      DEPLOY_HOST: 161.97.172.146
+      DEPLOY_USER: aytek
+      # A host PUBLIC key — safe in a public repo, and pinning it is what makes
+      # StrictHostKeyChecking=yes below meaningful instead of theatre.
+      DEPLOY_HOST_KEY: >-
+        161.97.172.146 ssh-ed25519
+        AAAAC3NzaC1lZDI1NTE5AAAAIHyygYzSI/Re3kVQ5XcdCfPrs/WVhhtaR61WGtVA16+R
+
+    steps:
+      - name: Resolve the sha to deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Bound as env vars, never interpolated into the shell body.
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="${RUN_SHA:-}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            sha="${INPUT_SHA:-}"
+            if [ -z "$sha" ]; then
+              sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha')"
+              echo "resolved tip of main: $sha"
+            fi
+          fi
+          # Fail here rather than let a malformed value reach the server, which
+          # would reject it anyway — a local failure is far easier to read.
+          if ! printf '%s' "$sha" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::not a full 40-character sha: '${sha}'"
+            exit 1
+          fi
+          echo "DEPLOY_SHA=${sha}" >> "$GITHUB_ENV"
+
+      - name: Install the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_SSH_KEY:-}" ]; then
+            echo "::error::DEPLOY_SSH_KEY is unset. Add it with:" \
+                 "gh secret set DEPLOY_SSH_KEY --repo ${GITHUB_REPOSITORY} < /path/to/private-key"
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/yanki_deploy
+          chmod 600 ~/.ssh/yanki_deploy
+          printf '%s\n' "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          # A key with a mangled newline fails here with a clear message instead
+          # of a confusing "Permission denied" three steps later.
+          ssh-keygen -y -f ~/.ssh/yanki_deploy > /dev/null
+
+      - name: Reach the host
+        # Separates "the key/network is broken" from "the deploy is broken".
+        # `ping` is read-only on the server side and changes nothing.
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/yanki_deploy -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" ping
+
+      - name: Deploy
+        run: |
+          set -euo pipefail
+          echo "deploying ${DEPLOY_SHA} to ${DEPLOY_HOST}"
+          # ServerAlive* keeps the connection open across the image build, which
+          # is several minutes of silence on the wire.
+          ssh -i ~/.ssh/yanki_deploy -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" "deploy ${DEPLOY_SHA}"
+
+      - name: Summarise
+        if: always()
+        env:
+          OUTCOME: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          # Backticks are escaped inside double quotes (markdown, not command
+          # substitution); single quotes here would trip shellcheck SC2016.
+          {
+            echo "### Deploy ${OUTCOME}"
+            echo
+            echo "- sha: \`${DEPLOY_SHA:-unresolved}\`"
+            echo "- host: \`${DEPLOY_HOST}\`"
+            echo "- health gate: https://yanki.beyondkaira.com/healthz"
+            if [ "$OUTCOME" != "success" ]; then
+              echo
+              echo "A failed deploy has already rolled back to \`deploy/.last-good\` on the"
+              echo "server (deployment.sh does this on every failure path). Server-side log:"
+              echo "\`~/.local/state/yanki-ci-deploy.log\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

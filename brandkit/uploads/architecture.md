@@ -6,6 +6,11 @@ topology. For the **why** behind these choices (the ADR log), see
 [design.md](design.md). For **scope** see [02-mvp.md](02-mvp.md); for **how
 "done" is verified** see [test-suite.md](test-suite.md).*
 
+> **Note (2026-07):** this is an early snapshot kept for brandkit reference.
+> The live topology has since changed: the site serves at
+> `yanki.beyondkaira.com` behind **host nginx** (TLS via certbot HTTP-01),
+> not the shared Caddy. The authoritative version is `docs/architecture.md`.
+
 ---
 
 ## 1. System at a glance
@@ -25,7 +30,7 @@ api serves HTTP, the worker polls the queue. There is no message broker: the
    web (Next.js 15) ───▶│  web  :8140   App Router, 3 screens      │
                         │               fetch()s relative /api/... │
                         └───────────────────┬─────────────────────┘
-             dev: Next.js rewrites() proxy  │  prod: shared Caddy path-routes
+             dev: Next.js rewrites() proxy  │  prod: host nginx path-routes
              /api/:path* + /healthz → 8141   │  /api/* + /healthz → 8141
                                             ▼
                         ┌─────────────────────────────────────────┐
@@ -297,24 +302,24 @@ The three published **host** ports are overridable to dodge local conflicts
                                           └── db :5432 ┘  (same compose network)
 ```
 
-### Prod (shared pulse-prod Caddy on `test.beyondkaira.com`)
+### Prod (host nginx on `yanki.beyondkaira.com`)
 
-Yanki runs **no Caddy of its own**. The shared **pulse-prod Caddy** terminates
-TLS on `test.beyondkaira.com` and **path-routes** on one origin (so still no
+Yanki runs **no edge of its own**. **Host nginx** terminates TLS on
+`yanki.beyondkaira.com` and **path-routes** on one origin (so still no
 CORS):
 
 ```
- Internet ──TLS──▶ test.beyondkaira.com  (shared pulse-prod Caddy)
+ Internet ──TLS──▶ yanki.beyondkaira.com  (host nginx)
                         │
-                        ├─ /api/*  + /healthz ──▶ api  :8141
-                        └─ everything else ──────▶ web  :8140
+                        ├─ /api/*  + /healthz ──▶ 127.0.0.1:8143 → api :8141
+                        └─ everything else ──────▶ 127.0.0.1:8142 → web :8140
                                                     api + worker + db
                                                     (compose project yanki-prod)
 ```
 
-- Compose project name is **`yanki-prod`**. Yanki publishes only 8140/8141,
-  bound so **only the shared Caddy** can reach them; Postgres is never published
-  in prod (internal network only).
+- Compose project name is **`yanki-prod`**. Yanki publishes only loopback
+  binds (8142/8143), so **only the host nginx edge** can reach them; Postgres
+  is never published in prod (internal network only).
 - `make deploy` / `make rollback` follow the ams-pulse pattern: build, tag by git
   SHA, `compose -p yanki-prod up`, `/healthz` check, roll back to the last-good
   SHA file on failure. **Marked UNTESTED tech debt.**
@@ -323,10 +328,10 @@ CORS):
 
 1. On the server, `cp deploy/.env.example deploy/.env` and fill in real secrets.
    `make deploy` refuses to run without it and never auto-creates secrets.
-2. Point DNS: A record `test.beyondkaira.com → 161.97.172.146`.
-3. Drop `deploy/caddy/test.beyondkaira.com.caddy` into the shared pulse-prod
-   Caddy import dir, then `caddy validate` and **reload** (never restart) that
-   Caddy.
+2. Point DNS: A record `yanki.beyondkaira.com → 161.97.172.146`.
+3. Install `deploy/nginx/yanki.beyondkaira.com.conf` under
+   `/etc/nginx/sites-available/` (symlink into `sites-enabled/`), then
+   `nginx -t` and **reload** (never restart) nginx.
 
 ---
 
@@ -340,7 +345,7 @@ CORS):
 | `max retries exceeded` | Job hit `attempts > 3` — a poison job. Inspect its `url` / `error`; don't just re-queue. |
 | Unexpected LLM spend | Confirm `DRY_RUN` and `PANEL_ENGINES`; check `MAX_RESPONSES_PER_JOB` and `llm_cache` hit rate. CI/tests must stay `DRY_RUN`. |
 | 404 on a valid-looking id | Unknown/never-created id. 422 instead means URL validation rejected the submit. |
-| Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: shared Caddy path-routing + the 8140/8141 bind. |
+| Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: host nginx path-routing + the 127.0.0.1:8142/8143 binds. |
 
 ---
 

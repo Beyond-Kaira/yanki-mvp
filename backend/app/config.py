@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,23 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+psycopg://yanki:yanki@localhost:5432/yanki"
+
+    # Authentication / JWT
+    #
+    # The signing key is intentionally blank by default. Token creation and
+    # validation will fail closed until a real key is supplied through the
+    # environment. SecretStr prevents accidental disclosure in logs/repr output.
+    jwt_secret_key: SecretStr = SecretStr("")
+    jwt_issuer: str = "yanki-api"
+    jwt_audience: str = "yanki-web"
+    jwt_access_token_minutes: int = Field(default=15, gt=0)
+    jwt_refresh_token_days: int = Field(default=30, gt=0)
+    jwt_clock_skew_seconds: int = Field(default=30, ge=0)
+
+    # Production refresh cookies are Secure by default. Local development can
+    # explicitly override this to false because localhost normally uses HTTP.
+    auth_refresh_cookie_name: str = "yanki_refresh_token"
+    auth_refresh_cookie_secure: bool = True
 
     # Provider credentials (blank in DRY_RUN)
     anthropic_api_key: str = ""

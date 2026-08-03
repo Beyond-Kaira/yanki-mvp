@@ -25,7 +25,7 @@ api serves HTTP, the worker polls the queue. There is no message broker: the
    web (Next.js 15) ───▶│  web  :8140   App Router, 3 screens      │
                         │               fetch()s relative /api/... │
                         └───────────────────┬─────────────────────┘
-             dev: Next.js rewrites() proxy  │  prod: shared Caddy path-routes
+             dev: Next.js rewrites() proxy  │  prod: host nginx path-routes
              /api/:path* + /healthz → 8141   │  /api/* + /healthz → 8141
                                             ▼
                         ┌─────────────────────────────────────────┐
@@ -86,20 +86,27 @@ queryable (FR-7).
   │
   ▼
 ┌───────────────┐  discovery.discover(url) -> str
-│ 1. discovery  │  httpx GET (15s, UA "YankiBot/0.1"); harvest title/description/
-│               │  keywords/OpenGraph + visible text (BeautifulSoup strip
-│               │  script/style/nav); homepage + ≤5 same-domain links, content-ful
-│               │  paths first (about/product/... incl. TR hakkinda/urun/hizmet).
+│ 1. discovery  │  httpx GET (15s, UA "YankiBot/0.1"); harvest schema.org JSON-LD
+│               │  (2nd fetch-free pass, leads the text, 4k cap, never follows
+│               │  sameAs) + title/description/keywords/OpenGraph + visible text
+│               │  (BeautifulSoup strip script/style/nav); homepage + ≤5
+│               │  same-domain links, content-ful paths first (about/product/...
+│               │  incl. TR hakkinda/urun/hizmet). Non-HTML + oversized responses
+│               │  skipped (missing Content-Type = HTML, fail-open).
 │               │  SPA fallback: if visible text <800 chars, mine ≤3 same-origin
 │               │  JS bundles for prose string literals (TR-safe). ~20k cap;
 │               │  unreachable/empty -> PipelineError("could not read the site")
 └──────┬────────┘  ── on complete: progress = 15, current_step advances
        ▼
 ┌───────────────┐  kyc.generate_kyc(text, url, provider) -> KYC
-│ 2. kyc        │  ONE LLM call, strict JSON (strip ```json fences), Pydantic
-│               │  KYC model. aliases always include company name + domain-sans-TLD
-│               │  persisted to analyses.kyc (jsonb)
-└──────┬────────┘  ── progress = 30
+│ 2. kyc        │  ONE LLM call, strict JSON (strip ```json fences, else the
+│               │  outermost {…} span); ONE bounded retry if still unusable.
+│               │  Pydantic KYC model. aliases always include company name +
+│               │  domain-sans-TLD, plus ASCII-folded / legal-suffix-stripped
+│               │  forms when they differ. persisted to analyses.kyc (jsonb)
+└──────┬────────┘  ── progress = 30, then kyc.require_usable gates step 3:
+       │              empty company or zero topics -> PipelineError BEFORE the
+       │              paid execute fan-out (checker rows pass their category)
        ▼
 ┌───────────────┐  prompts.generate_prompts(kyc, count) -> list[PromptSpec]
 │ 3. prompts    │  DETERMINISTIC natural-language templates, NO LLM. cycles
@@ -117,7 +124,10 @@ queryable (FR-7).
        ▼
 ┌───────────────┐  footprint.detect(raw_text, kyc) -> (bool, snippet|None)
 │ 5. footprint  │  PURE, deterministic, case-insensitive search of
-│               │  company/aliases/domain; ±60-char snippet on first hit
+│               │  company/aliases/domain, \b-anchored, with diacritics folded
+│               │  (textfold, 1:1 so snippet indices stay honest) and hyphen ==
+│               │  space; NOT suffix-tolerant (that is roadmap §2c / step 2b).
+│               │  ±60-char snippet on first hit, in its ORIGINAL spelling
 │               │  updates each responses.footprint + matched_snippet
 └──────┬────────┘  ── progress = 90
        ▼
@@ -225,7 +235,7 @@ raw answers) — both `null` for MVP rows.
 `POST /api/v1/analyses` is public with real keys, so `services/rate_limit.py`
 rejects abusive traffic **before** any row is created or money is spent (the
 SSRF `422` check runs first, so `422`-rejected submits never count). The client
-IP — first `X-Forwarded-For` entry (the shared Caddy sets it) else the socket
+IP — first `X-Forwarded-For` entry (the host nginx edge sets it) else the socket
 peer — is stored as a salted hash in the nullable `analyses.ip_hash` column;
 the raw IP is never persisted. Two rolling-window guards, both returning `429`
 with a `Retry-After` header:
@@ -359,9 +369,8 @@ proxies `/api/:path*` and `/healthz` to the api (`API_ORIGIN`, default
 The three published **host** ports are overridable to dodge local conflicts
 (container ports stay fixed): `YANKI_WEB_PORT` (→8140), `YANKI_API_PORT` (→8141),
 `YANKI_DB_PORT` (→5432). Prod has its own pair — `YANKI_PROD_WEB_PORT` (→8142)
-and `YANKI_PROD_API_PORT` (→8143), loopback-bound, health-check/debug only
-(the prod VPS already uses 8140; the shared Caddy reaches the containers over
-the docker network, not these binds).
+and `YANKI_PROD_API_PORT` (→8143), loopback-bound (the prod VPS already uses
+8140); the host nginx edge proxies to these binds.
 
 ```
  laptop
@@ -372,32 +381,30 @@ the docker network, not these binds).
                                           └── db :5432 ┘  (same compose network)
 ```
 
-### Prod (shared pulse-prod Caddy on `yanki.beyondkaira.com`)
+### Prod (host nginx on `yanki.beyondkaira.com`)
 
-Yanki runs **no Caddy of its own**. It deploys onto the **same VPS**
+Yanki runs **no edge of its own**. It deploys onto the **same VPS**
 (161.97.172.146) that already serves the other beyondkaira sites (pulse-prod,
-Ant Media, brier) — **those must never be disturbed**. The shared
-**pulse-prod Caddy** (container `pulse-prod-caddy-1`) terminates TLS on
-`yanki.beyondkaira.com` and **path-routes** on one origin (so still no CORS).
-Because that Caddy is itself a container, it reaches Yanki over the shared
-docker network (`pulse-prod_default`) via aliases — not host ports:
+Ant Media, brier) — **those must never be disturbed**. The **host nginx**
+vhost (`deploy/nginx/yanki.beyondkaira.com.conf`, installed under
+`/etc/nginx`) terminates TLS on `yanki.beyondkaira.com` (certbot HTTP-01
+webroot renewal) and **path-routes** on one origin (so still no CORS),
+reaching Yanki over the stack's loopback host binds:
 
 ```
- Internet ──TLS──▶ yanki.beyondkaira.com  (shared pulse-prod Caddy, container)
-                        │            (over docker network pulse-prod_default)
-                        ├─ /api/*  + /healthz ──▶ yanki-api :8141
-                        └─ everything else ──────▶ yanki-web :8140
+ Internet ──TLS──▶ yanki.beyondkaira.com  (host nginx, /etc/nginx vhost)
+                        │                 (over 127.0.0.1 loopback binds)
+                        ├─ /api/*  + /healthz ──▶ 127.0.0.1:8143 → api :8141
+                        └─ everything else ──────▶ 127.0.0.1:8142 → web :8140
                                                     api + worker + db
                                                     (compose project yanki-prod)
 ```
 
-- Compose project name is **`yanki-prod`**. Only web + api join the shared
-  network (aliases `yanki-web` / `yanki-api`); db + worker stay on the
-  project-internal network and Postgres is never published in prod. The only
-  host binds are loopback health-check ports (`YANKI_PROD_WEB_PORT`→8142,
+- Compose project name is **`yanki-prod`**. Only web + api publish host ports,
+  and those are loopback-only (`YANKI_PROD_WEB_PORT`→8142,
   `YANKI_PROD_API_PORT`→8143 — parameterized because the VPS already uses
-  8140). The shared network is `external:` — the pulse-prod stack must be up
-  before `make deploy`.
+  8140); db + worker stay on the project-internal network and Postgres is
+  never published in prod.
 - `make deploy` / `make rollback` follow the ams-pulse pattern: build, tag by git
   SHA, `compose -p yanki-prod up`, `/healthz` check, roll back to the last-good
   SHA file on failure. **First exercised for real 2026-07-10 (P4.2)** — both
@@ -409,11 +416,11 @@ docker network (`pulse-prod_default`) via aliases — not host ports:
    `make deploy` refuses to run without it and never auto-creates secrets.
 2. ~~Point DNS~~ **done:** `yanki.beyondkaira.com → 161.97.172.146` resolves
    (verified 2026-07-10).
-3. Add the site block from `deploy/caddy/yanki.beyondkaira.com.caddy` to the
-   shared Caddy's single config file
-   (`~/repo/ams-pulse/deploy/config/Caddyfile.prod` — there is **no import
-   dir**; verified from the container's mounts), then `caddy validate` and
-   **reload** (never restart) inside `pulse-prod-caddy-1`.
+3. Install the nginx vhost: copy `deploy/nginx/yanki.beyondkaira.com.conf` to
+   `/etc/nginx/sites-available/`, symlink into `sites-enabled/`, then
+   `nginx -t` and **reload** (never restart). TLS is issued/renewed by certbot
+   over HTTP-01 (webroot carve-out in the vhost's port-80 block). Full
+   runbook: `deploy/MIGRATION.md`.
 
 ---
 
@@ -424,10 +431,11 @@ docker network (`pulse-prod_default`) via aliases — not host ports:
 | Job stuck in `queued` | Is the **worker** process up? It's the same image as api, separate command. Check `make deploy-logs`. |
 | Job stuck in `running` forever | Worker crashed mid-step. It self-heals: the stale-claim reaper reclaims after `STALE_CLAIM_SECONDS` (300s). |
 | Job `failed` with an error | `analyses.error` holds `str(exc)` (≤500 chars). Discovery failures read "could not read the site". Partial rows remain. |
+| Job `failed` at "could not identify the company / what the company does" | The step-2 usability gate (`kyc.require_usable`) stopped the run **before** any paid execute call — working as designed, not a bug. The offending profile is on the row (`analyses.kyc`): look at it. Usual causes are a site whose only content is a JS-rendered shell the SPA fallback missed, or a non-HTML homepage. |
 | `max retries exceeded` | Job hit `attempts > 3` — a poison job. Inspect its `url` / `error`; don't just re-queue. |
 | Unexpected LLM spend | Confirm `DRY_RUN` and `PANEL_ENGINES`; check `MAX_RESPONSES_PER_JOB` and `llm_cache` hit rate. CI/tests must stay `DRY_RUN`. |
 | 404 on a valid-looking id | Unknown/never-created id. 422 instead means URL validation rejected the submit. |
-| Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: shared Caddy path-routing + the `yanki-api`/`yanki-web` aliases on `pulse-prod_default`. |
+| Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: host nginx path-routing (`/etc/nginx` vhost) + the 127.0.0.1:8142/8143 loopback binds. |
 
 ---
 

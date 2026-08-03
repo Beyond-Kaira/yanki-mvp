@@ -104,4 +104,37 @@ describe('KycCard', () => {
     }
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
   })
+
+  it('renders the buying category and use cases when the profile carries them', () => {
+    // These are the fields prompt generation is actually built from, so a user
+    // can see whether we understood their business before reading the score.
+    const kyc: KYC = {
+      ...fullKyc,
+      category: 'analytics platforms',
+      use_cases: ['revenue reporting', 'churn tracking'],
+    }
+
+    render(
+      <main>
+        <KycCard kyc={kyc} />
+      </main>,
+    )
+
+    expect(screen.getByText('Category')).toBeInTheDocument()
+    expect(screen.getByText('analytics platforms')).toBeInTheDocument()
+    expect(screen.getByText('Use cases')).toBeInTheDocument()
+    expect(screen.getByText('churn tracking')).toBeInTheDocument()
+  })
+
+  it('omits the new rows for a profile stored before they existed', () => {
+    // Rows persisted by an earlier pipeline have no such key at all.
+    render(
+      <main>
+        <KycCard kyc={fullKyc} />
+      </main>,
+    )
+
+    expect(screen.queryByText('Category')).not.toBeInTheDocument()
+    expect(screen.queryByText('Use cases')).not.toBeInTheDocument()
+  })
 })

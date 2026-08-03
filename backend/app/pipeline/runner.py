@@ -1,9 +1,15 @@
 """Orchestrate the six pipeline steps for one analysis.
 
-``run_pipeline`` walks discovery -> kyc -> prompts -> measured execute ->
-reliability/footprint sync -> composite scoring (+ interventions placeholder),
-advancing ``current_step`` and ``progress`` and heartbeating ``claimed_at``
-after each step.
+``run_pipeline`` walks discovery -> kyc -> prompts -> execute -> footprint ->
+scoring, advancing ``current_step`` and ``progress`` and heartbeating
+``claimed_at`` after each step, and persisting each step's output as it goes so
+partial results stay queryable. On success it marks the analysis ``done``.
+The worker owns claiming the job and turning any raised exception into a
+``failed`` status.
+
+Between steps 2 and 3 it gates on ``kyc.require_usable``: a profile with no
+company or no topic signal can only produce a meaningless score, so the job stops
+before ``execute`` spends up to ``max_responses_per_job`` paid calls on it.
 
 Two flavours share these six steps. An MVP crawl analysis (``kind`` NULL or
 ``'mvp'``) starts step 1 with an HTTP crawl of ``url`` and templates a
@@ -75,10 +81,26 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     # 2. kyc
     _start_step(session, analysis, "kyc")
     kyc = kyc_step.generate_kyc(
-        text, analysis.url, registry.get_analysis_provider(settings)
+        text,
+        analysis.url,
+        registry.get_analysis_provider(settings),
+        # Grounding checks the model's proper nouns against the crawl. A checker
+        # row has no crawl — its "text" is the brand + category sentence composed
+        # above — so verifying against it would delete every competitor the model
+        # knows and degrade the run to the neutral fallbacks.
+        verify_against_source=not is_checker,
     )
     analysis.kyc = kyc.model_dump()
     _complete_step(session, analysis, _KYC_DONE)
+
+    # Refuse to fan out on input we already know is unusable. ``execute`` below
+    # is the most expensive step in the pipeline (up to ``max_responses_per_job``
+    # paid calls), and an empty company or a topic-free profile can only buy a
+    # plausible-looking score that is quietly meaningless. Gating *after* the
+    # commit above means the offending profile stays queryable on the failed row,
+    # so an operator can see exactly what came back. A checker row contributes
+    # its submitted category, which is real input the model may not have echoed.
+    kyc_step.require_usable(kyc, known_topic=analysis.category if is_checker else "")
 
     # 3. prompts
     _start_step(session, analysis, "prompts")

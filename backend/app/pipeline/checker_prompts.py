@@ -27,12 +27,16 @@ Design choices:
 
 from __future__ import annotations
 
-import re
-
-from app.pipeline.prompts import PromptSpec
+from app.pipeline.prompts import PromptSpec, topic_pool
+from app.pipeline.sanitize import clean_values
 
 # Bump when the wording or ordering of any wired set changes, so cached results
 # and stored prompts remain traceable to the generator that produced them.
+#
+# NOT bumped when the *substituted values* improve: the 12 templates below are
+# byte-identical to checker-en-v1, and `checker_methodology.json` is generated
+# from an empty KYC (every source empty -> the neutral fallbacks), so a better
+# topic on a live run is per-run data, not a new template set.
 VERSION = "checker-en-v1"
 
 # Longest phrase (in words) allowed as the category topic; a longer keyword is a
@@ -41,34 +45,21 @@ _MAX_TOPIC_WORDS = 6
 
 
 def _clean(values) -> list[str]:
-    """Trimmed, de-duplicated, order-preserving list of non-empty strings."""
-    out: list[str] = []
-    for value in values or []:
-        cleaned = (value or "").strip()
-        if cleaned and cleaned not in out:
-            out.append(cleaned)
-    return out
-
-
-def _first_segment(value: str) -> str:
-    """Leading comma/slash-separated segment, trimmed ("A, B" -> "A")."""
-    value = (value or "").strip()
-    if not value:
-        return ""
-    return re.split(r"\s*[,/]\s*", value)[0].strip()
+    """Trimmed, de-duplicated, junk-free list of non-empty strings."""
+    return clean_values(values, max_items=25, max_chars=120)
 
 
 def _primary_topic(kyc) -> str:
     """The single category subject every question is asked about.
 
-    Keywords describe the category best; fall back to a short industry segment,
-    then a service, then a generic noun so the slot is never empty.
+    Shares ``prompts.topic_pool``, so the checker gets the same confidence order
+    (``category`` -> ``use_cases`` -> filtered keywords -> services -> industry)
+    and the same category filter that keeps spec attributes ("payload capacity")
+    out of a slot that is repeated across all 12 questions. Falls back to a
+    generic noun so the slot is never empty.
     """
-    candidates = [*_clean(kyc.keywords), _first_segment(kyc.industry), *_clean(kyc.services)]
-    for candidate in candidates:
-        if candidate and len(candidate.split()) <= _MAX_TOPIC_WORDS:
-            return candidate
-    return "solutions"
+    pool = topic_pool(kyc, max_words=_MAX_TOPIC_WORDS)
+    return pool[0].text if pool else "solutions"
 
 
 def _location_phrase(kyc) -> str:

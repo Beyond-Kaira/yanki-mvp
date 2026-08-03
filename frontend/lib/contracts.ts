@@ -70,6 +70,16 @@ export type SerpVisibility = Schemas['SerpVisibilityOut']
 
 export type SerpCheck = Schemas['SerpCheckOut']
 
+// SEO / AI-readiness audit (ADR-31) — why an answer engine can or cannot read
+// the site, computed from the crawl discovery already performed. `AnalysisResult.seo`
+// is null on every run that did not audit (e.g. checker submissions — no site to
+// look at). Within a present audit, `seo.grade`/`seo.score` are separately null on
+// a run that produced no scorable checks. The grade is the headline, capped by
+// critical failures so a fatal problem can't be averaged away.
+export type SeoAudit = Schemas['SeoAuditOut']
+
+export type SeoCheck = Schemas['SeoCheckOut']
+
 export type AnalysisResult = Omit<Schemas['ResultOut'], 'kyc'> & {
   kyc: KYC | null
 }

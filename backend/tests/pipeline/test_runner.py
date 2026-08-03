@@ -302,3 +302,111 @@ def test_a_rerun_with_serp_switched_off_leaves_no_score_without_evidence(
     assert rerun.serp_source is None
     assert rerun.serp_hit_count is None
     assert rerun.serp_query_count is None
+
+
+# --------------------------------------------------------------------------
+# SEO audit (ADR-31) — runs inside the discovery step
+# --------------------------------------------------------------------------
+
+
+def _seo_checks(db_session, models, analysis):
+    return (
+        db_session.execute(
+            select(models.SeoCheck).where(models.SeoCheck.analysis_id == analysis.id)
+        )
+        .scalars()
+        .all()
+    )
+
+
+def test_the_audit_runs_in_the_discovery_step_and_stores_its_evidence(
+    db_session, models, settings, monkeypatch
+):
+    from app.pipeline import discovery, runner, seo_audit
+    from app.pipeline.discovery import CrawlResult, PageAudit
+    from app.pipeline.robots import RobotsReport
+
+    home = PageAudit(
+        url="https://example.com/",
+        final_url="https://example.com/",
+        status_code=200,
+        is_home=True,
+        title="Acme",
+        h1_count=1,
+        lang="en",
+        server_text_chars=5000,
+    )
+    monkeypatch.setattr(
+        discovery,
+        "discover_detailed",
+        lambda url: CrawlResult(text="Acme builds warehouse robots.", pages=(home,)),
+    )
+    # No network for robots.txt either: the audit's only fetch is stubbed out.
+    monkeypatch.setattr(
+        seo_audit.robots, "fetch", lambda client, url: RobotsReport(measured=True, absent=True)
+    )
+
+    analysis = models.Analysis(url="https://example.com", status="running")
+    db_session.add(analysis)
+    db_session.flush()
+
+    result = runner.run_pipeline(db_session, analysis.id, settings)
+
+    # The locked step contract is untouched — no seventh step.
+    assert result.status == "done"
+    assert result.progress == 100
+    assert result.current_step is None
+
+    assert result.seo_status == "ok"
+    assert result.seo_grade
+    assert 0.0 <= result.seo_score <= 100.0
+    checks = _seo_checks(db_session, models, analysis)
+    assert checks
+    assert all(c.check_id and c.title and c.severity and c.status for c in checks)
+
+
+def test_an_audit_failure_costs_the_grade_and_not_the_run(
+    db_session, models, settings, monkeypatch
+):
+    """Fail-open, like the SERP pass: the crawl has already been paid for."""
+    from app.pipeline import discovery, runner, seo_audit
+    from app.pipeline.discovery import CrawlResult
+
+    monkeypatch.setattr(
+        discovery,
+        "discover_detailed",
+        lambda url: CrawlResult(text="Acme builds warehouse robots.", pages=()),
+    )
+
+    def _boom(client, url):
+        raise RuntimeError("robots fetch exploded")
+
+    monkeypatch.setattr(seo_audit.robots, "fetch", _boom)
+
+    analysis = models.Analysis(url="https://example.com", status="running")
+    db_session.add(analysis)
+    db_session.flush()
+
+    result = runner.run_pipeline(db_session, analysis.id, settings)
+
+    assert result.status == "done"
+    assert result.geo_score is not None
+    assert result.seo_status == "error"
+    assert result.seo_grade is None
+
+
+def test_a_checker_run_has_no_site_to_audit(db_session, models, settings, monkeypatch):
+    from app.pipeline import runner
+
+    analysis = models.Analysis(
+        url="checker://acme/robots", status="running", kind="checker",
+        brand="acme", category="warehouse robots", lang="en",
+    )
+    db_session.add(analysis)
+    db_session.flush()
+
+    result = runner.run_pipeline(db_session, analysis.id, settings)
+
+    assert result.seo_status is None
+    assert result.seo_grade is None
+    assert _seo_checks(db_session, models, analysis) == []

@@ -211,3 +211,55 @@ def test_a_measured_but_unreadable_run_serializes_a_null_score(client, make_anal
     assert serp["status"] == "unavailable"
     assert serp["score"] is None
     assert serp["checks"] == []
+
+
+def test_get_reports_no_seo_audit_when_the_run_never_audited(client, make_analysis):
+    """ADR-31: a checker submission has no site, so there is nothing to grade."""
+    analysis = make_analysis()
+
+    assert client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]["seo"] is None
+
+
+def test_get_serializes_the_seo_audit_and_its_checks(client, db_session, make_analysis):
+    from app.db.models import SeoCheck
+
+    analysis = make_analysis(
+        status="done", seo_status="ok", seo_score=61.4, seo_grade="C"
+    )
+    db_session.add_all(
+        [
+            SeoCheck(
+                analysis_id=analysis.id,
+                check_id="ai_crawler_access",
+                title="AI crawlers can read the site",
+                severity="critical",
+                status="fail",
+                detail="robots.txt blocks crawlers answer engines use.",
+                evidence="Blocked: OAI-SearchBot (ChatGPT Search)",
+            ),
+            SeoCheck(
+                analysis_id=analysis.id,
+                check_id="image_alt",
+                title="Images have alt text",
+                severity="minor",
+                status="not_applicable",
+                detail="The crawled pages have no images.",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    seo = client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]["seo"]
+
+    assert seo["status"] == "ok"
+    assert seo["grade"] == "C"
+    assert seo["score"] == 61.4
+    assert len(seo["checks"]) == 2
+    blocked = next(c for c in seo["checks"] if c["check_id"] == "ai_crawler_access")
+    assert blocked["severity"] == "critical"
+    assert blocked["status"] == "fail"
+    assert "OAI-SearchBot" in blocked["evidence"]
+    # not_applicable survives the round trip as itself, not as a failure.
+    assert next(c for c in seo["checks"] if c["check_id"] == "image_alt")["status"] == (
+        "not_applicable"
+    )

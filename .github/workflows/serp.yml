@@ -129,23 +129,26 @@ jobs:
       - name: Apply every migration
         working-directory: backend
         run: uv run alembic upgrade head
-      - name: The SERP schema exists after upgrade
+      - name: Snapshot the schema at head
         working-directory: backend
-        run: uv run python ../.github/scripts/serp_schema_check.py present
-      - name: Revert the SERP migration
+        run: uv run python ../.github/scripts/migration_check.py snapshot /tmp/head.json
+      - name: Revert the newest migration
         working-directory: backend
         run: uv run alembic downgrade -1
-      - name: The SERP schema is gone after downgrade
-        # A downgrade that silently leaves half the schema behind is how a
-        # rollback turns one bad deploy into two.
+      - name: The downgrade actually changed something
+        # Guards the degenerate pass: a downgrade() that does nothing would
+        # otherwise round-trip perfectly and look correct.
         working-directory: backend
-        run: uv run python ../.github/scripts/serp_schema_check.py absent
-      - name: Re-apply, so the migration is proven idempotent end to end
+        run: uv run python ../.github/scripts/migration_check.py changed /tmp/head.json
+      - name: Re-apply
         working-directory: backend
         run: uv run alembic upgrade head
-      - name: The SERP schema is back
+      - name: The schema round-trips exactly
+        # Asserts a property rather than a list of table names, so this gate does
+        # not need rewriting every time a migration lands — which is precisely
+        # how the previous, SERP-specific version broke on the next one.
         working-directory: backend
-        run: uv run python ../.github/scripts/serp_schema_check.py present
+        run: uv run python ../.github/scripts/migration_check.py compare /tmp/head.json
 
   stack:
     name: serp end to end (DRY_RUN stack)

@@ -87,9 +87,21 @@ def main() -> int:
         fail("a measured run must have queried something", analysis)
     if not serp["checks"]:
         fail("the evidence table is empty — nothing was persisted", analysis)
-    if len(serp["checks"]) != serp["queries"]:
+
+    # ``queries`` counts the pages we could READ; ``checks`` has a row for every
+    # query we ran, readable or not. Conflating the two is the exact mistake this
+    # feature exists to avoid, so compare like with like: the readable rows must
+    # match the denominator, and every unreadable row must also have been stored
+    # (a query that vanished would look like one we never ran).
+    readable = [check for check in serp["checks"] if check["hit"] is not None]
+    if len(readable) != serp["queries"]:
         fail(
-            f"{serp['queries']} queries measured but {len(serp['checks'])} rows stored",
+            f"{serp['queries']} readable queries claimed but {len(readable)} readable rows stored",
+            analysis,
+        )
+    if len(serp["checks"]) < serp["queries"]:
+        fail(
+            f"{len(serp['checks'])} evidence rows for {serp['queries']} measured queries",
             analysis,
         )
 
@@ -99,7 +111,7 @@ def main() -> int:
     if abs(serp["score"] - expected) > 1e-9:
         fail(f"score {serp['score']} does not match {serp['hits']}/{serp['queries']}", analysis)
 
-    recorded_hits = sum(1 for check in serp["checks"] if check["hit"])
+    recorded_hits = sum(1 for check in readable if check["hit"])
     if recorded_hits != serp["hits"]:
         fail(f"summary claims {serp['hits']} hits, evidence shows {recorded_hits}", analysis)
 

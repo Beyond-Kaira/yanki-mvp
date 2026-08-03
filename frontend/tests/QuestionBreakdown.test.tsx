@@ -62,17 +62,19 @@ describe('QuestionBreakdown', () => {
     await user.click(screen.getByRole('button', { name: /expand/i }))
 
     // Engine ids are rendered as the product names people recognize. Both the
-    // chip grid and the full-answer list name each engine, so this counts
+    // chip grid and the per-response rows name each engine, so this counts
     // occurrences rather than asserting a single match.
     expect(screen.getAllByText('Claude').length).toBeGreaterThan(0)
     expect(screen.getAllByText('ChatGPT').length).toBeGreaterThan(0)
     expect(screen.queryByText('anthropic')).not.toBeInTheDocument()
-    // The fixture's group-level snippet and its per-response evidence happen
-    // to share the same text, so both the summary quote and the full-answer
-    // quote render it — hence a count, not a single match.
-    expect(
-      screen.getAllByText(/Acme is a strong option\./).length,
-    ).toBeGreaterThan(0)
+    // The quote is the per-response preview, visible without a second click —
+    // it's the answer's own row, not something buried behind "show full
+    // answer".
+    expect(screen.getByText(/Acme is a strong option\./)).toBeInTheDocument()
+    // openai's miss reads as a miss, not a blank: no quote to show, so the row
+    // says so instead of just omitting one. The chip's sr-only label uses the
+    // same words, so this counts occurrences rather than asserting one.
+    expect(screen.getAllByText('did not name you').length).toBeGreaterThan(0)
   })
 
   it('counts against the panel, and lists an engine with nothing to show', async () => {
@@ -160,19 +162,44 @@ describe('QuestionBreakdown', () => {
     const user = userEvent.setup()
     render(<QuestionBreakdown groups={groups} engines={engines} />)
 
-    expect(
-      screen.queryByText(/Acme is a strong option and/),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByText('did not name you')).not.toBeInTheDocument()
 
     const toggle = screen.getByRole('button', { name: /expand/i })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
     await user.click(toggle)
 
-    expect(screen.getByText(/Acme is a strong option and/)).toBeInTheDocument()
+    // Chip label and per-response preview share this wording, hence a count.
+    expect(screen.getAllByText('did not name you').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: /collapse/i })).toHaveAttribute(
       'aria-expanded',
       'true',
     )
+  })
+
+  it('keeps the full transcript collapsed until its own toggle is asked', async () => {
+    const user = userEvent.setup()
+    render(<QuestionBreakdown groups={groups} engines={engines} />)
+
+    await user.click(screen.getByRole('button', { name: /expand/i }))
+
+    // The quote is visible at this point (previous test); the raw transcript
+    // is a second, independent toggle and stays closed until asked for.
+    expect(
+      screen.queryByText(/Acme is a strong option and/),
+    ).not.toBeInTheDocument()
+
+    // Two responses, two "show full answer" toggles — anthropic's is first.
+    const showFullAnswer = screen.getAllByRole('button', {
+      name: /show full answer/i,
+    })[0]
+    expect(showFullAnswer).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(showFullAnswer)
+
+    expect(screen.getByText(/Acme is a strong option and/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /hide full answer/i }),
+    ).toHaveAttribute('aria-expanded', 'true')
   })
 })

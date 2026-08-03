@@ -11,18 +11,15 @@ interface QuestionBreakdownProps {
   engines: string[]
 }
 
-// The question-level view of a run: one card per question buyers ask, showing
-// which engines named the brand in their answer. Replaces the flat response
-// table, where each question repeated once per engine.
-export default function QuestionBreakdown({
-  groups,
-  engines,
-}: QuestionBreakdownProps) {
-  // Collapsed by default; multiple questions may be open at once.
-  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set())
+// Collapsed by default; any number of ids may be open at once. Used twice:
+// once for which question rows are expanded, once for which per-engine
+// answers within them are — two independent sets, since opening a question
+// should not force open (or remember) any engine's full answer.
+function useToggleSet(): [Set<string>, (id: string) => void] {
+  const [ids, setIds] = useState<Set<string>>(() => new Set())
 
   function toggle(id: string) {
-    setOpenIds((prev) => {
+    setIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) {
         next.delete(id)
@@ -32,6 +29,19 @@ export default function QuestionBreakdown({
       return next
     })
   }
+
+  return [ids, toggle]
+}
+
+// The question-level view of a run: one row per question buyers ask, showing
+// which engines named the brand in their answer. Replaces the flat response
+// table, where each question repeated once per engine.
+export default function QuestionBreakdown({
+  groups,
+  engines,
+}: QuestionBreakdownProps) {
+  const [openIds, toggle] = useToggleSet()
+  const [openAnswerIds, toggleAnswer] = useToggleSet()
 
   return (
     <section className="space-y-3" aria-labelledby="questions-heading">
@@ -80,7 +90,7 @@ export default function QuestionBreakdown({
         </div>
         <ul className="divide-y divide-surface-border">
           {groups.map((group) => {
-            const { prompt, responses, mentioned, snippet } = group
+            const { prompt, responses, mentioned } = group
             const isOpen = openIds.has(prompt.id)
             const answersId = `answers-${prompt.id}`
             const hit = mentioned > 0
@@ -179,16 +189,13 @@ export default function QuestionBreakdown({
                       })}
                     </ul>
 
-                    {/* The evidence behind the ✓s, quoted from the first
-                        answer that matched. A question nobody answered with a
-                        mention has no snippet, and gets none. */}
-                    {snippet ? (
-                      <p className="truncate border-l-2 border-success-soft bg-white py-1 pl-3 text-xs text-surface-subtle">
-                        “{snippet}”
-                      </p>
-                    ) : null}
-
-                    <ul className="space-y-3">
+                    {/* One row per engine that actually answered — a second
+                        expand level, nested inside the question's. The quote
+                        (or the miss) is the thing worth reading at a glance;
+                        the full transcript is one more click for whoever
+                        wants to verify it, not something everyone scrolls
+                        past by default. */}
+                    <ul className="space-y-2">
                       {responses.map((response) => {
                         // Guarded and quoted from the same trimmed value.
                         // groupQuestions already trims the collapsed preview
@@ -196,32 +203,59 @@ export default function QuestionBreakdown({
                         // would put the same evidence on screen two different
                         // ways.
                         const evidence = response.matched_snippet?.trim()
+                        const rawId = `raw-${response.id}`
+                        const isRawOpen = openAnswerIds.has(response.id)
 
                         return (
                           <li
                             key={`answer-${response.id}`}
-                            className="space-y-1 rounded-lg bg-white p-3"
+                            className="rounded-lg bg-white p-3"
                           >
-                            <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-surface-foreground">
-                              {engineLabel(response.engine)}
-                              <span className="font-mono text-xs font-normal text-surface-subtle">
-                                {response.model}
-                              </span>
-                            </p>
-                            {evidence ? (
-                              <p className="border-l-2 border-success-soft pl-3 text-xs text-success-strong">
-                                “{evidence}”
-                              </p>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 space-y-1">
+                                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-surface-foreground">
+                                  {engineLabel(response.engine)}
+                                  <span className="font-mono text-xs font-normal text-surface-subtle">
+                                    {response.model}
+                                  </span>
+                                </p>
+                                {evidence ? (
+                                  <p className="truncate border-l-2 border-success-soft pl-3 text-xs text-success-strong">
+                                    “{evidence}”
+                                  </p>
+                                ) : (
+                                  <p className="pl-3 text-xs italic text-surface-subtle">
+                                    did not name you
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleAnswer(response.id)}
+                                aria-expanded={isRawOpen}
+                                aria-controls={rawId}
+                                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap rounded px-1 text-xs font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              >
+                                <Chevron open={isRawOpen} />
+                                {isRawOpen ? 'Hide full answer' : 'Show full answer'}
+                              </button>
+                            </div>
+                            {isRawOpen ? (
+                              <div
+                                id={rawId}
+                                className="mt-2 border-t border-surface-border pt-2"
+                              >
+                                {response.raw_text.trim().length > 0 ? (
+                                  <pre className="max-w-prose whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-surface-foreground">
+                                    {response.raw_text}
+                                  </pre>
+                                ) : (
+                                  <p className="text-xs italic text-surface-subtle">
+                                    (empty answer)
+                                  </p>
+                                )}
+                              </div>
                             ) : null}
-                            {response.raw_text.trim().length > 0 ? (
-                              <pre className="max-w-prose whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-surface-foreground">
-                                {response.raw_text}
-                              </pre>
-                            ) : (
-                              <p className="text-xs italic text-surface-subtle">
-                                (empty answer)
-                              </p>
-                            )}
                           </li>
                         )
                       })}

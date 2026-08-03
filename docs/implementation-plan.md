@@ -297,6 +297,30 @@ itself stays open** (no $0 source). One real contract diff (`openapi.json` +
 (the SERP integration tier, which needs a live instance), frontend 79 passed. Full detail:
 `sessions/2026-08-03-01.md`.
 
+✅ **Session 17 (2026-08-03): P5.17 — the SearXNG instance stood up, SERP live
+in production** (branch `feat/serp-instance`). The operator decision ADR-28
+deferred (operator-expected **B6**) was executed the same day: turn SERP on.
+This is an **infrastructure change, not a feature change** — no pipeline,
+provider, scoring or UI code moved. The instance is now a **profile-gated
+compose service** in both the prod and dev compose files, behind the `serp`
+profile, which compose reads from `deploy/.env`'s `COMPOSE_PROFILES`, so
+`deployment.sh` is untouched: image pinned `searxng/searxng:2026.8.1-8892414dc`,
+capped at `mem_limit: 512m` / `cpus: 0.5` with bounded json-file logs (measured
+~105–150 MiB steady state on the shared VPS). **Prod publishes no port** — only
+`api` and `worker` reach it at `http://searxng:8080`, which is exactly what lets
+its limiter stay off — while dev publishes a loopback port for debugging.
+`settings.example.yml` is tracked (the four real web-search engines kept, the
+six default widget engines dropped); the real `settings.yml` lives on the host,
+gitignored and symlinked into the auto-deploy checkout, exactly as `deploy/.env`
+already is. The host `deploy/.env` gained three lines (`COMPOSE_PROFILES=serp`,
+`SERP_ENABLED=1`, `SERP_BASE_URL=http://searxng:8080`). ADR-29. Measured live
+against real results: Salesforce 4/4, HubSpot 4/4, Baykar 3/4 on their own
+categories, ~0.5 s median per query; `unresponsive_engines` is non-empty on most
+stored rows because two of the four engines refuse this egress IP — accurate
+reporting, not a fault. Two new tech-debt items, **#43** (DRY_RUN forces the
+mock SERP source) and **#44** (two of four engines refused per query, so the
+score leans on `google cse`). Full detail: `sessions/2026-08-03-02.md`.
+
 ➡️ **Next up: P5.11 (operator go-live)** — everything agent-buildable is done.
 Blockers are all operator items: A1 decisions, **A2 (new: rule on discovery/KYC
 steps 2b + 6)**, B1 Resend domain, B2 vendor ToS/pricing check, then the
@@ -1905,6 +1929,65 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   Later), a weighted / position-aware SERP score, scheduled re-measurement over
   time, and a production SearXNG instance (an operator action, recorded in
   [operator-expected.md](operator-expected.md)).
+
+### P5.17 — Stand up the SearXNG instance and enable SERP in production (added 2026-08-03, session 17)
+- **Goal:** turn the SERP feature on. ADR-28 shipped the code but left the
+  instance unbuilt; this stands one up as a **profile-gated compose service** in
+  both the prod and dev compose files, pins and resource-caps it, adds the
+  gitignored host-config arrangement `deploy/.env` already uses, and flips the
+  three env lines that make the worker read it. It is infrastructure, not a
+  feature change: no pipeline, provider, scoring or UI code is touched. Per
+  ADR-29.
+- **Why now:** ADR-28 deliberately deferred the instance — standing one up
+  spends real resources on a VPS shared with four other production tenants, and
+  that spend is the operator's call, not engineering's. The operator made the
+  call the same day (operator-expected **B6**): turn it on. It earns its own
+  record because measuring the instance first changed several of its parameters
+  (which engines to keep, the memory cap, and the per-query intermittency
+  finding).
+- **Dependencies:** P5.16 / ADR-28 (the SERP feature this instance feeds — the
+  worker already reads `SERP_BASE_URL` and is fail-open) and the operator's
+  **B6** decision. No code dependency beyond that.
+- **Complexity:** M
+- **Deliverables:** the `searxng` service in `deploy/docker-compose.prod.yml`
+  and `deploy/docker-compose.yml`, behind the **`serp` profile** so it starts
+  only when `deploy/.env` sets `COMPOSE_PROFILES=serp` — compose reads that from
+  the project-directory env file, so there is **no change to `deployment.sh`**;
+  image pinned `searxng/searxng:2026.8.1-8892414dc`; `mem_limit: 512m` /
+  `cpus: 0.5` / bounded json-file logs; **prod publishes no port** (only
+  `api`/`worker` reach it at `http://searxng:8080`, which is what lets its
+  limiter stay off) while **dev publishes a loopback** `YANKI_SEARXNG_PORT`
+  (default 8144) for debugging; deliberately **not** a `depends_on`, because the
+  SERP pass is fail-open. `deploy/searxng/settings.example.yml` (**new**,
+  tracked — only the four real web-search engines kept (`google cse`,
+  `duckduckgo`, `brave`, `startpage`), the six default widget engines dropped,
+  limiter off, JSON format on, the low-entropy `ultrasecretkey` placeholder);
+  `.gitignore` (ignore the host `deploy/searxng/settings.yml`, track only the
+  example); `deploy/.env.example` (the `COMPOSE_PROFILES` opt-in note plus the
+  `SERP_BASE_URL=http://searxng:8080` bundled value); ADR-29 in
+  [design.md](design.md); tech-debt **#43** and **#44**. Host-side, not in the
+  repo (operator action): the real `deploy/searxng/settings.yml` with a
+  generated `secret_key`, symlinked into the auto-deploy checkout exactly as
+  `deploy/.env` is, and the three `deploy/.env` lines `COMPOSE_PROFILES=serp` /
+  `SERP_ENABLED=1` / `SERP_BASE_URL=http://searxng:8080`.
+- **Acceptance:** `deploy/searxng/settings.yml` stays gitignored (the real key
+  never enters the public history CI scans); production runs a fifth container
+  at a measured ~105–150 MiB steady state, capped at 512 MiB; SERP is live and
+  reads real results (Salesforce 4/4, HubSpot 4/4, Baykar 3/4 on their own
+  categories, ~0.5 s median per query; 8/8 buyer-style queries measurable at
+  20–30 results each); `unresponsive_engines` is non-empty on most stored rows —
+  accurate reporting, not a fault, because two of the four engines are usually
+  refused from this egress IP; turning SERP on costs no `deployment.sh` change,
+  and any deployment that has not set `COMPOSE_PROFILES=serp` never creates the
+  container.
+- **Status:** ✅ **done — session 17 (2026-08-03)** on `feat/serp-instance`.
+  **Not shipped, deliberately:** any change to the SERP feature code itself, a
+  weighted / position-aware SERP score, scheduled re-measurement over time, and
+  Google AI Overviews tracking (still no $0 source, roadmap Later). Two new
+  tech-debt items: **#43** (DRY_RUN forces the mock SERP source, so the real
+  SERP path cannot be rehearsed with a mocked LLM panel) and **#44** (two of the
+  four engines refused per query, so the score leans on `google cse` more than a
+  four-engine panel suggests).
 
 ---
 

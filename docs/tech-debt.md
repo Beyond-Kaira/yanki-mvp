@@ -13,8 +13,10 @@ host-suffix, not eTLD+1), **#38** (the measurable/miss split trusts
 (integration tests pin one SearXNG tag — the schedule-only `upstream` job is
 what catches drift), plus **#41** (own-site matching compares raw host strings,
 so an IDN domain can miss) and **#42** (the SERP response is read without a byte
-cap) — both raised by an adversarial review of the branch before merge. No
-repayments this pass. Earlier —
+cap) — both raised by an adversarial review of the branch before merge; then
+**#43** (DRY_RUN forces the mock SERP source) and **#44** (two of four
+engines are refused from this egress IP) when the instance was actually
+stood up (ADR-29). No repayments this pass. Earlier —
 2026-07-28 (discovery + KYC pass: three new items — **#27**
 (KYC-stage spend counts toward no cost cap), **#28** (`_is_html` fails open on a
 missing Content-Type), **#29** (steps 2b/6 specified but parked on an operator
@@ -454,3 +456,29 @@ devDependencies).)
     misbehaving or compromised instance could make a worker allocate a lot of
     memory. A streamed read with a cap would close it cheaply if the instance
     ever stops being trusted infrastructure.
+43. **`DRY_RUN` forces the mock SERP source, so real search cannot be rehearsed
+    with a mocked panel** (2026-08-03, ADR-29, found by trying it): the registry
+    checks `dry_run` *before* `serp_base_url`, so a stack with `DRY_RUN=1` and a
+    perfectly good instance configured still gets `MockSerpSource`. That
+    coupling is deliberate — DRY_RUN promises `$0` and a reproducible run, and
+    CI's `stack` job asserts `source == "mock"` — but it conflates "spend no
+    money" with "make no network calls", and SERP against an instance you host
+    yourself costs nothing. The practical cost showed up immediately: the only
+    way to exercise the real-SERP path end to end is `DRY_RUN=0`, which also
+    turns the LLM panel real and therefore costs money, so the pre-deploy
+    rehearsal had to verify the adapter directly instead of through the pipeline.
+    A third mode (`SERP_DRY_RUN`, or letting an explicit base URL win) would fix
+    it; not done here because it widens the run-mode matrix CI has to pin, and
+    the production path (`DRY_RUN=0`) is unaffected.
+44. **Two of the four search engines are refused from this egress IP, and which
+    two varies per query** (2026-08-03, ADR-29, measured): across 8 buyer-style
+    queries `brave` and `startpage` refused every time while `google cse`
+    answered every time — but a later probe had `brave` answering and
+    `duckduckgo` refusing. So `unresponsive_engines` is non-empty on most stored
+    rows, and in practice the SERP number leans on `google cse`. Results are
+    still plentiful (20–30 per page) so pages stay measurable, and this is
+    recorded rather than fixed because the honest reading is "we depend on one
+    engine more than the panel suggests" — worth knowing before anyone reads the
+    score as a four-engine consensus. If Google CSE ever starts refusing too,
+    expect pages to go unmeasurable rather than to silently report zeros; that is
+    the design working, but it will look like an outage.

@@ -1050,3 +1050,69 @@ decision → consequences**, with one line on why the alternative was rejected.
   VPS is shared with three other tenants and the feature is off by default —
   standing up the instance is an operator decision, recorded in
   `operator-expected.md`).
+
+### ADR-29 — The SearXNG instance is a profile-gated compose service, opt-in from `deploy/.env` (2026-08-03)
+- **Context:** ADR-28 shipped SERP visibility but deliberately left the instance
+  itself unbuilt, because standing one up costs real resources on a VPS shared
+  with four other production tenants and that spend is the operator's call, not
+  engineering's. The operator made the call the same day: turn it on. That
+  converts a rejected option into a decision that needs its own record — and
+  measuring the thing first changed several of its parameters.
+- **Decision:**
+  - **A compose service behind the `serp` profile**, not a hand-run container.
+    A snowflake container nobody can see in a file is how infrastructure gets
+    lost. The profile is the opt-in, and compose reads `COMPOSE_PROFILES` from
+    the project-directory env file — which here *is* `deploy/.env` — so turning
+    it on costs **no change to `deployment.sh`**, and any other deployment of
+    this repo never creates a container it did not ask for.
+  - **No published ports, and the limiter off — as one decision, not two.**
+    Nothing but `api` and `worker` may reach it, over the compose network at
+    `http://searxng:8080`. SearXNG's limiter answers 403 to a bot-shaped client
+    and Yanki identifies as `YankiBot/0.1`, so with the limiter on every query
+    would read as unavailable. Turning it off is safe *because* there is no port;
+    whoever changes one must change the other.
+  - **Only the four real web-search engines** (`google cse`, `duckduckgo`,
+    `brave`, `startpage`). The other six SearXNG enables by default in the
+    `general` category are translation, currency and encyclopedia widgets which
+    cannot produce an organic commercial result. Measured from this VPS across 8
+    buyer-style queries: `google cse` answered 8/8, `duckduckgo` 5/8, `brave` and
+    `startpage` refused 8/8. The two blocked ones are **kept anyway** — a later
+    probe from inside the compose network had `brave` answering and `duckduckgo`
+    refusing, so availability is genuinely intermittent per query, and a set
+    narrowed to today's winners would be tuned to noise.
+  - **Hard caps: 512 MiB memory, 0.5 CPU, bounded json-file logs.** Measured
+    steady state is ~105–150 MiB. The box had ~3 GB available with Ant Media at
+    1.1 GB and two ClickHouse instances beside it; an unbounded search aggregator
+    on that box is a neighbour-killer waiting for a slow day.
+  - **`deploy/searxng/settings.yml` lives on the host, gitignored, and is
+    symlinked into the auto-deploy checkout** — exactly the arrangement
+    `deploy/.env` already uses, for exactly the same reason: it carries a real
+    `secret_key`, the repo is public, and CI scans full history with gitleaks.
+    Only `settings.example.yml` is tracked, with SearXNG's own low-entropy
+    `ultrasecretkey` placeholder. The container generates a key **only** when no
+    settings file exists; a mounted one is used verbatim, so the substitution is
+    a one-time host action.
+  - **Not a `depends_on` of api/worker.** A profile-gated dependency is awkward
+    for compose, and it is unnecessary: the SERP pass is fail-open, so a query in
+    the seconds before the instance is ready is recorded as "not measured" and
+    costs the run nothing else. The fail-open design paying for itself here is
+    the reason it was built that way.
+- **Consequences:** production now runs a fifth container (~150 MiB). SERP is
+  live: measured against real results, Salesforce scores 4/4, HubSpot 4/4 and
+  Baykar 3/4 on their own categories, at ~0.5 s median per query. Because two of
+  the four engines are usually refused from this egress IP,
+  `unresponsive_engines` will be non-empty on most stored rows — that is accurate
+  reporting, not a fault, and it is exactly the field `SerpPage.measurable`
+  exists to weigh. `deploy/.env` gains three lines (`COMPOSE_PROFILES=serp`,
+  `SERP_ENABLED=1`, `SERP_BASE_URL`). The dev compose file gains the same service
+  behind the same profile, publishing a loopback port so it can be curled while
+  debugging.
+- **Rejected:** a hand-run container outside compose (invisible infrastructure —
+  it survives until the day someone needs to know it exists); an always-on
+  service with no profile (makes every deployment of a public repo pay for a
+  container it never asked for); publishing a port (would force the limiter back
+  on, which blocks our own client); narrowing to `google cse` + `duckduckgo`
+  (measured intermittency says today's winners are not tomorrow's); committing a
+  settings file with a real key (gitleaks, public repo — and it would be a lie in
+  the template); adding the usual valkey/redis cache sidecar (a second container
+  on a tight box, for a handful of queries per analysis).

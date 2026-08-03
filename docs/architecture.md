@@ -10,10 +10,13 @@ topology. For the **why** behind these choices (the ADR log), see
 
 ## 1. System at a glance
 
-Four processes, one Postgres. The api and the worker are the **same Docker
-image** (built from `backend/Dockerfile`) started with different commands — the
-api serves HTTP, the worker polls the queue. There is no message broker: the
-`analyses` table *is* the queue (see §4).
+Four application processes over one Postgres — plus, wherever an operator has
+turned SERP on (production has, ADR-29), a fifth container: an open-source
+`searxng` metasearch instance the worker reads during footprint (§ outbound
+calls, ADR-28). The api and the worker are the **same Docker image** (built
+from `backend/Dockerfile`) started with different commands — the api serves
+HTTP, the worker polls the queue. There is no message broker: the `analyses`
+table *is* the queue (see §4).
 
 ```
                         ┌─────────────────────────────────────────┐
@@ -50,15 +53,23 @@ api serves HTTP, the worker polls the queue. There is no message broker: the
                         ┌───────────────────┴─────────────────────┐
    worker (sync loop)  │  worker       while True: poll + sleep    │
                         │               runs backend/app/pipeline/ │
-                        │               calls providers/ (LLM)     │
-                        └───────────────────┬─────────────────────┘
-                                            │  DRY_RUN=1 → mock; else real/stub
-                                            ▼
-                        ┌─────────────────────────────────────────┐
-                        │  LLM providers: anthropic (real),        │
-                        │  openai (real), gemini + perplexity      │
-                        │  (stub), mock (deterministic, $0)        │
-                        └─────────────────────────────────────────┘
+                        │               calls providers/ + serp/   │
+                        └─────────┬─────────────────────┬─────────┘
+                        execute:  │                     │  footprint SERP pass —
+                        DRY_RUN   │                     │  only if SERP_ENABLED=1,
+                        → mock,   ▼                     ▼  reads the searxng service
+                        else real/stub                     below (serp profile):
+                        ┌───────────────────┐ ┌───────────────────┐
+                        │ LLM providers:    │ │ searxng  :8080    │
+                        │ anthropic, openai │ │ metasearch engine │
+                        │ (real), gemini +  │ │ on the compose    │
+                        │ perplexity (stub),│ │ network, with NO  │
+                        │ mock ($0)         │ │ published port    │
+                        └───────────────────┘ └─────────┬─────────┘
+                                                        │ in turn queries the public
+                                                        ▼ engines it is configured for:
+                                                google cse · duckduckgo ·
+                                                brave · startpage
 ```
 
 Components (all in this repo):
@@ -69,21 +80,27 @@ Components (all in this repo):
 | api | `backend/` (`app.api.main:app`) | 8141 | FastAPI, **sync**; validates + enqueues + serves status/results. |
 | worker | `backend/` (`app.worker`) | — | Same image as api; polls the queue, runs the pipeline. |
 | db | Postgres 16 | 5432 (dev only) | System of record **and** the job queue. |
+| searxng | `deploy/` (image `searxng/searxng`, `serp` profile) | — in prod (dev: 8144, loopback) | Open-source metasearch the worker reads for the footprint SERP pass; reachable only in-network at `http://searxng:8080` (ADR-28/29). |
 
 The api never calls an LLM and never runs a pipeline step; it only reads/writes
 rows. All the slow, costly work happens in the worker.
 
-Outbound network calls all originate in the **worker**, never the api: discovery
+Outbound network calls all originate in the **worker**, never the api. Discovery
 fetches the submitted URL over httpx (SSRF-guarded by `net_guard` — the host must
-resolve to a public address), the execute step calls the LLM providers above,
-and — only when an operator turns it on — the footprint step's SERP pass reads a
-**SearXNG** instance (an open-source metasearch engine, ADR-28). SearXNG is
-**optional and off by default** (`SERP_ENABLED=0`, no base URL) and is
-**operator-run** infrastructure, not something the stack stands up for you. Its
-base URL is deliberately **not** run through the `net_guard` SSRF check: unlike
-the stranger-submitted discovery URL, it is the operator's own config, and the
-intended target — `http://searxng:8080` on the compose network — is exactly the
-private address space that guard is there to reject.
+resolve to a public address); the execute step calls the LLM providers above;
+and the footprint step's SERP pass reads a **SearXNG** instance — an open-source
+metasearch engine (ADR-28) that the stack now **ships** as a profile-gated
+compose service (ADR-29, §5), no longer a piece of infrastructure you stand up
+by hand. Yanki's own call stays inside the compose network — the worker reads
+`http://searxng:8080` — but SearXNG then makes the leg the worker never does
+itself: it fans each query out to the four public web-search engines its config
+keeps enabled (`google cse`, `duckduckgo`, `brave`, `startpage`) and returns
+their merged results. The pass is still gated by `SERP_ENABLED` (`0` in the
+shipped defaults, `1` in the production `deploy/.env`), and its base URL is
+deliberately **not** run through the `net_guard` SSRF check: unlike the
+stranger-submitted discovery URL it is the operator's own config, and the
+intended target — a private `searxng:8080` on the compose network — is exactly
+the address space that guard exists to reject.
 
 ---
 
@@ -422,8 +439,8 @@ and `YANKI_PROD_API_PORT` (→8143), loopback-bound (the prod VPS already uses
 
 Yanki runs **no edge of its own**. It deploys onto the **same VPS**
 (161.97.172.146) that already serves the other beyondkaira sites (pulse-prod,
-Ant Media, brier) — **those must never be disturbed**. The **host nginx**
-vhost (`deploy/nginx/yanki.beyondkaira.com.conf`, installed under
+Ant Media, brier, evrak-app) — **those must never be disturbed**. The **host
+nginx** vhost (`deploy/nginx/yanki.beyondkaira.com.conf`, installed under
 `/etc/nginx`) terminates TLS on `yanki.beyondkaira.com` (certbot HTTP-01
 webroot renewal) and **path-routes** on one origin (so still no CORS),
 reaching Yanki over the stack's loopback host binds:
@@ -446,16 +463,37 @@ reaching Yanki over the stack's loopback host binds:
   SHA, `compose -p yanki-prod up`, `/healthz` check, roll back to the last-good
   SHA file on failure. **First exercised for real 2026-07-10 (P4.2)** — both
   paths ran clean on the shared VPS with co-tenants verified undisturbed.
-- **No SearXNG service ships in the production stack.** SERP visibility (ADR-28)
-  is off by default, so the `yanki-prod` compose file adds no search container
-  and the topology above is unchanged for an existing deployment. Turning it on
-  is an operator decision (recorded in
-  [`operator-expected.md`](operator-expected.md)): stand up a SearXNG container —
-  the intended shape is an **optional sidecar** on the compose network reachable
-  at `http://searxng:8080` — then set `SERP_ENABLED=1` and `SERP_BASE_URL`. That
-  URL is operator config and is not SSRF-guarded (see §1). The VPS is shared with
-  three other tenants, which is the other reason the instance is not stood up for
-  you.
+- **A `searxng` service ships behind the `serp` profile (ADR-29).** The operator
+  turned SERP on, so the `yanki-prod` compose file now defines a fifth container,
+  `searxng` (`searxng/searxng:2026.8.1-8892414dc`, pinned like every other
+  image). It is **profile-gated**: compose reads `COMPOSE_PROFILES` from the
+  project-directory env file — which here *is* `deploy/.env` — so the single line
+  `COMPOSE_PROFILES=serp` there is the whole opt-in and **`deployment.sh` needed
+  no change**; a deployment that does not set it never creates the container.
+  Turning SERP on is three lines in `deploy/.env`: `COMPOSE_PROFILES=serp`,
+  `SERP_ENABLED=1`, `SERP_BASE_URL=http://searxng:8080`.
+- **It publishes no host port in prod.** Only `api` and `worker` reach it, over
+  the compose network at `http://searxng:8080`; its limiter is off, which is safe
+  *only because* nothing is published (SearXNG's limiter 403s a bot-shaped
+  client, and Yanki identifies as `YankiBot/0.1`, so the port and the limiter
+  must always move together). The **dev** compose file does publish a loopback
+  port (`YANKI_SEARXNG_PORT`, default 8144) for debugging. It is deliberately
+  **not** a `depends_on` of api/worker — the SERP pass is fail-open, so a query
+  in the seconds before the instance is ready is simply recorded as "not
+  measured" (see §1) and costs the run nothing else.
+- **Hard resource caps, because the VPS is shared.** `mem_limit: 512m`,
+  `cpus: 0.5`, and bounded json-file logs (`max-size 10m`, `max-file 3`) fence it
+  in; measured steady state is ~105–150 MiB. The box is shared with four other
+  production tenants (pulse-prod, Ant Media, brier, evrak-app) and had ~3 GB
+  free, so an unbounded search aggregator would be a neighbour-killer.
+- **`deploy/searxng/settings.yml` is host-side, gitignored, and symlinked into
+  the auto-deploy checkout** at `~/deploy/yanki-mvp/deploy/searxng/settings.yml`
+  — exactly the arrangement `deploy/.env` already uses, and for the same reason:
+  it carries a real `secret_key` and this repo is public with a full-history
+  gitleaks scan, so only `settings.example.yml` is tracked. That file narrows
+  SearXNG to the four real web-search engines and turns its JSON output on; if a
+  `serp` number is unexpectedly empty, whether this file (and its symlink into
+  the checkout) resolves is the first thing to check.
 
 **One-time prerequisites** (done once by an admin — from README §Deploy):
 

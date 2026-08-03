@@ -43,8 +43,3 @@ export function validatePasswordConfirmation(
   if (value !== password) return 'Passwords do not match.'
   return null
 }
-
-export function validateTermsAccepted(accepted: boolean): string | null {
-  if (!accepted) return 'Accept the terms to continue.'
-  return null
-}

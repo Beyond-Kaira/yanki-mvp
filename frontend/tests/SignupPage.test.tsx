@@ -55,7 +55,6 @@ async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Work email'), 'ada@example.com')
   await user.type(screen.getByLabelText('Password'), 'hunter2!pass')
   await user.type(screen.getByLabelText('Confirm password'), 'hunter2!pass')
-  await user.click(screen.getByLabelText(/I agree to the/))
 }
 
 describe('SignupPage', () => {
@@ -89,7 +88,6 @@ describe('SignupPage', () => {
     expect(screen.getByText('Enter your email address.')).toBeInTheDocument()
     expect(screen.getByText('Choose a password.')).toBeInTheDocument()
     expect(screen.getByText('Re-enter your password.')).toBeInTheDocument()
-    expect(screen.getByText('Accept the terms to continue.')).toBeInTheDocument()
     expect(mockedSignup).not.toHaveBeenCalled()
   })
 
@@ -116,17 +114,12 @@ describe('SignupPage', () => {
     expect(mockedSignup).not.toHaveBeenCalled()
   })
 
-  it('blocks submit until the terms are accepted', async () => {
-    const user = userEvent.setup()
+  it('asks for no agreement, because there are no terms to agree to', () => {
     renderPage()
-
-    await user.type(screen.getByLabelText('Work email'), 'ada@example.com')
-    await user.type(screen.getByLabelText('Password'), 'hunter2!pass')
-    await user.type(screen.getByLabelText('Confirm password'), 'hunter2!pass')
-    await user.click(screen.getByRole('button', { name: 'Sign up' }))
-
-    expect(screen.getByText('Accept the terms to continue.')).toBeInTheDocument()
-    expect(mockedSignup).not.toHaveBeenCalled()
+    // A required consent pointing at an unwritten document is not consent. The
+    // checkbox belongs here only once /terms carries real text.
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /terms/i })).not.toBeInTheDocument()
   })
 
   it('signs in with the same credentials, since signup issues no session', async () => {

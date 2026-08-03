@@ -5,7 +5,6 @@ import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Button from '@/components/Button'
-import Checkbox from '@/components/Checkbox'
 import FormError from '@/components/FormError'
 import FormField from '@/components/FormField'
 import PasswordField from '@/components/PasswordField'
@@ -16,8 +15,12 @@ import {
   validateEmail,
   validateNewPassword,
   validatePasswordConfirmation,
-  validateTermsAccepted,
 } from '@/lib/validation'
+
+// No terms checkbox. There are no terms: asking someone to agree to a document
+// that has not been written is a consent that means nothing, and a required one
+// at that. The checkbox and the page it pointed at come back together with the
+// real text — see docs/tech-debt.md.
 
 const FORM_ERROR_ID = 'signup-error'
 
@@ -25,7 +28,6 @@ interface FieldErrors {
   email?: string | null
   password?: string | null
   confirmPassword?: string | null
-  terms?: string | null
 }
 
 export default function SignupPage() {
@@ -34,7 +36,6 @@ export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -52,11 +53,10 @@ export default function SignupPage() {
       email: validateEmail(email),
       password: validateNewPassword(password),
       confirmPassword: validatePasswordConfirmation(confirmPassword, password),
-      terms: validateTermsAccepted(acceptedTerms),
     }
     setFieldErrors(errors)
-    const order = ['email', 'password', 'confirm-password', 'terms'] as const
-    const keys = ['email', 'password', 'confirmPassword', 'terms'] as const
+    const order = ['email', 'password', 'confirm-password'] as const
+    const keys = ['email', 'password', 'confirmPassword'] as const
     const firstInvalid = order.find((_, i) => errors[keys[i]])
     if (firstInvalid) {
       // Moving focus is what announces the failure: a screen reader reads the
@@ -150,31 +150,6 @@ export default function SignupPage() {
             }}
             disabled={submitting}
             error={fieldErrors.confirmPassword}
-          />
-
-          <Checkbox
-            id="terms"
-            name="terms"
-            checked={acceptedTerms}
-            onChange={(event) => {
-              setAcceptedTerms(event.target.checked)
-              setFieldErrors((current) => ({ ...current, terms: null }))
-            }}
-            disabled={submitting}
-            error={fieldErrors.terms}
-            label={
-              <>
-                I agree to the{' '}
-                {/* /terms is a placeholder until the real text is written, so
-                    this checkbox is not yet an agreement to anything. */}
-                <Link
-                  href="/terms"
-                  className="rounded font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  terms and conditions
-                </Link>
-              </>
-            }
           />
 
           {formError ? (

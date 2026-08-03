@@ -13,9 +13,11 @@
 //   me       200, needs `Authorization: Bearer`, returns the user.
 //   logout   204, clears the cookie server-side.
 //
-// TODO(auth): still missing on the backend, so the page for it cannot work yet:
-//   a password-reset request endpoint. `requestPasswordReset` below posts to the
-//   path this app assumes; until it exists the call fails and the form says so.
+// Password reset has no endpoint on the backend, so it ships no screen either:
+// the `/forgot-password` route and the link to it are deliberately absent, since
+// a form that can only answer "Not Found" is worse than no form. Only the client
+// below survives, unrouted, as the contract the endpoint is expected to meet
+// (see docs/tech-debt.md).
 
 import { ApiError, authorizedFetch, readErrorMessage } from './api'
 import type { AuthUser, Credentials, LoginResponse } from './contracts'

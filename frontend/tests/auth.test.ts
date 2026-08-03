@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchCurrentUser, login, logout, signup } from '@/lib/auth'
+import {
+  fetchCurrentUser,
+  login,
+  logout,
+  requestPasswordReset,
+  signup,
+} from '@/lib/auth'
 import { ApiError } from '@/lib/api'
 import { getAccessToken, setAccessToken } from '@/lib/session'
 
@@ -163,5 +169,34 @@ describe('logout', () => {
 
     await expect(logout()).resolves.toBeUndefined()
     expect(getAccessToken()).toBeNull()
+  })
+})
+
+// No screen reaches this yet — the backend has no password-reset endpoint, so
+// the route and the link to it are not shipped. The client stays because it is
+// the contract the endpoint is expected to meet, and these hold it to that.
+describe('requestPasswordReset', () => {
+  it('posts the email alone to the path the app assumes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(requestPasswordReset('ada@example.com')).resolves.toBeUndefined()
+
+    const [path, init] = fetchMock.mock.calls[0]
+    expect(path).toBe('/api/v1/auth/password-reset')
+    expect(JSON.parse(init.body)).toEqual({ email: 'ada@example.com' })
+  })
+
+  it('rejects rather than reporting success while the endpoint is missing', async () => {
+    // What the backend answers today: the route is not registered, so FastAPI
+    // returns 404. Resolving on that would tell someone a mail was sent.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(404, { detail: 'Not Found' })),
+    )
+
+    await expect(requestPasswordReset('ada@example.com')).rejects.toBeInstanceOf(
+      ApiError,
+    )
   })
 })

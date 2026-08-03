@@ -116,14 +116,10 @@ export default function LoginPage() {
             error={fieldErrors.password}
           />
 
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Link
-              href="/forgot-password"
-              className="inline-flex min-h-[40px] items-center rounded text-sm font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              Forgot password?
-            </Link>
-          </div>
+          {/* No "Forgot password?" link: the backend has no password-reset
+              endpoint yet, and a prominent link into a flow that can only fail
+              is worse than no link at all. It comes back with the endpoint —
+              see docs/tech-debt.md. */}
 
           {formError ? (
             <FormError id={FORM_ERROR_ID}>{formError}</FormError>

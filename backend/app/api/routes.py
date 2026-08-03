@@ -17,6 +17,8 @@ from app.api.schemas import (
     PromptOut,
     ResponseOut,
     ResultOut,
+    SerpCheckOut,
+    SerpVisibilityOut,
     WaitlistRequest,
     WaitlistResponse,
 )
@@ -64,6 +66,19 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
             for stat in summary.competitors_appeared
         ]
 
+    # SERP visibility (ADR-28). Present only when the run actually measured it:
+    # a null summary says "we did not look", which must never render as a zero.
+    serp: SerpVisibilityOut | None = None
+    if analysis.serp_status is not None:
+        serp = SerpVisibilityOut(
+            status=analysis.serp_status,
+            source=analysis.serp_source,
+            score=analysis.serp_score,
+            hits=analysis.serp_hit_count or 0,
+            queries=analysis.serp_query_count or 0,
+            checks=[SerpCheckOut.model_validate(c) for c in analysis.serp_checks],
+        )
+
     result = ResultOut(
         kyc=analysis.kyc,
         prompts=[PromptOut.model_validate(p) for p in analysis.prompts],
@@ -73,6 +88,7 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
         total_responses=analysis.total_responses,
         engine_presence=engine_presence,
         competitors_appeared=competitors_appeared,
+        serp=serp,
     )
     return AnalysisOut(
         id=analysis.id,

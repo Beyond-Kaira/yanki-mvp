@@ -41,6 +41,7 @@ api serves HTTP, the worker polls the queue. There is no message broker: the
                         │           Postgres 16  (db)              │
                         │  analyses │ prompts │ responses │        │
                         │  llm_cache│ checker_submissions          │
+                        │  serp_checks                             │
                         │  analyses table doubles as the job queue │
                         └───────────────────┬─────────────────────┘
                                             ▲
@@ -71,6 +72,18 @@ Components (all in this repo):
 
 The api never calls an LLM and never runs a pipeline step; it only reads/writes
 rows. All the slow, costly work happens in the worker.
+
+Outbound network calls all originate in the **worker**, never the api: discovery
+fetches the submitted URL over httpx (SSRF-guarded by `net_guard` — the host must
+resolve to a public address), the execute step calls the LLM providers above,
+and — only when an operator turns it on — the footprint step's SERP pass reads a
+**SearXNG** instance (an open-source metasearch engine, ADR-28). SearXNG is
+**optional and off by default** (`SERP_ENABLED=0`, no base URL) and is
+**operator-run** infrastructure, not something the stack stands up for you. Its
+base URL is deliberately **not** run through the `net_guard` SSRF check: unlike
+the stranger-submitted discovery URL, it is the operator's own config, and the
+intended target — `http://searxng:8080` on the compose network — is exactly the
+private address space that guard is there to reject.
 
 ---
 
@@ -129,14 +142,21 @@ queryable (FR-7).
 │               │  space; NOT suffix-tolerant (that is roadmap §2c / step 2b).
 │               │  ±60-char snippet on first hit, in its ORIGINAL spelling
 │               │  updates each responses.footprint + matched_snippet
-└──────┬────────┘  ── progress = 90
+│               │  ── THEN, in the SAME step (ADR-28): serp_visibility.run_serp
+│               │  searches a SearXNG instance with brand-free queries (from
+│               │  prompts.topic_pool, re-checked by leaks_brand). A hit is a
+│               │  domain OR text match via the same footprint.detect. Persists
+│               │  serp_checks (one row/query) + analyses.serp_{score,hit_count,
+│               │  query_count,status,source}. Fail-open (never raises) and OFF
+│               │  by default — with no source, every serp_* column stays null.
+└──────┬────────┘  ── progress = 90 (SERP adds no new step)
        ▼
 ┌───────────────┐  scoring.geo_score(footprints, total) -> float
 │ 6. scoring    │  PURE; footprint_count / total_responses; 0.0 when total==0
 │               │  writes analyses.geo_score, footprint_count, total_responses
 └──────┬────────┘  ── progress = 100, status = 'done'
        ▼
- RESULTS (GET /api/v1/analyses/{id} → result{ kyc, prompts, responses, geo_score })
+ RESULTS (GET /api/v1/analyses/{id} → result{ kyc, prompts, responses, geo_score, serp })
 ```
 
 ### Progress mapping (SPEC — set when the step COMPLETES)
@@ -155,6 +175,16 @@ queryable (FR-7).
 frontend polls `GET` every 2s and renders the 6-step `StepProgress` from
 `current_step` + `progress` until `status` is `done` (→ `ScoreGauge` +
 `ResultsTable`) or `failed` (→ danger card with `error` + retry link).
+
+**SERP visibility (ADR-28) runs *inside* step 5 (footprint), not as a seventh
+step.** It adds no new `current_step` value, no progress checkpoint and no change
+to the 6-step `StepProgress` contract — the mapping above is untouched. Its
+output surfaces as a nullable `result.serp` object whose emptiness carries three
+distinct meanings: `serp` **null** = never measured (the feature was off, as it
+is by default, or the row predates ADR-28); a present `serp` with `score`
+**null** = we searched but could not read the results; `score` **0.0** = we read
+them and the company appeared in none. Unmeasurable pages — where every upstream
+engine refused — are excluded from the denominator, never counted as misses.
 
 ### DRY_RUN / mock provider path
 
@@ -181,6 +211,13 @@ So the entire 6-step flow — and the whole test suite — runs offline at zero 
 and produces a stable, non-trivial score. Stub engines (gemini/perplexity) also
 cost $0 and return a canned answer that *sometimes mentions nothing*, so
 footprint detection sees both outcomes even outside DRY_RUN.
+
+The SERP pass has the same `DRY_RUN` shape. When SERP is switched on **under
+`DRY_RUN`**, `serp/registry.py` hands the footprint step a deterministic
+`MockSerpSource` instead of `SearxngSource` — **$0, no network, no instance** — so
+the SERP tests and the DRY_RUN compose stack need no SearXNG, and the score is
+just hits over the queries it could actually read. With `SERP_ENABLED=0` (the
+default) the registry returns *no* source and the pass is skipped entirely.
 
 ### llm_cache behavior
 
@@ -409,6 +446,16 @@ reaching Yanki over the stack's loopback host binds:
   SHA, `compose -p yanki-prod up`, `/healthz` check, roll back to the last-good
   SHA file on failure. **First exercised for real 2026-07-10 (P4.2)** — both
   paths ran clean on the shared VPS with co-tenants verified undisturbed.
+- **No SearXNG service ships in the production stack.** SERP visibility (ADR-28)
+  is off by default, so the `yanki-prod` compose file adds no search container
+  and the topology above is unchanged for an existing deployment. Turning it on
+  is an operator decision (recorded in
+  [`operator-expected.md`](operator-expected.md)): stand up a SearXNG container —
+  the intended shape is an **optional sidecar** on the compose network reachable
+  at `http://searxng:8080` — then set `SERP_ENABLED=1` and `SERP_BASE_URL`. That
+  URL is operator config and is not SSRF-guarded (see §1). The VPS is shared with
+  three other tenants, which is the other reason the instance is not stood up for
+  you.
 
 **One-time prerequisites** (done once by an admin — from README §Deploy):
 
@@ -434,6 +481,7 @@ reaching Yanki over the stack's loopback host binds:
 | Job `failed` at "could not identify the company / what the company does" | The step-2 usability gate (`kyc.require_usable`) stopped the run **before** any paid execute call — working as designed, not a bug. The offending profile is on the row (`analyses.kyc`): look at it. Usual causes are a site whose only content is a JS-rendered shell the SPA fallback missed, or a non-HTML homepage. |
 | `max retries exceeded` | Job hit `attempts > 3` — a poison job. Inspect its `url` / `error`; don't just re-queue. |
 | Unexpected LLM spend | Confirm `DRY_RUN` and `PANEL_ENGINES`; check `MAX_RESPONSES_PER_JOB` and `llm_cache` hit rate. CI/tests must stay `DRY_RUN`. |
+| `result.serp` null / no SERP number | Expected unless an operator ran a SearXNG instance and set `SERP_ENABLED=1` + `SERP_BASE_URL`. SERP is off by default and **fail-open**: an instance being down leaves the `serp_*` columns null and never fails the run. A present `serp` with `score` null (not `0.0`) means the instance answered but every engine refused — see `serp_checks.unresponsive_engines`. |
 | 404 on a valid-looking id | Unknown/never-created id. 422 instead means URL validation rejected the submit. |
 | Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: host nginx path-routing (`/etc/nginx` vhost) + the 127.0.0.1:8142/8143 loopback binds. |
 

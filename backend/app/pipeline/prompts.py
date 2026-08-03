@@ -245,11 +245,16 @@ def _is_category_like(phrase: str) -> bool:
     return True
 
 
-def _brand_keys(kyc) -> list[str]:
+def brand_keys(kyc) -> list[str]:
     """Normalized forms of the company name and its aliases.
 
     Anything shorter than ``_MIN_BRAND_KEY_LEN`` is dropped for the same reason
     ``footprint`` drops it: a one-character key matches everything.
+
+    Public because the brand-leak rule is not a property of *prompts* — it is a
+    property of anything we generate and then measure the brand in. SERP query
+    generation needs exactly this pool (ADR-28), and a second copy of it would
+    drift the way ADR-26 refused to let the fold map drift.
     """
     keys: set[str] = set()
     for name in [getattr(kyc, "company", ""), *(getattr(kyc, "aliases", []) or [])]:
@@ -262,10 +267,10 @@ def _brand_keys(kyc) -> list[str]:
     return sorted(keys)
 
 
-def _leaks_brand(text: str, brand_keys: list[str]) -> bool:
-    """True when a question names the very brand it is supposed to measure."""
+def leaks_brand(text: str, keys: list[str]) -> bool:
+    """True when generated text names the very brand it is supposed to measure."""
     haystack = normalize_key(text)
-    return any(contains(haystack, key) for key in brand_keys)
+    return any(contains(haystack, key) for key in keys)
 
 
 def topic_pool(kyc, max_words: int = _MAX_TOPIC_WORDS) -> list[Topic]:
@@ -291,7 +296,7 @@ def topic_pool(kyc, max_words: int = _MAX_TOPIC_WORDS) -> list[Topic]:
     if industry:
         candidates.append(Topic(industry))
 
-    brand_keys = _brand_keys(kyc)
+    keys = brand_keys(kyc)
     pool: list[Topic] = []
     seen: set[str] = set()
     for topic in candidates:
@@ -300,7 +305,7 @@ def topic_pool(kyc, max_words: int = _MAX_TOPIC_WORDS) -> list[Topic]:
             continue
         if _word_count(topic.text) > max_words or not _is_category_like(topic.text):
             continue
-        if _leaks_brand(topic.text, brand_keys):
+        if leaks_brand(topic.text, keys):
             continue
         seen.add(key)
         pool.append(topic)
@@ -428,7 +433,7 @@ def _shapes(category: str, topic: Topic, ctx: _Context) -> list[str]:
 
 
 def _question_specs(
-    kyc, topics: list[Topic], count: int, brand_keys: list[str]
+    kyc, topics: list[Topic], count: int, keys: list[str]
 ) -> list[PromptSpec]:
     """``count`` unique category-question prompts, cycling CATEGORIES/topics.
 
@@ -453,7 +458,7 @@ def _question_specs(
         shapes = _shapes(category, topic, ctx)
         text = shapes[(step // cycle) % len(shapes)]
         step += 1
-        if text in seen or _leaks_brand(text, brand_keys):
+        if text in seen or leaks_brand(text, keys):
             continue
         seen.add(text)
         specs.append(PromptSpec(text=text, category=category))
@@ -466,7 +471,7 @@ def _question_specs(
         topic = topics[pad % len(topics)]
         text = _PADDERS[pad % len(_PADDERS)].format(topic=topic.text)
         pad += 1
-        if text in seen or _leaks_brand(text, brand_keys):
+        if text in seen or leaks_brand(text, keys):
             continue
         seen.add(text)
         category = CATEGORIES[len(specs) % lap]
@@ -483,7 +488,7 @@ def _question_specs(
     while len(specs) < count and variant <= max_variant:
         text = f"What are the best {topics[0].text} options worth considering ({variant})?"
         variant += 1
-        if text in seen or _leaks_brand(text, brand_keys):
+        if text in seen or leaks_brand(text, keys):
             continue
         seen.add(text)
         category = CATEGORIES[len(specs) % lap]
@@ -504,7 +509,7 @@ def generate_prompts(kyc, count: int) -> list[PromptSpec]:
         return []
 
     company = clean_str(kyc.company, max_chars=120)
-    brand_keys = _brand_keys(kyc)
+    keys = brand_keys(kyc)
     topics = _question_topics(kyc)
     products = _clean_list(kyc.products) if company else []
 
@@ -514,7 +519,7 @@ def generate_prompts(kyc, count: int) -> list[PromptSpec]:
     brand_positions = _brand_positions(budget, count)
 
     # More than enough unique category questions to fill every non-brand slot.
-    questions = _question_specs(kyc, topics, count, brand_keys)
+    questions = _question_specs(kyc, topics, count, keys)
 
     specs: list[PromptSpec] = []
     seen: set[str] = set()

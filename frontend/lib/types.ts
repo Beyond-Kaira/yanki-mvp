@@ -418,8 +418,66 @@ export interface components {
             prompts: components["schemas"]["PromptOut"][];
             /** Responses */
             responses: components["schemas"]["ResponseOut"][];
+            serp: components["schemas"]["SerpVisibilityOut"] | null;
             /** Total Responses */
             total_responses: number | null;
+        };
+        /**
+         * SerpCheckOut
+         * @description One search query run for an analysis, and what the results page showed.
+         *
+         *     ``hit`` is nullable and the distinction matters to anyone reading this: NULL
+         *     is a page we could not read (the search instance was unreachable, or every
+         *     upstream engine refused it) and is excluded from the score; ``false`` is a
+         *     real, counted miss.
+         */
+        SerpCheckOut: {
+            /** Hit */
+            hit: boolean | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Matched Snippet */
+            matched_snippet: string | null;
+            /** Matched Url */
+            matched_url: string | null;
+            /** Matched Via */
+            matched_via: string | null;
+            /** Query */
+            query: string;
+            /** Rank */
+            rank: number | null;
+            /** Result Count */
+            result_count: number;
+            /** Source */
+            source: string;
+            /** Unresponsive Engines */
+            unresponsive_engines: string | null;
+        };
+        /**
+         * SerpVisibilityOut
+         * @description SERP visibility for one analysis (ADR-28).
+         *
+         *     Present only on runs where the feature was switched on; ``ResultOut.serp``
+         *     stays null otherwise, so "we did not look" is never rendered as a zero.
+         *     ``score`` is separately nullable *within* a present summary: that is the run
+         *     where we did look and could not read the results.
+         */
+        SerpVisibilityOut: {
+            /** Checks */
+            checks: components["schemas"]["SerpCheckOut"][];
+            /** Hits */
+            hits: number;
+            /** Queries */
+            queries: number;
+            /** Score */
+            score: number | null;
+            /** Source */
+            source: string | null;
+            /** Status */
+            status: string;
         };
         /**
          * SignupRequest

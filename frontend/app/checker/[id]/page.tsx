@@ -11,6 +11,7 @@ import ScoreGauge from '@/components/ScoreGauge'
 import ResultsTable from '@/components/ResultsTable'
 import EnginePresenceMap from '@/components/EnginePresenceMap'
 import CompetitorsList from '@/components/CompetitorsList'
+import SerpVisibility from '@/components/SerpVisibility'
 import EmailGate from '@/components/EmailGate'
 import WaitlistForm from '@/components/WaitlistForm'
 
@@ -192,6 +193,8 @@ function Results({
       {result.competitors_appeared ? (
         <CompetitorsList competitors={result.competitors_appeared} />
       ) : null}
+
+      {result.serp ? <SerpVisibility serp={result.serp} /> : null}
 
       <GatedAnswers
         responses={result.responses}

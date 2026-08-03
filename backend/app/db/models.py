@@ -54,6 +54,16 @@ class Analysis(Base):
     geo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     footprint_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     total_responses: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    # SERP visibility (ADR-28). All nullable, and they stay null on every run
+    # where SERP was switched off or could not be measured — which is the point:
+    # a null here means "we did not measure", and only a number means "we did".
+    # ``serp_query_count`` counts the queries that produced a *usable* page, so
+    # ``serp_score == serp_hit_count / serp_query_count`` always holds.
+    serp_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    serp_hit_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    serp_query_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    serp_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    serp_source: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -68,6 +78,9 @@ class Analysis(Base):
     )
     responses: Mapped[list["Response"]] = relationship(
         cascade="all, delete-orphan", order_by="Response.created_at"
+    )
+    serp_checks: Mapped[list["SerpCheck"]] = relationship(
+        cascade="all, delete-orphan", order_by="SerpCheck.created_at"
     )
 
 
@@ -101,6 +114,46 @@ class Response(Base):
     footprint: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
     matched_snippet: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     cost_usd: Mapped[Decimal] = mapped_column(sa.Numeric(10, 6), nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class SerpCheck(Base):
+    """One search query run for an analysis, and what the results page showed.
+
+    Stored rather than recomputed, for two reasons. The product's wedge is
+    showing its work, so the evidence behind the SERP number — which query, which
+    result, at what rank — has to be one click away like every raw LLM answer
+    already is. And a SERP is a snapshot of something that moves: running the
+    same query tomorrow answers a different question, so the observation is only
+    meaningful with the moment attached.
+
+    ``hit`` is deliberately nullable. NULL means the page could not be measured
+    (every upstream engine refused, or the instance was unreachable) and is
+    excluded from the score entirely; ``False`` is a real, counted miss.
+    """
+
+    __tablename__ = "serp_checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+    )
+    query: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    source: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    hit: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
+    rank: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    matched_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    matched_snippet: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # 'domain' (the company's own site ranked) or 'text' (something else's page
+    # named it). Null on a miss or an unmeasurable page.
+    matched_via: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    result_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    # Comma-joined engine names that refused to answer this query. Plain Text
+    # rather than JSON because it is a diagnostic breadcrumb, not a queryable
+    # structure, and Text keeps the model SQLite-compatible (see module docstring).
+    unresponsive_engines: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )

@@ -72,4 +72,67 @@ describe('refreshAccessToken', () => {
 
     await expect(refreshAccessToken()).resolves.toBeNull()
   })
+
+  it('still rotates where the browser has no Web Locks', async () => {
+    // Older browsers get the single-tab behaviour rather than no refresh at all.
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ access_token: 'tok' }), { status: 200 }),
+      ),
+    )
+
+    await expect(refreshAccessToken()).resolves.toBe('tok')
+  })
+})
+
+describe('refreshAccessToken across tabs', () => {
+  it('holds a lock so the second tab rotates the successor, not the spent token', async () => {
+    // Two tabs are two module instances: each has its own single-flight promise,
+    // and that promise is blind to the other. What they share is the cookie —
+    // and this lock. Without it both POST the same value, the second is a reuse,
+    // and `_revoke_family` signs both tabs out.
+    let queue: Promise<unknown> = Promise.resolve()
+    vi.stubGlobal('navigator', {
+      locks: {
+        request(_name: string, callback: () => Promise<unknown>) {
+          const held = queue.then(() => callback())
+          queue = held.catch(() => undefined)
+          return held
+        },
+      },
+    })
+
+    const firstRotation = deferred<Response>()
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => firstRotation.promise)
+      .mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ access_token: 'second' }), { status: 200 }),
+        ),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    vi.resetModules()
+    const tabA = await import('@/lib/session')
+    vi.resetModules()
+    const tabB = await import('@/lib/session')
+
+    const first = tabA.refreshAccessToken()
+    const second = tabB.refreshAccessToken()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // The whole point: tab B has not touched the cookie yet.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    firstRotation.resolve(
+      new Response(JSON.stringify({ access_token: 'first' }), { status: 200 }),
+    )
+
+    expect(await first).toBe('first')
+    expect(await second).toBe('second')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
 })

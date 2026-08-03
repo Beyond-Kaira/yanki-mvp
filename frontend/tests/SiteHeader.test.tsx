@@ -24,10 +24,18 @@ vi.mock('@/lib/session', () => ({
   getAccessToken: vi.fn(() => null),
 }))
 
-import AuthProvider from '@/components/AuthProvider'
+import AuthProvider, { useAuth } from '@/components/AuthProvider'
 import SiteHeader from '@/components/SiteHeader'
 import { fetchCurrentUser, logout } from '@/lib/auth'
 import { refreshAccessToken } from '@/lib/session'
+
+// The header renders the same anonymous chrome for 'anonymous' and for a broken
+// 'authenticated' with no user, so reading it back cannot tell the two apart.
+// This reports the status itself.
+function AuthStatusProbe() {
+  const { status } = useAuth()
+  return <output data-testid="auth-status">{status}</output>
+}
 
 const mockedRefresh = vi.mocked(refreshAccessToken)
 const mockedMe = vi.mocked(fetchCurrentUser)
@@ -120,8 +128,19 @@ describe('SiteHeader', () => {
     // A refresh that hands back a token the API then rejects is not a session.
     mockedRefresh.mockResolvedValue('tok')
     mockedMe.mockResolvedValue(null)
-    renderHeader()
+    render(
+      <AuthProvider>
+        <SiteHeader />
+        <AuthStatusProbe />
+      </AuthProvider>,
+    )
 
-    expect(await screen.findByRole('link', { name: 'Log in' })).toBeInTheDocument()
+    // Asserting the status, not the chrome: with a null user the header shows
+    // the signed-out links whether the provider settled on 'anonymous' or
+    // wrongly on 'authenticated', so only this distinguishes them.
+    await waitFor(() =>
+      expect(screen.getByTestId('auth-status')).toHaveTextContent('anonymous'),
+    )
+    expect(screen.getByRole('link', { name: 'Log in' })).toBeInTheDocument()
   })
 })

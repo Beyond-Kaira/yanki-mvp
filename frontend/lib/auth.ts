@@ -20,10 +20,15 @@
 // (see docs/tech-debt.md).
 
 import { ApiError, authorizedFetch, readErrorMessage } from './api'
-import type { AuthUser, Credentials, LoginResponse } from './contracts'
+import type {
+  AuthUser,
+  Credentials,
+  LoginResponse,
+  SignupCredentials,
+} from './contracts'
 import { setAccessToken } from './session'
 
-export type { AuthUser, Credentials }
+export type { AuthUser, Credentials, SignupCredentials }
 
 export interface Session {
   user: AuthUser
@@ -90,7 +95,7 @@ export async function login(credentials: Credentials): Promise<Session> {
 
 // Creates the account only. The endpoint returns no token and sets no cookie, so
 // the caller is still anonymous when this resolves.
-export async function signup(credentials: Credentials): Promise<AuthUser> {
+export async function signup(credentials: SignupCredentials): Promise<AuthUser> {
   const res = await postJson(SIGNUP_PATH, credentials)
   if (!res.ok) {
     const message =

@@ -116,15 +116,19 @@ export default function QuestionBreakdown({
                     </span>
                   </p>
                   <p>
+                    {/* Icon-only: the row itself already reads as a toggle
+                        (chip grid + answers folding in below it), so the
+                        label would repeat what aria-expanded already says to
+                        assistive tech. aria-label keeps the accessible name. */}
                     <button
                       type="button"
                       onClick={() => toggle(prompt.id)}
                       aria-expanded={isOpen}
                       aria-controls={answersId}
-                      className="inline-flex min-h-[32px] items-center gap-1 whitespace-nowrap rounded px-1 text-sm font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={isOpen ? 'Collapse' : 'Expand'}
+                      className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center rounded text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <Chevron open={isOpen} />
-                      {isOpen ? 'Collapse' : 'Expand'}
                     </button>
                   </p>
                 </div>
@@ -238,7 +242,7 @@ function Chevron({ open }: { open: boolean }) {
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
-      className={`h-3 w-3 shrink-0 motion-safe:transition-transform ${
+      className={`h-4 w-4 shrink-0 motion-safe:transition-transform ${
         open ? 'rotate-90' : ''
       }`}
       fill="none"

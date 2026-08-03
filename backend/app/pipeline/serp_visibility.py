@@ -51,8 +51,14 @@ from urllib.parse import urlparse
 
 from app.db.models import SerpCheck
 from app.pipeline import footprint
-from app.pipeline.prompts import brand_keys, leaks_brand, topic_pool
-from app.pipeline.sanitize import clean_values, normalize_key
+from app.pipeline.prompts import (
+    brand_keys,
+    leaks_brand,
+    location_phrase,
+    primary_location,
+    topic_pool,
+)
+from app.pipeline.sanitize import normalize_key
 from app.serp.base import SerpPage, SerpResult, SerpSource, SerpUnavailable
 
 logger = logging.getLogger(__name__)
@@ -113,8 +119,30 @@ class SerpOutcome:
 
 
 def _location(kyc) -> str:
-    locations = clean_values(getattr(kyc, "locations", []), max_items=25, max_chars=120)
-    return locations[0] if locations else ""
+    """Shared with prompt generation, so both surfaces skip the same junk.
+
+    A ``locations`` field routinely leads with a coverage claim rather than a
+    place ("160+ countries"), which turns the local shape into
+    "best X in 160+ countries" — a string nobody has ever typed into a search
+    box, and which duly matched nothing.
+    """
+    return primary_location(kyc)
+
+
+def _as_search_term(topic: str) -> str:
+    """A topic the way someone would type it, not the way a profile capitalises it.
+
+    Only the leading character is lowered, and only when the first word is not
+    itself an acronym — so "Relocating internationally" becomes "relocating
+    internationally" while "CRM software" and "AI visibility tools" keep theirs.
+    Search engines do not care about any of this; the evidence table we show the
+    customer does, because "best Relocating internationally" is a visible tell
+    that the query was assembled rather than asked.
+    """
+    head, sep, rest = topic.partition(" ")
+    if not head or head.isupper():
+        return topic
+    return head[:1].lower() + head[1:] + sep + rest
 
 
 def _shapes(location: str) -> tuple[str, ...]:
@@ -149,9 +177,9 @@ def build_queries(kyc, count: int = DEFAULT_QUERY_COUNT) -> list[str]:
     max_steps = count * lap * len(topics) + count
     while len(queries) < count and step < max_steps:
         shape = shapes[step % lap]
-        topic = topics[(step + step // lap) % len(topics)]
+        topic = _as_search_term(topics[(step + step // lap) % len(topics)])
         step += 1
-        text = shape.format(topic=topic, location=location)
+        text = shape.format(topic=topic, location=location_phrase(location))
         key = normalize_key(text)
         if not key or key in seen:
             continue

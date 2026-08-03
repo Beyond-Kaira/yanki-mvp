@@ -135,3 +135,132 @@ def test_rerun_replaces_rows_and_does_not_double_counts(
     assert len(responses) == first_total
     assert second.total_responses == first_total
     assert second.footprint_count == first_footprints
+
+
+# --------------------------------------------------------------------------
+# SERP visibility (ADR-28) — runs inside the footprint step
+# --------------------------------------------------------------------------
+
+
+def _serp_checks(db_session, models, analysis):
+    return (
+        db_session.execute(
+            select(models.SerpCheck).where(models.SerpCheck.analysis_id == analysis.id)
+        )
+        .scalars()
+        .all()
+    )
+
+
+def test_serp_is_dark_unless_switched_on(db_session, models, settings, monkeypatch):
+    """Off by default everywhere: every serp column stays NULL, no rows written.
+
+    NULL is the honest record of "we did not measure", and it is what every row
+    written before this feature existed already says.
+    """
+    from app.pipeline import discovery, runner
+
+    monkeypatch.setattr(
+        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
+    )
+
+    analysis = models.Analysis(url="https://example.com", status="running")
+    db_session.add(analysis)
+    db_session.flush()
+
+    result = runner.run_pipeline(db_session, analysis.id, settings)
+
+    assert result.serp_status is None
+    assert result.serp_score is None
+    assert result.serp_source is None
+    assert result.serp_hit_count is None
+    assert result.serp_query_count is None
+    assert _serp_checks(db_session, models, analysis) == []
+
+
+def test_serp_runs_in_the_footprint_step_without_touching_the_progress_contract(
+    db_session, models, settings, monkeypatch
+):
+    from app.pipeline import discovery, runner
+
+    monkeypatch.setattr(
+        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
+    )
+    settings.serp_enabled = True  # DRY_RUN -> the deterministic mock source
+    settings.serp_query_count = 4
+
+    analysis = models.Analysis(url="https://example.com", status="running")
+    db_session.add(analysis)
+    db_session.flush()
+
+    result = runner.run_pipeline(db_session, analysis.id, settings)
+
+    # The locked step contract is untouched: no seventh step, same terminal state.
+    assert result.status == "done"
+    assert result.progress == 100
+    assert result.current_step is None
+
+    assert result.serp_status == "ok"
+    assert result.serp_source == "mock"
+    assert result.serp_query_count == 4
+    assert result.serp_score == result.serp_hit_count / result.serp_query_count
+    assert 0.0 <= result.serp_score <= 1.0
+
+    checks = _serp_checks(db_session, models, analysis)
+    assert len(checks) == 4
+    assert all(check.query for check in checks)
+    assert sum(1 for check in checks if check.hit) == result.serp_hit_count
+
+
+def test_a_serp_outage_costs_the_number_and_not_the_job(
+    db_session, models, settings, monkeypatch
+):
+    """The fail-open guarantee: SERP cannot fail a run that already cost money."""
+    from app.pipeline import discovery, runner
+    from app.serp.base import SerpUnavailable
+    from app.serp.mock import MockSerpSource
+
+    monkeypatch.setattr(
+        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
+    )
+
+    def _down(self, query):
+        raise SerpUnavailable("instance is down")
+
+    monkeypatch.setattr(MockSerpSource, "search", _down)
+    settings.serp_enabled = True
+    settings.serp_query_count = 3
+
+    analysis = models.Analysis(url="https://example.com", status="running")
+    db_session.add(analysis)
+    db_session.flush()
+
+    result = runner.run_pipeline(db_session, analysis.id, settings)
+
+    assert result.status == "done"
+    assert result.geo_score is not None
+    assert result.serp_status == "unavailable"
+    assert result.serp_score is None
+
+
+def test_a_rerun_replaces_serp_checks_rather_than_accumulating_them(
+    db_session, models, settings, monkeypatch
+):
+    from app.pipeline import discovery, runner
+
+    monkeypatch.setattr(
+        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
+    )
+    settings.serp_enabled = True
+    settings.serp_query_count = 3
+
+    analysis = models.Analysis(url="https://example.com", status="running")
+    db_session.add(analysis)
+    db_session.flush()
+
+    first = runner.run_pipeline(db_session, analysis.id, settings)
+    second = runner.run_pipeline(db_session, analysis.id, settings)
+
+    assert len(_serp_checks(db_session, models, analysis)) == 3
+    assert second.serp_query_count == first.serp_query_count
+    assert second.serp_hit_count == first.serp_hit_count

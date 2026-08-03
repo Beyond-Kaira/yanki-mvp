@@ -27,14 +27,16 @@ from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 
-from app.db.models import Analysis, Prompt, Response
+from app.db.models import Analysis, Prompt, Response, SerpCheck
 from app.pipeline import checker_prompts, discovery
 from app.pipeline import execute as execute_step
 from app.pipeline import footprint as footprint_step
 from app.pipeline import kyc as kyc_step
 from app.pipeline import prompts as prompts_step
 from app.pipeline import scoring as scoring_step
+from app.pipeline import serp_visibility as serp_step
 from app.providers import registry
+from app.serp import registry as serp_registry
 
 # progress % set when each step COMPLETES (see the master SPEC).
 _DISCOVERY_DONE = 15
@@ -74,6 +76,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     # footprint_count. Responses first (they reference prompts).
     session.execute(delete(Response).where(Response.analysis_id == analysis.id))
     session.execute(delete(Prompt).where(Prompt.analysis_id == analysis.id))
+    session.execute(delete(SerpCheck).where(SerpCheck.analysis_id == analysis.id))
     session.commit()
 
     is_checker = analysis.kind == "checker"
@@ -154,6 +157,23 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
         response.matched_snippet = snippet
         if hit:
             footprint_count += 1
+
+    # SERP visibility rides in this step rather than a seventh one (ADR-28):
+    # footprint is the step that asks where the brand actually appears, and this
+    # asks it of search results instead of LLM answers. ``current_step`` and the
+    # progress mapping are therefore unchanged. ``run_serp`` never raises — a
+    # search instance having a bad day costs the run its SERP number and nothing
+    # more — and a run with SERP switched off leaves every ``serp_*`` column
+    # null, which says "not measured" rather than "measured zero".
+    serp_source = serp_registry.get_serp_source(settings)
+    if serp_source is not None:
+        outcome = serp_step.run_serp(session, analysis, kyc, serp_source, settings)
+        analysis.serp_status = outcome.status
+        analysis.serp_source = outcome.source or None
+        analysis.serp_hit_count = outcome.hits
+        analysis.serp_query_count = outcome.queries
+        analysis.serp_score = outcome.score
+
     session.flush()
     _complete_step(session, analysis, _FOOTPRINT_DONE)
 

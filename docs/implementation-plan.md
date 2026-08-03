@@ -293,7 +293,7 @@ down on Postgres, one whole analysis through the DRY_RUN stack). ADR-28. **Off b
 default** (`SERP_ENABLED=False`) — nothing changes for an existing deployment
 until an operator turns it on and stands up an instance; **Google AI Overviews
 itself stays open** (no $0 source). One real contract diff (`openapi.json` +
-`types.ts`); `checker_methodology.json` unchanged. Backend 383 passed / 7 skipped
+`types.ts`); `checker_methodology.json` unchanged. Backend 384 passed / 7 skipped
 (the SERP integration tier, which needs a live instance), frontend 79 passed. Full detail:
 `sessions/2026-08-03-01.md`.
 

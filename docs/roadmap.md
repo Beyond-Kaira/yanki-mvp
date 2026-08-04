@@ -107,6 +107,27 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 > rotation that reaches every topic × shape pair, and a hard invariant that no
 > scored question may name the brand it measures (prompts). All of it is
 > language-neutral and adds **no** paid call.
+>
+> **Readiness side, shipped 2026-08-03 (ADR-31), the same push.** The GEO and
+> SERP scores say *whether* AI answers and search results name a company; neither
+> says *why* when the answer is no, and "why" is the only part a customer can act
+> on. The **SEO / AI-readiness audit** is that "why": it re-reads the crawl
+> discovery already paid for — plus a single `/robots.txt` fetch, no extra crawl,
+> no paid call — and returns an A–F **grade** with the failing checks behind it.
+> It leads with the checks that are AI-specific and that no classic SEO tool looks
+> at: whether the answer engines' crawlers are allowed in at all (a `robots.txt`
+> block means the site *cannot* appear in their answers — separating a retrieval
+> block that costs answers today from a training block that only erodes presence
+> over time), and whether the page says anything without JavaScript (most AI
+> crawlers don't run it). The grade is **capped by critical failures** so a
+> weighted average can't average a fatal problem away, and classic hygiene (meta
+> description, canonical, Open Graph) is weighted minor and labelled as such —
+> honest about which checks are really about AI. What it is **not**: not a rank or
+> a rank tracker, not the weighted 0–100 AI Visibility Score above (that scores
+> *presence*; this scores *legibility*), and **not** Google AI Overviews tracking
+> (Later, below) — it audits *this* site's own files, it does not read Google's
+> answer box. It runs on every URL analysis (`result.seo` is null where there was
+> no site to read, e.g. a checker submission); it is language-neutral.
 
 ### 2c. Turkish as a first-class language — the wedge that can't be a sprint bolt-on
 
@@ -136,6 +157,17 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 | Extraction model validated on a labelled Turkish test set before launch | A precision bar before public launch + weekly human spot-checks in beta keeps the numbers honest. |
 
 ### 2d. The app: accounts → billing → cadence
+
+**Status (2026-08-03): the auth slice of row 1 has started, out of sequence.**
+Email/password endpoints landed in
+[PR #9](https://github.com/Beyond-Kaira/yanki-mvp/pull/9) and the screens for
+them are in review as
+[PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) (plan cards **P6.0**
+/ **P6.1**, ADR-32). Nothing else in this section is begun: there are no
+projects, no onboarding wizard, and **an account currently grants nothing** —
+no route is protected and there is no signed-in destination (tech-debt #52).
+The sequencing note below still holds; signing in becomes worth doing when the
+app has something behind it.
 
 | Item | Rationale |
 |---|---|
@@ -213,7 +245,7 @@ table is the contract between "not now" and "when":
 
 | 02-mvp.md out-of-scope item | Phase | Where above |
 |---|---|---|
-| Auth, accounts, projects | **Next** | 2d — app: accounts |
+| Auth, accounts, projects | **Next** — auth started 2026-08-03 (PR #9 endpoints, PR #13 screens in review); projects not begun | 2d — app: accounts |
 | Billing / Stripe / plan limits | **Next** | 2d — Stripe Free/$49/$129 |
 | Scheduling, recurring scans, weekly digests + alerts | **Next** | 2d — weekly scheduling + digest + alerts |
 | Sentiment analysis and position weighting (score stays binary) | **Next** | 2b — weighted 0–100 score |

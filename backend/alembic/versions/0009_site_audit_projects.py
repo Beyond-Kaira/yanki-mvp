@@ -1,7 +1,7 @@
 """user-owned SEO projects and independent Site Audit jobs
 
-Revision ID: 0008_site_audit_projects
-Revises: 0007_serp_visibility
+Revision ID: 0009_site_audit_projects
+Revises: 0008_seo_audit
 Create Date: 2026-08-03
 """
 
@@ -10,8 +10,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "0008_site_audit_projects"
-down_revision = "0007_serp_visibility"
+revision = "0009_site_audit_projects"
+down_revision = "0008_seo_audit"
 branch_labels = None
 depends_on = None
 

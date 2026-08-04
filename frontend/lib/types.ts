@@ -510,9 +510,57 @@ export interface components {
             prompts: components["schemas"]["PromptOut"][];
             /** Responses */
             responses: components["schemas"]["ResponseOut"][];
+            seo: components["schemas"]["SeoAuditOut"] | null;
             serp: components["schemas"]["SerpVisibilityOut"] | null;
             /** Total Responses */
             total_responses: number | null;
+        };
+        /**
+         * SeoAuditOut
+         * @description The SEO audit for one analysis (ADR-31).
+         *
+         *     ``grade`` is the headline rather than ``score``, because a weighted average
+         *     can hide a fatal problem: the grade is capped by critical failures, so a site
+         *     that blocks AI crawlers cannot present as healthy. Null on runs that did not
+         *     audit — a checker submission has no site to look at.
+         */
+        SeoAuditOut: {
+            /** Checks */
+            checks: components["schemas"]["SeoCheckOut"][];
+            /** Grade */
+            grade: string | null;
+            /** Score */
+            score: number | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * SeoCheckOut
+         * @description One SEO / AI-readiness check and the evidence behind its verdict.
+         *
+         *     ``status`` is one of ``pass`` / ``warn`` / ``fail`` / ``not_measured`` /
+         *     ``not_applicable``. The last two are excluded from the score and mean
+         *     different things — "we could not read the input" versus "this does not apply
+         *     here" — so the UI must not collapse them into each other or into a failure.
+         */
+        SeoCheckOut: {
+            /** Check Id */
+            check_id: string;
+            /** Detail */
+            detail: string | null;
+            /** Evidence */
+            evidence: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
         };
         /** SeoProjectDetailOut */
         SeoProjectDetailOut: {

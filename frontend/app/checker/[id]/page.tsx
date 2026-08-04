@@ -6,8 +6,10 @@ import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getAnalysis, ApiError } from '@/lib/api'
 import type { Analysis, AnalysisResponse, Prompt } from '@/lib/contracts'
+import { deriveEnginePresence } from '@/lib/results'
+import FailedState from '@/components/FailedState'
 import StepProgress from '@/components/StepProgress'
-import ScoreGauge from '@/components/ScoreGauge'
+import ScoreSummary from '@/components/ScoreSummary'
 import ResultsTable from '@/components/ResultsTable'
 import EnginePresenceMap from '@/components/EnginePresenceMap'
 import CompetitorsList from '@/components/CompetitorsList'
@@ -64,28 +66,41 @@ function CheckerResults() {
     }
   }, [id])
 
-  let content: ReactNode
-  if (!analysis && loadError) {
-    content = <FailureCard reason={loadError} />
-  } else if (!analysis) {
-    content = (
+  // Nothing loaded and an error came back: there is no run to point at a step
+  // within, so the load failure itself is the only thing to report.
+  const content: ReactNode =
+    !analysis && loadError ? (
+      <FailedState
+        subject="check"
+        reason={loadError}
+        step={null}
+        progress={0}
+        retryHref="/checker"
+        retryLabel="Check another brand"
+      />
+    ) : !analysis ? (
       <p role="status" className="text-sm text-surface-subtle">
         Loading…
       </p>
-    )
-  } else if (analysis.status === 'failed') {
-    content = <FailureCard reason={analysis.error ?? 'The check failed.'} />
-  } else if (analysis.status === 'done') {
-    content = <Results analysis={analysis} submissionId={submissionId} />
-  } else {
-    content = (
+    ) : analysis.status === 'failed' ? (
+      <FailedState
+        subject="check"
+        reason={analysis.error ?? 'The check failed.'}
+        step={analysis.current_step}
+        progress={analysis.progress}
+        retryHref="/checker"
+        retryLabel="Check another brand"
+      />
+    ) : analysis.status === 'done' ? (
+      <Results analysis={analysis} submissionId={submissionId} />
+    ) : (
       <StepProgress
         status={analysis.status}
         progress={analysis.progress}
         currentStep={analysis.current_step}
+        createdAt={analysis.created_at}
       />
     )
-  }
 
   return (
     <main
@@ -137,26 +152,6 @@ export default function CheckerResultsPage() {
   )
 }
 
-function FailureCard({ reason }: { reason: string }) {
-  return (
-    <div
-      role="alert"
-      className="space-y-3 rounded-xl border border-danger bg-danger-soft p-6"
-    >
-      <h2 className="text-xl font-semibold text-danger-strong">
-        {"We couldn't finish this check."}
-      </h2>
-      <p className="text-sm text-surface-foreground">{reason}</p>
-      <Link
-        href="/checker"
-        className="inline-flex min-h-[40px] items-center rounded text-sm font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        Check another brand
-      </Link>
-    </div>
-  )
-}
-
 function Results({
   analysis,
   submissionId,
@@ -169,8 +164,18 @@ function Results({
   const footprints =
     result.footprint_count ??
     result.responses.filter((response) => response.footprint).length
-  // geo_score is a 0–1 fraction; ScoreGauge takes a 0–100 percentage.
-  const percent = Math.round((result.geo_score ?? 0) * 100)
+  // geo_score is a 0–1 fraction; ScoreSummary takes a 0–100 percentage, and
+  // null when there is nothing to score (the backend reports 0.0 either way).
+  const percent =
+    result.geo_score === null ? null : Math.round(result.geo_score * 100)
+  // Checker rows carry `engine_presence` from the backend, whose aggregate walks
+  // the responses it has and so omits an engine that answered nothing. Passing
+  // it through the same helper keeps the reported numbers while seeding the
+  // roster from the panel, so this surface makes the same promise as /analyses.
+  const presence = deriveEnginePresence(
+    result.responses,
+    result.engine_presence,
+  )
 
   // The email gate is the PRIMARY conversion here, so the waitlist section stays
   // hidden until the gate is out of the way — either unlocked by the visitor, or
@@ -182,13 +187,15 @@ function Results({
 
   return (
     <div className="space-y-8">
-      <section className="rounded-xl border border-surface-border bg-white p-6 shadow-sm">
-        <ScoreGauge score={percent} footprintCount={footprints} totalResponses={total} />
-      </section>
+      <ScoreSummary
+        score={percent}
+        footprintCount={footprints}
+        totalResponses={total}
+        questionCount={result.prompts.length}
+        engineCount={presence.length}
+      />
 
-      {result.engine_presence ? (
-        <EnginePresenceMap presence={result.engine_presence} />
-      ) : null}
+      {presence.length > 0 ? <EnginePresenceMap presence={presence} /> : null}
 
       {result.competitors_appeared ? (
         <CompetitorsList competitors={result.competitors_appeared} />

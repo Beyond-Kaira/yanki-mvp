@@ -1116,3 +1116,193 @@ decision → consequences**, with one line on why the alternative was rejected.
   settings file with a real key (gitleaks, public repo — and it would be a lie in
   the template); adding the usual valkey/redis cache sidecar (a second container
   on a tight box, for a handful of queries per analysis).
+
+### ADR-30 — Migrate before serve, so a rollback can actually roll back (2026-08-03)
+- **Context:** the api container booted with `sh -c "alembic upgrade head && uvicorn ..."`.
+  [`AUTODEPLOY.md`](../deploy/AUTODEPLOY.md) already warned that a *broken* migration
+  reaching production is not something the health-gate rollback can undo. Auditing
+  the ADR-28 merge found the sharper half of that: a **successful** migration
+  breaks rollback too. Once the DB is stamped at a revision the previous image
+  has never heard of, that image's `alembic upgrade head` exits 255 with
+  `Can't locate revision identified by …`, the `&&` stops uvicorn from ever
+  starting, and `restart: unless-stopped` turns it into a crash loop.
+  `rollback.sh` re-runs `compose up -d` and never downgrades, so the recovery
+  path is the thing that fails. Filed as issue #16; it applied to every
+  migration since `0002`.
+- **Decision:** split the two. The **prod** api command is now just
+  `uvicorn ...`, and both deploy drivers (`deployment.sh`, `deploy.sh`) run
+  `alembic upgrade head` as a one-shot `compose run --rm --no-deps api` step
+  *before* any running container is replaced.
+  - The **dev** compose file deliberately keeps the fused form. It has no
+    rollback to protect, no driver to hang a step off, and CI's e2e job relies
+    on the stack migrating itself. The divergence is in the safest possible
+    direction: the thing prod does is strictly less than what dev does.
+  - The migration is **not** a compose service with
+    `service_completed_successfully`. That was the obvious shape and it is
+    wrong: rollback's `compose up -d` would run the *old* image's migrate
+    container and fail in exactly the same way, just one service earlier.
+    Only a step the driver owns — which knows a forward deploy from a
+    rollback — actually separates them.
+- **Consequences:** rollback works. Proven, not argued: with a database at
+  `0007`, the pre-0007 image under the old fused command dies with
+  `Can't locate revision identified by '0007_serp_visibility'`, and under the
+  new serve-only command boots in 4 s, answers `/healthz`, and serves a real
+  `analyses` row whose five extra columns it does not model. That last part is
+  what makes the whole thing safe: SQLAlchemy maps only declared columns and
+  emits explicit column lists, never `SELECT *`, so old code is already
+  compatible with a newer *additive* schema. It was never the ORM that broke —
+  only alembic's boot-time revision guard.
+  A second, unlooked-for improvement: a **bad** migration now costs nothing.
+  It fails while the previous release is still serving, and the driver exits
+  without touching a container — where before it would replace the api, crash-
+  loop it, fail the health gate, and only then attempt a rollback that could not
+  work. The deploy grew from six steps to seven.
+  This does **not** make rollback safe across a *destructive* migration; nothing
+  here changes that dropping a column still strands old code. The rule the
+  repo already follows — migrations are additive — is now load-bearing rather
+  than merely tidy, and that is worth saying out loud.
+- **Rejected:** having `rollback.sh` run `alembic downgrade` (it would need the
+  target release's head revision, which it has no way to know, and it makes the
+  emergency lever destructive — the wrong property for the thing you reach for
+  when everything else is broken); making the api tolerate a newer DB by only
+  upgrading when behind (cheapest, and it silently masks genuine drift, which is
+  how you find out during the *next* incident); a `migrate` compose service
+  (fails identically on rollback, see above); leaving it alone because it is
+  pre-existing (it is pre-existing *and* it is the safety net the docs claim to
+  have — the next migration was already queued behind it).
+### ADR-31 — The SEO audit is a second reading of the crawl we already paid for (2026-08-03)
+- **Context:** the GEO score says whether AI engines name a company and SERP
+  visibility says whether search results do. Neither says **why** when the answer
+  is no, and "why" is the only part a customer can act on. Meanwhile `discovery`
+  was already fetching the homepage plus five pages, parsing JSON-LD, meta tags
+  and Open Graph — and throwing all of the structure away to return one flat
+  string. The audit is that structure, read a second time.
+- **Decision:**
+  - **`discover_detailed()` beside `discover()`, not instead of it.** It returns
+    a `CrawlResult` carrying `.text` (byte-identical to before) and `.pages`.
+    `discover()` is now `discover_detailed(url).text`. Counted before choosing:
+    one non-test caller, 34 assertions in `test_discovery.py` that assume a
+    `str`, and four monkeypatch fakes in other test files that return one. The
+    alternative — changing `discover`'s return type — churns five files to move
+    a string behind an attribute. This is the same move ADR-28 made when SERP was
+    added *beside* `footprint` rather than inside it.
+  - **It runs inside the discovery step.** No seventh step; `current_step`, the
+    progress mapping and `StepProgress` are untouched, for the third time.
+  - **The headline is a grade, not a score, and the grade is capped.** `geo_score`
+    is a *measurement* — a counted ratio (ADR-11). An audit score is a *rubric*:
+    the weights are editorial choices, not observations. Worse, a weighted
+    average **averages a fatal problem away** — a site that is `noindex` *and*
+    blocks every AI crawler can still bank enough minor passes to look like a C.
+    So: one critical failure caps the grade at C, two or more cap it at F, and
+    the rule is published rather than hidden. The failing checks are the real
+    output; the score is a supporting number.
+  - **Three severity tiers as the weights** (critical 5, important 3, minor 1)
+    rather than per-check coefficients. Three numbers are publishable; thirty
+    hand-tuned ones are unauditable and drift.
+  - **Five per-check states**, not two. `not_measured` (we could not read the
+    input) and `not_applicable` (the check does not apply here) are dropped from
+    **both** sides of the ratio, exactly as an unreadable SERP page is dropped
+    from its denominator — and they are kept distinct from each other, because
+    "we could not check" and "there was nothing to check" say different things.
+  - **The flagship checks are the ones no classic SEO tool performs.** Whether
+    `robots.txt` admits the AI crawlers (`pipeline/robots.py`), and whether the
+    server sends any text at all — most AI crawlers do not execute JavaScript, so
+    a client-rendered SPA is invisible to them with `robots.txt` wide open.
+    Discovery already knows when that happened; it is what triggers its bundle
+    fallback. The audit just says so.
+  - **Retrieval and training crawlers are reported separately.** Blocking
+    `GPTBot` opts out of *training*; `OAI-SearchBot` is what governs live ChatGPT
+    answers. A training-only block is a WARN, because declining to be training
+    data is a legitimate choice and calling it a failure would be alarmist.
+    `Perplexity-User` is reported but never scored — Perplexity documents that it
+    generally ignores `robots.txt`, and telling someone they had blocked it would
+    be false. `Googlebot` counts as a *retrieval* crawler because Google
+    documents it as the control for AI Overviews, with no separate opt-in.
+  - **Checks that are just SEO say so in their own text.** `meta_description`,
+    `canonical` and `open_graph` are minor and their descriptions begin "Mostly
+    classic SEO". Dressing hygiene up as AI-critical is how this category earned
+    its reputation.
+- **Consequences:** one extra HTTP fetch per analysis (`/robots.txt`), through
+  discovery's own SSRF-guarded client; no LLM call, no third-party API, no
+  vendor. Migration `0008` is additive (three nullable columns, one table, two
+  indexes) — the second index is on `(check_id, status)`, because the question
+  this table exists to make answerable is cross-sectional: *how many audited
+  sites block GPTBot?* That is a publishable statistic and a marketing asset the
+  product can generate from its own data. `ResultOut` gains a nullable `seo`
+  object, so `make gen-types` is a real diff. Checker rows are not audited —
+  a brand name is not a site. Measured against wise.com the audit returns 97.8/A
+  with one genuine failure (109 of 143 images carry no alt text).
+- **Rejected:** a seventh pipeline step (churns the locked contract for a pass
+  that needs nothing but the crawl); changing `discover`'s signature (five files
+  of churn, and it contradicts the docstring's stated contract); a single JSONB
+  `seo_audit` column (simpler, and it cannot answer the cross-sectional question
+  that makes the data worth having); a raw 0–100 as the headline (it hides the
+  only two checks that decide whether a company is visible at all); per-check
+  weights (unauditable); scoring `Perplexity-User` (a directive the vendor says
+  it will ignore is not a control); listing `anthropic-ai`, `Claude-Web` or
+  `Bytespider` (the first two are deprecated, the third has no vendor
+  documentation — a list padded with plausible tokens looks thorough and is less
+  true); and parsing `robots.txt` by hand (the stdlib parser already implements
+  RFC 9309's group selection and `Allow` precedence, and a second implementation
+  is a second thing to get subtly wrong — it is fed already-fetched text so it
+  cannot re-fetch around the SSRF guard).
+
+
+### ADR-32 — Browser session layer: the access token lives in memory, and rotation is serialised across tabs (2026-08-03)
+
+- **Context:** the auth endpoints (PR #9) pair a short-lived bearer token with an
+  httpOnly refresh cookie scoped to `/api/v1/auth`. The account screens (PR #13)
+  are the first client of that pairing and have to decide where the bearer lives,
+  who rotates the cookie, and what happens on a 401. Rotation is **single-use**:
+  `services/auth_sessions.py` revokes the entire session family when a consumed
+  refresh token is replayed (`RefreshTokenReuseDetectedError`), so "refresh twice"
+  is not a wasted request — it is a sign-out.
+- **Decision:**
+  - **The access token is module state in `lib/session.ts`, never persisted.**
+    Not `localStorage`, not a readable cookie: the whole reason the backend issues
+    a short bearer beside an httpOnly cookie is that the bearer never has to sit
+    where a script can read it. A reload therefore starts with no token and earns
+    one back by rotating the cookie, then asks `/me` who that is.
+  - **That module refuses to run on the server.** Module state on the server is
+    shared by every request that renders, so one visitor's token would become
+    everyone's. `setAccessToken` throws outside the browser, which makes the
+    constraint structural rather than a convention someone has to remember.
+  - **`authorizedFetch` refreshes once and replays the request** (`lib/api.ts`).
+    A 401 is the expected end of a short-lived token, not an error to surface. A
+    second 401 after a fresh token means the session is genuinely over; retrying
+    past that is how a refresh loop starts.
+  - **Rotation is single-flight in the tab and exclusive across tabs.** The
+    in-tab promise stops a page's own callers from racing. The cross-tab half is
+    a **Web Lock** (`navigator.locks`, name `yanki:auth-refresh`): two tabs
+    cold-loading together — a restored window, a restart, a duplicated tab — each
+    hold their own single-flight promise and are blind to each other, so both
+    would POST the same cookie value, the second would be a reuse, and the family
+    revocation would sign **both** tabs out. Under the lock the second tab waits
+    and then rotates the successor.
+  - **The screens carry only what the contract can honour.** No name field
+    (`SignupRequest` is `{email, password}`), no remember-me (session length is
+    the cookie's server-side `max_age`), and sign-up does not sign you in — the
+    endpoint returns no token, so `signUp` spends the same credentials on a login
+    rather than making someone type them twice. Request/response types come from
+    the generated contract through `lib/contracts.ts`; sign-up and log-in are
+    typed against **`SignupRequest` and `LoginRequest` separately**, because they
+    are structurally identical only by coincidence today (`SignupRequest.password`
+    is `min_length=8`, `LoginRequest.password` is 1) and sharing one type would
+    keep TypeScript quiet through exactly the schema change it is here to catch.
+- **Consequences:** a signed-in visitor pays one `POST /auth/refresh` per cold
+  load, and so does an anonymous one — a script cannot read an httpOnly cookie,
+  so asking is the only way to know. That is a real cost on public routes and is
+  logged as tech-debt #51 with the fix (a non-httpOnly `has_session` hint cookie
+  set at login). Where a browser has no Web Locks (pre-15.4 Safari, pre-96
+  Firefox) the cross-tab guard degrades to the single-tab one rather than failing
+  the refresh — tech-debt #53. Nothing in the auth screens is protected by a
+  route guard, because nothing is behind auth yet (tech-debt #52).
+- **Rejected:** `localStorage` for the bearer (defeats the point of the httpOnly
+  pairing); a BroadcastChannel leader that elects one tab and broadcasts the new
+  token (closes the same race, but adds an election, a fallback path, and token
+  material crossing a channel — the lock is the smaller thing that works);
+  sign-up returning a session (not what the endpoint does — the client cannot
+  invent one); a schema-validation library for four fields (the project ships no
+  runtime dependency beyond React; the validators are plain functions and a
+  swap later replaces call sites and nothing else); retrying more than once on
+  401 (a refresh loop).

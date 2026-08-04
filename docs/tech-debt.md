@@ -4,7 +4,27 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-03 (SERP visibility pass, ADR-28: nine new items —
+Last updated: 2026-08-03 (account screens, PR #13 review response, merged
+against main after items #27-48 landed there: five new items — **#49**
+(password reset has no endpoint, so it ships no screen), **#50**
+(no terms text, so sign-up asks for no agreement), **#51** (every cold load POSTs
+`/auth/refresh`, anonymous visitors included), **#52** (an account grants
+nothing — no route is protected and there is no signed-in destination), **#53**
+(the cross-tab refresh guard degrades on browsers without Web Locks). No
+repayments this pass. Earlier the same day — SEO audit, ADR-31: four new
+items — **#45** (the
+audit sees at most six pages but its findings read as site-wide), **#46**
+(the severity weights are editorial and uncalibrated), **#47** (one extra
+HTML parse per page), **#48** (no llms.txt check)). Earlier the same day —
+(migrate-before-serve, ADR-30 / GitHub issue #16:
+docs-only follow-through, no new numbered items. **#16 repaid in prod** — the
+migration now runs as a one-shot driver step that finishes before any app
+container starts, so the worker's first-boot `UndefinedTable` race is gone in
+prod — but **kept open for dev**, whose compose still fuses `alembic upgrade
+head` into the api's boot command. **#17** gains a new wrinkle: rollback's
+pruned-image `git checkout` would resurrect that fused command and re-break the
+rollback path ADR-30 just fixed. No full repayments this pass. Earlier the same
+day — SERP visibility pass, ADR-28: nine new items —
 **#34** (SERP score is binary and unweighted, like the GEO score), **#35** (a
 SERP is a one-shot snapshot, never re-measured), **#36** (`serp_query_count`=6
 is a politeness budget, not a measured one), **#37** (domain matching is
@@ -16,7 +36,13 @@ so an IDN domain can miss) and **#42** (the SERP response is read without a byte
 cap) — both raised by an adversarial review of the branch before merge; then
 **#43** (DRY_RUN forces the mock SERP source) and **#44** (two of four
 engines are refused from this egress IP) when the instance was actually
-stood up (ADR-29). No repayments this pass. Earlier —
+stood up (ADR-29). No repayments this pass. Earlier — 2026-08-01 (pipeline
+quality part two, `pipeline-quality-plan.md`: three new items — **#30**
+(`_is_html` byte-sniff closes #28 for known binary formats, not all), **#31**
+(SPA bundle extraction still welds punctuation onto real copy), **#32** (the
+prompt category filter is a heuristic pending real-profile data), **#33**
+(grounding's 1 000-char floor is a guess, not measured). No repayments this
+pass. Earlier —
 2026-07-28 (discovery + KYC pass: three new items — **#27**
 (KYC-stage spend counts toward no cost cap), **#28** (`_is_html` fails open on a
 missing Content-Type), **#29** (steps 2b/6 specified but parked on an operator
@@ -170,20 +196,52 @@ devDependencies).)
     flake), and `postcss.config.mjs` stays unlinted (`.mjs` not in `--ext`;
     `next lint` never covered it either). Note: Next 16 also stops linting
     during `next build`, making this script the ONLY lint gate.
-16. **The worker logs one scary-looking `UndefinedTable` error at first prod
-    boot.** compose starts the worker on api `service_started`, but the api
-    runs `alembic upgrade head` before uvicorn — so the worker's first poll
-    can beat the migration and log a full traceback
-    (`relation "analyses" does not exist`), then recover on the next poll
-    (observed on the first deploy, 2026-07-10; RestartCount stayed 0). Purely
-    cosmetic noise today; fix = a db-schema wait or migration-completion gate
-    if it ever confuses an on-call human.
+16. **The worker's first-boot `UndefinedTable` race — now repaid in prod, still
+    present in dev.** (Tech-debt item #16, *not* GitHub issue #16: that one is
+    the rollback bug ADR-30 fixes, and the two numbers collide by coincidence.)
+    The original noise: compose started the worker on api `service_started`
+    while the api ran `alembic upgrade head` before uvicorn, so the worker's
+    first poll could beat the migration and log a full traceback
+    (`relation "analyses" does not exist`) before recovering on the next poll
+    (observed on the first prod deploy, 2026-07-10; RestartCount stayed 0).
+    **Prod (ADR-30): repaid.** The migration is now a one-shot driver step that
+    finishes *before* any app container starts, and the prod api command is
+    serve-only, so by the time the worker container exists the schema is already
+    at head — there is no longer a migration in flight for the first poll to
+    race. **Dev (`docker-compose.yml`): unchanged and still racy.** The api
+    keeps the fused `sh -c "alembic upgrade head && uvicorn …"` command and the
+    worker still `depends_on api: service_started` (which waits for the
+    container to *start*, not for the migration to *finish*), so a first-poll
+    traceback can still surface locally and in CI's e2e stack. Deliberate: dev
+    has no rollback to protect and CI relies on the stack migrating itself. The
+    old fix — a db-schema wait or migration-completion gate — now applies to the
+    dev half only, if the noise ever confuses anyone.
 17. **`rollback.sh`'s pruned-image branch is still unproven and mutates the
     working tree.** P4.2 exercised only the images-present path (same-SHA
     rollback, clean + healthy). If the last-good image was ever pruned,
     rollback does `git checkout <sha>` + rebuild — detached HEAD, fails on a
     dirty tree, and leaves the operator's checkout moved. Surfaced by the
     session-7 pre-flight review; accepted for now (rollbacks are supervised).
+    **New wrinkle (ADR-30):** that working-tree mutation is now a *correctness*
+    hazard, not just an ergonomic one. `git checkout <sha>` to a last-good SHA
+    that predates ADR-30 restores that SHA's `docker-compose.prod.yml` too — the
+    one whose api command is the fused `sh -c "alembic upgrade head &&
+    uvicorn …"`. So the pruned-image branch rebuilds and `compose up`s the old
+    serve-*and*-migrate command, re-introducing exactly the boot-time migration
+    ADR-30 removed from the serving path — and it does so in the one scenario
+    rollback exists for: a forward deploy that migrated the DB to a new head and
+    then failed the health gate. The DB is now past the old image's known
+    revisions, so the resurrected fused command's boot `alembic upgrade head`
+    exits 255 (`Can't locate revision …`) and crash-loops — the very failure
+    ADR-30 proved the serve-only command avoids. The images-present branch is
+    safe here: it never checks out, so it `compose up`s the already-built
+    last-good image under the *current* serve-only compose file (ADR-30's
+    proven-good case); only the `git checkout` branch resurrects the fused form.
+    Most acute in the transition window, while `.last-good` still points at a
+    pre-ADR-30 release — it fades once last-good is itself post-ADR-30, since
+    checking that out restores a serve-only compose. The clean fix keeps the
+    compose file out of the checkout: pin it, or roll the image tag back without
+    moving the tree at all.
 18. **The prod web image ships devDependencies.** Session 7's fix for the
     build failure (`npm ci --include=dev`, needed because NODE_ENV=production
     otherwise omits the typescript devDep that `next build` requires) means
@@ -482,3 +540,86 @@ devDependencies).)
     score as a four-engine consensus. If Google CSE ever starts refusing too,
     expect pages to go unmeasurable rather than to silently report zeros; that is
     the design working, but it will look like an outage.
+45. **The audit sees at most six pages, but its findings read as site-wide**
+    (2026-08-03, ADR-31): `discovery` crawls the homepage plus `MAX_LINKS` (5)
+    scored links, so every check except `ai_crawler_access` and `sitemap` is
+    really a statement about those pages — and the page-level ones
+    (`indexable`, `thin_content`, `server_rendered_content`, `title_present`,
+    `h1_present`, `lang_declared`, `canonical`, `meta_description`) are
+    homepage-only. A site with a perfect homepage and 400 thin product pages
+    grades A. The check titles do not currently carry that caveat, which is the
+    honest gap: the numbers are right about what they measured and the wording
+    implies more. Cheapest fix is wording; the real fix is sampling more pages,
+    which costs crawl budget the pipeline deliberately caps.
+46. **The severity weights are editorial and will not survive contact with data**
+    (2026-08-03, ADR-31): critical/important/minor = 5/3/1 was chosen by
+    reasoning, and the grade cap exists precisely because we do not trust the
+    weighted average on its own. Three tiers are defensible and publishable,
+    which is why they were picked over per-check coefficients — but nothing has
+    yet been calibrated against real outcomes, because the outcome that would
+    calibrate them (does a better grade actually correlate with a better GEO
+    score?) needs a corpus of audited sites we do not have yet. `seo_checks` is
+    indexed on `(check_id, status)` specifically so that question becomes
+    answerable once there is data.
+47. **`discovery` now parses each page one extra time** (2026-08-03, ADR-31):
+    `_page_audit` runs its own `BeautifulSoup` pass alongside the existing
+    `_visible_blocks` / `_jsonld_text` / `_meta_text` passes. That is a fourth
+    parse of the same bytes per page, for up to six pages. Parsing once and
+    sharing the soup is a real win and was deliberately left out of this change,
+    because it would touch the honesty-critical text path that produces the GEO
+    score in the same diff that adds a new feature.
+48. **No `llms.txt` check** (2026-08-03, ADR-31): the emerging convention for
+    telling an LLM what a site is about. Left out because adoption is still thin
+    and a check nobody passes teaches a customer nothing — but if it becomes
+    real, it is one more cheap same-origin fetch and belongs next to
+    `robots.txt`.
+49. **Password reset has no endpoint, so it ships no screen** (2026-08-03,
+    account screens, PR #13): the auth router is signup / login / refresh /
+    logout / me and nothing else. The `/forgot-password` route and the "Forgot
+    password?" link on `/login` were **removed** rather than shipped, because a
+    form whose only possible answer is FastAPI's `404 {"detail":"Not Found"}` —
+    rendered verbatim in a red box — is worse than no form. What survives is
+    `requestPasswordReset` in `lib/auth.ts`, unrouted and unreferenced by any
+    screen, kept as the contract the endpoint is expected to meet and pinned by
+    two tests in `auth.test.ts`. Repaying this is: write the endpoint, then
+    restore the page and the link (both are one `git revert` away — see the
+    session log). One requirement carries over in the client's comment: an
+    unknown address must answer exactly like a known one, or the endpoint
+    becomes a way to test which emails are registered.
+50. **There are no terms, so sign-up asks for no agreement** (2026-08-03,
+    account screens, PR #13): the form shipped a **required** checkbox pointing
+    at a `/terms` page that said, honestly, that nothing on it was binding. A
+    forced consent to an unwritten document is not consent, and merging `main`
+    deploys. The checkbox, `validateTermsAccepted`, `components/Checkbox.tsx`
+    and the placeholder page were all removed; a test asserts the form offers no
+    checkbox and no terms link, so putting one back is a deliberate act. **This
+    is a legal/product blocker, not an engineering one** — the text has to be
+    written before an account can be conditioned on it.
+51. **Every cold load POSTs `/api/v1/auth/refresh`, anonymous visitors
+    included** (2026-08-03, account screens, PR #13): `AuthProvider.restore()`
+    runs on every page, and a script cannot read an httpOnly cookie, so asking
+    is the only way to learn whether a session exists. The cost lands on `/` and
+    `/checker` — routes that are about to go public and carry no rate limit of
+    their own — as one auth POST plus a 401 per visit. The fix is a
+    non-httpOnly `has_session` hint cookie set at login and cleared at logout,
+    letting the client skip the call when there is obviously no session; it
+    touches the backend (`auth_cookies.py`) as well as `AuthProvider`, which is
+    why it is not in PR #13. **Close this before the checker goes loud.**
+52. **An account grants nothing** (2026-08-03, account screens, PR #13): no
+    route is protected, and there is no signed-in destination — `login/page.tsx`
+    pushes to `/`, where the header shows the email. So the sign-up CTA now sits
+    on every page, including `/checker`, next to the launch wedge, offering
+    something that does nothing yet. Recorded as a **timing** question for the
+    operator rather than a defect: the code is ready and can sit ready. Closing
+    it means either the first thing worth signing in for (saved analyses,
+    history) or holding the header CTA back until there is one.
+53. **The cross-tab refresh guard degrades where Web Locks are missing**
+    (2026-08-03, account screens, PR #13): `lib/session.ts` serialises rotation
+    across tabs with `navigator.locks`, which closes the race where two tabs
+    cold-loading together replay the same consumed refresh token and the backend
+    revokes the whole family. Browsers without it (Safari before 15.4, Firefox
+    before 96) fall back to the per-tab single-flight promise and can still hit
+    that race. Deliberate: a rotation that never runs would be worse than one
+    that can race, and the fallback is the behaviour every tab had before. A
+    BroadcastChannel leader would cover them, at the cost of an election and
+    token material crossing a channel (ADR-32, "Rejected").

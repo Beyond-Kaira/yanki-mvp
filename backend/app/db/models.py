@@ -64,6 +64,13 @@ class Analysis(Base):
     serp_query_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     serp_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     serp_source: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # SEO / AI-readiness audit (ADR-31). Null on every run that did not audit —
+    # the same discipline as the serp_* columns above. ``seo_grade`` is the
+    # headline because a weighted average can hide a fatal problem; the score is
+    # the supporting number and the failing checks are the real output.
+    seo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    seo_grade: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    seo_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -81,6 +88,9 @@ class Analysis(Base):
     )
     serp_checks: Mapped[list["SerpCheck"]] = relationship(
         cascade="all, delete-orphan", order_by="SerpCheck.created_at"
+    )
+    seo_checks: Mapped[list["SeoCheck"]] = relationship(
+        cascade="all, delete-orphan", order_by="SeoCheck.created_at"
     )
 
 
@@ -154,6 +164,41 @@ class SerpCheck(Base):
     # rather than JSON because it is a diagnostic breadcrumb, not a queryable
     # structure, and Text keeps the model SQLite-compatible (see module docstring).
     unresponsive_engines: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class SeoCheck(Base):
+    """One SEO / AI-readiness check for an analysis, and its evidence (ADR-31).
+
+    Stored per check rather than as one JSON blob, for the same reason
+    ``serp_checks`` is: the product's wedge is showing its work, so "why is this
+    site invisible" has to be one click away — and because the interesting
+    product question is cross-sectional ("how many sites block GPTBot?"), which a
+    blob cannot answer.
+
+    ``status`` carries five values, not two. ``not_measured`` (the input was
+    unreadable) and ``not_applicable`` (the check does not apply here) are both
+    excluded from the score, and are deliberately distinct from each other and
+    from ``fail`` — the UI says something different for each.
+    """
+
+    __tablename__ = "seo_checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False
+    )
+    # Stable identifier for the check, e.g. 'ai_crawler_access'. Plain text
+    # rather than an enum: the catalogue will gain and lose checks between
+    # releases, and a stored row must stay readable when its check is retired.
+    check_id: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    title: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    severity: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    detail: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    evidence: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )

@@ -8,9 +8,12 @@ name: Deploy
 #
 # THE CHAIN: merge -> ci.yml runs on push:main -> if every job is green this
 # workflow SSHes to the VPS and asks it to deploy that exact sha. A red CI means
-# no deploy at all, which matters here because the api container runs
-# `alembic upgrade head` on boot: a broken migration reaching prod is not
-# something the health-gate rollback can undo.
+# no deploy at all, and that is still the cheap insurance even though the
+# migration failure mode it used to guard is gone: since ADR-30 the driver runs
+# `alembic upgrade head` as a one-shot step BEFORE any container is replaced, so
+# a bad migration now fails while the previous release is still serving. What CI
+# still buys is everything a migration is not — a bad build, a broken route, a
+# contract drift — all of which the health gate can only catch after the swap.
 #
 # WHAT THE RUNNER CAN ACTUALLY DO ON THE HOST: nothing except this. The key in
 # DEPLOY_SSH_KEY is pinned to a forced command on the server

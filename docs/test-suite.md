@@ -88,6 +88,8 @@ backend/tests/
     ├── test_footprint.py
     ├── test_scoring.py
     ├── test_serp_visibility.py # query build, hit detect, score, run_serp (ADR-28)
+    ├── test_seo_audit.py  # SEO/AI-readiness: weighted score, grade cap, 5 statuses (ADR-31)
+    ├── test_robots.py     # which AI crawlers robots.txt allows; retrieval vs training
     ├── test_mock.py       # MockProvider determinism + $0 cost
     ├── test_registry.py   # DRY_RUN panel = 4 mocks named after PANEL_ENGINES
     └── test_runner.py     # full run_pipeline walk (+ SERP inside footprint — ADR-28)
@@ -100,7 +102,8 @@ agent. The ADR-28 additions follow the same rule: the `serp` object cases in
 `test_api.py` stay with **backend-spine**; `test_serp_visibility.py` and the
 SERP cases in `test_runner.py` sit under `tests/pipeline/` with the **pipeline**
 agent; and `tests/serp/` and `tests/integration/` are the SERP feature's own
-area.
+area. The ADR-31 audit tests (`test_seo_audit.py`, `test_robots.py`) live under
+`tests/pipeline/` too, so they are the **pipeline** agent's by the same rule.
 
 ### 3.2 What each layer tests
 
@@ -184,6 +187,23 @@ contract untouched — and stays fully NULL unless enabled; new cases in
 `test_api.py` prove the nullable `serp` object serialises with its per-query
 evidence and that the three-null distinction survives the wire (`serp` absent
 vs. `score` null vs. `0.0`).
+
+**SEO / AI-readiness audit tests (ADR-31)** — pure and hermetic, no network.
+`pipeline/test_seo_audit.py` pins the scoring and grading: the weighted
+pass-ratio counts only *evaluable* checks, so `not_measured` and `not_applicable`
+are in neither the numerator nor the denominator (an unreadable input is never a
+failure and never a free pass); `audit_score` returns `None` — not `0.0` — when
+nothing was evaluable; and the grade is **capped by critical failures** (one
+critical fail caps a would-be A/B at C, two or more force F) so a bag of minor
+passes can't average a fatal problem away. `pipeline/test_robots.py` covers the
+flagship AI-crawler check: it parses a `robots.txt` and reports each crawler's
+access to `/`, keeping **retrieval** blocks (cost answers today → the audit fails)
+apart from **training** blocks (erode presence over time → the audit only warns),
+reading a 404 or empty file as "allow all" (an answer — measured) while a
+transport error or a `401`/`403` is **not measured** and never guessed as blocked,
+and reporting-but-never-scoring an agent whose vendor documents that it ignores
+`robots.txt`. The frontend counterpart (`SeoAudit.test.tsx`, §4) proves the same
+five-status distinction renders honestly.
 
 ### 3.3 SQLite for unit, Postgres for the queue
 
@@ -279,12 +299,14 @@ frontend/
 │   ├── ScoreGauge.test.tsx       # behaviour: aria-label wording + colour band
 │   ├── score.test.ts             # behaviour: scoreBand boundaries
 │   ├── SerpVisibility.test.tsx   # behaviour: the three SERP nulls, rendered (ADR-28)
+│   ├── SeoAudit.test.tsx         # behaviour: grade headline + 5 statuses kept distinct (ADR-31)
 │   ├── UrlForm.a11y.test.tsx     # axe: default + invalid-URL error state
 │   ├── ScoreGauge.a11y.test.tsx  # axe: danger / primary / success bands
 │   ├── StepProgress.a11y.test.tsx # axe: running (progressbar) + queued
 │   ├── ResultsTable.a11y.test.tsx # axe: footprint yes/no + null snippet
 │   ├── AnalysisPage.a11y.test.tsx # axe: running / failed (alert) / results
 │   ├── SerpVisibility.a11y.test.tsx # axe: hit/miss/unreadable rows + not-measured
+│   ├── SeoAudit.a11y.test.tsx    # axe: grade + pass/warn/fail/not_measured/not_applicable rows
 │   ├── a11y.ts                   # shared axeCheck() helper (not a test file)
 │   └── vitest-axe.d.ts           # Vitest-2 matcher type augmentation
 ├── vitest.setup.ts               # jest-dom + vitest-axe matchers, cleanup
@@ -293,7 +315,7 @@ frontend/
 
 Vitest + `@testing-library/react` render components into **jsdom** (config in
 `vitest.config.ts`, `include: ['tests/**/*.test.{ts,tsx}']`) — no browser, no
-network. Four units with real logic get behaviour tests, and a parallel
+network. Five units with real logic get behaviour tests, and a parallel
 **axe accessibility layer** (§4.1) asserts no violations on the same components:
 
 - **`UrlForm`** (`UrlForm.test.tsx`) — validation: a malformed URL shows an inline
@@ -314,13 +336,19 @@ network. Four units with real logic get behaviour tests, and a parallel
   says the profile gave no product category; unreadable queries are kept out of
   the per-search table but counted ("*n* search could not be read"); and a hit
   with a null rank still renders ("position unknown").
+- **`SeoAudit`** (`SeoAudit.test.tsx`) — the SEO / AI-readiness audit (ADR-31)
+  rendered honestly: the headline is the **grade** (A–F), not the score; the five
+  per-check statuses stay distinct — `pass` / `warn` / `fail` shown as verdicts,
+  while `not_measured` ("we couldn't read the input") and `not_applicable`
+  ("doesn't apply here") are neither collapsed together nor drawn as failures; and
+  a `null` `result.seo` (a run that did not audit) renders nothing.
 
 Anything that talks to the API is tested by mocking `lib/api.ts`, never by
 hitting a backend. Fast, deterministic, offline.
 
 ### 4.1 Accessibility layer (vitest-axe + axe-core)
 
-The P4.5 a11y acceptance ("no critical axe violations") is **automated**. Six
+The P4.5 a11y acceptance ("no critical axe violations") is **automated**. Seven
 `*.a11y.test.tsx` files render each component under jsdom and run
 [`axe-core`](https://github.com/dequelabs/axe-core) via
 [`vitest-axe`](https://github.com/chaance/vitest-axe), asserting
@@ -342,9 +370,10 @@ Each file exercises the states that change the DOM, not just the default render:
 `aria-describedby` + `role="alert"`), `ScoreGauge` (all three colour bands),
 `StepProgress` (running with a progressbar, and queued), `ResultsTable`
 (footprint yes/no with a null snippet), `AnalysisPage` (running, the
-`role="alert"` failure card, and the results screen), and `SerpVisibility` (a
-measured run with hit, miss and unreadable rows, and the not-measured state).
-Between them they cover
+`role="alert"` failure card, and the results screen), `SerpVisibility` (a
+measured run with hit, miss and unreadable rows, and the not-measured state), and
+`SeoAudit` (a graded run with `pass`/`warn`/`fail` rows plus the `not_measured`
+and `not_applicable` states). Between them they cover
 **roles, accessible names, label association, landmarks, heading order,
 list/table markup, `aria-*` validity, and duplicate ids**.
 
@@ -424,8 +453,13 @@ check:
 - **`integration`** — the live-instance tier of §3.4 against a **real** SearXNG,
   pinned to a known tag: it boots the instance with `serp-instance.sh`, sets
   `SERP_TEST_BASE_URL`, and runs `pytest tests/integration`.
-- **`migration`** — `alembic upgrade head`, then `downgrade -1`, then upgrade
-  again, on a real Postgres, asserting the SERP schema appears, fully reverts,
+- **`migration`** — applies every migration on real Postgres, snapshots the
+  schema, steps back one revision, and comes forward again, asserting the
+  schema **round-trips exactly**. It asserts a property rather than a list of
+  table names on purpose: the first version named SERP's tables and duly
+  failed on the next migration for the wrong reason. A separate step checks
+  the downgrade actually changed something, so a `downgrade()` that does
+  nothing cannot round-trip its way to a pass.
   and re-applies (via `.github/scripts/serp_schema_check.py`). CI's ordinary
   pytest runs on SQLite and had never applied a migration at all, so a downgrade
   that cannot revert had nowhere to be caught.
@@ -530,12 +564,16 @@ gate (§10).
 | **Scoring** | `tests/pipeline/test_scoring.py` | `score == footprints/total`; `total==0` safe |
 | **Results (API)** | `tests/test_api.py` | `GET` returns KYC + prompts + responses + score; `result` always present |
 | **Results (UI)** | `frontend/tests/ScoreGauge.test.tsx`, `UrlForm.test.tsx`, `score.test.ts` | gauge aria-label + color band; form validation; `scoreBand` boundaries |
-| **Results (UI) — a11y (P4.5)** | `frontend/tests/{UrlForm,ScoreGauge,StepProgress,ResultsTable,AnalysisPage,SerpVisibility}.a11y.test.tsx` (helper `tests/a11y.ts`) | axe: no violations across each component's DOM-changing states (roles, names, labels, landmarks, aria validity); contrast checked out-of-band (§4.1) |
+| **Results (UI) — a11y (P4.5)** | `frontend/tests/{UrlForm,ScoreGauge,StepProgress,ResultsTable,AnalysisPage,SerpVisibility,SeoAudit}.a11y.test.tsx` (helper `tests/a11y.ts`) | axe: no violations across each component's DOM-changing states (roles, names, labels, landmarks, aria validity); contrast checked out-of-band (§4.1) |
+| **Accounts (API)** — P6.0 | `backend/tests/test_auth_api.py`, `test_auth_service.py`, `test_auth_sessions.py` | signup issues **no** session; login returns bearer + sets the refresh cookie; rotation is single-use and a replay revokes the family; `/me` needs the bearer |
+| **Accounts (UI + session layer)** — P6.1 | `frontend/tests/{auth,session}.test.ts`, `{LoginPage,SignupPage,SiteHeader}.test.tsx` | one rotation per refresh **within a tab and across tabs**; a 401 refreshes once and replays carrying the new bearer; sign-out clears local state even when the request fails; the account-created-but-not-signed-in split; the header's status, not its chrome |
+| **Accounts (UI) — a11y** | `frontend/tests/{LoginPage,SignupPage}.a11y.test.tsx` | axe across default, field-error and rejected-submit states; every field error is a live region and each input is described by its own; the reveal toggle keeps its name and `aria-pressed` |
 | **Whole-MVP happy path** | `frontend/e2e/happy-path.spec.ts` | submit → wait for gauge → a percentage renders (DRY_RUN=1); gated on `E2E_BASE_URL` |
 | *(supporting)* Full pipeline walk | `tests/pipeline/test_runner.py` | `run_pipeline` reaches `done`/progress 100; prompts + `prompt_count×4` responses; `geo_score == hits/total` |
 | *(supporting)* Queue reliability (NFR-3) | `tests/test_queue.py`, `test_queue_postgres.py` | portable claim / stale-reaper / `attempts>3 → failed` (SQLite); `FOR UPDATE SKIP LOCKED` no-double-claim (real PG) |
 | *(supporting, ADR-28)* SERP visibility | `tests/serp/*`, `tests/pipeline/test_serp_visibility.py`, `frontend/tests/SerpVisibility.test.tsx`, + SERP cases in `test_runner.py` / `test_api.py` | queries never name the brand; hit = domain OR text; unreadable page dropped from the denominator; three distinct nulls; fail-open; off by default |
 | *(supporting, ADR-28)* SERP vs. real SearXNG | `tests/integration/test_searxng_live.py` (gated on `SERP_TEST_BASE_URL`, §3.4) | we parse the payload a real instance sends; an unreadable page is never a miss |
+| *(supporting, ADR-31)* SEO / AI-readiness audit | `tests/pipeline/test_seo_audit.py`, `test_robots.py`, `frontend/tests/SeoAudit.test.tsx` (+ `.a11y`) | grade capped by critical failures; five statuses, `not_measured`/`not_applicable` excluded from the score and never a failure; retrieval-vs-training crawler block; rides inside discovery, `result.seo` null when it didn't run |
 
 ---
 
@@ -545,9 +583,10 @@ We do **not** gate CI on a global coverage percentage — that tends to reward
 testing trivia and punish honest, hard-to-test glue. Instead:
 
 - **Pipeline pure functions** (`scoring`, `footprint`, `prompts`, KYC parsing,
-  and the SERP pure functions `build_queries` / `detect` / `serp_score`): aim for
-  **~100%** line + branch coverage. They are small, pure, and the core of the
-  product's credibility ("show your work") — there is no excuse for a missed
+  the SERP pure functions `build_queries` / `detect` / `serp_score`, and the
+  SEO-audit pure functions `audit_score` / `audit_grade` plus `robots.evaluate`):
+  aim for **~100%** line + branch coverage. They are small, pure, and the core of
+  the product's credibility ("show your work") — there is no excuse for a missed
   branch here.
 - **Everywhere else:** the bar is **"a test exists for every acceptance-criteria
   row" (§9)**. If a row has no test, that is the gap to close — not a number on a

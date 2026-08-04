@@ -44,7 +44,7 @@ table *is* the queue (see §4).
                         │           Postgres 16  (db)              │
                         │  analyses │ prompts │ responses │        │
                         │  llm_cache│ checker_submissions          │
-                        │  serp_checks                             │
+                        │  serp_checks │ seo_checks                │
                         │  analyses table doubles as the job queue │
                         └───────────────────┬─────────────────────┘
                                             ▲
@@ -87,7 +87,10 @@ rows. All the slow, costly work happens in the worker.
 
 Outbound network calls all originate in the **worker**, never the api. Discovery
 fetches the submitted URL over httpx (SSRF-guarded by `net_guard` — the host must
-resolve to a public address); the execute step calls the LLM providers above;
+resolve to a public address), and the SEO / AI-readiness audit that rides in that
+same step (ADR-31) adds exactly one more fetch — `/robots.txt`, through
+discovery's same SSRF-guarded client, so a stranger-submitted host is checked the
+identical way; the execute step calls the LLM providers above;
 and the footprint step's SERP pass reads a **SearXNG** instance — an open-source
 metasearch engine (ADR-28) that the stack now **ships** as a profile-gated
 compose service (ADR-29, §5), no longer a piece of infrastructure you stand up
@@ -126,6 +129,12 @@ queryable (FR-7).
 │               │  SPA fallback: if visible text <800 chars, mine ≤3 same-origin
 │               │  JS bundles for prose string literals (TR-safe). ~20k cap;
 │               │  unreachable/empty -> PipelineError("could not read the site")
+│               │  ── THEN, in the SAME step (ADR-31): seo_audit.run_audit re-reads
+│               │  this crawl + fetches ONE /robots.txt (robots.py: which AI
+│               │  crawlers are allowed) and writes analyses.seo_{score,grade,
+│               │  status} + seo_checks (one row/check). No new step; checker rows
+│               │  have no site so they skip it. Fail-open: a defect costs the
+│               │  grade, never the run.
 └──────┬────────┘  ── on complete: progress = 15, current_step advances
        ▼
 ┌───────────────┐  kyc.generate_kyc(text, url, provider) -> KYC
@@ -173,7 +182,7 @@ queryable (FR-7).
 │               │  writes analyses.geo_score, footprint_count, total_responses
 └──────┬────────┘  ── progress = 100, status = 'done'
        ▼
- RESULTS (GET /api/v1/analyses/{id} → result{ kyc, prompts, responses, geo_score, serp })
+ RESULTS (GET /api/v1/analyses/{id} → result{ kyc, prompts, responses, geo_score, serp, seo })
 ```
 
 ### Progress mapping (SPEC — set when the step COMPLETES)
@@ -202,6 +211,20 @@ is by default, or the row predates ADR-28); a present `serp` with `score`
 **null** = we searched but could not read the results; `score` **0.0** = we read
 them and the company appeared in none. Unmeasurable pages — where every upstream
 engine refused — are excluded from the denominator, never counted as misses.
+
+**The SEO / AI-readiness audit (ADR-31) runs *inside* step 1 (discovery), not as
+a seventh step either.** It is a second reading of the crawl discovery just paid
+for plus a single `/robots.txt` fetch, so it adds no new `current_step` value, no
+progress checkpoint and no change to the 6-step `StepProgress` contract — the
+mapping above is untouched. Its output surfaces as a nullable `result.seo` object,
+**null** on any run that did not audit (a checker submission has no site). The
+headline is a **grade** (A–F), not the score: a weighted average can average a
+fatal problem away, so the grade is **capped by critical failures** (one critical
+fail caps at C, two or more at F) and the failing checks are the real output. Each
+check carries one of five statuses — `pass` / `warn` / `fail` / `not_measured` /
+`not_applicable` — and the last two are excluded from the score and mean different
+things ("we could not read the input" vs. "this does not apply here"), never
+collapsed into each other or shown as a failure.
 
 ### DRY_RUN / mock provider path
 
@@ -414,11 +437,15 @@ State-transition summary:
 
 `docker compose -f deploy/docker-compose.yml up --build` (compose project name
 `yanki`) brings up **db + api + worker + web** with bind-mounts for hot reload.
-The api container command runs **`alembic upgrade head` before uvicorn**, so
-schema migrations apply automatically on every api boot (same in prod). **No
-CORS**: the frontend always fetches relative paths, and Next.js `rewrites()`
-proxies `/api/:path*` and `/healthz` to the api (`API_ORIGIN`, default
-`http://localhost:8141`). Postgres publishes 5432 for local psql only.
+The **dev** api container command runs **`alembic upgrade head` before
+uvicorn**, so schema migrations apply automatically on every api boot. **Prod
+no longer does this**: its api serves only, and the deploy driver migrates as a
+separate one-shot step *before* any container is replaced (ADR-30; see §Prod).
+Dev keeps the fused form on purpose — it has no rollback to protect and CI's
+e2e job relies on the stack migrating itself. **No CORS**: the frontend always
+fetches relative paths, and Next.js `rewrites()` proxies `/api/:path*` and
+`/healthz` to the api (`API_ORIGIN`, default `http://localhost:8141`). Postgres
+publishes 5432 for local psql only.
 
 The three published **host** ports are overridable to dodge local conflicts
 (container ports stay fixed): `YANKI_WEB_PORT` (→8140), `YANKI_API_PORT` (→8141),
@@ -460,9 +487,17 @@ reaching Yanki over the stack's loopback host binds:
   8140); db + worker stay on the project-internal network and Postgres is
   never published in prod.
 - `make deploy` / `make rollback` follow the ams-pulse pattern: build, tag by git
-  SHA, `compose -p yanki-prod up`, `/healthz` check, roll back to the last-good
-  SHA file on failure. **First exercised for real 2026-07-10 (P4.2)** — both
-  paths ran clean on the shared VPS with co-tenants verified undisturbed.
+  SHA, **migrate (a one-shot `alembic upgrade head`, before any running container
+  is replaced)**, `compose -p yanki-prod up`, `/healthz` check, roll back to the
+  last-good SHA file on failure. Both drivers run the migration as this separate
+  step and the api serves only (ADR-30, issue #16): fused on boot, a
+  *successful* migration made rollback impossible — the previous image's alembic
+  exits 255 on a revision it has never heard of. The nginx-aware driver
+  (`deploy/deployment.sh`) numbers the sequence as **7 steps**: migrate is the
+  new step 4, so apply/health/record shift to 5/6/7. A bad migration now fails
+  while the previous release is still serving and touches no container.
+  **First exercised for real 2026-07-10 (P4.2)** — both paths ran clean on the
+  shared VPS with co-tenants verified undisturbed.
 - **A `searxng` service ships behind the `serp` profile (ADR-29).** The operator
   turned SERP on, so the `yanki-prod` compose file now defines a fifth container,
   `searxng` (`searxng/searxng:2026.8.1-8892414dc`, pinned like every other
@@ -520,6 +555,7 @@ reaching Yanki over the stack's loopback host binds:
 | `max retries exceeded` | Job hit `attempts > 3` — a poison job. Inspect its `url` / `error`; don't just re-queue. |
 | Unexpected LLM spend | Confirm `DRY_RUN` and `PANEL_ENGINES`; check `MAX_RESPONSES_PER_JOB` and `llm_cache` hit rate. CI/tests must stay `DRY_RUN`. |
 | `result.serp` null / no SERP number | Expected unless an operator ran a SearXNG instance and set `SERP_ENABLED=1` + `SERP_BASE_URL`. SERP is off by default and **fail-open**: an instance being down leaves the `serp_*` columns null and never fails the run. A present `serp` with `score` null (not `0.0`) means the instance answered but every engine refused — see `serp_checks.unresponsive_engines`. |
+| `result.seo` null / no SEO grade | Expected on a run that did not audit — a checker submission has no site, and rows predating ADR-31 never audited. On a URL run the audit rides inside discovery and always writes `analyses.seo_status` (`ok` / `no_crawl` / `error`); it is **fail-open**, so an audit defect costs the run its grade (`seo_grade` null, `seo_status='error'`) and nothing else. The failing `seo_checks` rows are the real output. |
 | 404 on a valid-looking id | Unknown/never-created id. 422 instead means URL validation rejected the submit. |
 | Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: host nginx path-routing (`/etc/nginx` vhost) + the 127.0.0.1:8142/8143 loopback binds. |
 

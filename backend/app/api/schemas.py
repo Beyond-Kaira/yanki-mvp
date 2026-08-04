@@ -221,6 +221,41 @@ class SerpVisibilityOut(BaseModel):
     checks: list[SerpCheckOut]
 
 
+class SeoCheckOut(BaseModel):
+    """One SEO / AI-readiness check and the evidence behind its verdict.
+
+    ``status`` is one of ``pass`` / ``warn`` / ``fail`` / ``not_measured`` /
+    ``not_applicable``. The last two are excluded from the score and mean
+    different things — "we could not read the input" versus "this does not apply
+    here" — so the UI must not collapse them into each other or into a failure.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    check_id: str
+    title: str
+    severity: str
+    status: str
+    detail: str | None
+    evidence: str | None
+
+
+class SeoAuditOut(BaseModel):
+    """The SEO audit for one analysis (ADR-31).
+
+    ``grade`` is the headline rather than ``score``, because a weighted average
+    can hide a fatal problem: the grade is capped by critical failures, so a site
+    that blocks AI crawlers cannot present as healthy. Null on runs that did not
+    audit — a checker submission has no site to look at.
+    """
+
+    status: str
+    score: float | None
+    grade: str | None
+    checks: list[SeoCheckOut]
+
+
 class ResultOut(BaseModel):
     kyc: dict[str, Any] | None
     prompts: list[PromptOut]
@@ -233,6 +268,8 @@ class ResultOut(BaseModel):
     competitors_appeared: list[CompetitorMention] | None
     # SERP visibility (ADR-28); null on every run that did not measure it.
     serp: SerpVisibilityOut | None
+    # SEO / AI-readiness audit (ADR-31); null on every run that did not audit.
+    seo: SeoAuditOut | None
 
 
 class AnalysisOut(BaseModel):

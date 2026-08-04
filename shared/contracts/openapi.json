@@ -497,6 +497,16 @@
             "title": "Responses",
             "type": "array"
           },
+          "seo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeoAuditOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "serp": {
             "anyOf": [
               {
@@ -528,9 +538,115 @@
           "total_responses",
           "engine_presence",
           "competitors_appeared",
-          "serp"
+          "serp",
+          "seo"
         ],
         "title": "ResultOut",
+        "type": "object"
+      },
+      "SeoAuditOut": {
+        "description": "The SEO audit for one analysis (ADR-31).\n\n``grade`` is the headline rather than ``score``, because a weighted average\ncan hide a fatal problem: the grade is capped by critical failures, so a site\nthat blocks AI crawlers cannot present as healthy. Null on runs that did not\naudit \u2014 a checker submission has no site to look at.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SeoCheckOut"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "score",
+          "grade",
+          "checks"
+        ],
+        "title": "SeoAuditOut",
+        "type": "object"
+      },
+      "SeoCheckOut": {
+        "description": "One SEO / AI-readiness check and the evidence behind its verdict.\n\n``status`` is one of ``pass`` / ``warn`` / ``fail`` / ``not_measured`` /\n``not_applicable``. The last two are excluded from the score and mean\ndifferent things \u2014 \"we could not read the input\" versus \"this does not apply\nhere\" \u2014 so the UI must not collapse them into each other or into a failure.",
+        "properties": {
+          "check_id": {
+            "title": "Check Id",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "check_id",
+          "title",
+          "severity",
+          "status",
+          "detail",
+          "evidence"
+        ],
+        "title": "SeoCheckOut",
         "type": "object"
       },
       "SeoProjectDetailOut": {

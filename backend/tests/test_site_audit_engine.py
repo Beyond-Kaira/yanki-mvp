@@ -363,7 +363,10 @@ def test_schema_source_metadata_matches_bundled_ontology() -> None:
     ontology = data_dir / "schema_master.json"
     metadata = json.loads((data_dir / "schema_master.source.json").read_text("utf-8"))
 
-    assert hashlib.sha256(ontology.read_bytes()).hexdigest().upper() == metadata["sha256"]
+    # Text mode normalizes checkout-specific CRLF/LF line endings.
+    ontology_bytes = ontology.read_text(encoding="utf-8").encode("utf-8")
+
+    assert hashlib.sha256(ontology_bytes).hexdigest().upper() == metadata["sha256"]
     assert metadata["retrieval_date"] is None
     assert metadata["license"] == "CC BY-SA 3.0"
     assert metadata["verified_schema_version"] is None

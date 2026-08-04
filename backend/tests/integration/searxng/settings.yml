@@ -1,0 +1,48 @@
+# SearXNG configuration for the CI integration instance.
+#
+# Four settings here are load-bearing, each verified against a real container
+# rather than inferred from the docs:
+#
+# 1. `engines.keep_only: []` disables every bundled engine, so the only engine
+#    that answers is our fixture. Without it the instance federates Google et al,
+#    which refuse CI runners and make the results non-deterministic.
+# 2. `search.formats` must list `json` — SearXNG serves the HTML results page
+#    otherwise, which is exactly the misconfiguration `SearxngSource` reports as
+#    "the search instance did not return JSON".
+# 3. `enable_http: true` on the engine. SearXNG blocks plain-http outbound to
+#    engines by default, and the symptom is silent: the engine simply appears
+#    under `unresponsive_engines` with "unexpected crash".
+# 4. `limiter: false`, because the test client is bot-shaped and would otherwise
+#    be served a 403.
+#
+# `secret_key` is a placeholder substituted at runtime with a freshly generated
+# value. It is never a real secret and must never become one: this repo is
+# public and CI scans its full history with gitleaks.
+use_default_settings:
+  engines:
+    keep_only: []
+
+server:
+  secret_key: "REPLACED_AT_RUNTIME"
+  limiter: false
+  public_instance: false
+
+search:
+  formats:
+    - html
+    - json
+
+engines:
+  - name: fixture
+    engine: json_engine
+    shortcut: fx
+    categories: [general]
+    search_url: http://yanki-serp-fixture:8000/search?q={query}
+    enable_http: true
+    results_query: results
+    url_query: url
+    title_query: title
+    content_query: content
+    paging: false
+    disabled: false
+    timeout: 5.0

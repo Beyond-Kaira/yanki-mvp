@@ -250,24 +250,26 @@ operator-directed card, waitlist + Resend emails** (`c521931`), P5.10
 (`93aa34a` + build fix `643e0ee`), all CI-green and deployed dark at
 session close. Full detail: `sessions/2026-07-10-11.md`.
 
-🔍 **Session 16 (2026-08-03): P6.1 — account screens + the browser session
+🔍 **Session 19 (2026-08-03): P6.1 — account screens + the browser session
 layer, in review.** The first slice of roadmap **§2d** (accounts), on
 `feat/auth-screens` /
 [PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13): sign up, log in,
 log out, a header that knows who you are, and `lib/session.ts` +
 `lib/api.ts` holding the access token in memory and rotating the httpOnly
-refresh cookie behind it (**ADR-28**). PR #9 landed the endpoints behind it and
+refresh cookie behind it (**ADR-32**). PR #9 landed the endpoints behind it and
 is recorded below as P6.0. The review returned **changes requested** (9 items)
 and this session answered all of them: the password-reset flow and the terms
-checkbox were **removed** rather than shipped (tech-debt #34, #35), the
+checkbox were **removed** rather than shipped (tech-debt #49, #50), the
 cross-tab refresh race is closed with a Web Lock, and the three untested claims
 the reviewer found — the 401 replay, the field-error announcement, the header's
 anonymous branch — are now pinned by tests that were each confirmed to fail
 without their fix. Frontend 122 passed across 26 files; tsc + eslint clean.
-Merged against `main` after this session closed, to pick up **P5.15**'s
-concurrent changes to `frontend/lib/contracts.ts` — no code conflict, two doc
-renumberings (this entry, ADR, tech-debt #30–33 → #34–38). Full detail:
-`sessions/2026-08-03-01.md`.
+Merged against `main` twice as `main` moved 27 commits across the same session
+— first against **P5.15**, then against **P5.16–P5.18** (SERP visibility, the
+SearXNG instance, and two fixes + the SEO audit) — no code conflict either
+time, two rounds of doc renumbering (this entry, ADR, tech-debt; see
+`sessions/2026-08-03-04.md` §§8–9 for both). Full detail:
+`sessions/2026-08-03-04.md`.
 
 ✅ **Session 14 (2026-07-28): P5.14 — discovery + KYC input quality**
 (`cf28cbc`, `f25462d`, `8ce7356`, `c74ccd3`, `8337045`, `684108a` on
@@ -294,6 +296,51 @@ number-aware phrasing, full topic × shape rotation, and a hard invariant that
 no scored question names the brand). ADR-27. Zero contract drift, no new paid
 call, `checker_prompts.VERSION` unchanged. Backend 321 passed / 3 skipped,
 frontend 70 passed. Full detail: `sessions/2026-08-01-01.md`.
+
+✅ **Session 16 (2026-08-03): P5.16 — SERP visibility from an open-source
+metasearch instance** (branch `feat/serp-visibility`). Yanki now measures the
+*organic* search surface next to the AI-answer GEO score: a self-hostable
+**SearXNG** instance (AGPL-3.0) read over its JSON API tells us whether the
+company also shows up in ordinary results for brand-free buyer queries — the one
+place in the pipeline that can see a company the LLM panel never names. Shipped
+whole and **inside the existing footprint step** (no seventh step): the source
+adapter (`serp/` — one `SerpSource` protocol, SearXNG + deterministic mock +
+registry), the pipeline pass (`serp_visibility.py`, brand-free queries reusing
+ADR-27's leak filter), persistence (`SerpCheck` + five nullable `serp_*` columns,
+migration `0007`), the API contract (a nullable `serp` object), the UI
+(`SerpVisibility` on both results pages), the tests, and a **new `SERP` CI
+workflow** (real-SearXNG integration, scheduled upstream-drift, alembic up **and**
+down on Postgres, one whole analysis through the DRY_RUN stack). ADR-28. **Off by
+default** (`SERP_ENABLED=False`) — nothing changes for an existing deployment
+until an operator turns it on and stands up an instance; **Google AI Overviews
+itself stays open** (no $0 source). One real contract diff (`openapi.json` +
+`types.ts`); `checker_methodology.json` unchanged. Backend 384 passed / 7 skipped
+(the SERP integration tier, which needs a live instance), frontend 79 passed. Full detail:
+`sessions/2026-08-03-01.md`.
+
+✅ **Session 17 (2026-08-03): P5.17 — the SearXNG instance stood up, SERP live
+in production** (branch `feat/serp-instance`). The operator decision ADR-28
+deferred (operator-expected **B6**) was executed the same day: turn SERP on.
+This is an **infrastructure change, not a feature change** — no pipeline,
+provider, scoring or UI code moved. The instance is now a **profile-gated
+compose service** in both the prod and dev compose files, behind the `serp`
+profile, which compose reads from `deploy/.env`'s `COMPOSE_PROFILES`, so
+`deployment.sh` is untouched: image pinned `searxng/searxng:2026.8.1-8892414dc`,
+capped at `mem_limit: 512m` / `cpus: 0.5` with bounded json-file logs (measured
+~105–150 MiB steady state on the shared VPS). **Prod publishes no port** — only
+`api` and `worker` reach it at `http://searxng:8080`, which is exactly what lets
+its limiter stay off — while dev publishes a loopback port for debugging.
+`settings.example.yml` is tracked (the four real web-search engines kept, the
+six default widget engines dropped); the real `settings.yml` lives on the host,
+gitignored and symlinked into the auto-deploy checkout, exactly as `deploy/.env`
+already is. The host `deploy/.env` gained three lines (`COMPOSE_PROFILES=serp`,
+`SERP_ENABLED=1`, `SERP_BASE_URL=http://searxng:8080`). ADR-29. Measured live
+against real results: Salesforce 4/4, HubSpot 4/4, Baykar 3/4 on their own
+categories, ~0.5 s median per query; `unresponsive_engines` is non-empty on most
+stored rows because two of the four engines refuse this egress IP — accurate
+reporting, not a fault. Two new tech-debt items, **#43** (DRY_RUN forces the
+mock SERP source) and **#44** (two of four engines refused per query, so the
+score leans on `google cse`). Full detail: `sessions/2026-08-03-02.md`.
 
 ➡️ **Next up: P5.11 (operator go-live)** — everything agent-buildable is done.
 Blockers are all operator items: A1 decisions, **A2 (new: rule on discovery/KYC
@@ -1842,6 +1889,127 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
   `discovery-kyc-improvements.md` remain **not built** (operator item A2); this
   work is language-neutral and does not touch that decision.
 
+### P5.16 — SERP visibility from an open-source metasearch instance (added 2026-08-03, session 16)
+- **Goal:** measure the *organic* search surface alongside the AI-answer GEO
+  score — whether the company also shows up in ordinary search results for
+  brand-free buyer queries. The source is a self-hostable **SearXNG** instance
+  (AGPL-3.0) read over its JSON API, chosen over a paid SERP API (a per-query
+  bill in front of the pricing wedge) and over scraping the engines directly
+  (a maintenance treadmill). It runs **inside the footprint step**, not as a
+  seventh one, and is **off by default**. Per ADR-28.
+- **Why now:** the GEO score measures one surface — what AI engines say. Buyers
+  still use the other one, and [roadmap.md](roadmap.md) named the gap out loud
+  ("Google AI Overviews tracking … our biggest admitted gap vs Semrush; needs
+  SERP scraping or a paid SERP API"). SearXNG is a third option that sentence
+  predates: it puts the public engines behind one self-hostable JSON API for
+  $0, closing the *organic* half of the gap. The AI Overviews box itself has no
+  $0 source and stays open (roadmap Later).
+- **Dependencies:** ADR-27's brand-leak invariant — SERP query generation
+  reuses `prompts.topic_pool` and re-checks each finished query with
+  `prompts.leaks_brand` (`_brand_keys`/`_leaks_brand` made public for this
+  rather than copied) so no scored query can name the brand. Additive to the
+  existing pipeline otherwise.
+- **Complexity:** L
+- **Deliverables:** `backend/app/serp/` (**new** package — `base.py`
+  (`SerpSource` protocol, `SerpResult`/`SerpPage`, `SerpUnavailable`),
+  `searxng.py`, `mock.py`, `registry.py`);
+  `backend/app/pipeline/serp_visibility.py` (**new** — brand-free query
+  generation, hit detection, scoring and the run pass, all inside the footprint
+  step); `prompts.py` (`_brand_keys`/`_leaks_brand` made public as
+  `brand_keys`/`leaks_brand`); `backend/app/db/models.py` (**new** `SerpCheck`
+  model / table `serp_checks`, one row per query, plus five nullable `serp_*`
+  columns on `analyses`); `backend/alembic/versions/0007_serp_visibility.py`
+  (**new**, additive); `backend/app/api/schemas.py` + `routes.py` (nullable
+  `serp` object — `SerpVisibilityOut` / `SerpCheckOut`); `backend/app/config.py`
+  (nine `serp_*` settings, `serp_enabled` default **False**);
+  `frontend/components/SerpVisibility.tsx` (**new**, rendered on **both** results
+  pages) + `frontend/lib/contracts.ts` aliases; tests in `backend/tests/serp/`
+  (**new**) / `test_serp_visibility.py` (**new**) / `test_runner.py` /
+  `test_api.py` / `SerpVisibility.test.tsx` + `.a11y.test.tsx` (**new**), plus a
+  **new** `backend/tests/integration/` tier against a real SearXNG (skipped
+  unless `SERP_TEST_BASE_URL` is set, so `make test` stays hermetic);
+  `.github/workflows/serp.yml` (**new** `SERP` workflow — four jobs: real-SearXNG
+  integration, scheduled upstream-drift on `:latest`, alembic up **and** down on
+  Postgres, one whole analysis through the DRY_RUN compose stack) +
+  `.github/scripts/`; `SERP` added to `notify.yml`'s `workflows:`; ADR-28 in
+  [design.md](design.md).
+- **Acceptance:** backend + frontend suites green; `make gen-types` a **real
+  diff** this time (`openapi.json` + `types.ts` gain the nullable `serp`
+  object); migration `0007` applies **and reverts** on Postgres;
+  `checker_methodology.json` untouched; the three distinct nulls preserved and
+  asserted (`serp` absent = never measured, `serp.score` null = we looked and
+  could not read, `0.0` = read and found nothing); unmeasurable pages dropped
+  from the denominator, never counted as misses; `run_serp` never raises (an
+  instance being down costs the run its SERP number and nothing else);
+  `SERP_ENABLED` defaults **False** so an existing deployment is unchanged until
+  an operator flips it and stands up an instance.
+- **Status:** ✅ **done — session 16 (2026-08-03)** on `feat/serp-visibility`.
+  Backend 382 passed / 7 skipped (the new SERP integration tier, which needs a
+  live instance), frontend 79 passed. **Not built, deliberately:** Google AI
+  Overviews tracking (the AI answer box itself — no $0 source yet, still roadmap
+  Later), a weighted / position-aware SERP score, scheduled re-measurement over
+  time, and a production SearXNG instance (an operator action, recorded in
+  [operator-expected.md](operator-expected.md)).
+
+### P5.17 — Stand up the SearXNG instance and enable SERP in production (added 2026-08-03, session 17)
+- **Goal:** turn the SERP feature on. ADR-28 shipped the code but left the
+  instance unbuilt; this stands one up as a **profile-gated compose service** in
+  both the prod and dev compose files, pins and resource-caps it, adds the
+  gitignored host-config arrangement `deploy/.env` already uses, and flips the
+  three env lines that make the worker read it. It is infrastructure, not a
+  feature change: no pipeline, provider, scoring or UI code is touched. Per
+  ADR-29.
+- **Why now:** ADR-28 deliberately deferred the instance — standing one up
+  spends real resources on a VPS shared with four other production tenants, and
+  that spend is the operator's call, not engineering's. The operator made the
+  call the same day (operator-expected **B6**): turn it on. It earns its own
+  record because measuring the instance first changed several of its parameters
+  (which engines to keep, the memory cap, and the per-query intermittency
+  finding).
+- **Dependencies:** P5.16 / ADR-28 (the SERP feature this instance feeds — the
+  worker already reads `SERP_BASE_URL` and is fail-open) and the operator's
+  **B6** decision. No code dependency beyond that.
+- **Complexity:** M
+- **Deliverables:** the `searxng` service in `deploy/docker-compose.prod.yml`
+  and `deploy/docker-compose.yml`, behind the **`serp` profile** so it starts
+  only when `deploy/.env` sets `COMPOSE_PROFILES=serp` — compose reads that from
+  the project-directory env file, so there is **no change to `deployment.sh`**;
+  image pinned `searxng/searxng:2026.8.1-8892414dc`; `mem_limit: 512m` /
+  `cpus: 0.5` / bounded json-file logs; **prod publishes no port** (only
+  `api`/`worker` reach it at `http://searxng:8080`, which is what lets its
+  limiter stay off) while **dev publishes a loopback** `YANKI_SEARXNG_PORT`
+  (default 8144) for debugging; deliberately **not** a `depends_on`, because the
+  SERP pass is fail-open. `deploy/searxng/settings.example.yml` (**new**,
+  tracked — only the four real web-search engines kept (`google cse`,
+  `duckduckgo`, `brave`, `startpage`), the six default widget engines dropped,
+  limiter off, JSON format on, the low-entropy `ultrasecretkey` placeholder);
+  `.gitignore` (ignore the host `deploy/searxng/settings.yml`, track only the
+  example); `deploy/.env.example` (the `COMPOSE_PROFILES` opt-in note plus the
+  `SERP_BASE_URL=http://searxng:8080` bundled value); ADR-29 in
+  [design.md](design.md); tech-debt **#43** and **#44**. Host-side, not in the
+  repo (operator action): the real `deploy/searxng/settings.yml` with a
+  generated `secret_key`, symlinked into the auto-deploy checkout exactly as
+  `deploy/.env` is, and the three `deploy/.env` lines `COMPOSE_PROFILES=serp` /
+  `SERP_ENABLED=1` / `SERP_BASE_URL=http://searxng:8080`.
+- **Acceptance:** `deploy/searxng/settings.yml` stays gitignored (the real key
+  never enters the public history CI scans); production runs a fifth container
+  at a measured ~105–150 MiB steady state, capped at 512 MiB; SERP is live and
+  reads real results (Salesforce 4/4, HubSpot 4/4, Baykar 3/4 on their own
+  categories, ~0.5 s median per query; 8/8 buyer-style queries measurable at
+  20–30 results each); `unresponsive_engines` is non-empty on most stored rows —
+  accurate reporting, not a fault, because two of the four engines are usually
+  refused from this egress IP; turning SERP on costs no `deployment.sh` change,
+  and any deployment that has not set `COMPOSE_PROFILES=serp` never creates the
+  container.
+- **Status:** ✅ **done — session 17 (2026-08-03)** on `feat/serp-instance`.
+  **Not shipped, deliberately:** any change to the SERP feature code itself, a
+  weighted / position-aware SERP score, scheduled re-measurement over time, and
+  Google AI Overviews tracking (still no $0 source, roadmap Later). Two new
+  tech-debt items: **#43** (DRY_RUN forces the mock SERP source, so the real
+  SERP path cannot be rehearsed with a mocked LLM panel) and **#44** (two of the
+  four engines refused per query, so the score leans on `google cse` more than a
+  four-engine panel suggests).
+
 ---
 
 ### Phase-5 assumptions
@@ -1969,26 +2137,26 @@ starts a new phase deliberately: Phase 5 is the free public checker (roadmap
 - **Dependencies:** P6.0.
 - **Complexity:** M
 - **Deliverables:** `frontend/app/{signup,login}/page.tsx`,
-  `frontend/components/{AuthProvider,SiteHeader,FormField,PasswordField,FormError}.tsx`,
+  `frontend/components/{AuthProvider,SiteHeader,CustomFormField,CustomPasswordField,CustomFormError}.tsx`,
   `frontend/lib/{session,auth,validation}.ts`, `lib/api.ts` (`authorizedFetch`),
   `lib/contracts.ts` (`AuthUser`, `Credentials`, `SignupCredentials`,
   `LoginResponse`), tests in `tests/{auth,session}.test.ts`,
   `tests/{LoginPage,SignupPage,SiteHeader}.test.tsx` and
-  `tests/{LoginPage,SignupPage}.a11y.test.tsx`, **ADR-28** in
+  `tests/{LoginPage,SignupPage}.a11y.test.tsx`, **ADR-32** in
   [design.md](design.md).
 - **Acceptance:** a reload keeps the session by rotating the cookie; the bearer
   is never persisted anywhere a script can read it; concurrent refreshes — in
   one tab and **across tabs** — produce exactly one rotation; a 401 refreshes
   once and replays the original request; every field error is announced; no
   screen ships a control the API cannot honour.
-- **Status:** 🔍 **in review — session 16 (2026-08-03)**,
+- **Status:** 🔍 **in review — session 19 (2026-08-03)**,
   [PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) on
   `feat/auth-screens`. Review returned changes-requested; all nine items are
-  answered (`sessions/2026-08-03-01.md` §1). **Two features were deliberately
-  removed rather than shipped** — password reset (no endpoint: tech-debt #34)
-  and the terms checkbox (no terms: tech-debt #35). Frontend 122 passed / 26
+  answered (`sessions/2026-08-03-04.md` §1). **Two features were deliberately
+  removed rather than shipped** — password reset (no endpoint: tech-debt #49)
+  and the terms checkbox (no terms: tech-debt #50). Frontend 122 passed / 26
   files, tsc + eslint clean. Not deployed: merging `main` auto-deploys, and
-  tech-debt #37 (an account grants nothing yet) is an open timing question for
+  tech-debt #52 (an account grants nothing yet) is an open timing question for
   the operator.
 
 ---

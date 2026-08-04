@@ -33,10 +33,13 @@
 #   1. preflight   tools, .env, secrets sanity, clean tree
 #   2. build       compose build (images tagged by git SHA)
 #   3. last-good   read the SHA the box currently serves, BEFORE changing it
-#   4. apply       compose up -d (api migrates on boot: alembic upgrade head)
-#   5. health      bounded curl loop vs the PUBLIC url, asserting a real body
+#   4. migrate     alembic upgrade head in a one-shot container, BEFORE any
+#                  running container is replaced (issue #16). Fail -> exit,
+#                  previous release untouched.
+#   5. apply       compose up -d (containers serve; they no longer migrate)
+#   6. health      bounded curl loop vs the PUBLIC url, asserting a real body
 #                  marker ("status"/"ok"), hard-fail timeout. Fail -> rollback.
-#   6. record      write .last-good = new SHA (only after it is proven healthy)
+#   7. record      write .last-good = new SHA (only after it is proven healthy)
 #
 # CONFIG (env or deploy/.env; values never printed):
 #   HEALTH_URL     public health url. Default https://yanki.beyondkaira.com/healthz
@@ -130,7 +133,7 @@ health_probe() {
 # ---------------------------------------------------------------------------
 # 1. preflight
 # ---------------------------------------------------------------------------
-say "1/6 preflight"
+say "1/7 preflight"
 
 for tool in git curl docker; do
   command -v "$tool" >/dev/null 2>&1 || { oops "$tool is not on PATH"; exit 1; }
@@ -180,7 +183,7 @@ info "health url   : $HEALTH_URL"
 if [ "$CHECK_ONLY" -eq 1 ]; then
   say "--check"
   info "would build images yanki-api:$GIT_SHA / yanki-web:$GIT_SHA"
-  info "would compose up -d (api runs: alembic upgrade head && uvicorn ...)"
+  info "would migrate (one-shot alembic upgrade head), then compose up -d"
   info "would health-probe $HEALTH_URL, rolling back to ${PREVIOUS:-none} on failure"
   # Validate the compose file parses without starting anything.
   if ! dc config -q; then
@@ -242,7 +245,7 @@ rollback() {
 # ---------------------------------------------------------------------------
 # 2. build
 # ---------------------------------------------------------------------------
-say "2/6 build"
+say "2/7 build"
 if ! dc build; then
   oops "the build failed. Nothing has been deployed."
   exit 1
@@ -252,13 +255,37 @@ info "built yanki-api:$GIT_SHA / yanki-web:$GIT_SHA"
 # ---------------------------------------------------------------------------
 # 3. last-good (rollback point already captured in \$PREVIOUS above)
 # ---------------------------------------------------------------------------
-say "3/6 rollback point"
+say "3/7 rollback point"
 info "rollback target is ${PREVIOUS:-none (first deploy)}"
 
 # ---------------------------------------------------------------------------
-# 4. apply — compose up (api container migrates on boot, then serves)
+# 4. migrate — BEFORE any container is replaced (issue #16)
 # ---------------------------------------------------------------------------
-say "4/6 apply"
+# The api used to migrate on boot. That fused a schema change to a container
+# swap, with two consequences: a bad migration took the site down before anyone
+# could see it, and a GOOD migration made rollback impossible (the previous
+# image's alembic exits 255 on a revision it has never heard of).
+#
+# Running it here, against the still-serving old stack, inverts both. A failed
+# migration now costs nothing: the previous release is still up, and we exit
+# without touching it. A successful one leaves a schema the old code can still
+# serve, because it only ever adds.
+say "4/7 migrate"
+if ! dc up -d --wait db; then
+  oops "the database did not come up. Nothing has been deployed."
+  exit 1
+fi
+if ! dc run --rm --no-deps api alembic upgrade head; then
+  oops "the migration failed. NOTHING has been deployed — the previous release"
+  oops "  ($PREVIOUS) is still serving and the schema is unchanged."
+  exit 1
+fi
+info "schema migrated to head"
+
+# ---------------------------------------------------------------------------
+# 5. apply — compose up (containers serve; they no longer migrate)
+# ---------------------------------------------------------------------------
+say "5/7 apply"
 if ! dc up -d; then
   oops "compose up failed."
   if rollback; then oops "rolled back to $PREVIOUS."; fi
@@ -269,7 +296,7 @@ info "stack up — new containers running $GIT_SHA"
 # ---------------------------------------------------------------------------
 # 5. health — against the PUBLIC url (proves the nginx path-split serves)
 # ---------------------------------------------------------------------------
-say "5/6 health"
+say "6/7 health"
 if ! health_probe "$HEALTH_URL"; then
   oops "the deployed release is not healthy at the edge."
   if rollback; then oops "rolled back to $PREVIOUS."; fi
@@ -279,7 +306,7 @@ fi
 # ---------------------------------------------------------------------------
 # 6. record — only now is this SHA the known-good one
 # ---------------------------------------------------------------------------
-say "6/6 record"
+say "7/7 record"
 printf '%s\n' "$GIT_SHA" > "$HERE/.last-good"
 info "recorded .last-good = $GIT_SHA"
 

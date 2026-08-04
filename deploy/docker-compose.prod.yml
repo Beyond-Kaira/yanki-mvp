@@ -34,7 +34,20 @@ services:
     image: yanki-api:${GIT_SHA:-latest}
     build:
       context: ../backend
-    command: sh -c "alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 8141"
+    # Serves only. The migration is a SEPARATE step the deploy driver runs before
+    # this container is replaced (issue #16), and that separation is the whole
+    # point: fused as `alembic upgrade head && uvicorn ...`, a release that
+    # migrated successfully and then failed the health gate could not be rolled
+    # back, because the previous image's alembic cannot resolve a revision that
+    # does not exist in its own versions/ directory — it exits 255 and uvicorn
+    # never starts. Old application code is perfectly happy against a newer
+    # additive schema (SQLAlchemy maps only declared columns); it was only ever
+    # alembic's boot-time revision guard that made rollback impossible.
+    #
+    # The dev compose file deliberately KEEPS the fused form: it has no rollback
+    # to protect, no driver to hang a step off, and CI's e2e job relies on the
+    # stack migrating itself on boot.
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8141
     ports:
       - "127.0.0.1:${YANKI_PROD_API_PORT:-8143}:8141"
     environment:
@@ -63,6 +76,48 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+
+  # The SERP source (ADR-29): an open-source SearXNG instance the worker reads to
+  # see whether a brand also shows up in ordinary search results.
+  #
+  # Behind the `serp` profile, so it starts ONLY when deploy/.env sets
+  # COMPOSE_PROFILES=serp. compose picks that up from the project-directory env
+  # file on its own, so opting in costs no change to deployment.sh, and any
+  # deployment that has not opted in never pays for the container.
+  #
+  # Deliberately NOT a depends_on of api/worker. A profile-gated dependency is
+  # awkward for compose, and it is unnecessary: the SERP pass is fail-open by
+  # construction (ADR-28), so a query during the seconds before this is ready is
+  # recorded as "not measured" and costs the run nothing else.
+  searxng:
+    profiles: [serp]
+    # Pinned, like every other image here. Bump deliberately: the scheduled
+    # `upstream drift` job in the SERP workflow is what tells us a newer release
+    # still parses.
+    image: searxng/searxng:2026.8.1-8892414dc
+    volumes:
+      # Host-side and gitignored, exactly like deploy/.env — it carries a real
+      # secret_key. Create it from deploy/searxng/settings.example.yml.
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    # NO published ports, on purpose. The only things that may reach this are api
+    # and worker, over the compose network at http://searxng:8080. That is also
+    # what makes running it with its limiter off safe — and why the two must
+    # never be changed independently.
+    restart: unless-stopped
+    # Hard caps: this VPS is shared with other production tenants (pulse-prod,
+    # Ant Media, brier, evrak-app) and only ~3 GB is free. A search aggregator is
+    # exactly the kind of process that grows into whatever is available.
+    # Measured steady state on this box: ~150 MiB.
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    logging:
+      # One query per analysis step is low volume, but the box is shared and
+      # docker's default json-file driver is unbounded.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   web:
     image: yanki-web:${GIT_SHA:-latest}

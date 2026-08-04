@@ -4,6 +4,7 @@ import type {
   CreateAnalysisResponse,
   WaitlistSignupResponse,
 } from './contracts'
+import { getAccessToken, refreshAccessToken } from './session'
 
 // Thin fetch wrapper. All paths are relative — Next rewrites proxy them to the
 // backend (see next.config.ts), so there is no CORS and no base URL to configure.
@@ -18,7 +19,9 @@ export class ApiError extends Error {
   }
 }
 
-async function readErrorMessage(res: Response): Promise<string> {
+// Exported so `lib/auth.ts` surfaces backend failures the same way as the rest
+// of the app instead of keeping a second copy of this shape handling.
+export async function readErrorMessage(res: Response): Promise<string> {
   try {
     const body = await res.json()
     // FastAPI/Pydantic validation errors: { detail: [{ msg }] } or { detail: "…" }.
@@ -30,6 +33,35 @@ async function readErrorMessage(res: Response): Promise<string> {
     // No JSON body — fall through to a generic message.
   }
   return `Request failed (${res.status}).`
+}
+
+function withBearer(init: RequestInit, token: string): RequestInit {
+  const headers = new Headers(init.headers)
+  headers.set('Authorization', `Bearer ${token}`)
+  return { ...init, headers, credentials: 'same-origin' }
+}
+
+// A request that needs the signed-in user. Access tokens are short-lived by
+// design, so a 401 is the expected way to learn one has expired rather than an
+// error to surface: rotate the refresh cookie once and replay the request.
+//
+// Once only. A second 401 after a fresh token means the session is genuinely
+// over, and retrying past that is how a refresh loop starts.
+export async function authorizedFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const token = getAccessToken()
+  const res = token
+    ? await fetch(path, withBearer(init, token))
+    : await fetch(path, { ...init, credentials: 'same-origin' })
+
+  if (res.status !== 401) return res
+
+  const refreshed = await refreshAccessToken()
+  if (!refreshed) return res
+
+  return fetch(path, withBearer(init, refreshed))
 }
 
 export async function createAnalysis(url: string): Promise<CreateAnalysisResponse> {

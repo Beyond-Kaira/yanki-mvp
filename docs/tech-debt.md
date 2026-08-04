@@ -4,7 +4,15 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-03 (SEO audit, ADR-31: four new items — **#45** (the
+Last updated: 2026-08-03 (account screens, PR #13 review response, merged
+against main after items #27-48 landed there: five new items — **#49**
+(password reset has no endpoint, so it ships no screen), **#50**
+(no terms text, so sign-up asks for no agreement), **#51** (every cold load POSTs
+`/auth/refresh`, anonymous visitors included), **#52** (an account grants
+nothing — no route is protected and there is no signed-in destination), **#53**
+(the cross-tab refresh guard degrades on browsers without Web Locks). No
+repayments this pass. Earlier the same day — SEO audit, ADR-31: four new
+items — **#45** (the
 audit sees at most six pages but its findings read as site-wide), **#46**
 (the severity weights are editorial and uncalibrated), **#47** (one extra
 HTML parse per page), **#48** (no llms.txt check)). Earlier the same day —
@@ -28,7 +36,13 @@ so an IDN domain can miss) and **#42** (the SERP response is read without a byte
 cap) — both raised by an adversarial review of the branch before merge; then
 **#43** (DRY_RUN forces the mock SERP source) and **#44** (two of four
 engines are refused from this egress IP) when the instance was actually
-stood up (ADR-29). No repayments this pass. Earlier —
+stood up (ADR-29). No repayments this pass. Earlier — 2026-08-01 (pipeline
+quality part two, `pipeline-quality-plan.md`: three new items — **#30**
+(`_is_html` byte-sniff closes #28 for known binary formats, not all), **#31**
+(SPA bundle extraction still welds punctuation onto real copy), **#32** (the
+prompt category filter is a heuristic pending real-profile data), **#33**
+(grounding's 1 000-char floor is a guess, not measured). No repayments this
+pass. Earlier —
 2026-07-28 (discovery + KYC pass: three new items — **#27**
 (KYC-stage spend counts toward no cost cap), **#28** (`_is_html` fails open on a
 missing Content-Type), **#29** (steps 2b/6 specified but parked on an operator
@@ -559,3 +573,53 @@ devDependencies).)
     and a check nobody passes teaches a customer nothing — but if it becomes
     real, it is one more cheap same-origin fetch and belongs next to
     `robots.txt`.
+49. **Password reset has no endpoint, so it ships no screen** (2026-08-03,
+    account screens, PR #13): the auth router is signup / login / refresh /
+    logout / me and nothing else. The `/forgot-password` route and the "Forgot
+    password?" link on `/login` were **removed** rather than shipped, because a
+    form whose only possible answer is FastAPI's `404 {"detail":"Not Found"}` —
+    rendered verbatim in a red box — is worse than no form. What survives is
+    `requestPasswordReset` in `lib/auth.ts`, unrouted and unreferenced by any
+    screen, kept as the contract the endpoint is expected to meet and pinned by
+    two tests in `auth.test.ts`. Repaying this is: write the endpoint, then
+    restore the page and the link (both are one `git revert` away — see the
+    session log). One requirement carries over in the client's comment: an
+    unknown address must answer exactly like a known one, or the endpoint
+    becomes a way to test which emails are registered.
+50. **There are no terms, so sign-up asks for no agreement** (2026-08-03,
+    account screens, PR #13): the form shipped a **required** checkbox pointing
+    at a `/terms` page that said, honestly, that nothing on it was binding. A
+    forced consent to an unwritten document is not consent, and merging `main`
+    deploys. The checkbox, `validateTermsAccepted`, `components/Checkbox.tsx`
+    and the placeholder page were all removed; a test asserts the form offers no
+    checkbox and no terms link, so putting one back is a deliberate act. **This
+    is a legal/product blocker, not an engineering one** — the text has to be
+    written before an account can be conditioned on it.
+51. **Every cold load POSTs `/api/v1/auth/refresh`, anonymous visitors
+    included** (2026-08-03, account screens, PR #13): `AuthProvider.restore()`
+    runs on every page, and a script cannot read an httpOnly cookie, so asking
+    is the only way to learn whether a session exists. The cost lands on `/` and
+    `/checker` — routes that are about to go public and carry no rate limit of
+    their own — as one auth POST plus a 401 per visit. The fix is a
+    non-httpOnly `has_session` hint cookie set at login and cleared at logout,
+    letting the client skip the call when there is obviously no session; it
+    touches the backend (`auth_cookies.py`) as well as `AuthProvider`, which is
+    why it is not in PR #13. **Close this before the checker goes loud.**
+52. **An account grants nothing** (2026-08-03, account screens, PR #13): no
+    route is protected, and there is no signed-in destination — `login/page.tsx`
+    pushes to `/`, where the header shows the email. So the sign-up CTA now sits
+    on every page, including `/checker`, next to the launch wedge, offering
+    something that does nothing yet. Recorded as a **timing** question for the
+    operator rather than a defect: the code is ready and can sit ready. Closing
+    it means either the first thing worth signing in for (saved analyses,
+    history) or holding the header CTA back until there is one.
+53. **The cross-tab refresh guard degrades where Web Locks are missing**
+    (2026-08-03, account screens, PR #13): `lib/session.ts` serialises rotation
+    across tabs with `navigator.locks`, which closes the race where two tabs
+    cold-loading together replay the same consumed refresh token and the backend
+    revokes the whole family. Browsers without it (Safari before 15.4, Firefox
+    before 96) fall back to the per-tab single-flight promise and can still hit
+    that race. Deliberate: a rotation that never runs would be worse than one
+    that can race, and the fallback is the behaviour every tab had before. A
+    BroadcastChannel leader would cover them, at the cost of an election and
+    token material crossing a channel (ADR-32, "Rejected").

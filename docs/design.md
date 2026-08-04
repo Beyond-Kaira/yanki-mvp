@@ -1246,3 +1246,63 @@ decision → consequences**, with one line on why the alternative was rejected.
   RFC 9309's group selection and `Allow` precedence, and a second implementation
   is a second thing to get subtly wrong — it is fed already-fetched text so it
   cannot re-fetch around the SSRF guard).
+
+
+### ADR-32 — Browser session layer: the access token lives in memory, and rotation is serialised across tabs (2026-08-03)
+
+- **Context:** the auth endpoints (PR #9) pair a short-lived bearer token with an
+  httpOnly refresh cookie scoped to `/api/v1/auth`. The account screens (PR #13)
+  are the first client of that pairing and have to decide where the bearer lives,
+  who rotates the cookie, and what happens on a 401. Rotation is **single-use**:
+  `services/auth_sessions.py` revokes the entire session family when a consumed
+  refresh token is replayed (`RefreshTokenReuseDetectedError`), so "refresh twice"
+  is not a wasted request — it is a sign-out.
+- **Decision:**
+  - **The access token is module state in `lib/session.ts`, never persisted.**
+    Not `localStorage`, not a readable cookie: the whole reason the backend issues
+    a short bearer beside an httpOnly cookie is that the bearer never has to sit
+    where a script can read it. A reload therefore starts with no token and earns
+    one back by rotating the cookie, then asks `/me` who that is.
+  - **That module refuses to run on the server.** Module state on the server is
+    shared by every request that renders, so one visitor's token would become
+    everyone's. `setAccessToken` throws outside the browser, which makes the
+    constraint structural rather than a convention someone has to remember.
+  - **`authorizedFetch` refreshes once and replays the request** (`lib/api.ts`).
+    A 401 is the expected end of a short-lived token, not an error to surface. A
+    second 401 after a fresh token means the session is genuinely over; retrying
+    past that is how a refresh loop starts.
+  - **Rotation is single-flight in the tab and exclusive across tabs.** The
+    in-tab promise stops a page's own callers from racing. The cross-tab half is
+    a **Web Lock** (`navigator.locks`, name `yanki:auth-refresh`): two tabs
+    cold-loading together — a restored window, a restart, a duplicated tab — each
+    hold their own single-flight promise and are blind to each other, so both
+    would POST the same cookie value, the second would be a reuse, and the family
+    revocation would sign **both** tabs out. Under the lock the second tab waits
+    and then rotates the successor.
+  - **The screens carry only what the contract can honour.** No name field
+    (`SignupRequest` is `{email, password}`), no remember-me (session length is
+    the cookie's server-side `max_age`), and sign-up does not sign you in — the
+    endpoint returns no token, so `signUp` spends the same credentials on a login
+    rather than making someone type them twice. Request/response types come from
+    the generated contract through `lib/contracts.ts`; sign-up and log-in are
+    typed against **`SignupRequest` and `LoginRequest` separately**, because they
+    are structurally identical only by coincidence today (`SignupRequest.password`
+    is `min_length=8`, `LoginRequest.password` is 1) and sharing one type would
+    keep TypeScript quiet through exactly the schema change it is here to catch.
+- **Consequences:** a signed-in visitor pays one `POST /auth/refresh` per cold
+  load, and so does an anonymous one — a script cannot read an httpOnly cookie,
+  so asking is the only way to know. That is a real cost on public routes and is
+  logged as tech-debt #51 with the fix (a non-httpOnly `has_session` hint cookie
+  set at login). Where a browser has no Web Locks (pre-15.4 Safari, pre-96
+  Firefox) the cross-tab guard degrades to the single-tab one rather than failing
+  the refresh — tech-debt #53. Nothing in the auth screens is protected by a
+  route guard, because nothing is behind auth yet (tech-debt #52).
+- **Rejected:** `localStorage` for the bearer (defeats the point of the httpOnly
+  pairing); a BroadcastChannel leader that elects one tab and broadcasts the new
+  token (closes the same race, but adds an election, a fallback path, and token
+  material crossing a channel — the lock is the smaller thing that works);
+  sign-up returning a session (not what the endpoint does — the client cannot
+  invent one); a schema-validation library for four fields (the project ships no
+  runtime dependency beyond React; the validators are plain functions and a
+  swap later replaces call sites and nothing else); retrying more than once on
+  401 (a refresh loop).

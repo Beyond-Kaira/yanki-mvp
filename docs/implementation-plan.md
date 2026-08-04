@@ -250,6 +250,27 @@ operator-directed card, waitlist + Resend emails** (`c521931`), P5.10
 (`93aa34a` + build fix `643e0ee`), all CI-green and deployed dark at
 session close. Full detail: `sessions/2026-07-10-11.md`.
 
+🔍 **Session 19 (2026-08-03): P6.1 — account screens + the browser session
+layer, in review.** The first slice of roadmap **§2d** (accounts), on
+`feat/auth-screens` /
+[PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13): sign up, log in,
+log out, a header that knows who you are, and `lib/session.ts` +
+`lib/api.ts` holding the access token in memory and rotating the httpOnly
+refresh cookie behind it (**ADR-32**). PR #9 landed the endpoints behind it and
+is recorded below as P6.0. The review returned **changes requested** (9 items)
+and this session answered all of them: the password-reset flow and the terms
+checkbox were **removed** rather than shipped (tech-debt #49, #50), the
+cross-tab refresh race is closed with a Web Lock, and the three untested claims
+the reviewer found — the 401 replay, the field-error announcement, the header's
+anonymous branch — are now pinned by tests that were each confirmed to fail
+without their fix. Frontend 122 passed across 26 files; tsc + eslint clean.
+Merged against `main` twice as `main` moved 27 commits across the same session
+— first against **P5.15**, then against **P5.16–P5.18** (SERP visibility, the
+SearXNG instance, and two fixes + the SEO audit) — no code conflict either
+time, two rounds of doc renumbering (this entry, ADR, tech-debt; see
+`sessions/2026-08-03-04.md` §§8–9 for both). Full detail:
+`sessions/2026-08-03-04.md`.
+
 ✅ **Session 14 (2026-07-28): P5.14 — discovery + KYC input quality**
 (`cf28cbc`, `f25462d`, `8ce7356`, `c74ccd3`, `8337045`, `684108a` on
 `feat/discovery-kyc-improvements`, **[PR #10](https://github.com/Beyond-Kaira/yanki-mvp/pull/10),
@@ -2076,6 +2097,67 @@ constant **12** (not a knob); 12 × 4 engines = 48 responses ≤ the existing
 - **Grounding cost/ToS:** Gemini search grounding and Perplexity live-search add
   cost and have ToS constraints (the draft flags a "ToS review for all 4 APIs");
   confirm grounding is on and compliant before P5.7's live path runs in P5.11.
+
+---
+
+## Phase 6 — Accounts (roadmap 2d)
+
+*The first post-MVP phase. Roadmap [§2d](roadmap.md) is "auth, accounts,
+projects + onboarding wizard"; these cards cover only the auth slice of it.
+**Both cards are written retroactively** — the work was built before it had
+tickets — so they record what shipped rather than what was planned. Numbering
+starts a new phase deliberately: Phase 5 is the free public checker (roadmap
+2a) and this is not part of it.*
+
+### P6.0 — Auth endpoints: signup / login / refresh / logout / me (PR #9)
+- **Goal:** email + password accounts behind a short-lived bearer token paired
+  with an httpOnly, single-use refresh cookie.
+- **Why now:** every §2d feature (saved analyses, projects, cadence) needs to
+  know who is asking.
+- **Dependencies:** none.
+- **Complexity:** M
+- **Deliverables:** `backend/app/api/auth_routes.py`,
+  `auth_cookies.py`, `auth_dependencies.py`, `app/services/auth.py`,
+  `app/services/auth_sessions.py`, `alembic/versions/0006_auth_sessions.py`,
+  `tests/test_auth_api.py` / `test_auth_service.py` / `test_auth_sessions.py`.
+- **Acceptance:** signup returns 201 and **no session**; login returns the user
+  plus a bearer and sets the refresh cookie; refresh rotates single-use and
+  revokes the whole family on replay; logout clears the cookie; `/me` needs the
+  bearer.
+- **Status:** ✅ **done — PR #9**, merged before this phase existed as a card.
+  Documented here in arrears; the session note for it is
+  `sessions/2026-07-28-01.md`, which is a stub.
+
+### P6.1 — Account screens + the browser session layer (PR #13)
+- **Goal:** the screens for P6.0 — sign up, log in, log out, a header that
+  reflects the session — plus the client-side session layer they need: the
+  access token in memory, rotation of the refresh cookie, and a 401 that
+  refreshes once and replays.
+- **Why now:** the endpoints exist and nothing reaches them.
+- **Dependencies:** P6.0.
+- **Complexity:** M
+- **Deliverables:** `frontend/app/{signup,login}/page.tsx`,
+  `frontend/components/{AuthProvider,SiteHeader,CustomFormField,CustomPasswordField,CustomFormError}.tsx`,
+  `frontend/lib/{session,auth,validation}.ts`, `lib/api.ts` (`authorizedFetch`),
+  `lib/contracts.ts` (`AuthUser`, `Credentials`, `SignupCredentials`,
+  `LoginResponse`), tests in `tests/{auth,session}.test.ts`,
+  `tests/{LoginPage,SignupPage,SiteHeader}.test.tsx` and
+  `tests/{LoginPage,SignupPage}.a11y.test.tsx`, **ADR-32** in
+  [design.md](design.md).
+- **Acceptance:** a reload keeps the session by rotating the cookie; the bearer
+  is never persisted anywhere a script can read it; concurrent refreshes — in
+  one tab and **across tabs** — produce exactly one rotation; a 401 refreshes
+  once and replays the original request; every field error is announced; no
+  screen ships a control the API cannot honour.
+- **Status:** 🔍 **in review — session 19 (2026-08-03)**,
+  [PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) on
+  `feat/auth-screens`. Review returned changes-requested; all nine items are
+  answered (`sessions/2026-08-03-04.md` §1). **Two features were deliberately
+  removed rather than shipped** — password reset (no endpoint: tech-debt #49)
+  and the terms checkbox (no terms: tech-debt #50). Frontend 122 passed / 26
+  files, tsc + eslint clean. Not deployed: merging `main` auto-deploys, and
+  tech-debt #52 (an account grants nothing yet) is an open timing question for
+  the operator.
 
 ---
 

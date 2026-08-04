@@ -158,6 +158,17 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 
 ### 2d. The app: accounts → billing → cadence
 
+**Status (2026-08-03): the auth slice of row 1 has started, out of sequence.**
+Email/password endpoints landed in
+[PR #9](https://github.com/Beyond-Kaira/yanki-mvp/pull/9) and the screens for
+them are in review as
+[PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) (plan cards **P6.0**
+/ **P6.1**, ADR-32). Nothing else in this section is begun: there are no
+projects, no onboarding wizard, and **an account currently grants nothing** —
+no route is protected and there is no signed-in destination (tech-debt #52).
+The sequencing note below still holds; signing in becomes worth doing when the
+app has something behind it.
+
 | Item | Rationale |
 |---|---|
 | Auth, accounts, projects + onboarding wizard (brand, site, category, up to 5 competitors, language) | Turns the anonymous loop into a product people return to; first run kicks off immediately with live progress. |
@@ -234,7 +245,7 @@ table is the contract between "not now" and "when":
 
 | 02-mvp.md out-of-scope item | Phase | Where above |
 |---|---|---|
-| Auth, accounts, projects | **Next** | 2d — app: accounts |
+| Auth, accounts, projects | **Next** — auth started 2026-08-03 (PR #9 endpoints, PR #13 screens in review); projects not begun | 2d — app: accounts |
 | Billing / Stripe / plan limits | **Next** | 2d — Stripe Free/$49/$129 |
 | Scheduling, recurring scans, weekly digests + alerts | **Next** | 2d — weekly scheduling + digest + alerts |
 | Sentiment analysis and position weighting (score stays binary) | **Next** | 2b — weighted 0–100 score |

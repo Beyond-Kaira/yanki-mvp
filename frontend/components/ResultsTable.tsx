@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from 'react'
 import type { AnalysisResponse, Prompt } from '@/lib/contracts'
+import { engineLabel } from '@/lib/engines'
 
 interface ResultsTableProps {
   responses: AnalysisResponse[]
@@ -63,7 +64,7 @@ export default function ResultsTable({ responses, prompts }: ResultsTableProps) 
               <Fragment key={response.id}>
                 <tr className={zebra}>
                   <td className="px-4 py-3 font-medium text-surface-foreground">
-                    {response.engine}
+                    {engineLabel(response.engine)}
                   </td>
                   <td className="px-4 py-3 text-surface-subtle">
                     <span className="block truncate" title={response.model}>
@@ -142,7 +143,7 @@ function Chevron({ open }: { open: boolean }) {
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
-      className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+      className={`h-3 w-3 shrink-0 motion-safe:transition-transform ${open ? 'rotate-90' : ''}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"

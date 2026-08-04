@@ -25,6 +25,8 @@ import { getAnalysis } from '@/lib/api'
 
 const mockedGet = vi.mocked(getAnalysis)
 
+// No cast: the fixture satisfies the generated wire types in full, so a
+// contract change fails the build here rather than passing silently.
 function makeAnalysis(overrides: Partial<Analysis>): Analysis {
   return {
     id: 'test-id',
@@ -48,7 +50,7 @@ function makeAnalysis(overrides: Partial<Analysis>): Analysis {
           seo: null,
     },
     ...overrides,
-  } as Analysis
+  }
 }
 
 describe('AnalysisPage accessibility', () => {
@@ -79,6 +81,27 @@ describe('AnalysisPage accessibility', () => {
     // A3: the failure card is announced on every entry path via role="alert".
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/couldn't finish this analysis/i)
+    // Failing before any step is claimed leaves current_step null, so the trail
+    // has nothing to point at and is left out rather than rendered inert.
+    expect(screen.queryByText('Discovery')).not.toBeInTheDocument()
+    expect(await axeCheck(container)).toHaveNoViolations()
+  })
+
+  it('points the failure at the step that broke when there is one', async () => {
+    mockedGet.mockResolvedValue(
+      makeAnalysis({
+        status: 'failed',
+        progress: 45,
+        current_step: 'execute',
+        error: 'The engine timed out.',
+      }),
+    )
+    const { container } = render(<AnalysisPage />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/it stopped while asking the ai engines/i)
+    // The trail renders alongside the card and marks that step failed.
+    expect(screen.getAllByRole('listitem')[3]).toHaveTextContent('failed')
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 

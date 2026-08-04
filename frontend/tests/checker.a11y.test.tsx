@@ -53,7 +53,7 @@ function makeAnalysis(overrides: Partial<Analysis>): Analysis {
           seo: null,
     },
     ...overrides,
-  } as Analysis
+  }
 }
 
 describe('Checker screens accessibility', () => {

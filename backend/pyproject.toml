@@ -17,6 +17,7 @@ dependencies = [
     "openai",
     "pwdlib[argon2]>=0.3.0",
     "pyjwt>=2.13.0,<3",
+    "playwright>=1.60,<2",
 ]
 
 [dependency-groups]

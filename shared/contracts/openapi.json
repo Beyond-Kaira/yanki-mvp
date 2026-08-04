@@ -181,6 +181,54 @@
         "title": "CreateAnalysisResponse",
         "type": "object"
       },
+      "CreateSeoProjectRequest": {
+        "properties": {
+          "domain": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Domain",
+            "type": "string"
+          },
+          "js_rendering": {
+            "default": true,
+            "title": "Js Rendering",
+            "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "page_limit": {
+            "default": 10,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Page Limit",
+            "type": "integer"
+          },
+          "profile_id": {
+            "default": "site_audit_mobile",
+            "enum": [
+              "site_audit_mobile",
+              "site_audit_desktop"
+            ],
+            "title": "Profile Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "title": "CreateSeoProjectRequest",
+        "type": "object"
+      },
       "EnginePresence": {
         "description": "One engine's presence in a checker run: ``mentioned`` of ``total`` answers\nnamed the searched brand (P5.3). Read-time aggregate of the ``footprint``\nbooleans; the per-engine totals sum to ``total_responses``.",
         "properties": {
@@ -601,6 +649,108 @@
         "title": "SeoCheckOut",
         "type": "object"
       },
+      "SeoProjectDetailOut": {
+        "properties": {
+          "audits": {
+            "items": {
+              "$ref": "#/components/schemas/SiteAuditSummaryOut"
+            },
+            "title": "Audits",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SiteAuditSummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "domain",
+          "created_at",
+          "updated_at",
+          "latest_audit",
+          "audits"
+        ],
+        "title": "SeoProjectDetailOut",
+        "type": "object"
+      },
+      "SeoProjectOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SiteAuditSummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "domain",
+          "created_at",
+          "updated_at",
+          "latest_audit"
+        ],
+        "title": "SeoProjectOut",
+        "type": "object"
+      },
       "SerpCheckOut": {
         "description": "One search query run for an analysis, and what the results page showed.\n\n``hit`` is nullable and the distinction matters to anyone reading this: NULL\nis a page we could not read (the search instance was unreachable, or every\nupstream engine refused it) and is excluded from the score; ``false`` is a\nreal, counted miss.",
         "properties": {
@@ -778,6 +928,530 @@
           "password"
         ],
         "title": "SignupRequest",
+        "type": "object"
+      },
+      "SiteAuditDetailOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "enum": [
+                  "discovery",
+                  "crawl",
+                  "analysis",
+                  "finalize"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "health_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Score"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "js_rendering": {
+            "title": "Js Rendering",
+            "type": "boolean"
+          },
+          "page_limit": {
+            "title": "Page Limit",
+            "type": "integer"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/SiteAuditPageOut"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "pages_crawled": {
+            "title": "Pages Crawled",
+            "type": "integer"
+          },
+          "pages_discovered": {
+            "title": "Pages Discovered",
+            "type": "integer"
+          },
+          "profile_id": {
+            "enum": [
+              "site_audit_mobile",
+              "site_audit_desktop"
+            ],
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total_errors": {
+            "title": "Total Errors",
+            "type": "integer"
+          },
+          "total_notices": {
+            "title": "Total Notices",
+            "type": "integer"
+          },
+          "total_warnings": {
+            "title": "Total Warnings",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "status",
+          "progress",
+          "current_step",
+          "error",
+          "page_limit",
+          "profile_id",
+          "js_rendering",
+          "pages_discovered",
+          "pages_crawled",
+          "total_errors",
+          "total_warnings",
+          "total_notices",
+          "health_score",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at",
+          "pages"
+        ],
+        "title": "SiteAuditDetailOut",
+        "type": "object"
+      },
+      "SiteAuditIssueOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning",
+              "notice"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "SiteAuditIssueOut",
+        "type": "object"
+      },
+      "SiteAuditPageOut": {
+        "properties": {
+          "final_url": {
+            "title": "Final Url",
+            "type": "string"
+          },
+          "h1_count": {
+            "title": "H1 Count",
+            "type": "integer"
+          },
+          "html_lang": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Html Lang"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/SiteAuditIssueOut"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description"
+          },
+          "requested_url": {
+            "title": "Requested Url",
+            "type": "string"
+          },
+          "schemas": {
+            "items": {
+              "$ref": "#/components/schemas/SiteAuditSchemaOut"
+            },
+            "title": "Schemas",
+            "type": "array"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requested_url",
+          "final_url",
+          "status_code",
+          "title",
+          "h1_count",
+          "meta_description",
+          "html_lang",
+          "issues",
+          "schemas"
+        ],
+        "title": "SiteAuditPageOut",
+        "type": "object"
+      },
+      "SiteAuditSchemaDetailsOut": {
+        "properties": {
+          "invalid_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Invalid Fields",
+            "type": "array"
+          },
+          "valid_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Valid Fields",
+            "type": "array"
+          }
+        },
+        "title": "SiteAuditSchemaDetailsOut",
+        "type": "object"
+      },
+      "SiteAuditSchemaOut": {
+        "properties": {
+          "details": {
+            "$ref": "#/components/schemas/SiteAuditSchemaDetailsOut"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "structure_status": {
+            "title": "Structure Status",
+            "type": "string"
+          },
+          "syntax_valid": {
+            "title": "Syntax Valid",
+            "type": "boolean"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "syntax_valid",
+          "structure_status"
+        ],
+        "title": "SiteAuditSchemaOut",
+        "type": "object"
+      },
+      "SiteAuditSettingsRequest": {
+        "properties": {
+          "js_rendering": {
+            "default": true,
+            "title": "Js Rendering",
+            "type": "boolean"
+          },
+          "page_limit": {
+            "default": 10,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Page Limit",
+            "type": "integer"
+          },
+          "profile_id": {
+            "default": "site_audit_mobile",
+            "enum": [
+              "site_audit_mobile",
+              "site_audit_desktop"
+            ],
+            "title": "Profile Id",
+            "type": "string"
+          }
+        },
+        "title": "SiteAuditSettingsRequest",
+        "type": "object"
+      },
+      "SiteAuditSummaryOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "enum": [
+                  "discovery",
+                  "crawl",
+                  "analysis",
+                  "finalize"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "health_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Score"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "js_rendering": {
+            "title": "Js Rendering",
+            "type": "boolean"
+          },
+          "page_limit": {
+            "title": "Page Limit",
+            "type": "integer"
+          },
+          "pages_crawled": {
+            "title": "Pages Crawled",
+            "type": "integer"
+          },
+          "pages_discovered": {
+            "title": "Pages Discovered",
+            "type": "integer"
+          },
+          "profile_id": {
+            "enum": [
+              "site_audit_mobile",
+              "site_audit_desktop"
+            ],
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total_errors": {
+            "title": "Total Errors",
+            "type": "integer"
+          },
+          "total_notices": {
+            "title": "Total Notices",
+            "type": "integer"
+          },
+          "total_warnings": {
+            "title": "Total Warnings",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "status",
+          "progress",
+          "current_step",
+          "error",
+          "page_limit",
+          "profile_id",
+          "js_rendering",
+          "pages_discovered",
+          "pages_crawled",
+          "total_errors",
+          "total_warnings",
+          "total_notices",
+          "health_score",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "SiteAuditSummaryOut",
         "type": "object"
       },
       "UserOut": {
@@ -1202,6 +1876,244 @@
         "summary": "Submit Checker Lead",
         "tags": [
           "analyses"
+        ]
+      }
+    },
+    "/api/v1/seo-projects": {
+      "get": {
+        "operationId": "read_seo_projects_api_v1_seo_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SeoProjectOut"
+                  },
+                  "title": "Response Read Seo Projects Api V1 Seo Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Seo Projects",
+        "tags": [
+          "seo-projects"
+        ]
+      },
+      "post": {
+        "operationId": "create_seo_project_api_v1_seo_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSeoProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeoProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Seo Project",
+        "tags": [
+          "seo-projects"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}": {
+      "get": {
+        "operationId": "read_seo_project_api_v1_seo_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeoProjectDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Seo Project",
+        "tags": [
+          "seo-projects"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/audits": {
+      "post": {
+        "operationId": "create_site_audit_api_v1_seo_projects__project_id__audits_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteAuditSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAuditSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Site Audit",
+        "tags": [
+          "seo-projects"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/audits/{audit_id}": {
+      "get": {
+        "operationId": "read_site_audit_api_v1_seo_projects__project_id__audits__audit_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "audit_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Audit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAuditDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Site Audit",
+        "tags": [
+          "seo-projects"
         ]
       }
     },

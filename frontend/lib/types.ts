@@ -172,6 +172,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/seo-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Seo Projects */
+        get: operations["read_seo_projects_api_v1_seo_projects_get"];
+        put?: never;
+        /** Create Seo Project */
+        post: operations["create_seo_project_api_v1_seo_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Seo Project */
+        get: operations["read_seo_project_api_v1_seo_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/audits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Site Audit */
+        post: operations["create_site_audit_api_v1_seo_projects__project_id__audits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/audits/{audit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Site Audit */
+        get: operations["read_site_audit_api_v1_seo_projects__project_id__audits__audit_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/waitlist": {
         parameters: {
             query?: never;
@@ -304,6 +373,29 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** CreateSeoProjectRequest */
+        CreateSeoProjectRequest: {
+            /** Domain */
+            domain: string;
+            /**
+             * Js Rendering
+             * @default true
+             */
+            js_rendering: boolean;
+            /** Name */
+            name?: string | null;
+            /**
+             * Page Limit
+             * @default 10
+             */
+            page_limit: number;
+            /**
+             * Profile Id
+             * @default site_audit_mobile
+             * @enum {string}
+             */
+            profile_id: "site_audit_mobile" | "site_audit_desktop";
         };
         /**
          * EnginePresence
@@ -470,6 +562,54 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** SeoProjectDetailOut */
+        SeoProjectDetailOut: {
+            /** Audits */
+            audits: components["schemas"]["SiteAuditSummaryOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Domain */
+            domain: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            latest_audit: components["schemas"]["SiteAuditSummaryOut"] | null;
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SeoProjectOut */
+        SeoProjectOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Domain */
+            domain: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            latest_audit: components["schemas"]["SiteAuditSummaryOut"] | null;
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * SerpCheckOut
          * @description One search query run for an analysis, and what the results page showed.
@@ -536,6 +676,206 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** SiteAuditDetailOut */
+        SiteAuditDetailOut: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Step */
+            current_step: ("discovery" | "crawl" | "analysis" | "finalize") | null;
+            /** Error */
+            error: string | null;
+            /** Health Score */
+            health_score: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Js Rendering */
+            js_rendering: boolean;
+            /** Page Limit */
+            page_limit: number;
+            /** Pages */
+            pages: components["schemas"]["SiteAuditPageOut"][];
+            /** Pages Crawled */
+            pages_crawled: number;
+            /** Pages Discovered */
+            pages_discovered: number;
+            /**
+             * Profile Id
+             * @enum {string}
+             */
+            profile_id: "site_audit_mobile" | "site_audit_desktop";
+            /** Progress */
+            progress: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed";
+            /** Total Errors */
+            total_errors: number;
+            /** Total Notices */
+            total_notices: number;
+            /** Total Warnings */
+            total_warnings: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SiteAuditIssueOut */
+        SiteAuditIssueOut: {
+            /** Code */
+            code: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning" | "notice";
+        };
+        /** SiteAuditPageOut */
+        SiteAuditPageOut: {
+            /** Final Url */
+            final_url: string;
+            /** H1 Count */
+            h1_count: number;
+            /** Html Lang */
+            html_lang: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Issues */
+            issues: components["schemas"]["SiteAuditIssueOut"][];
+            /** Meta Description */
+            meta_description: string | null;
+            /** Requested Url */
+            requested_url: string;
+            /** Schemas */
+            schemas: components["schemas"]["SiteAuditSchemaOut"][];
+            /** Status Code */
+            status_code: number;
+            /** Title */
+            title: string;
+        };
+        /** SiteAuditSchemaDetailsOut */
+        SiteAuditSchemaDetailsOut: {
+            /** Invalid Fields */
+            invalid_fields?: string[];
+            /** Valid Fields */
+            valid_fields?: string[];
+        };
+        /** SiteAuditSchemaOut */
+        SiteAuditSchemaOut: {
+            details?: components["schemas"]["SiteAuditSchemaDetailsOut"];
+            /** Error Detail */
+            error_detail?: string | null;
+            /** Structure Status */
+            structure_status: string;
+            /** Syntax Valid */
+            syntax_valid: boolean;
+            /** Type */
+            type: string;
+        };
+        /** SiteAuditSettingsRequest */
+        SiteAuditSettingsRequest: {
+            /**
+             * Js Rendering
+             * @default true
+             */
+            js_rendering: boolean;
+            /**
+             * Page Limit
+             * @default 10
+             */
+            page_limit: number;
+            /**
+             * Profile Id
+             * @default site_audit_mobile
+             * @enum {string}
+             */
+            profile_id: "site_audit_mobile" | "site_audit_desktop";
+        };
+        /** SiteAuditSummaryOut */
+        SiteAuditSummaryOut: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Step */
+            current_step: ("discovery" | "crawl" | "analysis" | "finalize") | null;
+            /** Error */
+            error: string | null;
+            /** Health Score */
+            health_score: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Js Rendering */
+            js_rendering: boolean;
+            /** Page Limit */
+            page_limit: number;
+            /** Pages Crawled */
+            pages_crawled: number;
+            /** Pages Discovered */
+            pages_discovered: number;
+            /**
+             * Profile Id
+             * @enum {string}
+             */
+            profile_id: "site_audit_mobile" | "site_audit_desktop";
+            /** Progress */
+            progress: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed";
+            /** Total Errors */
+            total_errors: number;
+            /** Total Notices */
+            total_notices: number;
+            /** Total Warnings */
+            total_warnings: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * UserOut
@@ -835,6 +1175,157 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_seo_projects_api_v1_seo_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeoProjectOut"][];
+                };
+            };
+        };
+    };
+    create_seo_project_api_v1_seo_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSeoProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeoProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_seo_project_api_v1_seo_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeoProjectDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_site_audit_api_v1_seo_projects__project_id__audits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteAuditSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAuditSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_site_audit_api_v1_seo_projects__project_id__audits__audit_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                audit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAuditDetailOut"];
                 };
             };
             /** @description Validation Error */

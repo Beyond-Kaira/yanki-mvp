@@ -61,6 +61,25 @@ export type EnginePresence = Schemas['EnginePresence']
 
 export type CompetitorMention = Schemas['CompetitorMention']
 
+// SERP visibility (ADR-28) — whether the brand also shows up in ordinary search
+// results, read from an open-source metasearch instance. `AnalysisResult.serp`
+// is null on every run that did not measure it, and `serp.score` is separately
+// null on a run that measured and could not read the results: "we did not look"
+// and "we looked and could not see" are both distinct from a zero.
+export type SerpVisibility = Schemas['SerpVisibilityOut']
+
+export type SerpCheck = Schemas['SerpCheckOut']
+
+// SEO / AI-readiness audit (ADR-31) — why an answer engine can or cannot read
+// the site, computed from the crawl discovery already performed. `AnalysisResult.seo`
+// is null on every run that did not audit (e.g. checker submissions — no site to
+// look at). Within a present audit, `seo.grade`/`seo.score` are separately null on
+// a run that produced no scorable checks. The grade is the headline, capped by
+// critical failures so a fatal problem can't be averaged away.
+export type SeoAudit = Schemas['SeoAuditOut']
+
+export type SeoCheck = Schemas['SeoCheckOut']
+
 export type AnalysisResult = Omit<Schemas['ResultOut'], 'kyc'> & {
   kyc: KYC | null
   reliability_score?: number | null
@@ -75,3 +94,21 @@ export type Analysis = Omit<
   current_step: PipelineStep | null
   result: AnalysisResult
 }
+
+// Accounts (PR #9). Login answers with the user plus a bearer token while
+// setting the refresh cookie. Re-exported here rather than restated in
+// `lib/auth.ts` so a schema change reaches the auth screens through the
+// generated types.
+export type AuthUser = Schemas['UserOut']
+
+export type Credentials = Schemas['LoginRequest']
+
+// Sign-up carries its own schema even though it is {email, password} today, so
+// each call site is typed against the endpoint it actually posts to. They are
+// already not interchangeable — `SignupRequest.password` is min_length 8 where
+// `LoginRequest.password` is 1 — and the day sign-up gains a field, one of these
+// changes and the other does not. Sharing a type would keep TypeScript quiet
+// through exactly the change it is here to catch.
+export type SignupCredentials = Schemas['SignupRequest']
+
+export type LoginResponse = Schemas['LoginResponse']

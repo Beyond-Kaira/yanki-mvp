@@ -358,3 +358,62 @@ def test_a_service_topic_is_not_asked_as_if_it_were_a_product():
         text == "Which providers would you recommend for software development, and why?"
         for text in texts
     )
+
+
+# --------------------------------------------------------------------------
+# Locations: a coverage claim is not a place (issue #18)
+# --------------------------------------------------------------------------
+
+
+def test_a_coverage_claim_is_skipped_for_the_real_place_behind_it(sample_kyc):
+    """Measured on wise.com, whose profile led with a marketing number.
+
+    ``locations`` came back ['160+ countries', 'United Kingdom', 'Estonia'].
+    Taking [0] put "in 160+ countries" into three of ten *paid* questions.
+    """
+    from app.pipeline.prompts import primary_location
+
+    kyc = sample_kyc.model_copy(
+        update={"locations": ["160+ countries", "United Kingdom", "Estonia"]}
+    )
+    assert primary_location(kyc) == "United Kingdom"
+
+
+@pytest.mark.parametrize(
+    "junk",
+    ["160+ countries", "40 currencies", "multiple countries", "global markets", "worldwide"],
+)
+def test_coverage_claims_never_count_as_places(sample_kyc, junk):
+    from app.pipeline.prompts import primary_location
+
+    kyc = sample_kyc.model_copy(update={"locations": [junk]})
+    assert primary_location(kyc) == ""
+
+
+def test_a_profile_with_only_coverage_claims_falls_back_to_worldwide(sample_kyc):
+    kyc = sample_kyc.model_copy(update={"locations": ["160+ countries"], "category": "robots"})
+    texts = " ".join(spec.text for spec in generate_prompts(kyc, 8))
+    assert "160+" not in texts
+    assert "worldwide" in texts
+
+
+def test_real_places_still_reach_the_questions(sample_kyc):
+    kyc = sample_kyc.model_copy(update={"locations": ["Berlin"], "category": "robots"})
+    assert "in Berlin" in " ".join(spec.text for spec in generate_prompts(kyc, 8))
+
+
+@pytest.mark.parametrize(
+    ("place", "expected"),
+    [
+        ("Berlin", "Berlin"),
+        ("Türkiye", "Türkiye"),
+        ("United Kingdom", "the United Kingdom"),
+        ("Netherlands", "the Netherlands"),
+        ("USA", "the USA"),
+    ],
+)
+def test_only_the_places_that_take_an_article_get_one(place, expected):
+    """"in United Kingdom" is the kind of thing a reader clocks as machine-written."""
+    from app.pipeline.prompts import location_phrase
+
+    assert location_phrase(place) == expected

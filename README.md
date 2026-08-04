@@ -4,8 +4,16 @@
 You submit a company website URL; a background job crawls the site, builds a
 structured company profile (KYC JSON), generates prompts, runs them across
 multiple AI models, checks whether the company is mentioned, and computes a
-primitive **GEO score** (mentions ÷ total responses). Long-term goal: an
-affordable, transparent Semrush alternative for AI-answer rank tracking.
+primitive **GEO score** (mentions ÷ total responses). Two more surfaces round
+out the picture. **SERP visibility** measures whether the company shows up in
+ordinary search results, via a self-hosted open-source metasearch instance; it
+stays off by default for anyone deploying this repo (a compose profile you opt
+into), but this deployment runs it on. And an **SEO / AI-readiness audit** grades
+(A–F) *why* an answer engine can or can't read the site itself — are the AI
+crawlers allowed in, is the content in the HTML or only in JavaScript — reusing
+the crawl already performed for the cost of one extra `/robots.txt` fetch.
+Long-term goal: an affordable, transparent Semrush alternative for AI-answer rank
+tracking.
 
 This README is the front door. It gets a new engineer from `git clone` to a
 running local stack in about five minutes. Deeper docs live in [`docs/`](#documentation).
@@ -79,10 +87,16 @@ time to list everything.
 | Frontend (web) | **8140**            | Next.js. Public via host nginx in prod.              |
 | Backend (api)  | **8141**            | FastAPI. `/api/*` and `/healthz` routed here.        |
 | Postgres (db)  | 5432 (**dev only**) | Never published in production; internal network only.|
+| SearXNG (serp) | 8144 (**dev only**) | `serp` profile only; prod publishes no port.         |
 
 Host ports for `make dev` are parameterized — set `YANKI_WEB_PORT`, `YANKI_API_PORT`,
 or `YANKI_DB_PORT` in `deploy/.env` to dodge conflicts with something already
 running (defaults 8140 / 8141 / 5432; container-internal ports are unaffected).
+
+The optional dev `searxng` (the `serp` compose profile — `make dev` does not
+start it) publishes a loopback debug port too, `YANKI_SEARXNG_PORT` (default
+8144). In production nothing is published for it: only `api` and `worker` reach
+it over the compose network at `http://searxng:8080`.
 
 In production the **host nginx** vhost
 (`deploy/nginx/yanki.beyondkaira.com.conf`) terminates TLS on
@@ -104,12 +118,14 @@ yanki/
 │       ├── services/   # orchestration glue between api ⇄ db ⇄ queue
 │       ├── db/         # SQLAlchemy models + query helpers
 │       ├── jobs/       # Postgres job queue (FOR UPDATE SKIP LOCKED)
-│       ├── pipeline/   # the GEO engine (discovery → kyc → prompts → execute → footprint → scoring)
+│       ├── pipeline/   # the GEO engine (discovery → kyc → prompts → execute → footprint → scoring); the SEO/AI-readiness audit — seo_audit.py + robots.py — rides inside discovery
 │       ├── providers/  # LLM adapters behind one Provider interface (+ mock)
+│       ├── serp/       # SERP sources behind one SerpSource interface (+ mock)
 │       └── worker.py   # polls the queue, runs the pipeline
 ├── frontend/     # Next.js 15 + TypeScript — 3 screens (submit, progress, results)
 ├── shared/       # cross-language contract (contracts/openapi.json)
 ├── deploy/       # Docker Compose + deploy/rollback scripts (ams-pulse pattern)
+│   └── searxng/  # SearXNG SERP-instance config (tracked template + gitignored settings.yml)
 ├── scripts/      # repo-level dev utilities (gen_openapi.py, check_env.py)
 ├── .github/      # CI/CD workflows + PR template
 └── docs/         # design, architecture, MVP scope, roadmap, brandkit, tests
@@ -168,6 +184,16 @@ Run those from `~/repo/yanki-mvp`; auto-deploy drives a **separate** checkout at
 Compose project name is `yanki-prod`. Yanki runs no edge of its own: host
 nginx proxies to the stack's loopback binds — 127.0.0.1:8142 (web) /
 127.0.0.1:8143 (api) by default — which are the only published host ports.
+
+This deployment also runs the optional **SERP** pass (ADR-29). `deploy/.env`
+carries three more lines — `COMPOSE_PROFILES=serp`, `SERP_ENABLED=1`, and
+`SERP_BASE_URL=http://searxng:8080` — which stand up a fifth container,
+`searxng`, behind the `serp` compose profile (so `deployment.sh` needs no
+change). It needs a host-side `deploy/searxng/settings.yml` — gitignored (it
+holds a real `secret_key`) and symlinked into the auto-deploy checkout exactly
+like `deploy/.env`, created from the tracked `settings.example.yml`. Prod
+publishes no port for it; only `api` and `worker` reach it over the compose
+network.
 
 ---
 

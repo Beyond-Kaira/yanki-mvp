@@ -3,8 +3,8 @@
 Columnar copy of each Kaira-style measured/simulated audit record (one row per
 prompt), plus an analysis-level citation aggregate for GET /analyses.
 
-Revision ID: 0008_geo_records
-Revises: 0007_measured_audit_fields
+Revision ID: 0010_geo_records
+Revises: 0009_measured_audit_fields
 Create Date: 2026-08-03
 """
 
@@ -13,8 +13,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "0008_geo_records"
-down_revision = "0007_measured_audit_fields"
+revision = "0010_geo_records"
+down_revision = "0009_measured_audit_fields"
 branch_labels = None
 depends_on = None
 

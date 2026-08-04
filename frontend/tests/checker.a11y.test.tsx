@@ -49,9 +49,11 @@ function makeAnalysis(overrides: Partial<Analysis>): Analysis {
       total_responses: null,
       engine_presence: null,
       competitors_appeared: null,
+          serp: null,
+          seo: null,
     },
     ...overrides,
-  } as Analysis
+  }
 }
 
 describe('Checker screens accessibility', () => {
@@ -109,6 +111,8 @@ describe('Checker screens accessibility', () => {
             { name: 'Acme', mentions: 48 },
             { name: 'Globex', mentions: 48 },
           ],
+          serp: null,
+          seo: null,
         },
       }),
     )
@@ -155,6 +159,8 @@ describe('Checker screens accessibility', () => {
           total_responses: 2,
           engine_presence: null,
           competitors_appeared: null,
+          serp: null,
+          seo: null,
         },
       }),
     )

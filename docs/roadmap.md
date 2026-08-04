@@ -81,7 +81,7 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 
 | Item | Rationale |
 |---|---|
-| Real Gemini (with search grounding) + Perplexity engines | Four real engines with grounding are the actual panel; Gemini-with-grounding also stands in for Google until AIO tracking (Later). |
+| Real Gemini (with search grounding) + Perplexity engines | Four real engines with grounding are the actual panel; Gemini-with-grounding stands in for Google's AI-answer surface until AIO tracking (Later). The *organic* Google surface is now measured separately — SERP visibility from an open-source metasearch instance shipped 2026-08-03, off by default (ADR-28). |
 | 2 samples per prompt, frequencies not single observations | LLM answers wobble; sampling + frequencies is how we avoid the "guesswork" reputation the category earned. |
 | Weighted AI Visibility Score 0–100: mention × position (1.0 / 0.7 / 0.4) × sentiment (1.0 / 0.9 / 0.5), averaged, ×100 | The defensible, published score the product sells on; the MVP's binary score is the honest placeholder until this lands. |
 | Sentiment + position extraction pass (cheap model) | Inputs to the weighted score; a cheap analysis model is one of the three cost protections. |
@@ -107,6 +107,27 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 > rotation that reaches every topic × shape pair, and a hard invariant that no
 > scored question may name the brand it measures (prompts). All of it is
 > language-neutral and adds **no** paid call.
+>
+> **Readiness side, shipped 2026-08-03 (ADR-31), the same push.** The GEO and
+> SERP scores say *whether* AI answers and search results name a company; neither
+> says *why* when the answer is no, and "why" is the only part a customer can act
+> on. The **SEO / AI-readiness audit** is that "why": it re-reads the crawl
+> discovery already paid for — plus a single `/robots.txt` fetch, no extra crawl,
+> no paid call — and returns an A–F **grade** with the failing checks behind it.
+> It leads with the checks that are AI-specific and that no classic SEO tool looks
+> at: whether the answer engines' crawlers are allowed in at all (a `robots.txt`
+> block means the site *cannot* appear in their answers — separating a retrieval
+> block that costs answers today from a training block that only erodes presence
+> over time), and whether the page says anything without JavaScript (most AI
+> crawlers don't run it). The grade is **capped by critical failures** so a
+> weighted average can't average a fatal problem away, and classic hygiene (meta
+> description, canonical, Open Graph) is weighted minor and labelled as such —
+> honest about which checks are really about AI. What it is **not**: not a rank or
+> a rank tracker, not the weighted 0–100 AI Visibility Score above (that scores
+> *presence*; this scores *legibility*), and **not** Google AI Overviews tracking
+> (Later, below) — it audits *this* site's own files, it does not read Google's
+> answer box. It runs on every URL analysis (`result.seo` is null where there was
+> no site to read, e.g. a checker submission); it is language-neutral.
 
 ### 2c. Turkish as a first-class language — the wedge that can't be a sprint bolt-on
 
@@ -137,6 +158,17 @@ MVP sign-off gate (P4.1 + P4.2 + first green CI).*
 
 ### 2d. The app: accounts → billing → cadence
 
+**Status (2026-08-03): the auth slice of row 1 has started, out of sequence.**
+Email/password endpoints landed in
+[PR #9](https://github.com/Beyond-Kaira/yanki-mvp/pull/9) and the screens for
+them are in review as
+[PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) (plan cards **P6.0**
+/ **P6.1**, ADR-32). Nothing else in this section is begun: there are no
+projects, no onboarding wizard, and **an account currently grants nothing** —
+no route is protected and there is no signed-in destination (tech-debt #52).
+The sequencing note below still holds; signing in becomes worth doing when the
+app has something behind it.
+
 | Item | Rationale |
 |---|---|
 | Auth, accounts, projects + onboarding wizard (brand, site, category, up to 5 competitors, language) | Turns the anonymous loop into a product people return to; first run kicks off immediately with live progress. |
@@ -163,7 +195,7 @@ down on. Each is gated on a day-90 decision below.
 | Item | Rationale |
 |---|---|
 | **Agency plan ~$299/mo** — 10 projects (kept fully separate) + white-label PDF reports | The agency owner is the multiplier and the highest-leverage buyer; the 5 design partners will "pull the agency plan out of us" when it's time. Day 60–90 decision. |
-| **Google AI Overviews tracking** | Our biggest admitted gap vs Semrush; needs SERP scraping or a paid SERP API. We say it out loud on the comparison page and close it around day 60–90 — hiding it would cost us the transparency story. |
+| **Google AI Overviews tracking** | Half-closed as of 2026-08-03. The *organic* half — whether the brand shows up in ordinary search results for brand-free buyer queries, alongside the AI-answer GEO score — now has a $0 answer: SERP visibility read from a self-hostable open-source metasearch instance (SearXNG, AGPL-3.0), off by default (ADR-28). That retires the old "needs SERP scraping or a paid SERP API" line for organic results — neither is needed. Still open, and still our biggest admitted gap vs Semrush: **Google AI Overviews specifically** — the AI answer box on a Google results page, a different artifact from the organic results SearXNG federates, with no $0 source yet. We keep saying the open half out loud on the comparison page and close it around day 60–90 — hiding it would cost us the transparency story. |
 | **Turkish** language support (moved from 2c, operator decision 2026-07-10) | Native prompts + suffix-aware matching + TR UI, as specced in 2c and the skipped P5.8/P5.9 cards. Revive on the operator's word; requires a native-speaker sign-off before any public Turkish. |
 | **Arabic** language support | Ship only if Turkey delivers 20%+ of signups organically — proof the native-language playbook repeats before we spend on a third language. (Gate suspended while Turkish itself is deferred.) |
 | **CSV export + public API** | Export is a Pro-tier ask already; API is "later, when someone asks and pays" — not needed to prove willingness to pay. |
@@ -213,7 +245,7 @@ table is the contract between "not now" and "when":
 
 | 02-mvp.md out-of-scope item | Phase | Where above |
 |---|---|---|
-| Auth, accounts, projects | **Next** | 2d — app: accounts |
+| Auth, accounts, projects | **Next** — auth started 2026-08-03 (PR #9 endpoints, PR #13 screens in review); projects not begun | 2d — app: accounts |
 | Billing / Stripe / plan limits | **Next** | 2d — Stripe Free/$49/$129 |
 | Scheduling, recurring scans, weekly digests + alerts | **Next** | 2d — weekly scheduling + digest + alerts |
 | Sentiment analysis and position weighting (score stays binary) | **Next** | 2b — weighted 0–100 score |

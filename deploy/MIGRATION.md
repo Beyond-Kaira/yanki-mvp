@@ -165,7 +165,7 @@ url, so a green run proves the whole nginx path-split serves:
 
 ```bash
 deploy/deployment.sh --check    # preflight + validate compose, change nothing
-deploy/deployment.sh            # build -> up -> public health -> record .last-good
+deploy/deployment.sh            # build -> migrate -> up -> public health -> record .last-good
 ```
 
 Pre-cutover, `deploy/deploy.sh` remains the deploy path (loopback health check),
@@ -190,7 +190,7 @@ tuning vars, all with safe defaults (set them in `deploy/.env` only to override)
 | `HEALTH_URL` | `https://yanki.beyondkaira.com/healthz` | public url the deploy health-gates against |
 | `HEALTH_EXPECT` | `ok` | substring the health body must contain |
 | `HEALTH_KEY` | `status` | second substring the health body must contain |
-| `HEALTH_TRIES` | `45` | curl attempts, 2s apart (covers `alembic upgrade head`) |
+| `HEALTH_TRIES` | `45` | curl attempts, 2s apart (covers the api container coming up; `alembic upgrade head` already ran, before the swap) |
 | `HEALTH_CURL_OPTS` | *(empty)* | extra curl args, e.g. `--resolve yanki.beyondkaira.com:443:161.97.172.146` |
 | `DEPLOY_ALLOW_DIRTY` | `0` | `1` skips the clean-tree guard (rehearsal only) |
 | `YANKI_PROD_API_PORT` | `8143` | host loopback port for api (must match the nginx `yanki_api` upstream) |

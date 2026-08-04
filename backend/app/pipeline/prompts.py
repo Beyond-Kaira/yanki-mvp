@@ -128,6 +128,34 @@ _MODIFIER_PREFIXES = frozenset(
 # Symbols that mark a spec line rather than a category ("99.9% uptime", "R&D").
 _BANNED_TOPIC_CHARS = frozenset("%+&/\\:;|<>=~^*")
 
+# Place names that take a definite article after "in". Short on purpose: a
+# heuristic here would be worse than a list, because the rule in English is
+# lexical, not structural.
+_ARTICLE_PLACES = frozenset(
+    {
+        "united kingdom", "uk", "united states", "united states of america",
+        "usa", "us", "netherlands", "philippines", "united arab emirates",
+        "uae", "czech republic", "bahamas", "maldives", "gambia",
+        "ivory coast", "democratic republic of congo", "dominican republic",
+    }
+)
+
+# Longest phrase that can be a place name ("United States of America" is 4).
+_MAX_PLACE_WORDS = 4
+
+# Words that describe *coverage* rather than name anywhere. A phrase built only
+# from these ("multiple countries", "global markets") is a marketing claim that
+# reads as nonsense in "in {location}". Compared folded + casefolded.
+_COVERAGE_WORDS = frozenset(
+    {
+        "country", "countries", "market", "markets", "region", "regions",
+        "continent", "continents", "currency", "currencies", "worldwide",
+        "global", "globally", "international", "internationally", "everywhere",
+        "multiple", "many", "several", "over", "plus", "and", "more", "than",
+        "world", "wide", "across", "the", "in", "all",
+    }
+)
+
 # Things that get *manufactured* — the tell that "manufacturers" is the right
 # noun for the makers slot. Deliberately concrete: the default is the neutral
 # "companies", and this list only upgrades it.
@@ -245,11 +273,16 @@ def _is_category_like(phrase: str) -> bool:
     return True
 
 
-def _brand_keys(kyc) -> list[str]:
+def brand_keys(kyc) -> list[str]:
     """Normalized forms of the company name and its aliases.
 
     Anything shorter than ``_MIN_BRAND_KEY_LEN`` is dropped for the same reason
     ``footprint`` drops it: a one-character key matches everything.
+
+    Public because the brand-leak rule is not a property of *prompts* — it is a
+    property of anything we generate and then measure the brand in. SERP query
+    generation needs exactly this pool (ADR-28), and a second copy of it would
+    drift the way ADR-26 refused to let the fold map drift.
     """
     keys: set[str] = set()
     for name in [getattr(kyc, "company", ""), *(getattr(kyc, "aliases", []) or [])]:
@@ -262,10 +295,10 @@ def _brand_keys(kyc) -> list[str]:
     return sorted(keys)
 
 
-def _leaks_brand(text: str, brand_keys: list[str]) -> bool:
-    """True when a question names the very brand it is supposed to measure."""
+def leaks_brand(text: str, keys: list[str]) -> bool:
+    """True when generated text names the very brand it is supposed to measure."""
     haystack = normalize_key(text)
-    return any(contains(haystack, key) for key in brand_keys)
+    return any(contains(haystack, key) for key in keys)
 
 
 def topic_pool(kyc, max_words: int = _MAX_TOPIC_WORDS) -> list[Topic]:
@@ -291,7 +324,7 @@ def topic_pool(kyc, max_words: int = _MAX_TOPIC_WORDS) -> list[Topic]:
     if industry:
         candidates.append(Topic(industry))
 
-    brand_keys = _brand_keys(kyc)
+    keys = brand_keys(kyc)
     pool: list[Topic] = []
     seen: set[str] = set()
     for topic in candidates:
@@ -300,7 +333,7 @@ def topic_pool(kyc, max_words: int = _MAX_TOPIC_WORDS) -> list[Topic]:
             continue
         if _word_count(topic.text) > max_words or not _is_category_like(topic.text):
             continue
-        if _leaks_brand(topic.text, brand_keys):
+        if leaks_brand(topic.text, keys):
             continue
         seen.add(key)
         pool.append(topic)
@@ -357,12 +390,63 @@ class _Context:
     competitor: str
 
 
+def _names_a_place(value: str) -> bool:
+    """True when a ``locations`` entry actually names somewhere.
+
+    A model asked where a company operates answers with whatever the site says,
+    and sites say things like "160+ countries", "40 currencies" or "multiple
+    markets". Every one of those is true, and none of them is a place. Measured
+    on wise.com, the field came back
+    ``['160+ countries', 'United Kingdom', 'Estonia']`` — the coverage claim
+    first and the two real places behind it.
+    """
+    words = value.split()
+    if not words or len(words) > _MAX_PLACE_WORDS:
+        return False
+    # Same two rejections ``_is_category_like`` makes, for the same reason: a
+    # digit or a spec symbol means this is a quantity, not a name.
+    if any(char.isdigit() for char in value):
+        return False
+    if any(char in _BANNED_TOPIC_CHARS for char in value):
+        return False
+    # "multiple countries", "global markets" — coverage described in the
+    # abstract. A real place name always contributes at least one word that is
+    # not one of these.
+    return not all(fold(word).strip(".,") in _COVERAGE_WORDS for word in words)
+
+
+def location_phrase(place: str) -> str:
+    """A place name ready to follow "in".
+
+    "in Berlin" is right and "in United Kingdom" is not, and the difference is
+    the kind of thing a reader clocks instantly as machine-written — the same
+    tell ADR-27 set out to remove from generated questions. The list is short and
+    deliberately not clever: only names that genuinely take a definite article.
+    """
+    return f"the {place}" if fold(place).strip(".") in _ARTICLE_PLACES else place
+
+
+def primary_location(kyc) -> str:
+    """The first ``locations`` entry that names a place, or ``""``.
+
+    Public because both surfaces need the same answer. Substituted into
+    ``in {location}`` a coverage claim produces "Who are the leading X companies
+    in 160+ countries?" — a question nobody asks, which then costs four paid
+    calls to ask anyway. Skipping to the next entry rather than dropping the
+    field keeps the geographic signal that makes a question local.
+    """
+    for value in clean_values(getattr(kyc, "locations", []), max_items=25, max_chars=120):
+        if _names_a_place(value):
+            return value
+    return ""
+
+
 def _context(kyc) -> _Context:
-    locations = _clean_list(kyc.locations)
     competitors = _clean_list(kyc.competitors)
+    location = primary_location(kyc)
     return _Context(
         industry=_first_segment(kyc.industry),
-        location=f"in {locations[0]}" if locations else "worldwide",
+        location=f"in {location_phrase(location)}" if location else "worldwide",
         competitor=competitors[0] if competitors else "the market leaders",
     )
 
@@ -428,7 +512,7 @@ def _shapes(category: str, topic: Topic, ctx: _Context) -> list[str]:
 
 
 def _question_specs(
-    kyc, topics: list[Topic], count: int, brand_keys: list[str]
+    kyc, topics: list[Topic], count: int, keys: list[str]
 ) -> list[PromptSpec]:
     """``count`` unique category-question prompts, cycling CATEGORIES/topics.
 
@@ -453,7 +537,7 @@ def _question_specs(
         shapes = _shapes(category, topic, ctx)
         text = shapes[(step // cycle) % len(shapes)]
         step += 1
-        if text in seen or _leaks_brand(text, brand_keys):
+        if text in seen or leaks_brand(text, keys):
             continue
         seen.add(text)
         specs.append(PromptSpec(text=text, category=category))
@@ -466,7 +550,7 @@ def _question_specs(
         topic = topics[pad % len(topics)]
         text = _PADDERS[pad % len(_PADDERS)].format(topic=topic.text)
         pad += 1
-        if text in seen or _leaks_brand(text, brand_keys):
+        if text in seen or leaks_brand(text, keys):
             continue
         seen.add(text)
         category = CATEGORIES[len(specs) % lap]
@@ -483,7 +567,7 @@ def _question_specs(
     while len(specs) < count and variant <= max_variant:
         text = f"What are the best {topics[0].text} options worth considering ({variant})?"
         variant += 1
-        if text in seen or _leaks_brand(text, brand_keys):
+        if text in seen or leaks_brand(text, keys):
             continue
         seen.add(text)
         category = CATEGORIES[len(specs) % lap]
@@ -504,7 +588,7 @@ def generate_prompts(kyc, count: int) -> list[PromptSpec]:
         return []
 
     company = clean_str(kyc.company, max_chars=120)
-    brand_keys = _brand_keys(kyc)
+    keys = brand_keys(kyc)
     topics = _question_topics(kyc)
     products = _clean_list(kyc.products) if company else []
 
@@ -514,7 +598,7 @@ def generate_prompts(kyc, count: int) -> list[PromptSpec]:
     brand_positions = _brand_positions(budget, count)
 
     # More than enough unique category questions to fill every non-brand slot.
-    questions = _question_specs(kyc, topics, count, brand_keys)
+    questions = _question_specs(kyc, topics, count, keys)
 
     specs: list[PromptSpec] = []
     seen: set[str] = set()

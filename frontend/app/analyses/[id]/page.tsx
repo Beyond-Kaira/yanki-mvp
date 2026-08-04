@@ -1,15 +1,23 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useParams } from 'next/navigation'
-import Link from 'next/link'
 import { getAnalysis, ApiError } from '@/lib/api'
 import type { Analysis } from '@/lib/contracts'
+import {
+  deriveEnginePresence,
+  groupByQuestion,
+  runEngineIds,
+} from '@/lib/results'
+import FailedState from '@/components/FailedState'
 import StepProgress from '@/components/StepProgress'
-import ScoreGauge from '@/components/ScoreGauge'
-import ResultsTable from '@/components/ResultsTable'
+import ScoreSummary from '@/components/ScoreSummary'
+import EnginePresenceMap from '@/components/EnginePresenceMap'
+import QuestionBreakdown from '@/components/QuestionBreakdown'
 import KycCard from '@/components/KycCard'
+import SerpVisibility from '@/components/SerpVisibility'
+import SeoAudit from '@/components/SeoAudit'
 import WaitlistForm from '@/components/WaitlistForm'
 
 const POLL_MS = 2000
@@ -58,28 +66,41 @@ export default function AnalysisPage() {
     }
   }, [id])
 
-  let content: ReactNode
-  if (!analysis && loadError) {
-    content = <FailureCard reason={loadError} />
-  } else if (!analysis) {
-    content = (
+  // Nothing loaded and an error came back: there is no run to point at a step
+  // within, so the load failure itself is the only thing to report.
+  const content: ReactNode =
+    !analysis && loadError ? (
+      <FailedState
+        subject="analysis"
+        reason={loadError}
+        step={null}
+        progress={0}
+        retryHref="/"
+        retryLabel="Try another URL"
+      />
+    ) : !analysis ? (
       <p role="status" className="text-sm text-surface-subtle">
         Loading…
       </p>
-    )
-  } else if (analysis.status === 'failed') {
-    content = <FailureCard reason={analysis.error ?? 'The analysis failed.'} />
-  } else if (analysis.status === 'done') {
-    content = <Results analysis={analysis} />
-  } else {
-    content = (
+    ) : analysis.status === 'failed' ? (
+      <FailedState
+        subject="analysis"
+        reason={analysis.error ?? 'The analysis failed.'}
+        step={analysis.current_step}
+        progress={analysis.progress}
+        retryHref="/"
+        retryLabel="Try another URL"
+      />
+    ) : analysis.status === 'done' ? (
+      <Results analysis={analysis} />
+    ) : (
       <StepProgress
         status={analysis.status}
         progress={analysis.progress}
         currentStep={analysis.current_step}
+        createdAt={analysis.created_at}
       />
     )
-  }
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-12 sm:px-8">
@@ -107,78 +128,66 @@ export default function AnalysisPage() {
   )
 }
 
-function FailureCard({ reason }: { reason: string }) {
-  return (
-    <div
-      role="alert"
-      className="space-y-3 rounded-xl border border-danger bg-danger-soft p-6"
-    >
-      <h2 className="text-xl font-semibold text-danger-strong">
-        {"We couldn't finish this analysis."}
-      </h2>
-      <p className="text-sm text-surface-foreground">{reason}</p>
-      <Link
-        href="/"
-        className="inline-flex min-h-[40px] items-center rounded text-sm font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        Try another URL
-      </Link>
-    </div>
-  )
-}
-
 function Results({ analysis }: { analysis: Analysis }) {
   const { result } = analysis
   const total = result.total_responses ?? result.responses.length
   const footprints =
     result.footprint_count ??
     result.responses.filter((response) => response.footprint).length
-  const percent = Math.round(result.geo_score ?? 0)
+  // Null when there is nothing to score; ScoreSummary withholds the verdict
+  // rather than reading the backend's 0.0 as "engines left you out".
+  // Backend composite GEO is already 0–100; ScoreSummary expects that scale.
+  const percent =
+    result.geo_score === null ? null : Math.round(result.geo_score)
+
+  // One path whether or not the envelope carried an aggregate: reported numbers
+  // win, the panel still sets the roster, so a silent engine is listed either way.
+  const presence = useMemo(
+    () => deriveEnginePresence(result.responses, result.engine_presence),
+    [result.responses, result.engine_presence],
+  )
+  const engines = useMemo(
+    () => runEngineIds(result.responses, result.engine_presence),
+    [result.responses, result.engine_presence],
+  )
+  const questions = useMemo(
+    () => groupByQuestion(result.prompts, result.responses),
+    [result.prompts, result.responses],
+  )
 
   return (
     <div className="space-y-8">
-      <section className="rounded-xl border border-surface-border bg-white p-6 shadow-sm">
-        <ScoreGauge score={percent} footprintCount={footprints} totalResponses={total} />
-        {result.reliability_score != null ? (
-          <p className="mt-3 text-center text-sm text-surface-subtle">
-            Reliability {Math.round(result.reliability_score * 100)}%
-          </p>
-        ) : null}
-      </section>
+      <ScoreSummary
+        score={percent}
+        footprintCount={footprints}
+        totalResponses={total}
+        questionCount={result.prompts.length}
+        engineCount={presence.length}
+      />
+      {result.reliability_score != null ? (
+        <p className="mt-3 text-center text-sm text-surface-subtle">
+          Reliability {Math.round(result.reliability_score * 100)}%
+        </p>
+      ) : null}
 
       {result.kyc ? <KycCard kyc={result.kyc} /> : null}
 
-      {result.prompts.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="text-xl font-semibold text-surface-foreground">
-            Generated prompts
-          </h2>
-          <ul className="space-y-2">
-            {result.prompts.map((prompt) => (
-              <li
-                key={prompt.id}
-                className="flex flex-col gap-2 rounded-lg border border-surface-border bg-white p-3 sm:flex-row sm:items-start"
-              >
-                <span className="w-fit rounded-full bg-primary-soft px-2 py-0.5 text-xs font-medium text-primary-strong">
-                  {prompt.category}
-                </span>
-                <span className="text-sm text-surface-foreground">{prompt.text}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {result.serp ? <SerpVisibility serp={result.serp} /> : null}
 
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold text-surface-foreground">Responses</h2>
-        {result.responses.length > 0 ? (
-          <ResultsTable responses={result.responses} prompts={result.prompts} />
-        ) : (
-          <p className="text-sm text-surface-subtle">
-            No engine responses were recorded for this analysis.
-          </p>
-        )}
-      </section>
+      {result.seo ? <SeoAudit seo={result.seo} /> : null}
+
+      {presence.length > 0 ? <EnginePresenceMap presence={presence} /> : null}
+
+      {/* Gated on answers, not questions: a run can hold prompts and no
+          responses, and rendering a column of 0/N cards would say less than
+          the sentence does. */}
+      {result.responses.length > 0 ? (
+        <QuestionBreakdown groups={questions} engines={engines} />
+      ) : (
+        <p className="text-sm text-surface-subtle">
+          No engine answers were recorded for this analysis.
+        </p>
+      )}
 
       {Array.isArray(result.interventions) && result.interventions.length > 0 ? (
         <section className="space-y-3">

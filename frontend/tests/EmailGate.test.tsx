@@ -151,8 +151,10 @@ function makeAnalysis(responses: Analysis['result']['responses']): Analysis {
       total_responses: responses.length,
       engine_presence: null,
       competitors_appeared: null,
+      serp: null,
+      seo: null,
     },
-  } as Analysis
+  }
 }
 
 function response(

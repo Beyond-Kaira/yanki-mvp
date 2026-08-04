@@ -56,6 +56,20 @@ services:
       api:
         condition: service_started
 
+  # Optional local SERP source, mirroring prod (ADR-29). Off unless asked for:
+  #   docker compose -f deploy/docker-compose.yml --profile serp up
+  # `make dev` is unaffected. Needs deploy/searxng/settings.yml — create it from
+  # settings.example.yml. Unlike prod this publishes a loopback port so you can
+  # curl the instance directly while debugging.
+  searxng:
+    profiles: [serp]
+    image: searxng/searxng:2026.8.1-8892414dc
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    ports:
+      - "127.0.0.1:${YANKI_SEARXNG_PORT:-8144}:8080"
+    mem_limit: 512m
+
   web:
     build:
       context: ../frontend

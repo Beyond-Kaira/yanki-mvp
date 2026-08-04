@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -265,6 +266,164 @@ _FRAMEWORK_PHRASES = (
 )
 
 
+@dataclass(frozen=True)
+class PageAudit:
+    """The structured facts one crawled page yields, kept for the SEO audit.
+
+    Discovery has always parsed all of this and then thrown it away in favour of
+    one flat string. The audit (ADR-31) needs the structure, and it must not cost
+    a second crawl — so the facts are collected on the way past.
+
+    ``server_text_chars`` is the length of the visible text the SERVER sent,
+    measured before the SPA bundle fallback runs. That distinction is the whole
+    point of keeping it: a page that needs JavaScript to say anything is a page
+    most AI crawlers cannot read.
+    """
+
+    url: str
+    final_url: str
+    status_code: int
+    is_home: bool
+    title: str = ""
+    meta_description: str = ""
+    meta_robots: str = ""
+    x_robots_tag: str = ""
+    canonical: str = ""
+    lang: str = ""
+    h1_count: int = 0
+    jsonld_types: tuple[str, ...] = ()
+    jsonld_same_as: tuple[str, ...] = ()
+    og_keys: tuple[str, ...] = ()
+    image_count: int = 0
+    images_missing_alt: int = 0
+    server_text_chars: int = 0
+
+
+@dataclass(frozen=True)
+class CrawlResult:
+    """One crawl, read two ways: the text the pipeline scores on, and the facts
+    the audit inspects. Both come from the same fetches."""
+
+    text: str
+    pages: tuple[PageAudit, ...] = ()
+
+
+def _jsonld_blocks(soup: BeautifulSoup) -> list[Any]:
+    """Every parsed ``application/ld+json`` block; malformed ones are skipped."""
+    blocks: list[Any] = []
+    for tag in soup.find_all("script", type="application/ld+json"):
+        raw = tag.string or tag.get_text()
+        if not raw or not raw.strip():
+            continue
+        try:
+            blocks.append(json.loads(raw))
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return blocks
+
+
+def _jsonld_facts(soup: BeautifulSoup) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``(@type values, sameAs urls)`` across a page's JSON-LD.
+
+    Walks the same shapes ``_collect_jsonld`` handles — ``@graph``, top-level
+    arrays, nested nodes — because schema.org is used interchangeably.
+    """
+    types: list[str] = []
+    same_as: list[str] = []
+
+    def walk(node: Any, depth: int = 0) -> None:
+        if depth > MAX_JSONLD_DEPTH:
+            return
+        if isinstance(node, list):
+            for item in node:
+                walk(item, depth + 1)
+            return
+        if not isinstance(node, dict):
+            return
+        raw_type = node.get("@type")
+        for value in raw_type if isinstance(raw_type, list) else [raw_type]:
+            if isinstance(value, str) and value.strip():
+                types.append(value.strip())
+        raw_same = node.get("sameAs")
+        for value in raw_same if isinstance(raw_same, list) else [raw_same]:
+            if isinstance(value, str) and value.strip():
+                same_as.append(value.strip())
+        for value in node.values():
+            if isinstance(value, dict | list):
+                walk(value, depth + 1)
+
+    for block in _jsonld_blocks(soup):
+        walk(block)
+    return tuple(dict.fromkeys(types)), tuple(dict.fromkeys(same_as))
+
+
+def _meta_content(soup: BeautifulSoup, **attrs: str) -> str:
+    tag = soup.find("meta", attrs=attrs)
+    if isinstance(tag, Tag):
+        content = tag.get("content")
+        if isinstance(content, str):
+            return " ".join(content.split())
+    return ""
+
+
+def _page_audit(
+    url: str, response: httpx.Response, html: str, *, is_home: bool, server_text_chars: int
+) -> PageAudit:
+    """Collect one page's audit facts. Never raises: a malformed page must cost
+    the audit that page's detail, not the crawl."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    canonical = ""
+    for link in soup.find_all("link", href=True):
+        rel = link.get("rel") or []
+        rels = rel if isinstance(rel, list) else [rel]
+        if any(str(value).lower() == "canonical" for value in rels):
+            canonical = str(link["href"]).strip()
+            break
+
+    lang = ""
+    if isinstance(soup.html, Tag):
+        raw_lang = soup.html.get("lang")
+        if isinstance(raw_lang, str):
+            lang = raw_lang.strip()
+
+    images = soup.find_all("img")
+    missing_alt = sum(
+        1 for img in images if not str(img.get("alt") or "").strip()
+    )
+    og_keys = tuple(
+        sorted(
+            {
+                str(tag.get("property") or tag.get("name") or "")
+                for tag in soup.find_all("meta")
+                if str(tag.get("property") or tag.get("name") or "").lower().startswith("og:")
+            }
+            - {""}
+        )
+    )
+    types, same_as = _jsonld_facts(soup)
+
+    return PageAudit(
+        url=url,
+        final_url=str(response.url),
+        status_code=response.status_code,
+        is_home=is_home,
+        title=(soup.title.string or "").strip() if soup.title and soup.title.string else "",
+        meta_description=_meta_content(soup, **{"name": "description"}),
+        meta_robots=_meta_content(soup, **{"name": "robots"}),
+        x_robots_tag=" ".join(response.headers.get("x-robots-tag", "").split()),
+        canonical=canonical,
+        lang=lang,
+        h1_count=len(soup.find_all("h1")),
+        jsonld_types=types,
+        jsonld_same_as=same_as,
+        og_keys=og_keys,
+        image_count=len(images),
+        images_missing_alt=missing_alt,
+        server_text_chars=server_text_chars,
+    )
+
+
 def _visible_blocks(html: str) -> list[str]:
     """The page's visible text, one entry per text block.
 
@@ -446,12 +605,19 @@ def _decode(response: httpx.Response) -> str:
     return response.text[:MAX_PAGE_BYTES]
 
 
-def _fetch(client: httpx.Client, url: str, *, attempts: int = 1) -> str | None:
-    """Fetch one page, or ``None`` for anything we should not parse.
+def _fetch(
+    client: httpx.Client, url: str, *, attempts: int = 1
+) -> tuple[str, httpx.Response] | None:
+    """Fetch one page as ``(html, response)``, or ``None`` if we should not parse it.
 
     ``attempts`` > 1 retries only transport errors (never a 4xx/5xx, which is an
     answer rather than a failure to get one) and is used for the homepage, whose
     failure ends the whole job.
+
+    The response comes back alongside the decoded text because the SEO audit
+    (ADR-31) needs what the body cannot tell it: the status, the final URL after
+    redirects, and the ``X-Robots-Tag`` header. Discovery itself still only ever
+    reads the text.
     """
     response: httpx.Response | None = None
     for attempt in range(max(1, attempts)):
@@ -471,7 +637,7 @@ def _fetch(client: httpx.Client, url: str, *, attempts: int = 1) -> str | None:
         return None
     if _looks_binary(response.content):
         return None
-    return _decode(response)
+    return _decode(response), response
 
 
 def _fetch_script(client: httpx.Client, url: str) -> str | None:
@@ -657,11 +823,22 @@ def _fresh_text(blocks: list[str], seen: set[str], limit: int = 0) -> str:
 
 
 def discover(url: str) -> str:
+    """The crawl text, unchanged. Kept as the pipeline's contract.
+
+    ``discover_detailed`` does the work; this is the text half of it. Adding the
+    audit did not change what any existing caller sees, which is the same move
+    ADR-28 made when SERP was added beside ``footprint`` rather than inside it.
+    """
+    return discover_detailed(url).text
+
+
+def discover_detailed(url: str) -> CrawlResult:
     headers = {"User-Agent": USER_AGENT}
     jsonld_parts: list[str] = []
     meta_parts: list[str] = []
     visible_parts: list[str] = []
     seen_blocks: set[str] = set()
+    pages: list[PageAudit] = []
     literal_text = ""
     with httpx.Client(
         timeout=TIMEOUT_SECONDS,
@@ -669,23 +846,49 @@ def discover(url: str) -> str:
         follow_redirects=True,
         event_hooks={"request": [_guard_request]},
     ) as client:
-        home_html = _fetch(client, url, attempts=HOME_FETCH_ATTEMPTS)
-        if home_html is None:
+        home = _fetch(client, url, attempts=HOME_FETCH_ATTEMPTS)
+        if home is None:
             raise PipelineError("could not read the site")
+        home_html, home_response = home
         jsonld_parts.append(_jsonld_text(home_html))
         meta_parts.append(_meta_text(home_html))
         # The homepage is uncapped: on a single-page site it is the whole crawl.
-        visible_parts.append(_fresh_text(_visible_blocks(home_html), seen_blocks))
+        # Its server-rendered length is measured HERE, before the SPA fallback
+        # below can top it up — that pre-fallback number is what tells the audit
+        # whether a crawler that does not run JavaScript would see anything.
+        home_blocks = _visible_blocks(home_html)
+        home_server_chars = sum(len(block) + 1 for block in home_blocks)
+        visible_parts.append(_fresh_text(home_blocks, seen_blocks))
+        pages.append(
+            _page_audit(
+                url,
+                home_response,
+                home_html,
+                is_home=True,
+                server_text_chars=home_server_chars,
+            )
+        )
 
         for link in _select_links(url, home_html):
             if sum(len(part) for part in visible_parts) >= MAX_CHARS:
                 break
-            page_html = _fetch(client, link)
-            if page_html:
+            fetched = _fetch(client, link)
+            if fetched:
+                page_html, page_response = fetched
                 jsonld_parts.append(_jsonld_text(page_html))
                 meta_parts.append(_meta_text(page_html))
+                page_blocks = _visible_blocks(page_html)
                 visible_parts.append(
-                    _fresh_text(_visible_blocks(page_html), seen_blocks, MAX_PAGE_CHARS)
+                    _fresh_text(page_blocks, seen_blocks, MAX_PAGE_CHARS)
+                )
+                pages.append(
+                    _page_audit(
+                        link,
+                        page_response,
+                        page_html,
+                        is_home=False,
+                        server_text_chars=sum(len(block) + 1 for block in page_blocks),
+                    )
                 )
 
         visible_text = " ".join(part for part in visible_parts if part).strip()
@@ -715,4 +918,4 @@ def discover(url: str) -> str:
     ).strip()
     if not combined:
         raise PipelineError("could not read the site")
-    return combined[:MAX_CHARS]
+    return CrawlResult(text=combined[:MAX_CHARS], pages=tuple(pages))

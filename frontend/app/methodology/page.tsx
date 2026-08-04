@@ -7,18 +7,14 @@ import Link from 'next/link'
 // Generated copy inside frontend/ (the Docker build context cannot reach
 // ../shared); canonical artifact: shared/contracts/checker_methodology.json.
 import methodology from '../../lib/checker_methodology.json'
+// Engine naming lives in one module for every surface; this page asks for the
+// vendor-qualified form, where naming the company is the point.
+import { engineVendorLabel } from '@/lib/engines'
 
 export const metadata: Metadata = {
   title: 'Methodology — how the Yanki AI visibility checker works',
   description:
     'The exact prompts, engines, and score formula behind the Yanki checker.',
-}
-
-const ENGINE_LABELS: Record<string, string> = {
-  anthropic: 'Anthropic (Claude)',
-  openai: 'OpenAI (GPT)',
-  gemini: 'Google (Gemini)',
-  perplexity: 'Perplexity',
 }
 
 const CAVEATS = [
@@ -83,7 +79,7 @@ export default function MethodologyPage() {
                 key={engine}
                 className="rounded-lg border border-surface-border bg-white p-4 text-sm font-medium text-surface-foreground"
               >
-                {ENGINE_LABELS[engine] ?? engine}
+                {engineVendorLabel(engine)}
               </li>
             ))}
           </ul>

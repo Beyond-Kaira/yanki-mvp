@@ -101,6 +101,36 @@ class Settings(BaseSettings):
     # cost is 0, so any positive cap never trips.
     checker_daily_usd_cap: float = 5.0
 
+    # SERP visibility (ADR-28) — read an OPEN-SOURCE metasearch instance
+    # (SearXNG) to see whether the company also shows up in ordinary search
+    # results, alongside the AI-answer GEO score. No vendor, no per-query bill:
+    # the operator runs the instance.
+    #
+    # Default OFF, like checker_enabled and emails_enabled, because unlike the
+    # LLM panel this needs a piece of infrastructure no environment has until
+    # somebody stands it up. Under DRY_RUN an enabled run uses the deterministic
+    # mock source instead, so CI exercises the whole path with no instance and
+    # no outbound packet.
+    serp_enabled: bool = False
+    # Base URL of the SearXNG instance, e.g. http://searxng:8080 on the compose
+    # network. The instance must have the JSON format enabled — it is off by
+    # default (search.formats: [html, json] in its settings.yml).
+    serp_base_url: str = ""
+    # Queries per analysis. Each is one HTTP call to the operator's own
+    # instance, so this is a politeness/latency budget rather than a cost cap.
+    serp_query_count: int = 6
+    serp_timeout_seconds: float = 10.0
+    # Pinned rather than left to the instance: a metasearch instance geolocates
+    # by its own egress IP, so an unpinned language makes two deployments'
+    # numbers quietly incomparable.
+    serp_language: str = "en"
+    serp_categories: str = "general"
+    # Optional comma-separated engine allowlist passed straight through; empty
+    # means "whatever the instance has enabled".
+    serp_engines: str = ""
+    serp_safesearch: int = 0
+    serp_max_results: int = 20
+
     # Transactional email via the Resend REST API (P5.13). Fail-open + env-gated:
     # send_email is a NO-OP unless emails_enabled is True AND resend_api_key is
     # non-empty, and it never raises (see ADR-25). Default OFF so no environment

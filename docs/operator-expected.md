@@ -4,7 +4,43 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-01, **session 15 close.** Another pipeline-quality
+Last updated: 2026-08-03, **session 17 close.** You answered **B6** — yes,
+run it — and it is done: the SearXNG instance is standing in production and
+**SERP visibility is ON**. `deploy/.env` on the server gained three lines
+(`COMPOSE_PROFILES=serp`, `SERP_ENABLED=1`, `SERP_BASE_URL=http://searxng:8080`),
+the instance is live-proven on the box (Salesforce 4/4, HubSpot 4/4, Baykar
+3/4 on their own categories, ~0.5 s median per query), and — unlike session
+16 — **this one does change the live site**: finished analyses now carry a
+SERP number next to the GEO score wherever the search panel was measurable.
+Work is on `feat/serp-instance`, awaiting your review; merging keeps the
+committed compose stack in sync and (re)deploys the container. Be clear-eyed
+about the cost: this stood up a **fifth container on a VPS shared with four
+other production tenants**, a metasearch aggregator that is exactly the kind
+of process that grows into whatever memory it is given — so it is capped hard
+(**512 MiB**, 0.5 CPU, bounded logs) and measures **~150 MiB steady state**;
+the box had **~3 GB free** when it went up. That leaves three genuinely new,
+standing duties — watching it stays healthy, reading a non-empty
+`unresponsive_engines` as normal rather than an outage, and knowing how to
+switch it back off — all recorded under **B6**, now marked done.
+**A1 and A2 remain open and still yours**, untouched by this work, which is
+English-only too (`SERP_LANGUAGE=en` pinned, the same reason A2 stays parked).
+
+Earlier — 2026-08-03, **session 16 close.** This session added **SERP
+visibility** — whether the company also turns up in ordinary search results,
+shown next to the AI-answer GEO score. The source is a **self-hostable SearXNG
+instance** (open-source metasearch, AGPL-3.0) that you run and we read. It ships
+**off by default** and stays completely dark until you both stand an instance up
+and set two env vars, so this is the first session in a while where **merging
+changes nothing on the live site** — no key, no visible behaviour change, no
+forced decision. What it does add is one *optional* thing that is genuinely
+yours: whether to run a SearXNG instance at all (**B6** below). Nothing breaks if
+you never do — the GEO score is unaffected. Work is on `feat/serp-visibility`,
+awaiting your review; merging still auto-deploys, and the deploy applies an
+additive migration (one table + five nullable columns, all empty until you turn
+it on). **A1 and A2 remain open and still yours**, untouched by this work — which
+is English-only too, the SERP language pinned to `en`.
+
+Earlier — 2026-08-01, **session 15 close.** Another pipeline-quality
 session, again no ops work: `docs/pipeline-quality-plan.md` (discovery, KYC and
 prompt quality, MVP → product) is implemented on
 `feat/pipeline-quality-production-grade`, **PR open, awaiting your review**.
@@ -123,6 +159,51 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   `cd frontend && sudo npx playwright install-deps chromium` — enables
   local `make e2e` + native screenshots. Fully skippable: CI proves the
   e2e on every push; screenshots are done via dockerized Chrome.
+- [x] **B6. (Optional) SERP visibility — SearXNG instance stood up. DONE
+  2026-08-03** (you said yes; done for you). SERP visibility is now live in
+  production (ADR-29). What shipped:
+  - **A profile-gated compose service** (`searxng`) in **both**
+    `docker-compose.prod.yml` and `docker-compose.yml`, behind the **`serp`
+    profile** — it starts only because `deploy/.env` now sets
+    `COMPOSE_PROFILES=serp`, which compose reads from the project-directory env
+    file, so opting in cost **no change to `deployment.sh`**.
+  - **Pinned image** `searxng/searxng:2026.8.1-8892414dc`, **capped hard**
+    (`mem_limit: 512m`, `cpus: 0.5`, bounded json-file logs); ~150 MiB measured
+    steady state.
+  - **No published port in prod** — only `api`/`worker` reach it over the
+    compose network at `http://searxng:8080`. Its limiter is off, which is safe
+    *only because* there is no port; the two move together, never separately.
+    (The dev compose does publish a loopback port, `YANKI_SEARXNG_PORT` default
+    8144, for debugging.)
+  - **Host-side, gitignored `deploy/searxng/settings.yml`** (it carries a real
+    `secret_key`), created from the tracked `settings.example.yml` and
+    **symlinked into the auto-deploy checkout** — exactly the arrangement
+    `deploy/.env` already uses. Engines are narrowed to the four real
+    web-search ones (`google cse`, `duckduckgo`, `brave`, `startpage`).
+  - **Three lines added to `deploy/.env` on the server:**
+    `COMPOSE_PROFILES=serp`, `SERP_ENABLED=1`,
+    `SERP_BASE_URL=http://searxng:8080`.
+
+  **Now standing duties on you (new this session):**
+  - **Watch it stays healthy.** It is a fifth container on a box shared with
+    four other production tenants. It is capped and `restart: unless-stopped`,
+    but it is now yours to notice — a search aggregator is the kind of process
+    that grows into whatever it is given, which is exactly why the cap exists.
+  - **`unresponsive_engines` being non-empty is normal, not an outage.** Two of
+    the four engines are usually refused from this egress IP, and *which* two
+    varies per query (`brave`/`startpage` refused 8/8 from the host, yet a probe
+    from inside the compose network had `brave` answering and `duckduckgo`
+    refusing). Most stored rows will list refused engines; that is accurate
+    reporting, weighed by `measurable` — though it does lean the score on
+    `google cse` more than a four-engine panel suggests.
+  - **To turn it back OFF:** remove `COMPOSE_PROFILES=serp` (stops the
+    container) or set `SERP_ENABLED=0` (keeps the container running but records
+    every `serp_*` column NULL — "not measured", never "measured zero"), then
+    redeploy.
+  - **Bumping the pinned image is licensed by the scheduled `upstream drift`
+    job going green**, not by an upstream release notice. That job reruns the
+    SERP suite against `searxng/searxng:latest`; green means the newer image
+    still parses, red means leave the pin where it is.
 
 ## C. Done (compacted history)
 

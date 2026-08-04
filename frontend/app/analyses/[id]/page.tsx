@@ -170,6 +170,15 @@ function Results({ analysis }: { analysis: Analysis }) {
 
       {result.seo ? <SeoAudit seo={result.seo} /> : null}
 
+      <p className="text-sm">
+        <a
+          href={`/ai-visibility?analysis=${analysis.id}`}
+          className="font-medium text-primary hover:text-primary-hover"
+        >
+          Open in AI Visibility overview →
+        </a>
+      </p>
+
       {presence.length > 0 ? <EnginePresenceMap presence={presence} /> : null}
 
       {/* Gated on answers, not questions: a run can hold prompts and no

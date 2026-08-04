@@ -6,6 +6,8 @@ const push = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace: vi.fn() }),
+  // Auth screens still use SiteHeader; product routes hide it.
+  usePathname: () => '/login',
 }))
 
 vi.mock('@/lib/auth', () => ({
@@ -91,8 +93,8 @@ describe('SiteHeader', () => {
 
     expect(screen.queryByRole('link', { name: 'Login' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /log out/i })).not.toBeInTheDocument()
-    // The stable part of the nav is there throughout.
-    expect(screen.getByRole('link', { name: 'Free checker' })).toBeInTheDocument()
+    // Logo stays while auth state is unknown.
+    expect(screen.getByRole('link', { name: 'Yanki' })).toBeInTheDocument()
   })
 
   it('signs out and returns home', async () => {

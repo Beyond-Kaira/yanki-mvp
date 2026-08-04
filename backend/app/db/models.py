@@ -11,7 +11,7 @@ server-side defaults for Postgres.
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
@@ -229,6 +229,171 @@ class User(Base):
         nullable=False,
         default=_utcnow,
     )
+
+
+class SeoProject(Base):
+    """One user-owned domain that can have many Site Audit runs.
+
+    Projects are deliberately separate from ``analyses``. A GEO analysis is a
+    one-off AI visibility measurement; an SEO project is a durable user-owned
+    domain whose technical audit can be run repeatedly over time.
+    """
+
+    __tablename__ = "seo_projects"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "user_id",
+            "domain_key",
+            name="uq_seo_projects_user_domain_key",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Normalized host[:port], with a leading ``www.`` removed. This is the
+    # per-user identity key, so https://example.com and https://www.example.com
+    # cannot quietly become two projects for the same site.
+    domain_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    audits: Mapped[list["SiteAudit"]] = relationship(
+        cascade="all, delete-orphan",
+        back_populates="project",
+        order_by="SiteAudit.created_at",
+    )
+
+
+class SiteAudit(Base):
+    """One durable crawl job for an SEO project.
+
+    This table is a queue independent from ``analyses`` so browser-heavy site
+    crawls can be claimed by a dedicated worker without delaying GEO jobs.
+    """
+
+    __tablename__ = "site_audits"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "page_limit BETWEEN 1 AND 500",
+            name="ck_site_audits_page_limit",
+        ),
+        sa.CheckConstraint(
+            "progress BETWEEN 0 AND 100",
+            name="ck_site_audits_progress",
+        ),
+        sa.CheckConstraint(
+            "health_score IS NULL OR health_score BETWEEN 0 AND 100",
+            name="ck_site_audits_health_score",
+        ),
+        # The service checks first for a friendly 409; this database invariant
+        # closes the race between two concurrent rerun requests.
+        sa.Index(
+            "uq_site_audits_one_active_per_project",
+            "project_id",
+            unique=True,
+            postgresql_where=sa.text("status IN ('queued', 'running')"),
+            sqlite_where=sa.text("status IN ('queued', 'running')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("seo_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[Literal["queued", "running", "done", "failed"]] = mapped_column(
+        sa.Text, nullable=False, default="queued"
+    )
+    progress: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    current_step: Mapped[
+        Literal["discovery", "crawl", "analysis", "finalize"] | None
+    ] = mapped_column(sa.Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    page_limit: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=10)
+    profile_id: Mapped[
+        Literal["site_audit_mobile", "site_audit_desktop"]
+    ] = mapped_column(sa.Text, nullable=False, default="site_audit_mobile")
+    js_rendering: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+
+    pages_discovered: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    pages_crawled: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    total_errors: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    total_warnings: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    total_notices: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    health_score: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+
+    claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    project: Mapped[SeoProject] = relationship(back_populates="audits")
+    pages: Mapped[list["SiteAuditPage"]] = relationship(
+        cascade="all, delete-orphan",
+        back_populates="audit",
+        order_by="SiteAuditPage.created_at",
+    )
+
+
+class SiteAuditPage(Base):
+    """One page snapshot and its structured findings within a Site Audit."""
+
+    __tablename__ = "site_audit_pages"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "audit_id",
+            "final_url",
+            name="uq_site_audit_pages_audit_final_url",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    audit_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("site_audits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    requested_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    final_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status_code: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    title: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    h1_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    meta_description: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    html_lang: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Findings use stable codes and structured details rather than display text
+    # as identity. This lets the UI group "missing_image_alt" across pages even
+    # when each page has a different missing-image count.
+    issues: Mapped[list[dict[str, Any]]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=False, default=list
+    )
+    schemas: Mapped[list[dict[str, Any]]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=False, default=list
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    audit: Mapped[SiteAudit] = relationship(back_populates="pages")
 
 
 class AuthSession(Base):

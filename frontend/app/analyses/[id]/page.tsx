@@ -66,10 +66,10 @@ export default function AnalysisPage() {
     }
   }, [id])
 
-  let content: ReactNode
-  if (!analysis && loadError) {
-    // Nothing loaded, so there is no run to point at a step within.
-    content = (
+  // Nothing loaded and an error came back: there is no run to point at a step
+  // within, so the load failure itself is the only thing to report.
+  const content: ReactNode =
+    !analysis && loadError ? (
       <FailedState
         subject="analysis"
         reason={loadError}
@@ -78,15 +78,11 @@ export default function AnalysisPage() {
         retryHref="/"
         retryLabel="Try another URL"
       />
-    )
-  } else if (!analysis) {
-    content = (
+    ) : !analysis ? (
       <p role="status" className="text-sm text-surface-subtle">
         Loading…
       </p>
-    )
-  } else if (analysis.status === 'failed') {
-    content = (
+    ) : analysis.status === 'failed' ? (
       <FailedState
         subject="analysis"
         reason={analysis.error ?? 'The analysis failed.'}
@@ -95,11 +91,9 @@ export default function AnalysisPage() {
         retryHref="/"
         retryLabel="Try another URL"
       />
-    )
-  } else if (analysis.status === 'done') {
-    content = <Results analysis={analysis} />
-  } else {
-    content = (
+    ) : analysis.status === 'done' ? (
+      <Results analysis={analysis} />
+    ) : (
       <StepProgress
         status={analysis.status}
         progress={analysis.progress}
@@ -107,7 +101,6 @@ export default function AnalysisPage() {
         createdAt={analysis.created_at}
       />
     )
-  }
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-12 sm:px-8">

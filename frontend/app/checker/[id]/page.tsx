@@ -66,10 +66,10 @@ function CheckerResults() {
     }
   }, [id])
 
-  let content: ReactNode
-  if (!analysis && loadError) {
-    // Nothing loaded, so there is no run to point at a step within.
-    content = (
+  // Nothing loaded and an error came back: there is no run to point at a step
+  // within, so the load failure itself is the only thing to report.
+  const content: ReactNode =
+    !analysis && loadError ? (
       <FailedState
         subject="check"
         reason={loadError}
@@ -78,15 +78,11 @@ function CheckerResults() {
         retryHref="/checker"
         retryLabel="Check another brand"
       />
-    )
-  } else if (!analysis) {
-    content = (
+    ) : !analysis ? (
       <p role="status" className="text-sm text-surface-subtle">
         Loading…
       </p>
-    )
-  } else if (analysis.status === 'failed') {
-    content = (
+    ) : analysis.status === 'failed' ? (
       <FailedState
         subject="check"
         reason={analysis.error ?? 'The check failed.'}
@@ -95,11 +91,9 @@ function CheckerResults() {
         retryHref="/checker"
         retryLabel="Check another brand"
       />
-    )
-  } else if (analysis.status === 'done') {
-    content = <Results analysis={analysis} submissionId={submissionId} />
-  } else {
-    content = (
+    ) : analysis.status === 'done' ? (
+      <Results analysis={analysis} submissionId={submissionId} />
+    ) : (
       <StepProgress
         status={analysis.status}
         progress={analysis.progress}
@@ -107,7 +101,6 @@ function CheckerResults() {
         createdAt={analysis.created_at}
       />
     )
-  }
 
   return (
     <main

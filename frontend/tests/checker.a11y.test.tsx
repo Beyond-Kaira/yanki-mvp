@@ -30,7 +30,12 @@ import { getAnalysis } from '@/lib/api'
 
 const mockedGet = vi.mocked(getAnalysis)
 
-function makeAnalysis(overrides: Partial<Analysis>): Analysis {
+type AnalysisOverrides = Omit<Partial<Analysis>, 'result'> & {
+  result?: Partial<Analysis['result']>
+}
+
+function makeAnalysis(overrides: AnalysisOverrides = {}): Analysis {
+  const { result: resultOverrides, ...rest } = overrides
   return {
     id: 'check-id',
     url: 'checker:Notion',
@@ -43,16 +48,18 @@ function makeAnalysis(overrides: Partial<Analysis>): Analysis {
     result: {
       footprint_count: null,
       geo_score: null,
+      geo_records: [],
       kyc: null,
       prompts: [],
       responses: [],
       total_responses: null,
       engine_presence: null,
       competitors_appeared: null,
-          serp: null,
-          seo: null,
+      serp: null,
+      seo: null,
+      ...resultOverrides,
     },
-    ...overrides,
+    ...rest,
   }
 }
 

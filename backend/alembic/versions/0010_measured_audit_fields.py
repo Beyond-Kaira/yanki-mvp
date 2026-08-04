@@ -4,8 +4,8 @@ Additive only: new nullable columns on analyses + responses so measured audit
 records, reliability, and interventions can persist without breaking legacy
 rows. geo_score stays a Float; its semantic becomes 0-100 composite (app-level).
 
-Revision ID: 0009_measured_audit_fields
-Revises: 0008_seo_audit
+Revision ID: 0010_measured_audit_fields
+Revises: 0009_site_audit_projects
 Create Date: 2026-07-24
 """
 
@@ -14,8 +14,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "0009_measured_audit_fields"
-down_revision = "0008_seo_audit"
+revision = "0010_measured_audit_fields"
+down_revision = "0009_site_audit_projects"
 branch_labels = None
 depends_on = None
 

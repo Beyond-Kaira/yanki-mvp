@@ -145,6 +145,7 @@ function makeAnalysis(responses: Analysis['result']['responses']): Analysis {
     result: {
       footprint_count: 1,
       geo_score: 33,
+      geo_records: [],
       kyc: null,
       prompts: [{ id: 'p1', category: 'comparison', text: 'Best note app?' }],
       responses,

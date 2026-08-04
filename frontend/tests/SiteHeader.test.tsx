@@ -68,7 +68,7 @@ describe('SiteHeader', () => {
     renderHeader()
 
     expect(await screen.findByRole('link', { name: 'Sign up' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Log in' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Login' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /log out/i })).not.toBeInTheDocument()
   })
 
@@ -80,7 +80,7 @@ describe('SiteHeader', () => {
     expect(await screen.findByText('ada@example.com')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument()
     // The signed-out pair is gone: the header agrees with the session.
-    expect(screen.queryByRole('link', { name: 'Log in' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Login' })).not.toBeInTheDocument()
   })
 
   it('shows neither state while the session is still unknown', () => {
@@ -89,7 +89,7 @@ describe('SiteHeader', () => {
     mockedRefresh.mockReturnValue(new Promise(() => {}))
     renderHeader()
 
-    expect(screen.queryByRole('link', { name: 'Log in' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Login' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /log out/i })).not.toBeInTheDocument()
     // The stable part of the nav is there throughout.
     expect(screen.getByRole('link', { name: 'Free checker' })).toBeInTheDocument()
@@ -106,7 +106,7 @@ describe('SiteHeader', () => {
 
     await waitFor(() => expect(mockedLogout).toHaveBeenCalled())
     expect(push).toHaveBeenCalledWith('/')
-    expect(await screen.findByRole('link', { name: 'Log in' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Login' })).toBeInTheDocument()
   })
 
   it('signs out locally even when the request fails', async () => {
@@ -120,7 +120,7 @@ describe('SiteHeader', () => {
 
     // The token is gone either way, so a header still showing the account would
     // be lying about the state of the session.
-    expect(await screen.findByRole('link', { name: 'Log in' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Login' })).toBeInTheDocument()
     expect(screen.queryByText('ada@example.com')).not.toBeInTheDocument()
   })
 
@@ -141,6 +141,6 @@ describe('SiteHeader', () => {
     await waitFor(() =>
       expect(screen.getByTestId('auth-status')).toHaveTextContent('anonymous'),
     )
-    expect(screen.getByRole('link', { name: 'Log in' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Login' })).toBeInTheDocument()
   })
 })

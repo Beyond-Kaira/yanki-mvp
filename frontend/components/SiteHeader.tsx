@@ -116,7 +116,7 @@ function AuthNav() {
         Sign up
       </Link>
       <Link href="/login" className={`order-3 ${QUIET}`}>
-        Log in
+        Login
       </Link>
     </>
   )

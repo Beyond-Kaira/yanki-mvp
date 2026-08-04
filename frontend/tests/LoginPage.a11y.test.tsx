@@ -51,7 +51,7 @@ describe('LoginPage accessibility', () => {
     const user = userEvent.setup()
     const { container } = renderPage()
 
-    await user.click(screen.getByRole('button', { name: 'Log in' }))
+    await user.click(screen.getByRole('button', { name: 'Login' }))
 
     // The message is a live region, so it is spoken when it appears. Focus
     // moving to the field is not enough on its own: the focus call runs before
@@ -80,7 +80,7 @@ describe('LoginPage accessibility', () => {
 
     await user.type(screen.getByLabelText('Email'), 'ada@example.com')
     await user.type(screen.getByLabelText('Password'), 'hunter2!pass')
-    await user.click(screen.getByRole('button', { name: 'Log in' }))
+    await user.click(screen.getByRole('button', { name: 'Login' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/do not match/i)
     expect(await axeCheck(container)).toHaveNoViolations()

@@ -5,9 +5,9 @@ import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Button from '@/components/Button'
-import FormError from '@/components/FormError'
-import FormField from '@/components/FormField'
-import PasswordField from '@/components/PasswordField'
+import CustomFormError from '@/components/CustomFormError'
+import CustomFormField from '@/components/CustomFormField'
+import CustomPasswordField from '@/components/CustomPasswordField'
 import { useAuth } from '@/components/AuthProvider'
 import { validateEmail, validateExistingPassword } from '@/lib/validation'
 
@@ -74,7 +74,7 @@ export default function LoginPage() {
       <div className="space-y-8">
         <header className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
-            Log in
+            Login
           </h1>
           <p className="text-sm text-surface-subtle">
             Welcome back. Pick up where your last analysis left off.
@@ -82,7 +82,7 @@ export default function LoginPage() {
         </header>
 
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
-          <FormField
+          <CustomFormField
             id="email"
             name="email"
             type="email"
@@ -101,7 +101,7 @@ export default function LoginPage() {
             error={fieldErrors.email}
           />
 
-          <PasswordField
+          <CustomPasswordField
             id="password"
             name="password"
             label="Password"
@@ -122,11 +122,11 @@ export default function LoginPage() {
               see docs/tech-debt.md. */}
 
           {formError ? (
-            <FormError id={FORM_ERROR_ID}>{formError}</FormError>
+            <CustomFormError id={FORM_ERROR_ID}>{formError}</CustomFormError>
           ) : null}
 
           <Button type="submit" loading={submitting} className="w-full">
-            Log in
+            Login
           </Button>
         </form>
 

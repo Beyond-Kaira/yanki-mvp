@@ -5,9 +5,9 @@ import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Button from '@/components/Button'
-import FormError from '@/components/FormError'
-import FormField from '@/components/FormField'
-import PasswordField from '@/components/PasswordField'
+import CustomFormError from '@/components/CustomFormError'
+import CustomFormField from '@/components/CustomFormField'
+import CustomPasswordField from '@/components/CustomPasswordField'
 import { useAuth } from '@/components/AuthProvider'
 import { SignedUpButNotSignedInError } from '@/lib/auth'
 import {
@@ -104,7 +104,7 @@ export default function SignupPage() {
         </header>
 
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
-          <FormField
+          <CustomFormField
             id="email"
             name="email"
             type="email"
@@ -121,7 +121,7 @@ export default function SignupPage() {
             error={fieldErrors.email}
           />
 
-          <PasswordField
+          <CustomPasswordField
             id="password"
             name="password"
             label="Password"
@@ -137,7 +137,7 @@ export default function SignupPage() {
             hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
           />
 
-          <PasswordField
+          <CustomPasswordField
             id="confirm-password"
             name="confirmPassword"
             label="Confirm password"
@@ -153,7 +153,7 @@ export default function SignupPage() {
           />
 
           {formError ? (
-            <FormError id={FORM_ERROR_ID}>{formError}</FormError>
+            <CustomFormError id={FORM_ERROR_ID}>{formError}</CustomFormError>
           ) : null}
 
           <Button type="submit" loading={submitting} className="w-full">
@@ -167,7 +167,7 @@ export default function SignupPage() {
             href="/login"
             className="rounded font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            Log in
+            Login
           </Link>
         </p>
       </div>

@@ -9,7 +9,7 @@ import type { InputHTMLAttributes, ReactNode } from 'react'
 // auth screens rather than one definition for the app. Folding the other four
 // in means giving this a variant argument, which is a change to working forms
 // and belongs in its own pass.
-export function fieldInputClass(hasError: boolean): string {
+export function customFieldInputClass(hasError: boolean): string {
   return [
     'w-full rounded-lg border bg-white px-4 py-3 text-base text-surface-foreground',
     'placeholder:text-surface-subtle focus-visible:outline-none focus-visible:ring-2',
@@ -22,28 +22,28 @@ export function fieldInputClass(hasError: boolean): string {
 
 // The message ids a field publishes, so the control can point at whichever is
 // showing with aria-describedby and a screen reader reads it with the field.
-export function fieldErrorId(id: string): string {
+export function customFieldErrorId(id: string): string {
   return `${id}-error`
 }
 
-export function fieldHintId(id: string): string {
+export function customFieldHintId(id: string): string {
   return `${id}-hint`
 }
 
 // What the control should be described by: the error while there is one, the
 // hint otherwise. Never both, so the reason a field is rejected is not buried
 // behind a rule the reader has already broken.
-export function fieldDescribedBy(
+export function customFieldDescribedBy(
   id: string,
   error?: string | null,
   hint?: string,
 ): string | undefined {
-  if (error) return fieldErrorId(id)
-  if (hint) return fieldHintId(id)
+  if (error) return customFieldErrorId(id)
+  if (hint) return customFieldHintId(id)
   return undefined
 }
 
-interface FieldShellProps {
+interface CustomFieldShellProps {
   id: string
   label: string
   error?: string | null
@@ -51,15 +51,15 @@ interface FieldShellProps {
   children: ReactNode
 }
 
-// Label, control, and the message under it. Shared with PasswordField, which
-// needs its own control markup for the reveal toggle.
-export function FieldShell({
+// Label, control, and the message under it. Shared with CustomPasswordField,
+// which needs its own control markup for the reveal toggle.
+export function CustomFieldShell({
   id,
   label,
   error,
   hint,
   children,
-}: FieldShellProps) {
+}: CustomFieldShellProps) {
   return (
     <div className="space-y-1.5">
       <label
@@ -76,11 +76,11 @@ export function FieldShell({
         // committed the error, so the control the reader lands on has neither
         // aria-invalid nor aria-describedby on it yet, and only the label is
         // read. This live region says why.
-        <p id={fieldErrorId(id)} role="alert" className="text-sm text-danger">
+        <p id={customFieldErrorId(id)} role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : hint ? (
-        <p id={fieldHintId(id)} className="text-xs text-surface-subtle">
+        <p id={customFieldHintId(id)} className="text-xs text-surface-subtle">
           {hint}
         </p>
       ) : null}
@@ -88,7 +88,7 @@ export function FieldShell({
   )
 }
 
-interface FormFieldProps
+interface CustomFormFieldProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> {
   id: string
   label: string
@@ -96,24 +96,24 @@ interface FormFieldProps
   hint?: string
 }
 
-export default function FormField({
+export default function CustomFormField({
   id,
   label,
   error,
   hint,
   ...rest
-}: FormFieldProps) {
+}: CustomFormFieldProps) {
   const invalid = Boolean(error)
 
   return (
-    <FieldShell id={id} label={label} error={error} hint={hint}>
+    <CustomFieldShell id={id} label={label} error={error} hint={hint}>
       <input
         id={id}
         aria-invalid={invalid || undefined}
-        aria-describedby={fieldDescribedBy(id, error, hint)}
-        className={fieldInputClass(invalid)}
+        aria-describedby={customFieldDescribedBy(id, error, hint)}
+        className={customFieldInputClass(invalid)}
         {...rest}
       />
-    </FieldShell>
+    </CustomFieldShell>
   )
 }

@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import type { InputHTMLAttributes } from 'react'
-import { FieldShell, fieldDescribedBy, fieldInputClass } from './FormField'
+import { CustomFieldShell, customFieldDescribedBy, customFieldInputClass } from './CustomFormField'
 
-interface PasswordFieldProps
+interface CustomPasswordFieldProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'type'> {
   id: string
   label: string
@@ -15,28 +15,28 @@ interface PasswordFieldProps
 // A password input with a reveal toggle. The toggle is a real button so it is
 // reachable by keyboard and announced with its state; it never becomes the
 // field's only affordance, and hiding is always the starting point.
-export default function PasswordField({
+export default function CustomPasswordField({
   id,
   label,
   error,
   hint,
   disabled,
   ...rest
-}: PasswordFieldProps) {
+}: CustomPasswordFieldProps) {
   const [visible, setVisible] = useState(false)
   const invalid = Boolean(error)
 
   return (
-    <FieldShell id={id} label={label} error={error} hint={hint}>
+    <CustomFieldShell id={id} label={label} error={error} hint={hint}>
       <div className="relative">
         <input
           id={id}
           type={visible ? 'text' : 'password'}
           disabled={disabled}
           aria-invalid={invalid || undefined}
-          aria-describedby={fieldDescribedBy(id, error, hint)}
+          aria-describedby={customFieldDescribedBy(id, error, hint)}
           // Room on the right so a long value never runs under the toggle.
-          className={`${fieldInputClass(invalid)} pr-12`}
+          className={`${customFieldInputClass(invalid)} pr-12`}
           {...rest}
         />
         <button
@@ -51,6 +51,6 @@ export default function PasswordField({
           <span className="sr-only"> password</span>
         </button>
       </div>
-    </FieldShell>
+    </CustomFieldShell>
   )
 }

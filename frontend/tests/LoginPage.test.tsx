@@ -62,7 +62,7 @@ describe('LoginPage', () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(screen.getByRole('button', { name: 'Log in' }))
+    await user.click(screen.getByRole('button', { name: 'Login' }))
 
     expect(screen.getByText('Enter your email address.')).toBeInTheDocument()
     expect(screen.getByText('Enter your password.')).toBeInTheDocument()
@@ -79,7 +79,7 @@ describe('LoginPage', () => {
 
     await user.type(screen.getByLabelText('Email'), 'not-an-email')
     await user.type(screen.getByLabelText('Password'), 'hunter2!')
-    await user.click(screen.getByRole('button', { name: 'Log in' }))
+    await user.click(screen.getByRole('button', { name: 'Login' }))
 
     expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument()
     expect(mockedLogin).not.toHaveBeenCalled()
@@ -92,7 +92,7 @@ describe('LoginPage', () => {
 
     await user.type(screen.getByLabelText('Email'), '  ada@example.com  ')
     await user.type(screen.getByLabelText('Password'), 'hunter2!')
-    await user.click(screen.getByRole('button', { name: 'Log in' }))
+    await user.click(screen.getByRole('button', { name: 'Login' }))
 
     await waitFor(() =>
       expect(mockedLogin).toHaveBeenCalledWith({
@@ -112,12 +112,12 @@ describe('LoginPage', () => {
 
     await user.type(screen.getByLabelText('Email'), 'ada@example.com')
     await user.type(screen.getByLabelText('Password'), 'wrong-one')
-    await user.click(screen.getByRole('button', { name: 'Log in' }))
+    await user.click(screen.getByRole('button', { name: 'Login' }))
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/do not match an account/i)
     expect(push).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Login' })).toBeEnabled()
   })
 
   it('blocks a second submit while the first is in flight', async () => {
@@ -128,7 +128,7 @@ describe('LoginPage', () => {
     await user.type(screen.getByLabelText('Email'), 'ada@example.com')
     await user.type(screen.getByLabelText('Password'), 'hunter2!')
 
-    const submit = screen.getByRole('button', { name: 'Log in' })
+    const submit = screen.getByRole('button', { name: 'Login' })
     await user.click(submit)
 
     expect(submit).toBeDisabled()

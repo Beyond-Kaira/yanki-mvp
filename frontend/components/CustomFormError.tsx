@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-interface FormErrorProps {
+interface CustomFormErrorProps {
   id: string
   children: ReactNode
 }
@@ -8,7 +8,7 @@ interface FormErrorProps {
 // Form-level failure: the request was made and came back rejected, so this is
 // about the submission rather than one field. `role="alert"` announces it on
 // every entry, including a repeat submit that fails the same way.
-export default function FormError({ id, children }: FormErrorProps) {
+export default function CustomFormError({ id, children }: CustomFormErrorProps) {
   return (
     <p
       id={id}

@@ -286,17 +286,19 @@ def test_checker_get_carries_presence_and_competitors(client, db_session):
 
     presence = result["engine_presence"]
     assert presence is not None
-    # One entry per panel engine (4), totals sum-consistent with total_responses.
-    assert len(presence) == 4
-    assert sum(e["total"] for e in presence) == result["total_responses"] == 48
+    # Measured path: one engine entry; totals match total_responses.
+    assert len(presence) == 1
+    assert presence[0]["engine"] == "measured"
+    assert sum(e["total"] for e in presence) == result["total_responses"] == 12
     assert sum(e["mentioned"] for e in presence) == result["footprint_count"]
 
     competitors = result["competitors_appeared"]
     assert competitors is not None
+    # Measured mock answers name Acme/Globex; brand itself is excluded.
     names = {c["name"] for c in competitors}
-    # Exactly the mock fillers surface from the answers; the brand is excluded.
-    assert _FILLERS <= names
+    assert "Acme" in names or "Globex" in names
     assert not any("yanki" in c["name"].casefold() for c in competitors)
+    assert isinstance(result.get("interventions"), list)
 
 
 def test_mvp_get_has_null_checker_fields(client):

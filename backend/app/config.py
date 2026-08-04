@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     gemini_api_key: str = ""
     perplexity_api_key: str = ""
+    # Measured / simulated GEO path (OpenRouter LLM + optional Tavily search).
+    # Required when dry_run=False; ignored under dry_run. Keep blanks in source —
+    # set real values only in deploy/.env (gitignored).
+    open_router_key: str = ""
+    tavily_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4o-mini"
+    # measured = Tavily + grounded answer; simulated = OpenRouter-only SYSTEM_PROMPT
+    geo_mode: str = "measured"
 
     # Pipeline behaviour
     dry_run: bool = True

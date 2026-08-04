@@ -1,0 +1,341 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "schema_version": "intervention_library_v1",
+    "description": "GEO intervention templates mapped to visibility gaps and measured signals",
+    "labels": [
+      "codebase",
+      "content",
+      "seo_distribution",
+      "marketing",
+      "product",
+      "brand_trust",
+      "partnership_csr"
+    ],
+    "scoring": {
+      "applicability_score": "1 = easiest to implement, 5 = hardest (multi-team, long lead time)",
+      "geo_impact_score": "1 = low GEO signal lift, 5 = high lift for AI search visibility",
+      "priority_score": "geo_impact_score / applicability_score — higher means do sooner"
+    }
+  },
+  "templates": [
+    {
+      "id": "int_schema_faq",
+      "title": "Add FAQ and Organization schema markup on {brand} owned pages",
+      "description": "{brand} lacks strong owned-domain signals in search. Add FAQPage and Organization JSON-LD on key landing pages so crawlers and AI systems can extract structured answers for prompts like \"{prompt}\".",
+      "label": "codebase",
+      "applicability_score": 1,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["low_discoverability", "content_gap"],
+        "metric_conditions": {
+          "search_visibility.owned_domain_in_results": false
+        }
+      },
+      "expected_outcome": "Increase owned-domain citability and extractable Q&A signals for grounded answers",
+      "geo_theory_basis": "Structured owned content is a primary citation source for retrieval-augmented AI answers"
+    },
+    {
+      "id": "int_llms_txt",
+      "title": "Publish llms.txt and machine-readable product facts on {owned_domain}",
+      "description": "Create an llms.txt index and a concise facts page listing {brand} positioning, regulated markets, and core product attributes to improve machine discoverability.",
+      "label": "codebase",
+      "applicability_score": 1,
+      "geo_impact_score": 3,
+      "triggers": {
+        "gap_categories": ["low_discoverability", "weak_feature_association"],
+        "metric_conditions": {
+          "search_visibility.owned_domain_in_results": false
+        }
+      },
+      "expected_outcome": "Improve owned-source retrieval for feature and category association queries",
+      "geo_theory_basis": "Explicit machine-readable brand facts reduce category mismatch in AI retrieval"
+    },
+    {
+      "id": "int_crawlability",
+      "title": "Audit crawlability and indexability of {owned_domain}",
+      "description": "Review robots.txt, canonical tags, and Core Web Vitals on {owned_domain} comparison and product pages. Fix blocks that prevent listicle and AI crawlers from indexing {brand} content.",
+      "label": "codebase",
+      "applicability_score": 2,
+      "geo_impact_score": 3,
+      "triggers": {
+        "gap_categories": ["low_discoverability", "content_gap"],
+        "metric_conditions": {
+          "search_visibility.brand_in_results": false
+        }
+      },
+      "expected_outcome": "Increase chance of owned pages entering top search results",
+      "geo_theory_basis": "If owned content cannot be retrieved, it cannot be cited in grounded answers"
+    },
+    {
+      "id": "int_comparison_landing",
+      "title": "Create a \"{prompt}\" comparison landing page on {owned_domain}",
+      "description": "Publish an owned comparison page targeting the exact query category \"{prompt}\" with neutral competitor mentions, feature tables, and clear {brand} differentiation.",
+      "label": "content",
+      "applicability_score": 2,
+      "geo_impact_score": 5,
+      "triggers": {
+        "gap_categories": ["low_discoverability", "content_gap", "category_mismatch", "competitor_dominance"],
+        "metric_conditions": {
+          "search_visibility.owned_domain_in_results": false
+        }
+      },
+      "expected_outcome": "Owned-domain result for category queries; improved brand_best_rank and citation support",
+      "geo_theory_basis": "Category-aligned owned content directly addresses content_gap and weak_ranking in AI retrieval"
+    },
+    {
+      "id": "int_use_case_blog",
+      "title": "Publish use-case content aligned with {prompt_group} intent",
+      "description": "Write authoritative guides that associate {brand} with the use cases behind \"{prompt}\". Include data points, customer outcomes, and explicit category keywords.",
+      "label": "content",
+      "applicability_score": 2,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["category_mismatch", "weak_feature_association", "low_discoverability"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "Stronger feature and category association in search snippets and grounded answers",
+      "geo_theory_basis": "AI systems surface brands strongly associated with the query intent in training and retrieval corpora"
+    },
+    {
+      "id": "int_competitor_comparison",
+      "title": "Build \"{brand} vs [competitor]\" comparison pages",
+      "description": "Competitors dominate search for this prompt. Create honest head-to-head pages (e.g. vs top cited competitors) that earn citations and clarify when {brand} is the better fit.",
+      "label": "content",
+      "applicability_score": 2,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["competitor_dominance", "weak_ranking"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "Capture comparison-intent traffic and improve rank_position in AI recommendations",
+      "geo_theory_basis": "Comparison queries reward brands present in both search results and answer-level competitor sets"
+    },
+    {
+      "id": "int_third_party_listicle",
+      "title": "Pitch inclusion in top-cited listicles for \"{prompt}\"",
+      "description": "Earned media currently outranks {brand}. Outreach to domains already cited in search results (comparison listicles, fintech roundups) to secure or expand {brand} mentions.",
+      "label": "seo_distribution",
+      "applicability_score": 3,
+      "geo_impact_score": 5,
+      "triggers": {
+        "gap_categories": ["competitor_dominance", "content_gap", "weak_ranking"],
+        "metric_conditions": {
+          "citation_metrics.earned_media_cited": true,
+          "citation_metrics.target_brand_cited": false
+        }
+      },
+      "expected_outcome": "target_brand_cited=true and higher brand_result_count in search",
+      "geo_theory_basis": "Grounded answers cite search results — presence in earned listicles is a direct citation pathway"
+    },
+    {
+      "id": "int_review_platforms",
+      "title": "Strengthen {brand} profiles on G2, Trustpilot, and app store listings",
+      "description": "Review and rating platforms frequently appear in fintech SERPs. Optimize profiles, collect verified reviews, and ensure category tags match \"{prompt}\" intent.",
+      "label": "seo_distribution",
+      "applicability_score": 3,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["weak_trust_signals", "reputation_gap", "low_discoverability"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "Additional third-party results mentioning {brand} with trust signals",
+      "geo_theory_basis": "Trust and review aggregators are high-authority citation sources for recommendation queries"
+    },
+    {
+      "id": "int_digital_pr",
+      "title": "Run digital PR around {brand} category leadership",
+      "description": "Place {brand} in journalist and analyst roundups for \"{prompt}\" via press releases, data studies, and expert commentary to earn new earned-media citations.",
+      "label": "marketing",
+      "applicability_score": 4,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["competitor_dominance", "reputation_gap", "low_discoverability"],
+        "metric_conditions": {
+          "search_visibility.brand_result_count": 1
+        }
+      },
+      "expected_outcome": "More earned-media citations and improved competitor_result_share balance",
+      "geo_theory_basis": "PR-driven listicles expand the retrieval corpus that grounded models can cite"
+    },
+    {
+      "id": "int_paid_search",
+      "title": "Test paid search on high-intent \"{prompt}\" queries",
+      "description": "Run paid campaigns on category queries where {brand} is absent or low-ranked to drive traffic and engagement signals while organic GEO assets are built.",
+      "label": "marketing",
+      "applicability_score": 4,
+      "geo_impact_score": 2,
+      "triggers": {
+        "gap_categories": ["low_discoverability", "weak_ranking"],
+        "metric_conditions": {
+          "mentioned": false
+        }
+      },
+      "expected_outcome": "Short-term visibility; limited direct AI citation impact",
+      "geo_theory_basis": "Paid search does not directly feed grounded citations but supports brand query volume"
+    },
+    {
+      "id": "int_trust_page",
+      "title": "Publish a dedicated trust and regulatory transparency page",
+      "description": "Create a clear page covering {brand} licensing, deposit protection, security practices, and compliance to address weak trust signals in recommendation answers.",
+      "label": "brand_trust",
+      "applicability_score": 2,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["weak_trust_signals", "reputation_gap"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "Citable trust signals in grounded answers for trust_reputation prompts",
+      "geo_theory_basis": "Fintech recommendation queries weight regulatory and security evidence heavily"
+    },
+    {
+      "id": "int_awards_certifications",
+      "title": "Pursue industry awards and third-party certifications",
+      "description": "Apply for fintech awards and security certifications that appear in authoritative roundups, strengthening {brand} trust_signals in AI-generated answers.",
+      "label": "brand_trust",
+      "applicability_score": 5,
+      "geo_impact_score": 3,
+      "triggers": {
+        "gap_categories": ["weak_trust_signals", "reputation_gap"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "New third-party trust mentions in search and citations",
+      "geo_theory_basis": "External validation signals increase likelihood of positive recommendation reasoning"
+    },
+    {
+      "id": "int_app_store_optimization",
+      "title": "Optimize {brand} app store presence for discovery queries",
+      "description": "For \"{prompt}\" style app discovery queries, refresh screenshots, keywords, and localized descriptions to align with category terms used in search results.",
+      "label": "product",
+      "applicability_score": 3,
+      "geo_impact_score": 3,
+      "triggers": {
+        "gap_categories": ["ux_positioning_gap", "weak_feature_association"],
+        "metric_conditions": {
+          "prompt_group": "general_discovery"
+        }
+      },
+      "expected_outcome": "Stronger UX and feature association in app-related SERP and answers",
+      "geo_theory_basis": "App store pages are retrieval sources for mobile banking and fintech app queries"
+    },
+    {
+      "id": "int_ux_case_study",
+      "title": "Publish UX case studies and product walkthrough content",
+      "description": "Address UX positioning gaps with visual product tours, onboarding videos, and UX comparison content that AI systems can reference for usability claims.",
+      "label": "product",
+      "applicability_score": 3,
+      "geo_impact_score": 3,
+      "triggers": {
+        "gap_categories": ["ux_positioning_gap", "weak_feature_association"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "Richer product_strength and ux_strength signals in visibility_drivers",
+      "geo_theory_basis": "Product experience claims need citable evidence beyond brand name mentions"
+    },
+    {
+      "id": "int_feature_launch",
+      "title": "Launch or highlight a differentiated feature for this category",
+      "description": "When {brand} lacks feature association for \"{prompt}\", ship or prominently market a capability competitors are cited for (e.g. multi-currency, savings pots, business accounts).",
+      "label": "product",
+      "applicability_score": 5,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["weak_feature_association", "category_mismatch"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "New product_strength drivers and feature-linked citations",
+      "geo_theory_basis": "AI recommendations map queries to concrete product capabilities, not just brand awareness"
+    },
+    {
+      "id": "int_localized_landing",
+      "title": "Create market-specific landing pages for key European locales",
+      "description": "International positioning is weak for {brand}. Publish DE/FR/ES localized pages with regulatory context and local use cases to match regional discovery queries.",
+      "label": "content",
+      "applicability_score": 3,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["international_positioning_gap"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "Improved visibility for region-specific banking and fintech queries",
+      "geo_theory_basis": "GEO visibility is query-locale dependent; localized owned content fills retrieval gaps"
+    },
+    {
+      "id": "int_partnership_integration",
+      "title": "Announce partnerships that reinforce category relevance",
+      "description": "Partner with payment networks, employers, or platforms cited alongside competitors to earn co-branded content and third-party mentions.",
+      "label": "marketing",
+      "applicability_score": 4,
+      "geo_impact_score": 3,
+      "triggers": {
+        "gap_categories": ["international_positioning_gap", "competitor_dominance"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "New earned-media and entity association signals",
+      "geo_theory_basis": "Partnership announcements generate citable news content associating brand with category"
+    },
+    {
+      "id": "int_csr_sustainability",
+      "title": "Launch a visible sustainability or social impact program",
+      "description": "Programs such as transaction-linked tree planting or charity round-ups can generate PR coverage but have indirect GEO impact compared to core content interventions.",
+      "label": "partnership_csr",
+      "applicability_score": 5,
+      "geo_impact_score": 1,
+      "triggers": {
+        "gap_categories": ["reputation_gap"],
+        "metric_conditions": {}
+      },
+      "expected_outcome": "Peripheral brand mentions; limited impact on category recommendation queries",
+      "geo_theory_basis": "CSR narratives rarely influence functional fintech recommendation retrieval"
+    },
+    {
+      "id": "int_answer_body_gap",
+      "title": "Bridge the citation-to-answer gap for {brand}",
+      "description": "{brand} appears in citations but needs stronger answer-level presence. Align on-page content and third-party mentions with exact phrasing used in grounded answers for this prompt category.",
+      "label": "content",
+      "applicability_score": 2,
+      "geo_impact_score": 5,
+      "triggers": {
+        "gap_categories": ["content_gap", "weak_ranking"],
+        "metric_conditions": {
+          "citation_metrics.target_brand_cited": true,
+          "mention_context": "secondary_recommendation"
+        }
+      },
+      "expected_outcome": "Move from secondary_recommendation toward primary_recommendation in grounded answers",
+      "geo_theory_basis": "Citation without answer-body prominence indicates retrievable but weakly ranked brand evidence"
+    },
+    {
+      "id": "int_not_mentioned_recovery",
+      "title": "Recovery plan for complete absence in AI answers",
+      "description": "{brand} was not mentioned for \"{prompt}\". Prioritize owned comparison content, listicle outreach, and structured data as a combined sprint before broader marketing spend.",
+      "label": "content",
+      "applicability_score": 2,
+      "geo_impact_score": 5,
+      "triggers": {
+        "gap_categories": ["low_discoverability"],
+        "metric_conditions": {
+          "mentioned": false
+        }
+      },
+      "expected_outcome": "mentioned=true on re-audit for this prompt category",
+      "geo_theory_basis": "Complete absence requires simultaneous search and answer signal building"
+    },
+    {
+      "id": "int_rank_improvement",
+      "title": "Improve search rank from position {brand_best_rank} for category queries",
+      "description": "{brand} appears in search but ranks below competitors (best rank: {brand_best_rank}). Strengthen page authority, internal linking, and external mentions for the target query cluster.",
+      "label": "seo_distribution",
+      "applicability_score": 3,
+      "geo_impact_score": 4,
+      "triggers": {
+        "gap_categories": ["weak_ranking", "low_discoverability"],
+        "metric_conditions": {
+          "search_visibility.brand_in_results": true
+        }
+      },
+      "expected_outcome": "Lower brand_best_rank and higher rank_position in grounded answers",
+      "geo_theory_basis": "Search rank correlates with citation order and recommendation prominence in RAG pipelines"
+    }
+  ]
+}

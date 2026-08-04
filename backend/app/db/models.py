@@ -51,6 +51,8 @@ class Analysis(Base):
     kyc: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+    # Composite GEO score on a 0–100 scale (mention × position × citation ×
+    # sentiment). Legacy MVP rows may still hold a 0–1 mention-rate fraction.
     geo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     footprint_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     total_responses: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
@@ -71,6 +73,14 @@ class Analysis(Base):
     seo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     seo_grade: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     seo_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    reliability_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    interventions: Mapped[list[Any] | dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    # Rolled-up citation metrics across geo_records / responses.audit for this run.
+    citation_summary: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -91,6 +101,9 @@ class Analysis(Base):
     )
     seo_checks: Mapped[list["SeoCheck"]] = relationship(
         cascade="all, delete-orphan", order_by="SeoCheck.created_at"
+    )
+    geo_records: Mapped[list["GeoRecord"]] = relationship(
+        cascade="all, delete-orphan", order_by="GeoRecord.created_at"
     )
 
 
@@ -123,6 +136,11 @@ class Response(Base):
     raw_text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     footprint: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
     matched_snippet: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Measured-audit payload (search_visibility, citations, gaps, …). Null on
+    # legacy multi-engine panel rows.
+    audit: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     cost_usd: Mapped[Decimal] = mapped_column(sa.Numeric(10, 6), nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
@@ -199,6 +217,85 @@ class SeoCheck(Base):
     status: Mapped[str] = mapped_column(sa.Text, nullable=False)
     detail: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     evidence: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class GeoRecord(Base):
+    """Columnar copy of one Kaira-style measured/simulated audit record.
+
+    Mirrors ``merge_measured_record`` / simulated output keys so brand-level
+    visualizations and later models can query without digging into
+    ``responses.audit``. One row per prompt response.
+    """
+
+    __tablename__ = "geo_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    response_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("responses.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    brand: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    sector: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    prompt: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    prompt_group: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    intent: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    measurement_mode: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    search_provider: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    search_results: Mapped[list[Any] | dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    search_visibility: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    grounded_answer: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    simulated_answer: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    mentioned: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
+    rank_position: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    mention_context: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    competitors: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    answer_summary: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    recommendation_reasoning: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    reasoning_trace: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    citations: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    citation_metrics: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    visibility_drivers: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    visibility_gaps: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    trust_signals: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    entities_associated_with_brand: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    sentiment: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    content_improvement_opportunities: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    model: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    generated_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    error: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
+    schema_version: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    owned_domains: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )

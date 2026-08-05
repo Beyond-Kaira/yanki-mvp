@@ -1,6 +1,22 @@
-/** Semrush-like product shell navigation config. */
+/** The product shell's navigation.
+ *
+ * One rule governs this file: **the nav may not advertise something that does
+ * not exist.** It shipped with fifteen entries badged "N/A" — Position
+ * Tracking, Keyword Magic, Backlink Audit, Traffic Analytics and the rest —
+ * which read to a customer as a roadmap commitment nobody had made, and made a
+ * feature that DID exist (Site Audit) look equally unavailable.
+ *
+ * So each entry is now one of three things:
+ *   - a real destination, badged 'live';
+ *   - deliberately absent, if the feature does not exist;
+ *   - present and honestly marked 'soon', reserved for work that is genuinely
+ *     underway and has a card on the plan.
+ *
+ * "N/A" is gone entirely: it told the user nothing except that something was
+ * missing, without saying whether it was coming.
+ */
 
-export type NavBadge = 'live' | 'na' | null
+export type NavBadge = 'live' | 'soon' | null
 
 export type ShellSectionId =
   | 'home'
@@ -8,10 +24,7 @@ export type ShellSectionId =
   | 'ai-visibility'
   | 'free-checker'
   | 'methodology'
-  | 'categories'
   | 'backlinks'
-  | 'analytics'
-  | 'reports'
   | 'settings'
 
 export interface ShellFlyoutItem {
@@ -34,7 +47,7 @@ export const SHELL_SECTIONS: ShellSection[] = [
   {
     id: 'home',
     label: 'Home',
-    href: '/',
+    href: '/dashboard',
     flyoutTitle: null,
     items: [],
   },
@@ -50,12 +63,9 @@ export const SHELL_SECTIONS: ShellSection[] = [
         href: '/search-visibility',
         badge: 'live',
       },
-      { id: 'site-audit', label: 'Site Audit', href: null, badge: 'na' },
-      { id: 'positions', label: 'Position Tracking', href: null, badge: 'na' },
-      { id: 'organic', label: 'Organic Research', href: null, badge: 'na' },
-      { id: 'keywords', label: 'Keyword Magic', href: null, badge: 'na' },
-      { id: 'onpage', label: 'On Page SEO Checker', href: null, badge: 'na' },
-      { id: 'backlink-audit', label: 'Backlink Audit', href: null, badge: 'na' },
+      // Site Audit is fully built (crawler, worker, dashboard) and was badged
+      // "N/A" — the single most misleading entry in the file.
+      { id: 'site-audit', label: 'Site Audit', href: '/site-audit', badge: 'live' },
     ],
   },
   {
@@ -88,12 +98,6 @@ export const SHELL_SECTIONS: ShellSection[] = [
         href: '/ai-visibility/drivers',
         badge: 'live',
       },
-      {
-        id: 'sov',
-        label: 'Share of voice timeline',
-        href: null,
-        badge: 'na',
-      },
     ],
   },
   {
@@ -111,52 +115,36 @@ export const SHELL_SECTIONS: ShellSection[] = [
     items: [],
   },
   {
-    id: 'categories',
-    label: 'Categories',
-    href: null,
-    flyoutTitle: 'Categories',
-    items: [{ id: 'cat-na', label: 'Category research', href: null, badge: 'na' }],
-  },
-  {
+    // The backlink ENGINE shipped (seam, deltas, authority, toxicity, gap
+    // analysis) but has no screens yet, so this is the one honest 'soon' —
+    // the work exists and is on the plan as P8.3.
     id: 'backlinks',
     label: 'Backlinks',
     href: null,
     flyoutTitle: 'Backlinks',
-    items: [{ id: 'bl-na', label: 'Backlink analytics', href: null, badge: 'na' }],
-  },
-  {
-    id: 'analytics',
-    label: 'Analytics',
-    href: null,
-    flyoutTitle: 'Analytics',
-    items: [{ id: 'an-na', label: 'Traffic analytics', href: null, badge: 'na' }],
-  },
-  {
-    id: 'reports',
-    label: 'Reports',
-    href: null,
-    flyoutTitle: 'Reports',
-    items: [{ id: 'rp-na', label: 'Scheduled reports', href: null, badge: 'na' }],
+    items: [
+      { id: 'bl-inventory', label: 'Backlink inventory', href: null, badge: 'soon' },
+    ],
   },
   {
     id: 'settings',
     label: 'Settings',
-    href: '/ai-visibility/settings',
+    href: '/settings',
     flyoutTitle: 'Settings',
     items: [
-      { id: 'profile', label: 'Profile', href: '/ai-visibility/settings', badge: 'na' },
-      { id: 'workspace', label: 'Workspace', href: null, badge: 'na' },
-      { id: 'billing', label: 'Billing', href: null, badge: 'na' },
+      { id: 'profile', label: 'Profile', href: '/settings', badge: 'live' },
+      { id: 'members', label: 'Members & roles', href: '/admin', badge: 'live' },
+      { id: 'billing', label: 'Plan & usage', href: null, badge: 'soon' },
     ],
   },
 ]
 
 export function sectionFromPath(pathname: string): ShellSectionId {
-  if (pathname === '/' || pathname === '') return 'home'
+  if (pathname === '/dashboard' || pathname === '/' || pathname === '') return 'home'
   if (pathname.startsWith('/checker')) return 'free-checker'
   if (pathname.startsWith('/methodology')) return 'methodology'
   if (pathname.startsWith('/search-visibility')) return 'search-visibility'
-  if (pathname.startsWith('/ai-visibility/settings')) return 'settings'
+  if (pathname.startsWith('/settings') || pathname.startsWith('/admin')) return 'settings'
   if (pathname.startsWith('/ai-visibility')) return 'ai-visibility'
   if (pathname.startsWith('/analyses')) return 'ai-visibility'
   return 'home'
@@ -180,8 +168,12 @@ export function flyoutItemActive(pathname: string, item: ShellFlyoutItem): boole
 
 /** Paths that use the product shell (vertical nav) instead of marketing header. */
 export function isShellPath(pathname: string): boolean {
-  if (pathname === '/' || pathname === '') return true
+  if (pathname === '/dashboard') return true
   return (
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/site-audit') ||
     pathname.startsWith('/ai-visibility') ||
     pathname.startsWith('/search-visibility') ||
     pathname.startsWith('/checker') ||

@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Button from '@/components/Button'
 import CustomFormError from '@/components/CustomFormError'
@@ -18,8 +18,24 @@ interface FieldErrors {
   password?: string | null
 }
 
-export default function LoginPage() {
+/**
+ * Where to send someone after they authenticate.
+ *
+ * Only same-origin paths are honoured. A `next` of `https://evil.example` in
+ * the query string would otherwise turn the login form into an open redirect —
+ * the classic phishing primitive, made worse here because the victim has just
+ * been asked to type a password.
+ */
+function safeNext(raw: string | null): string {
+  if (!raw) return '/dashboard'
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/dashboard'
+  return raw
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const next = safeNext(searchParams?.get('next') ?? null)
   const { signIn, status } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -29,8 +45,8 @@ export default function LoginPage() {
 
   // Someone already signed in has no business on this form.
   useEffect(() => {
-    if (status === 'authenticated') router.replace('/')
-  }, [status, router])
+    if (status === 'authenticated') router.replace(next)
+  }, [status, router, next])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -55,10 +71,9 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       await signIn(email.trim(), password)
-      // TODO(auth): no signed-in destination exists yet, so this returns to the
-      // home page, where the header now shows the account. Point it at an
-      // account view once there is one.
-      router.push('/')
+      // Back to wherever they were headed when the guard intercepted them,
+      // falling back to the signed-in home.
+      router.push(next)
     } catch (err) {
       setSubmitting(false)
       setFormError(
@@ -141,5 +156,23 @@ export default function LoginPage() {
         </p>
       </div>
     </main>
+  )
+}
+
+export default function LoginPage() {
+  // `useSearchParams` (for ?next) opts this route out of static prerendering
+  // unless it sits under a Suspense boundary.
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-md px-4 py-12 sm:px-8">
+          <p className="text-sm text-surface-subtle" role="status">
+            Loading…
+          </p>
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   )
 }

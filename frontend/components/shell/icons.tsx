@@ -144,9 +144,6 @@ export const SECTION_ICONS = {
   'ai-visibility': IconSpark,
   'free-checker': IconSearch,
   methodology: IconFile,
-  categories: IconGrid,
   backlinks: IconLink,
-  analytics: IconChart,
-  reports: IconFile,
   settings: IconSettings,
 } as const

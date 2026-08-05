@@ -99,7 +99,14 @@ export type Analysis = Omit<
 // setting the refresh cookie. Re-exported here rather than restated in
 // `lib/auth.ts` so a schema change reaches the auth screens through the
 // generated types.
-export type AuthUser = Schemas['UserOut']
+// `/auth/me` returns CurrentUserOut — the identity fields PLUS the org, the
+// caller's role in it, and the permission list. Login and signup still return
+// the narrow UserOut, so the org-dependent fields are optional here and the
+// shell renders without them until /me resolves.
+export type AuthUser = Schemas['UserOut'] &
+  Partial<Omit<Schemas['CurrentUserOut'], keyof Schemas['UserOut']>>
+
+export type Organization = Schemas['OrganizationOut']
 
 export type Credentials = Schemas['LoginRequest']
 
@@ -109,7 +116,15 @@ export type Credentials = Schemas['LoginRequest']
 // `LoginRequest.password` is 1 — and the day sign-up gains a field, one of these
 // changes and the other does not. Sharing a type would keep TypeScript quiet
 // through exactly the change it is here to catch.
-export type SignupCredentials = Schemas['SignupRequest']
+// The generated type is stricter than the wire contract. openapi-typescript
+// marks a property with a DEFAULT as required, but `openapi.json` lists only
+// `email` and `password` in `required` — the backend genuinely accepts a body
+// without an account type and treats it as an individual, which is what keeps
+// an older client working. Corrected here rather than by making every caller
+// pass a value it does not care about.
+type SignupWire = Schemas['SignupRequest']
+export type SignupCredentials = Pick<SignupWire, 'email' | 'password'> &
+  Partial<Pick<SignupWire, 'account_type' | 'organization_name'>>
 
 export type LoginResponse = Schemas['LoginResponse']
 
@@ -131,3 +146,11 @@ export type SiteAuditIssue = Schemas['SiteAuditIssueOut']
 export type SiteAuditSchema = Schemas['SiteAuditSchemaOut']
 
 export type CreateSeoProjectInput = Schemas['CreateSeoProjectRequest']
+
+// --- Administration -------------------------------------------------------
+
+export type AdminMember = Schemas['AdminMemberOut']
+
+export type AdminMemberList = Schemas['AdminUserListOut']
+
+export type AdminOrganization = Schemas['AdminOrganizationOut']

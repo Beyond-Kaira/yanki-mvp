@@ -25,6 +25,7 @@ import {
 const FORM_ERROR_ID = 'signup-error'
 
 interface FieldErrors {
+  organizationName?: string | null
   email?: string | null
   password?: string | null
   confirmPassword?: string | null
@@ -33,6 +34,10 @@ interface FieldErrors {
 export default function SignupPage() {
   const router = useRouter()
   const { signUp, status } = useAuth()
+  const [accountType, setAccountType] = useState<'individual' | 'organization'>(
+    'individual',
+  )
+  const [organizationName, setOrganizationName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -42,7 +47,7 @@ export default function SignupPage() {
 
   // Someone already signed in has no business on this form.
   useEffect(() => {
-    if (status === 'authenticated') router.replace('/')
+    if (status === 'authenticated') router.replace('/dashboard')
   }, [status, router])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -53,10 +58,14 @@ export default function SignupPage() {
       email: validateEmail(email),
       password: validateNewPassword(password),
       confirmPassword: validatePasswordConfirmation(confirmPassword, password),
+      organizationName:
+        accountType === 'organization' && !organizationName.trim()
+          ? 'Enter your organization name.'
+          : null,
     }
     setFieldErrors(errors)
-    const order = ['email', 'password', 'confirm-password'] as const
-    const keys = ['email', 'password', 'confirmPassword'] as const
+    const order = ['organization-name', 'email', 'password', 'confirm-password'] as const
+    const keys = ['organizationName', 'email', 'password', 'confirmPassword'] as const
     const firstInvalid = order.find((_, i) => errors[keys[i]])
     if (firstInvalid) {
       // Moving focus is what announces the failure: a screen reader reads the
@@ -73,8 +82,12 @@ export default function SignupPage() {
       // The signup endpoint returns no session, so `signUp` creates the account
       // and spends the same credentials on a login rather than asking for them
       // twice. Either request failing lands in the catch below.
-      await signUp(email.trim(), password)
-      router.push('/')
+      await signUp(email.trim(), password, {
+        accountType,
+        organizationName:
+          accountType === 'organization' ? organizationName.trim() : undefined,
+      })
+      router.push('/dashboard')
     } catch (err) {
       setSubmitting(false)
       if (err instanceof SignedUpButNotSignedInError) {
@@ -104,6 +117,61 @@ export default function SignupPage() {
         </header>
 
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-surface-foreground">
+              Account type
+            </legend>
+            <p className="text-sm text-surface-subtle">
+              Both get their own organization. An individual account is a team of
+              one — you can name it and invite people later without moving any
+              data.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ['individual', 'Individual', 'Just me for now'],
+                  ['organization', 'Organization', 'A team with a shared account'],
+                ] as const
+              ).map(([value, label, hint]) => (
+                <label
+                  key={value}
+                  className={`flex min-h-[44px] cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${
+                    accountType === value
+                      ? 'border-primary bg-primary/5'
+                      : 'border-surface-border hover:border-primary/50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="account-type"
+                    value={value}
+                    checked={accountType === value}
+                    onChange={() => setAccountType(value)}
+                    className="mt-1 h-4 w-4 shrink-0 accent-[color:var(--color-primary,#2563eb)]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{label}</span>
+                    <span className="block text-xs text-surface-subtle">{hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {accountType === 'organization' ? (
+            <CustomFormField
+              id="organization-name"
+              name="organizationName"
+              type="text"
+              label="Organization name"
+              autoComplete="organization"
+              value={organizationName}
+              onChange={(event) => setOrganizationName(event.target.value)}
+              error={fieldErrors.organizationName ?? null}
+              required
+            />
+          ) : null}
+
           <CustomFormField
             id="email"
             name="email"

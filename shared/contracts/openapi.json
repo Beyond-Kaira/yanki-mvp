@@ -1,6 +1,182 @@
 {
   "components": {
     "schemas": {
+      "AdminMemberOut": {
+        "description": "One member of an organization, as an administrator sees them.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "membership_id": {
+            "format": "uuid",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "membership_status": {
+            "title": "Membership Status",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "status",
+          "created_at",
+          "role",
+          "membership_status",
+          "membership_id"
+        ],
+        "title": "AdminMemberOut",
+        "type": "object"
+      },
+      "AdminMemberUpdateRequest": {
+        "description": "Change a member's role, their account status, or both.\n\nBoth optional: a PATCH that sets neither is a no-op rather than an error,\nwhich keeps a form that only touched one field simple to submit.",
+        "properties": {
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "AdminMemberUpdateRequest",
+        "type": "object"
+      },
+      "AdminOrganizationOut": {
+        "description": "The caller's organization.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "member_count": {
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "kind",
+          "status",
+          "created_at",
+          "member_count"
+        ],
+        "title": "AdminOrganizationOut",
+        "type": "object"
+      },
+      "AdminUserListOut": {
+        "description": "A page of members, plus what the UI needs to render its controls.\n\n``assignable_roles`` ships with the list so the role picker is populated\nfrom the server's idea of what may be assigned rather than a hardcoded\nfrontend copy that drifts. Platform roles are excluded there, so a customer\ncannot even be offered one.",
+        "properties": {
+          "assignable_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assignable Roles",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/AdminMemberOut"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "assignable_roles",
+          "members"
+        ],
+        "title": "AdminUserListOut",
+        "type": "object"
+      },
       "AnalysisOut": {
         "properties": {
           "created_at": {
@@ -227,6 +403,65 @@
           "domain"
         ],
         "title": "CreateSeoProjectRequest",
+        "type": "object"
+      },
+      "CurrentUserOut": {
+        "description": "``/auth/me`` \u2014 who you are AND what you can do.\n\nThe role and permission list ride along so the UI can reflect authority\nwithout a second round trip. They are for RENDERING only: the API enforces\nevery one of them independently, and a client that lies about its\npermissions gets a 403 exactly as before.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrganizationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "created_at",
+          "status"
+        ],
+        "title": "CurrentUserOut",
         "type": "object"
       },
       "EnginePresence": {
@@ -676,6 +911,41 @@
           "access_token"
         ],
         "title": "LoginResponse",
+        "type": "object"
+      },
+      "OrganizationOut": {
+        "description": "The organization a request is acting within.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "kind",
+          "status"
+        ],
+        "title": "OrganizationOut",
         "type": "object"
       },
       "PromptOut": {
@@ -1339,11 +1609,32 @@
         "type": "object"
       },
       "SignupRequest": {
-        "description": "Credentials required to create a user account.",
+        "description": "Credentials required to create a user account.\n\n``account_type`` decides what kind of organization the new user gets. Both\nkinds are real organizations with the same machinery behind them \u2014 an\nindividual is not a special case with less structure, it is a company of\none. That is what makes \"convert to a team account\" a rename plus an\ninvitation rather than a data migration.",
         "properties": {
+          "account_type": {
+            "default": "individual",
+            "enum": [
+              "individual",
+              "organization"
+            ],
+            "title": "Account Type",
+            "type": "string"
+          },
           "email": {
             "title": "Email",
             "type": "string"
+          },
+          "organization_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Name"
           },
           "password": {
             "maxLength": 128,
@@ -1990,6 +2281,327 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/members": {
+      "get": {
+        "description": "Members of the caller's organization, searchable.\n\nSearch is a case-insensitive substring over the email, which is the only\nhuman-readable identifier a user has today. It is applied in SQL rather\nthan after fetching, so the limit means what it says on a large org.",
+        "operationId": "list_members_api_v1_admin_members_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Members",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/members/{user_id}": {
+      "get": {
+        "operationId": "read_member_api_v1_admin_members__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Member",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "Change a member's role, or enable/disable their account.\n\nBoth guards below prevent the same class of accident \u2014 an organization\nlocking itself out with no way back in except a support ticket.",
+        "operationId": "update_member_api_v1_admin_members__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminMemberUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Member",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/organization": {
+      "get": {
+        "description": "The caller's own organization, with its member count.",
+        "operationId": "read_organization_api_v1_admin_organization_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOrganizationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Organization",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/analyses": {
       "post": {
         "operationId": "submit_analysis_api_v1_analyses_post",
@@ -2133,14 +2745,14 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "Return the user represented by the access bearer token.",
+        "description": "Who you are, which organization you are acting in, and what you may do.\n\nThe role and permission list ride along so the UI can hide a control the\ncaller cannot use, instead of showing it and failing on click. They are for\nRENDERING ONLY \u2014 every endpoint enforces its own permission independently,\nso a client that lies about this list gets a 403 exactly as before.",
         "operationId": "me_api_v1_auth_me_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserOut"
+                  "$ref": "#/components/schemas/CurrentUserOut"
                 }
               }
             },

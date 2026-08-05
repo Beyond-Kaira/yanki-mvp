@@ -9,12 +9,20 @@ schema and the check complained that SERP was still there. A gate that has to be
 rewritten every time it is exercised is a gate people learn to edit rather than
 read.
 
-So it asserts a property instead of a list: **the schema round-trips**. Snapshot
-at head, step back one revision, come forward again, and the schema must be
-byte-identical to where it started. That catches a downgrade that drops the wrong
-thing, forgets an index, or leaves a column behind — for any migration, without
-naming one. The middle step separately asserts that the downgrade actually *did*
-something, so a no-op downgrade cannot pass by doing nothing.
+So it asserts a property instead of a list: **the database round-trips**.
+Snapshot at head, step back one revision, come forward again, and the result
+must be identical to where it started. That catches a downgrade that drops the
+wrong thing, forgets an index, or leaves a column behind — for any migration,
+without naming one. The middle step separately asserts that the downgrade
+actually *did* something, so a no-op downgrade cannot pass by doing nothing.
+
+The snapshot covers **row counts as well as schema**, for two reasons. A
+data-only migration — one that seeds a catalog and changes no DDL — otherwise
+cannot satisfy "the downgrade changed something", and would have to be exempted
+from the gate rather than checked by it (0016 is the first such migration).
+And including counts makes the round-trip strictly stronger: a backfill whose
+upgrade is not idempotent now fails here, because coming forward a second time
+lands on a different number of rows than the first.
 
     uv run python ../.github/scripts/migration_check.py snapshot before.json
     uv run alembic downgrade -1
@@ -33,22 +41,36 @@ import sqlalchemy as sa
 
 
 def _snapshot(url: str) -> dict:
-    """Every table, its columns (with type and nullability), and its indexes."""
+    """Every table: its columns, its indexes, and how many rows it holds.
+
+    ``alembic_version`` is excluded deliberately — it is the one table whose
+    contents are *supposed* to differ between the two ends of a downgrade, so
+    including it would make every migration look like it changed something and
+    the "did the downgrade do anything" assertion would pass vacuously.
+    """
+
     engine = sa.create_engine(url)
     try:
         inspector = sa.inspect(engine)
         schema: dict = {}
-        for table in sorted(inspector.get_table_names()):
-            schema[table] = {
-                "columns": sorted(
-                    f"{c['name']}:{c['type']!s}:{'null' if c['nullable'] else 'notnull'}"
-                    for c in inspector.get_columns(table)
-                ),
-                "indexes": sorted(
-                    f"{i['name']}:{','.join(i['column_names'] or [])}"
-                    for i in inspector.get_indexes(table)
-                ),
-            }
+        with engine.connect() as connection:
+            for table in sorted(inspector.get_table_names()):
+                if table == "alembic_version":
+                    continue
+                count = connection.execute(
+                    sa.text(f'SELECT count(*) FROM "{table}"')  # noqa: S608 - name from inspector
+                ).scalar_one()
+                schema[table] = {
+                    "columns": sorted(
+                        f"{c['name']}:{c['type']!s}:{'null' if c['nullable'] else 'notnull'}"
+                        for c in inspector.get_columns(table)
+                    ),
+                    "indexes": sorted(
+                        f"{i['name']}:{','.join(i['column_names'] or [])}"
+                        for i in inspector.get_indexes(table)
+                    ),
+                    "rows": int(count),
+                }
         return schema
     finally:
         engine.dispose()
@@ -68,6 +90,14 @@ def _describe(before: dict, after: dict) -> list[str]:
             extra = set(after[table][key]) - set(before[table][key])
             problems += [f"{table}.{key}: lost {item}" for item in sorted(gone)]
             problems += [f"{table}.{key}: gained {item}" for item in sorted(extra)]
+        before_rows = before[table].get("rows")
+        after_rows = after[table].get("rows")
+        if before_rows != after_rows:
+            problems.append(
+                f"{table}.rows: {before_rows} -> {after_rows} "
+                "(a migration's upgrade is not idempotent, or its downgrade "
+                "removed rows it did not create)"
+            )
     return problems
 
 

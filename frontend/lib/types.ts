@@ -544,6 +544,222 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/seo-projects/{project_id}/backlinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Backlinks */
+        get: operations["read_backlinks_api_v1_seo_projects__project_id__backlinks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/anchors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Anchors */
+        get: operations["read_anchors_api_v1_seo_projects__project_id__backlinks_anchors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/competitors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Competitors */
+        get: operations["read_competitors_api_v1_seo_projects__project_id__backlinks_competitors_get"];
+        put?: never;
+        /**
+         * Track Competitor
+         * @description Track a competitor domain, which is what makes gap analysis have an answer.
+         *
+         *     ``backlink:refresh`` rather than ``project:update``: adding a competitor is
+         *     what causes their profile to be pulled, so it is a spending decision.
+         */
+        post: operations["track_competitor_api_v1_seo_projects__project_id__backlinks_competitors_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/competitors/{competitor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Untrack Competitor */
+        delete: operations["untrack_competitor_api_v1_seo_projects__project_id__backlinks_competitors__competitor_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/disavow.txt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Disavow
+         * @description A Google-format disavow file, reasons included as comments.
+         *
+         *     Advisory, and worded that way in the file's own preamble: submitting a
+         *     disavow is irreversible in effect, and nothing here disavows anything on a
+         *     customer's behalf.
+         */
+        get: operations["export_disavow_api_v1_seo_projects__project_id__backlinks_disavow_txt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Events */
+        get: operations["read_events_api_v1_seo_projects__project_id__backlinks_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Backlinks Csv
+         * @description The inventory as CSV, capped at the same page ceiling as the list view.
+         *
+         *     Capped deliberately: a full-profile dump belongs in an export artifact
+         *     (plan §4), not in a synchronous request that holds a database connection
+         *     open for a million rows.
+         */
+        get: operations["export_backlinks_csv_api_v1_seo_projects__project_id__backlinks_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Opportunities */
+        get: operations["read_opportunities_api_v1_seo_projects__project_id__backlinks_opportunities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/referring-domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Referring Domains */
+        get: operations["read_referring_domains_api_v1_seo_projects__project_id__backlinks_referring_domains_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Backlinks
+         * @description Pull one profile from the configured index and diff it against what we believed.
+         *
+         *     Synchronous while P8.4's worker wiring is outstanding — see
+         *     ``services.backlinks.refresh``. A vendor that is unreachable does not fail
+         *     this call: the importer records a non-measurable import, mints no losses,
+         *     and the response says so through ``coverage_status``.
+         */
+        post: operations["refresh_backlinks_api_v1_seo_projects__project_id__backlinks_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/backlinks/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Summary */
+        get: operations["read_summary_api_v1_seo_projects__project_id__backlinks_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/waitlist": {
         parameters: {
             query?: never;
@@ -789,6 +1005,21 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** AnchorDistributionOut */
+        AnchorDistributionOut: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Money Anchor Share */
+            money_anchor_share: number;
+            /** Shares */
+            shares: {
+                [key: string]: number;
+            };
+            /** Total */
+            total: number;
+        };
         /**
          * AuditEventListOut
          * @description A page of audit events, plus what the filter UI needs to render itself.
@@ -892,6 +1123,140 @@ export interface components {
             /** Unverifiable */
             unverifiable: number;
         };
+        /** BacklinkImportOut */
+        BacklinkImportOut: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Coverage Status */
+            coverage_status?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lost In Period */
+            lost_in_period: number;
+            /** Measurable */
+            measurable: boolean;
+            /** New In Period */
+            new_in_period: number;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            } | null;
+            /** Reported Total Backlinks */
+            reported_total_backlinks?: number | null;
+            /** Reported Total Referring Domains */
+            reported_total_referring_domains?: number | null;
+            /** Rows Ingested */
+            rows_ingested: number;
+            /** Snapshot At */
+            snapshot_at?: string | null;
+            /** Status */
+            status: string;
+            /** Trigger */
+            trigger: string;
+            /** Vendor */
+            vendor: string;
+        };
+        /** BacklinkOut */
+        BacklinkOut: {
+            /** Anchor */
+            anchor: string;
+            /** Anchor Class */
+            anchor_class: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Follow */
+            is_follow: boolean;
+            /** Is Image Link */
+            is_image_link: boolean;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Lost At */
+            lost_at?: string | null;
+            /** Lost Reason */
+            lost_reason?: string | null;
+            /** Source Domain */
+            source_domain: string;
+            /** Source Domain Authority */
+            source_domain_authority?: number | null;
+            /** Source Page Authority */
+            source_page_authority?: number | null;
+            /** Source Url */
+            source_url: string;
+            /** Status */
+            status: string;
+            /** Target Url */
+            target_url: string;
+            /** Tld */
+            tld?: string | null;
+            /** Toxicity Band */
+            toxicity_band?: string | null;
+            /** Toxicity Score */
+            toxicity_score?: number | null;
+            /** Vendor */
+            vendor: string;
+            /** Verified At */
+            verified_at?: string | null;
+            /** Verify Verdict */
+            verify_verdict?: string | null;
+        };
+        /** BacklinkPageOut */
+        BacklinkPageOut: {
+            /** Items */
+            items: components["schemas"]["BacklinkOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** BacklinkSummaryOut */
+        BacklinkSummaryOut: {
+            anchors: components["schemas"]["AnchorDistributionOut"];
+            /** Authority */
+            authority?: number | null;
+            /** Authority Components */
+            authority_components?: {
+                [key: string]: unknown;
+            } | null;
+            /** Authority Version */
+            authority_version?: string | null;
+            /** Backlinks */
+            backlinks: number;
+            /** Follow Links */
+            follow_links: number;
+            last_import?: components["schemas"]["BacklinkImportOut"] | null;
+            /** Lost Links */
+            lost_links: number;
+            /** Referring Domains */
+            referring_domains: number;
+            /** Subject Domain */
+            subject_domain: string;
+            /** Toxicity */
+            toxicity: {
+                [key: string]: number;
+            };
+            /** Velocity */
+            velocity?: components["schemas"]["VelocityPointOut"][];
+        };
         /** CheckerLeadRequest */
         CheckerLeadRequest: {
             /** Email */
@@ -941,6 +1306,25 @@ export interface components {
             mentions: number;
             /** Name */
             name: string;
+        };
+        /** CompetitorOut */
+        CompetitorOut: {
+            /** Active */
+            active: boolean;
+            /** Competitor Domain */
+            competitor_domain: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /**
+             * Tracked Since
+             * Format: date-time
+             */
+            tracked_since: string;
         };
         /** CreateAnalysisRequest */
         CreateAnalysisRequest: {
@@ -1024,6 +1408,19 @@ export interface components {
             mentioned: number;
             /** Total */
             total: number;
+        };
+        /** GapRowOut */
+        GapRowOut: {
+            /** Competitor Domains */
+            competitor_domains: string[];
+            /** Domain Authority */
+            domain_authority?: number | null;
+            /** Linking Competitors */
+            linking_competitors: number;
+            /** Referring Domain */
+            referring_domain: string;
+            /** Score */
+            score: number;
         };
         /**
          * GeoRecordOut
@@ -1153,6 +1550,50 @@ export interface components {
             /** Role */
             role: string;
         };
+        /** LinkEventOut */
+        LinkEventOut: {
+            /** Authority At Event */
+            authority_at_event?: number | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
+            /** Detected By */
+            detected_by: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Reason */
+            reason?: string | null;
+            /** Source Domain */
+            source_domain: string;
+            /** Source Url */
+            source_url: string;
+            /** Target Url */
+            target_url: string;
+            /** Verified */
+            verified: boolean;
+        };
+        /** LinkEventPageOut */
+        LinkEventPageOut: {
+            /** Items */
+            items: components["schemas"]["LinkEventOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /**
          * LoginRequest
          * @description Credentials required to authenticate a user.
@@ -1177,6 +1618,17 @@ export interface components {
              */
             token_type: "bearer";
             user: components["schemas"]["UserOut"];
+        };
+        /** OpportunitiesOut */
+        OpportunitiesOut: {
+            /** Link Gap */
+            link_gap: components["schemas"]["GapRowOut"][];
+            /** Provenance */
+            provenance: {
+                [key: string]: string;
+            };
+            /** Unlinked Mentions */
+            unlinked_mentions: components["schemas"]["UnlinkedMentionOut"][];
         };
         /**
          * OrganizationOut
@@ -1208,6 +1660,78 @@ export interface components {
             id: string;
             /** Text */
             text: string;
+        };
+        /** ReferringDomainOut */
+        ReferringDomainOut: {
+            /** Domain Authority */
+            domain_authority?: number | null;
+            /** First Linked At */
+            first_linked_at?: string | null;
+            /** Follow Links */
+            follow_links: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Linked At */
+            last_linked_at?: string | null;
+            /** Links Count */
+            links_count: number;
+            /** Referring Domain */
+            referring_domain: string;
+            /** Toxicity Band */
+            toxicity_band?: string | null;
+            /** Toxicity Reasons */
+            toxicity_reasons?: unknown[] | null;
+            /** Toxicity Score */
+            toxicity_score?: number | null;
+            /** Toxicity Version */
+            toxicity_version?: string | null;
+        };
+        /** ReferringDomainPageOut */
+        ReferringDomainPageOut: {
+            /** Items */
+            items: components["schemas"]["ReferringDomainOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** RefreshOut */
+        RefreshOut: {
+            /** Changed Links */
+            changed_links: number;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Coverage Status */
+            coverage_status: string;
+            /**
+             * Import Id
+             * Format: uuid
+             */
+            import_id: string;
+            /** Lost Links */
+            lost_links: number;
+            /** Measurable */
+            measurable: boolean;
+            /** New Links */
+            new_links: number;
+            /** Regained Links */
+            regained_links: number;
+            /** Rows Ingested */
+            rows_ingested: number;
+        };
+        /** RefreshRequest */
+        RefreshRequest: {
+            /**
+             * Trigger
+             * @default manual
+             * @enum {string}
+             */
+            trigger: "manual" | "scheduled";
         };
         /**
          * RefreshResponse
@@ -1668,6 +2192,24 @@ export interface components {
              */
             updated_at: string;
         };
+        /** TrackCompetitorRequest */
+        TrackCompetitorRequest: {
+            /** Domain */
+            domain: string;
+            /** Label */
+            label?: string | null;
+        };
+        /** UnlinkedMentionOut */
+        UnlinkedMentionOut: {
+            /** Evidence */
+            evidence: string;
+            /** Seen Via */
+            seen_via: string;
+            /** Source Domain */
+            source_domain: string;
+            /** Source Url */
+            source_url: string;
+        };
         /**
          * UserOut
          * @description Public user fields returned by authentication endpoints.
@@ -1698,6 +2240,21 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VelocityPointOut */
+        VelocityPointOut: {
+            /** At */
+            at?: string | null;
+            /** Authority */
+            authority?: number | null;
+            /** Lost */
+            lost: number;
+            /** Measurable */
+            measurable: boolean;
+            /** New */
+            new: number;
+            /** Reported Total */
+            reported_total?: number | null;
         };
         /**
          * WaitlistRequest
@@ -2620,6 +3177,430 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SiteAuditDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_backlinks_api_v1_seo_projects__project_id__backlinks_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                anchor_class?: ("exact" | "partial" | "brand" | "naked" | "generic") | null;
+                follow?: boolean | null;
+                source_domain?: string | null;
+                min_authority?: number | null;
+                sort?: "authority" | "first_seen" | "last_seen" | "toxicity" | "domain";
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacklinkPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_anchors_api_v1_seo_projects__project_id__backlinks_anchors_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorDistributionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_competitors_api_v1_seo_projects__project_id__backlinks_competitors_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompetitorOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    track_competitor_api_v1_seo_projects__project_id__backlinks_competitors_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackCompetitorRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompetitorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    untrack_competitor_api_v1_seo_projects__project_id__backlinks_competitors__competitor_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                competitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_disavow_api_v1_seo_projects__project_id__backlinks_disavow_txt_get: {
+        parameters: {
+            query?: {
+                minimum_band?: string;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_events_api_v1_seo_projects__project_id__backlinks_events_get: {
+        parameters: {
+            query?: {
+                kind?: ("new" | "lost" | "regained" | "changed") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkEventPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_backlinks_csv_api_v1_seo_projects__project_id__backlinks_export_csv_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_opportunities_api_v1_seo_projects__project_id__backlinks_opportunities_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunitiesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_referring_domains_api_v1_seo_projects__project_id__backlinks_referring_domains_get: {
+        parameters: {
+            query?: {
+                band?: ("low" | "medium" | "high") | null;
+                sort?: "authority" | "links" | "toxicity" | "domain";
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferringDomainPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_backlinks_api_v1_seo_projects__project_id__backlinks_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_summary_api_v1_seo_projects__project_id__backlinks_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacklinkSummaryOut"];
                 };
             };
             /** @description Validation Error */

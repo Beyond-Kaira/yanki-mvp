@@ -1,11 +1,27 @@
-"""Authenticated API for SEO projects and their independent Site Audit jobs."""
+"""Authenticated API for SEO projects and their independent Site Audit jobs.
+
+These routes predate P7.2's permission seam and, until 2026-08-05, took only
+``get_org_context`` — which answers *on whose behalf* and deliberately never
+answers *may they*. The result was that every member of an organization could
+create a project and start a crawl, **including a Guest**: the free client seat
+whose whole purpose is to be structurally unable to reach internal lanes. Not a
+cross-tenant leak (the scoping was correct throughout) but a real hole in the
+role model this milestone claims to enforce.
+
+Each route now names the permission it needs, like the Admin Panel's do. The
+mapping is the obvious one and follows the matrix rather than inventing grants:
+reading is ``project:read``, creating a project is ``project:create``, and
+starting a crawl is ``site_audit:run`` — which Analyst and above hold and Guest
+and Viewer do not, because a crawl spends real resources against a third-party
+site.
+"""
 
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.org_dependencies import get_org_context
+from app.api.org_dependencies import requires
 from app.api.site_audit_schemas import (
     CreateSeoProjectRequest,
     SeoProjectDetailOut,
@@ -18,6 +34,7 @@ from app.api.site_audit_schemas import (
 from app.db.models import SeoProject, SiteAudit
 from app.db.session import get_session
 from app.net_guard import is_public_url
+from app.services.permissions import AUDIT_RUN, PROJECT_CREATE, PROJECT_READ
 from app.services.seo_projects import (
     DuplicateSeoProject,
     InvalidProjectDomain,
@@ -84,7 +101,7 @@ def _project_detail(project: SeoProject) -> SeoProjectDetailOut:
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=SeoProjectOut)
 def create_seo_project(
     payload: CreateSeoProjectRequest,
-    org: OrgContext = Depends(get_org_context),
+    org: OrgContext = Depends(requires(PROJECT_CREATE)),
     session: Session = Depends(get_session),
 ) -> SeoProjectOut:
     try:
@@ -121,7 +138,7 @@ def create_seo_project(
 
 @router.get("", response_model=list[SeoProjectOut])
 def read_seo_projects(
-    org: OrgContext = Depends(get_org_context),
+    org: OrgContext = Depends(requires(PROJECT_READ)),
     session: Session = Depends(get_session),
 ) -> list[SeoProjectOut]:
     return [_project_out(project) for project in list_org_projects(session, org.require_org_id)]
@@ -130,7 +147,7 @@ def read_seo_projects(
 @router.get("/{project_id}", response_model=SeoProjectDetailOut)
 def read_seo_project(
     project_id: uuid.UUID,
-    org: OrgContext = Depends(get_org_context),
+    org: OrgContext = Depends(requires(PROJECT_READ)),
     session: Session = Depends(get_session),
 ) -> SeoProjectDetailOut:
     project = get_org_project(session, org_id=org.require_org_id, project_id=project_id)
@@ -147,7 +164,7 @@ def read_seo_project(
 def create_site_audit(
     project_id: uuid.UUID,
     payload: SiteAuditSettingsRequest,
-    org: OrgContext = Depends(get_org_context),
+    org: OrgContext = Depends(requires(AUDIT_RUN)),
     session: Session = Depends(get_session),
 ) -> SiteAuditSummaryOut:
     project = get_org_project(session, org_id=org.require_org_id, project_id=project_id)
@@ -178,7 +195,7 @@ def create_site_audit(
 def read_site_audit(
     project_id: uuid.UUID,
     audit_id: uuid.UUID,
-    org: OrgContext = Depends(get_org_context),
+    org: OrgContext = Depends(requires(PROJECT_READ)),
     session: Session = Depends(get_session),
 ) -> SiteAuditDetailOut:
     audit = get_org_audit(

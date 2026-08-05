@@ -29,14 +29,23 @@ measured mode (Tavily search + OpenRouter answer + citation records — PR #11,
 merged 2026-08-04, *undocumented*, tech-debt #54), SERP visibility via
 self-hosted SearXNG (ADR-28/29), SEO/AI-readiness audit A–F (ADR-31),
 waitlist + transactional email. **Built, dark:** the free public checker
-(P5.11 go-live is the operator's). **Merged, unwired:** auth + account
-screens (an account still grants nothing — #52); Site Audit projects/APIs +
-Chromium crawler (PR #23, backend only, hardening unresolved — #55);
-interventions library + reliability auditor (PR #11, no UI). **Missing
-entirely:** organizations, RBAC, billing, quotas, audit logs, scheduling,
-history, dashboards, reports, alerts, keywords, rank tracking, backlinks,
-integrations, public API. That asymmetry — a strong measurement engine with
-no platform around it — is what this roadmap fixes, admin-first.
+(P5.11 go-live is the operator's). **Merged, unwired:** Site Audit
+projects/APIs + Chromium crawler (PR #23, its worker still absent from the
+prod compose, hardening unresolved — #55); interventions library + reliability
+auditor (PR #11, no UI).
+
+*Updated at session 22 close.* **Shipped since this snapshot was first
+written:** organizations and tenancy, RBAC (ten roles, deny-by-default,
+enforced at the API), audit logs (emitted, queryable, tamper-evident), and the
+**Admin Panel** — so tech-debt #52's "an account grants nothing" is repaid:
+signing in now lands somewhere that does something. **Built but not a product
+yet:** the backlink engine (delta, authority, toxicity, gap) exists behind a
+flag with no API router and no UI; plans/quotas/credit ledger exist as tables
+and a service with nothing enforcing them on a spend path. **Still missing
+entirely:** billing lifecycle, scheduling, history, dashboards, reports,
+alerts, keywords, rank tracking, integrations, public API. The asymmetry this
+roadmap fixes — a strong measurement engine with no platform around it — is
+narrower than it was, and still real.
 
 ## Milestone map at a glance
 
@@ -64,6 +73,14 @@ M8's localization work is where it revives naturally if called.
 ---
 
 ## M1 — Admin Platform *(full plan: [admin-panel-plan.md](admin-panel-plan.md))*
+
+> **Two names, one milestone, and they are not synonyms.** The **Admin Panel**
+> is the shipped user-facing surface at `/admin` — members, roles, invitations,
+> audit log — and that is what it is called everywhere in the product: nav,
+> page title, breadcrumb, route. The **Admin Platform** is this milestone, which
+> is larger: it also covers billing, plans, quotas, the Yanki-staff back office
+> and the system pages, none of which are part of the customer's Admin Panel.
+> Stages A1–A4 (the Panel and everything under it) shipped 2026-08-05.
 
 - **Objectives:** turn "a users table" into a governed multi-tenant B2B
   platform: organizations → workspaces → projects; granular resource-based

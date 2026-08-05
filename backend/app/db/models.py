@@ -573,6 +573,91 @@ class Membership(Base):
     )
 
 
+class Invitation(Base):
+    """An outstanding offer of a seat in an organization (P7.4).
+
+    An invitation is the only way a person joins an organization they did not
+    create, so it is also the only way a role is granted to someone who does not
+    yet have an account. That makes it a security object, and three columns carry
+    the weight.
+
+    ``token_hash`` stores a SHA-256 of the token, never the token. The plaintext
+    exists exactly once — in the email — for the same reason the session module
+    stores a hash of the refresh token: a leaked database must not become a set
+    of working invitations. Unique, so a token identifies at most one row and the
+    lookup is an index hit rather than a scan-and-compare.
+
+    ``expires_at`` is required, not optional. An invitation that never expires is
+    a permanent, unrevoked credential sitting in somebody's inbox.
+
+    ``status`` moves ``pending → accepted | revoked`` and never back. Expiry is
+    NOT a status: it is derived from ``expires_at`` at read time, because a
+    status column would need a sweeper to stay honest and would be wrong between
+    sweeps. The partial unique index below therefore keys on ``pending``, which
+    lets an org re-invite an address whose earlier invitation was revoked or
+    used, while refusing two live invitations to the same person.
+    """
+
+    __tablename__ = "invitations"
+    __table_args__ = (
+        # One live invitation per address per org. Partial, so accepted and
+        # revoked rows accumulate as history without blocking a re-invite.
+        sa.Index(
+            "uq_invitations_pending_org_email",
+            "org_id",
+            "email",
+            unique=True,
+            postgresql_where=sa.text("status = 'pending'"),
+            sqlite_where=sa.text("status = 'pending'"),
+        ),
+        sa.Index("ix_invitations_org_status", "org_id", "status"),
+        sa.Index("ix_invitations_email", "email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # The workspace the invited role is scoped to, for the workspace-level roles.
+    # Nullable because org-level roles (admin, billing_admin) are not scoped to
+    # one, and because M1 grants at org grain — the column is here so M8's scope
+    # grants do not need a migration on a populated table.
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True
+    )
+    email: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    role: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    token_hash: Mapped[str] = mapped_column(sa.Text, nullable=False, unique=True)
+    # SET NULL: an invitation must survive the departure of whoever sent it, or
+    # the audit question "who let this person in?" loses its answer precisely
+    # when it is being asked.
+    invited_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # 'pending' | 'accepted' | 'revoked'. Expiry is derived, not stored.
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="pending", server_default="pending"
+    )
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    accepted_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    # Resending mints a NEW token and invalidates the old one, so this is a
+    # count of how many times that happened rather than of emails sent.
+    sent_count: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=1, server_default="1"
+    )
+    last_sent_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
 class Project(Base):
     """A tracked business inside a workspace: one domain, watched over time.
 
@@ -1334,6 +1419,30 @@ class AuditEvent(Base):
     detail: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+
+    # Tamper EVIDENCE, on top of the append-only discipline above. A SHA-256 over
+    # this row's own content, computed at insert. Editing any audited field
+    # without recomputing this — which is what an editor with SQL access does —
+    # makes the row fail :func:`app.services.audit.verify_row`, and the admin
+    # integrity check reports it.
+    #
+    # Deliberately a self-hash rather than a chain. A chain (each row hashing its
+    # predecessor) also detects deletion, but computing it requires reading and
+    # locking the chain head on every write, which would serialize every audited
+    # request in the application behind one row. Deletion is instead blocked at
+    # the database: migration 0018 installs TWO triggers, one raising on UPDATE
+    # or DELETE and a separate statement-level one raising on TRUNCATE — a
+    # row-level trigger does not fire on TRUNCATE, so without the second, one
+    # word would have erased the whole trail using the app's own role.
+    #
+    # What remains undetectable is a superuser who drops the triggers first;
+    # that is the honest limit of this design, and closing it is the M8
+    # hardening card (external append-only sink), not a promise made here.
+    #
+    # Nullable because the rows written before this column existed cannot be
+    # given a credible hash after the fact. The verifier reports those as
+    # 'unverifiable' rather than pretending they passed.
+    record_hash: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
 
 class Plan(Base):

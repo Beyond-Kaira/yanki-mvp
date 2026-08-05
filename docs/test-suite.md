@@ -594,3 +594,28 @@ testing trivia and punish honest, hard-to-test glue. Instead:
 
 This matches the MVP ethos: boring, minimal, junior-readable tests that
 correspond one-to-one with what we promised to ship.
+
+---
+
+## The three Postgres-only modules, and why they can lie
+
+Most of this suite runs against in-memory SQLite: hermetic, fast, no services.
+Three modules cannot, and the reason matters more than the inconvenience —
+**every property they defend passes vacuously on SQLite.**
+
+| Module | What it defends | Why SQLite cannot check it |
+|---|---|---|
+| `test_migrations.py` | Migrations apply, match the models with zero drift, and reverse | The models are the only schema SQLite ever sees; the migration chain is never executed |
+| `test_audit_append_only_postgres.py` | UPDATE, DELETE and TRUNCATE on `audit_events` are refused by the database | The triggers live in a migration, so they do not exist in a `create_all` schema |
+| `test_owner_guard_postgres.py` | The last-owner guard serializes under concurrency | SQLite runs one connection, and its dialect silently omits `FOR UPDATE` |
+
+All three skip themselves unless `TEST_DATABASE_URL` points at Postgres, which
+`make test` arranges by starting a throwaway container. That is the right
+default — `uv run pytest` stays offline — but it creates a specific failure
+mode worth naming: **if the URL stops reaching pytest, these modules skip, the
+job stays green, and three real guarantees quietly become unprotected.** A
+deleted `FOR UPDATE` would not fail a single test.
+
+So CI runs them as their **own named step** rather than trusting the full-suite
+run to cover them, and the step prints a notice pointing at the skip count. If
+that step ever finishes suspiciously fast, read the count before believing it.

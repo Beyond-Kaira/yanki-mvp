@@ -154,3 +154,24 @@ export type AdminMember = Schemas['AdminMemberOut']
 export type AdminMemberList = Schemas['AdminUserListOut']
 
 export type AdminOrganization = Schemas['AdminOrganizationOut']
+
+export type AdminInvitation = Schemas['AdminInvitationOut']
+
+export type AdminInvitationList = Schemas['AdminInvitationListOut']
+
+// The create/resend response — the only shape in the API that carries an
+// invitation token, and only in `accept_url`. Nothing persists it client-side.
+export type AdminInvitationCreated = Schemas['AdminInvitationCreatedOut']
+
+// The public accept flow. The preview is what an invited person sees before
+// they commit; the accept response is an ordinary login response, so the invitee
+// lands signed in rather than at a login form.
+export type InvitationPreview = Schemas['InvitationPreviewOut']
+
+// --- Audit log ------------------------------------------------------------
+
+export type AuditEvent = Schemas['AuditEventOut']
+
+export type AuditEventList = Schemas['AuditEventListOut']
+
+export type AuditIntegrity = Schemas['AuditIntegrityOut']

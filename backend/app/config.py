@@ -168,6 +168,20 @@ class Settings(BaseSettings):
     notify_email: str = ""
     email_from: str = "onboarding@resend.dev"
 
+    # Where this deployment is reachable from a browser. Used to build the links
+    # that go INTO emails — an invitation link in particular — because a link is
+    # the one thing the API cannot infer from the request that carries it: the
+    # request arrives at the internal container, not at the public origin.
+    #
+    # Trailing slashes are stripped at use. The default matches the dev stack's
+    # web port so `make dev` produces links that actually open.
+    public_base_url: str = "http://localhost:8140"
+
+    # How long an invitation link stays usable, in days. Long enough to survive a
+    # holiday, short enough that a forgotten invitation is not a permanent
+    # standing grant sitting in an inbox.
+    invitation_ttl_days: int = Field(default=14, ge=1, le=90)
+
 
 @lru_cache
 def get_settings() -> Settings:

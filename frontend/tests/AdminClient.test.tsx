@@ -159,7 +159,11 @@ describe('AdminClient', () => {
 
     expect(within(row).getByText(/that's you/i)).toBeVisible()
     expect(within(row).getByRole('combobox')).toBeDisabled()
-    expect(within(row).getByRole('button')).toBeDisabled()
+    // Every control that could change your own seat: the role picker above, and
+    // both destructive buttons. Asserted by name rather than as "the button",
+    // because the row now carries more than one.
+    expect(within(row).getByRole('button', { name: 'Disable' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Remove' })).toBeDisabled()
   })
 
   it("surfaces the server's refusal rather than inventing one", async () => {

@@ -4,7 +4,23 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-05 (session 21, the first Phase 7 build session.
+Last updated: 2026-08-05 (**session 22** — the Admin Panel session).
+
+**Session 22 changes to this list, up front:** **#52 REPAID** (an account now
+grants something — the Admin Panel is a real signed-in destination that invites,
+assigns roles and shows the audit trail). **#57 PARTIALLY REPAID** (a formatting
+gate exists, scoped to changed files; the repo-wide sweep is what remains).
+**Four new items — #59** (`audit.emit` swallows its own errors, so the trail is
+tamper-evident but not loss-evident), **#60** (workspace-scoped roles are
+honoured at org grain; `workspace_grants` was never built), **#61** (the
+organization profile is read-only — no PATCH), **#62** (the frontend has no
+Prettier config, so `make fmt` would rewrite it into a style nobody chose).
+**#54's documentation half is sharpened, not repaid** — see the item for the
+exact sections of `architecture.md` still describing the retired four-engine
+pipeline. Measured suite at session 22 close: **835 backend passed / 7 skipped**
+with Postgres (820/22 hermetic), **281 frontend across 51 files**.
+
+Earlier — 2026-08-05 (session 21, the first Phase 7 build session.
 **One latent production hazard found and repaid in the same pass, before it
 fired:** `alembic check` failed on a clean, fully-migrated database — eight
 indexes existed only in migrations and never in `Base.metadata`, which
@@ -647,6 +663,14 @@ devDependencies).)
     operator rather than a defect: the code is ready and can sit ready. Closing
     it means either the first thing worth signing in for (saved analyses,
     history) or holding the header CTA back until there is one.
+
+    **REPAID, session 22 (2026-08-05).** An account now grants something
+    concrete: routes are guarded (`RequireAuth`), signing in lands on
+    `/dashboard`, and the **Admin Panel** is a real signed-in destination — an
+    owner can invite a colleague, assign and change their role, disable,
+    re-enable or remove them, and read the audit trail of all of it. The
+    remaining half of the original complaint — *saved analyses and history* —
+    is M4's, and is tracked in [backlog.md](backlog.md) rather than here.
 53. **The cross-tab refresh guard degrades where Web Locks are missing**
     (2026-08-03, account screens, PR #13): `lib/session.ts` serialises rotation
     across tabs with `navigator.locks`, which closes the race where two tabs
@@ -685,9 +709,28 @@ devDependencies).)
     **#58**). The **B7** key edge is verified satisfied in production and
     ticked. `execute.py` is confirmed dead on every runtime path and
     deliberately **kept** — that decision is now recorded in ADR-34 rather than
-    left open, and belongs to M4. **Still open:** architecture.md §1–2 and the
-    README still describe the four-engine panel execute; that sync is the
-    remaining half of this item.
+    left open, and belongs to M4. **Still open:** the doc sync. Session 22's docs
+    inventory audit pinned exactly what is wrong, so this no longer needs
+    rediscovering:
+
+    - `docs/architecture.md` §1's provider diagram, §2's steps 4/5/6, the
+      DRY_RUN / mock-path section and the result-shape line all still describe
+      the four-engine panel and the `footprints / total` score. The live path is
+      measured/simulated (Tavily + OpenRouter, **one Response per prompt**, a
+      composite `geo_score`, a `geo_records` twin). §3 — the Admin Panel section
+      added in session 22 — is accurate and must be left alone.
+    - `docs/architecture.md`'s table list omits `geo_records`.
+    - `docs/test-suite.md`'s scoring and execute bullets, and two rows of its
+      acceptance map, teach the pre-PR-#11 definition of done.
+    - `docs/02-mvp.md` §5/§8 (scoring formula) and §3 step 5 (engines) also
+      contradict the live pipeline — but that doc is cited by `session-rules.md`
+      as the **scope authority**, so rewriting it changes what that authority
+      *is*. That is an operator decision, recorded in the session-22 log's
+      docs-audit section, not something to fix in passing. (FR-6's "two routes"
+      claim is plainly wrong regardless and can go either way.)
+
+    The README half **is** repaid as of session 22: its mini-map and
+    Make-target rows now describe the real surface.
 55. **The Site Audit backend (PR #23) is merged but undocumented beyond
     `site-audit-integration.md`, unhardened, and unreachable** (2026-08-05,
     session 20; merged 2026-08-03/04 outside the session process). It ships
@@ -744,6 +787,15 @@ devDependencies).)
     running in parallel, because that is when reformat noise starts causing
     real merge conflicts.
 
+    **PARTIALLY REPAID, session 22 (2026-08-05; ADR-40).** There is now a
+    formatting gate — `.github/scripts/format_changed.sh`, run as its own CI
+    job — but it is scoped to the files a branch changed rather than the repo.
+    That was the only option that could land inside a feature branch: the
+    repo-wide version fails on ~47 backend files today, which is precisely the
+    "own small PR" this item asks for. **What remains open is exactly that
+    sweep.** The gate means the unformatted set can only shrink from here, and
+    a PR that edits an unformatted file must now format it.
+
 58. **The Tavily per-search price is a pinned guess** (2026-08-05, session 21,
     with the cost-recording fix `ed384a1`). Search spend is now counted into
     `responses.cost_usd` — but at `TAVILY_SEARCH_USD`, default **$0.008**,
@@ -763,3 +815,59 @@ devDependencies).)
     (`CHECKER_ENABLED=0`, so the checker is dark), but whoever performs the
     P5.11 go-live should know the cap is now live, is denominated partly in a
     guessed price, and will bite at `$5.00/day` of *estimated* spend.
+
+59. **A failed audit write loses the event, not the request** (2026-08-05,
+    session 22, P7.3). `audit.emit` catches every exception it can raise and
+    returns `None` with a logged warning. That is the right trade at the
+    request level — an audit write failing must not turn a successful password
+    change into a 500, because the change already happened — but it means the
+    audit trail's completeness rests on the database being healthy at the
+    moment of every write. There is no outbox, no retry, and no counter that
+    would tell an operator how many events were dropped. Consequence, stated
+    plainly: the trail is *tamper-evident* (ADR-38) but not *loss-evident*, and
+    a compliance claim built on it later has to account for that gap. The fix
+    is an outbox table written in the same transaction and drained by the
+    worker, which is stage A9's hardening card. Not urgent while the volume is
+    this low; it becomes urgent the first time somebody cites the log as
+    complete.
+
+60. **Workspace-scoped roles are honoured at org grain** (2026-08-05, session
+    22, P7.2/P7.4). `permissions.py` defines Manager, Editor, Analyst, Viewer
+    and Guest as workspace-scoped roles, and `admin-panel-plan.md` §5 models
+    permission as `role capability ∩ scope grant`. Only the first half exists:
+    a membership carries one role for the whole organization, `workspace_grants`
+    was never created, and `invitations.workspace_id` is written but read by
+    nothing. So an Editor in an agency with three client workspaces is an
+    Editor in all three. That is *safe* — nobody gets more than their role
+    allows — but it is not the model the plan promises, and the wedge
+    (differentiator D4: workspace-per-client with free Guest seats) depends on
+    the missing half. The column is in place so closing it needs no migration
+    on a populated table. Scheduled with the workspace management screens.
+
+61. **The organization profile is read-only** (2026-08-05, session 22, P7.4).
+    `GET /api/v1/admin/organization` exists; there is no PATCH. An org cannot
+    be renamed, its slug cannot change, and there is no logo or branding field
+    in use — so the personal org created at signup keeps its
+    `"<email-local-part>'s organization"` name forever unless somebody edits
+    the database. `ORG_UPDATE` is already defined and granted to Admin and
+    Owner, so this is a route and a form, not a design question. Small, and
+    visible to every single user, which is the argument for doing it early.
+
+62. **The frontend has no formatter contract, and `make fmt` will damage it**
+    (2026-08-05, session 22). `make fmt` runs `npx prettier --write .` over the
+    whole frontend — and there is **no `.prettierrc` anywhere in the repo**, so
+    that command formats to Prettier's *defaults*: semicolons and double
+    quotes. The code that exists uses neither. Running the documented format
+    target would therefore rewrite the entire frontend into a style nobody
+    chose, in one unreviewable commit. Nobody has hit it because nobody has run
+    it. Measured this session: at `printWidth` 80 / 90 / 100 with
+    `semi: false, singleQuote: true`, **61 / 55 / 68 files** respectively still
+    differ — so there is no config that is a no-op either; adopting one is a
+    real reformat and wants its own PR. Consequences: the CI formatting gate
+    added this session (ADR-40) deliberately **skips** frontend files and says
+    so, activating by itself the moment a config file appears. Repay by
+    choosing a config (matching the dominant style — no semicolons, single
+    quotes — and whichever width the team prefers), reformatting in a dedicated
+    PR, and letting the gate switch on. Until then eslint at `--max-warnings 0`
+    is the frontend's only automated style gate, which is what it has always
+    been.

@@ -4,14 +4,23 @@ from fastapi import FastAPI
 
 from app.api.admin_routes import router as admin_router
 from app.api.auth_routes import router as auth_router
+from app.api.invitation_routes import router as invitation_router
 from app.api.routes import router
 from app.api.seo_project_routes import router as seo_project_router
+from app.request_context import RequestContextMiddleware
 
 app = FastAPI(title="Yanki API", version="0.1.0")
+
+# Outermost middleware, so every request — including ones later middleware or a
+# route rejects — carries a request id into the audit trail and back out in the
+# response header.
+app.add_middleware(RequestContextMiddleware)
+
 app.include_router(router)
 app.include_router(auth_router)
 app.include_router(seo_project_router)
 app.include_router(admin_router)
+app.include_router(invitation_router)
 
 
 @app.get("/healthz")

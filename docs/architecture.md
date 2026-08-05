@@ -49,6 +49,9 @@ table *is* the queue (see §4).
                         │               GET  /api/v1/analyses/{id} │
                         │               POST /api/v1/checker (202) │
                         │               POST /api/v1/checker/leads │
+                        │               /api/v1/auth/*  (session)  │
+                        │               /api/v1/admin/* (panel)    │
+                        │               /api/v1/invitations/*      │
                         │               GET  /healthz              │
                         └───────────────────┬─────────────────────┘
                                             │  INSERT row status='queued'
@@ -58,6 +61,9 @@ table *is* the queue (see §4).
                         │  analyses │ prompts │ responses │        │
                         │  llm_cache│ checker_submissions          │
                         │  serp_checks │ seo_checks                │
+                        │  organizations │ workspaces │ projects   │
+                        │  users │ memberships │ invitations       │
+                        │  audit_events (append-only, triggered)   │
                         │  analyses table doubles as the job queue │
                         └───────────────────┬─────────────────────┘
                                             ▲
@@ -370,6 +376,73 @@ reaches terminal status — the DB row is the record, the mail is the alert.
 Delivery requires the operator's Resend-verified sending domain (testing
 mode reaches only the account owner). ADR-25; accepted residuals in
 tech-debt #24.
+
+### The Admin Panel surface (P7.1–P7.4, milestone M1)
+
+Everything above is the anonymous public product. This is the other half: the
+signed-in, tenant-scoped surface. It is served by the same `api` process and is
+distinguished by three properties that hold for **every** route under
+`/api/v1/admin`:
+
+1. **Org-scoped at the query.** The organization comes from the caller's
+   resolved `OrgContext`, never from a parameter, so there is no combination of
+   filters that reaches another tenant. A row belonging to another organization
+   answers **404**, not 403 — indistinguishable from one that does not exist, so
+   the endpoints cannot be used to enumerate accounts.
+2. **Named permission, denied by default.** Each route declares
+   `Depends(requires(<permission>))`. An unknown role, an unknown permission or
+   a missing context all deny, and a **refusal is itself audited** with
+   `outcome='denied'`. A route added without a permission fails closed.
+3. **Audited with before/after.** Every mutation emits an `audit_events` row in
+   the caller's transaction, so an action that rolls back leaves no event
+   claiming it happened.
+
+| Method | Path | Permission | What it does |
+|---|---|---|---|
+| GET | `/api/v1/admin/organization` | `org:read` | The caller's org and its member count. |
+| GET | `/api/v1/admin/members` | `member:read` | Page of members; search by email, filter by role/status. Carries `assignable_roles` so the UI's picker cannot offer what the API would refuse. |
+| GET | `/api/v1/admin/members/{user_id}` | `member:read` | One member. |
+| PATCH | `/api/v1/admin/members/{user_id}` | `member:role_change` | Assign/change role, disable/re-enable the account. |
+| DELETE | `/api/v1/admin/members/{user_id}` | `member:remove` | Remove the **seat**, never the account. |
+| GET | `/api/v1/admin/invitations` | `member:read` | Page of invitations; filter by status, search by email. Never returns a token. |
+| POST | `/api/v1/admin/invitations` | `member:invite` | Mint an invitation; returns the one-time `accept_url` and whether the email actually sent. |
+| POST | `/api/v1/admin/invitations/{id}/resend` | `member:invite` | Rotate the token and extend expiry; the old link dies immediately. |
+| DELETE | `/api/v1/admin/invitations/{id}` | `member:invite` | Withdraw a pending invitation (the row survives as history). |
+| GET | `/api/v1/admin/audit-events` | `audit:read` | Filter, search, sort and page the trail. |
+| GET | `/api/v1/admin/audit-events/history/{entity_type}/{entity_id}` | `audit:read` | One record's history, oldest first. |
+| GET | `/api/v1/admin/audit-events/integrity` | `audit:read` | Re-hash recent rows; report anything altered. |
+
+Two invariants have their own guards, because both are ways an organization
+locks itself out permanently: **the last active owner cannot be demoted,
+disabled or removed**, and **nobody can change or remove their own seat**. Both
+answer `409` with the reason, and the UI shows the server's sentence rather
+than inventing one.
+
+The **public** half of the invitation flow is deliberately outside `/admin`,
+because the person using it has no account yet:
+
+| Method | Path | Auth | What it does |
+|---|---|---|---|
+| GET | `/api/v1/invitations/{token}` | none | Preview: org name, offered role, expiry. Side-effect free, so an email client's link prefetcher cannot burn the invitation. |
+| POST | `/api/v1/invitations/{token}/accept` | optional bearer | Create the account (or seat an already-signed-in invitee) and return a session. |
+
+Unlike everywhere else in this API, those two **distinguish their failures** —
+expired / withdrawn / already used / not valid — because a 256-bit token is not
+enumerable, so anyone holding one is the intended recipient and a specific
+message is the difference between a recoverable moment and a dead end (ADR-37).
+
+**Every request carries an identity into the trail.** `RequestContextMiddleware`
+(`app/request_context.py`) assigns or accepts a request id, hashes the client IP
+with the *same salt the rate limiter uses*, and puts both in a `ContextVar` that
+`audit.emit` reads as a default — so every call site gained those fields without
+being rewritten, and a new one cannot forget them. The id is echoed back as
+`X-Request-Id` (ADR-39).
+
+**`audit_events` is append-only in the database, not merely by convention.**
+Migration 0018 installs a Postgres trigger that raises on UPDATE or DELETE, and
+each row carries a SHA-256 of its own content so an edit is detectable if the
+trigger is ever bypassed. What that does *not* survive is a superuser who drops
+the trigger first; the limit is stated rather than papered over (ADR-38).
 
 ---
 

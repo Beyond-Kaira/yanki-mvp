@@ -482,3 +482,268 @@ def test_the_org_endpoint_returns_the_callers_own_org(client, db_session):
     assert body["name"] == "Acme"
     assert body["kind"] == "company"
     assert body["member_count"] == 3
+
+
+# --------------------------------------------------------------------------
+# Removing a member
+# --------------------------------------------------------------------------
+
+
+def test_removing_a_member_frees_the_seat_without_deleting_the_person(client, db_session):
+    org = _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+
+    response = client.delete(
+        f"{MEMBERS}/{victim.id}", headers=_headers(_token(client, "owner@acme.test"))
+    )
+    assert response.status_code == 204
+
+    # The membership is gone; the user is not. They hold their own personal org,
+    # they authored rows, and the audit trail names them — deleting the account
+    # here would orphan all three.
+    assert (
+        db_session.scalar(
+            sa.select(Membership).where(
+                Membership.org_id == org.id, Membership.user_id == victim.id
+            )
+        )
+        is None
+    )
+    assert db_session.get(User, victim.id) is not None
+
+    body = client.get(MEMBERS, headers=_headers(_token(client, "owner@acme.test"))).json()
+    assert all(member["email"] != "viewer@acme.test" for member in body["members"])
+
+
+def test_a_removed_member_can_still_log_in_to_their_own_account(client, db_session):
+    _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+    client.delete(f"{MEMBERS}/{victim.id}", headers=_headers(_token(client, "owner@acme.test")))
+
+    # Losing a seat is not losing an account. Their own personal org is intact.
+    me = client.get(ME, headers=_headers(_token(client, "viewer@acme.test"))).json()
+    assert me["organization"]["kind"] == "personal"
+
+
+def test_removing_a_member_of_another_org_is_a_404(client, db_session):
+    _org_with_members(client, db_session)
+    _signup(client, "outsider@globex.test", account_type="organization", organization_name="Globex")
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+
+    response = client.delete(
+        f"{MEMBERS}/{victim.id}", headers=_headers(_token(client, "outsider@globex.test"))
+    )
+    assert response.status_code == 404
+
+
+def test_you_cannot_remove_yourself(client, db_session):
+    _org_with_members(client, db_session)
+    owner = db_session.scalar(sa.select(User).where(User.email == "owner@acme.test"))
+
+    response = client.delete(
+        f"{MEMBERS}/{owner.id}", headers=_headers(_token(client, "owner@acme.test"))
+    )
+    assert response.status_code == 409
+    assert "cannot remove yourself" in response.json()["detail"]
+
+
+def test_the_last_owner_cannot_be_removed(client, db_session):
+    org = _org_with_members(client, db_session)
+    owner = db_session.scalar(sa.select(User).where(User.email == "owner@acme.test"))
+    second = db_session.scalar(sa.select(User).where(User.email == "editor@acme.test"))
+
+    # Promote the editor so somebody other than the owner can try the removal.
+    membership = db_session.scalar(
+        sa.select(Membership).where(Membership.org_id == org.id, Membership.user_id == second.id)
+    )
+    membership.role = "admin"
+    db_session.commit()
+
+    response = client.delete(
+        f"{MEMBERS}/{owner.id}",
+        headers=_headers(_token(client, "editor@acme.test"), org_id=org.id),
+    )
+    assert response.status_code == 409
+    assert "at least one active owner" in response.json()["detail"]
+
+
+def test_an_editor_cannot_remove_members(client, db_session):
+    org = _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+
+    response = client.delete(
+        f"{MEMBERS}/{victim.id}",
+        headers=_headers(_token(client, "editor@acme.test"), org_id=org.id),
+    )
+    assert response.status_code == 403
+
+
+def test_a_removal_is_audited_with_the_role_that_was_lost(client, db_session):
+    _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+    client.delete(f"{MEMBERS}/{victim.id}", headers=_headers(_token(client, "owner@acme.test")))
+
+    event = db_session.scalar(sa.select(AuditEvent).where(AuditEvent.action == "member:remove"))
+    assert event is not None
+    assert event.entity_id == victim.id
+    assert event.before["role"] == "viewer"
+    assert event.after is None
+
+
+# --------------------------------------------------------------------------
+# Privilege ceilings and session revocation
+#
+# Both of these were found by an adversarial verification pass, not by the
+# original design, and both are the same shape of mistake: a check that looks
+# complete because it names the obvious danger, while the real one walks past
+# through an adjacent route.
+# --------------------------------------------------------------------------
+
+
+def _member_with_role(client, db_session, org, email: str, role: str) -> User:
+    _signup(client, email)
+    user = db_session.scalar(sa.select(User).where(User.email == email))
+    db_session.add(Membership(org_id=org.id, user_id=user.id, role=role, status="active"))
+    db_session.commit()
+    return user
+
+
+def test_a_manager_cannot_grant_a_role_more_powerful_than_their_own(client, db_session):
+    """`member:invite` is a Manager permission and `owner` was on the list.
+
+    So a Manager — who cannot PROMOTE anyone to Owner, because that needs
+    `member:role_change` — could invite one, and then be administered by the
+    account they had just created. The invitation path was a way around the
+    check that guards promotion.
+    """
+
+    org = _org_with_members(client, db_session)
+    _member_with_role(client, db_session, org, "manager@acme.test", "manager")
+    manager = _headers(_token(client, "manager@acme.test"), org_id=org.id)
+
+    refused = client.post(
+        "/api/v1/admin/invitations",
+        headers=manager,
+        json={"email": "puppet@acme.test", "role": "owner"},
+    )
+    assert refused.status_code == 422
+    assert "owner" not in refused.json()["detail"]
+
+    # And what they CAN grant stops at their own level.
+    allowed = client.post(
+        "/api/v1/admin/invitations",
+        headers=manager,
+        json={"email": "analyst@acme.test", "role": "analyst"},
+    )
+    assert allowed.status_code == 201
+
+
+def test_the_role_options_offered_are_capped_by_the_callers_own_role(client, db_session):
+    org = _org_with_members(client, db_session)
+    _member_with_role(client, db_session, org, "manager@acme.test", "manager")
+
+    owner_sees = client.get(MEMBERS, headers=_headers(_token(client, "owner@acme.test"))).json()
+    manager_sees = client.get(
+        MEMBERS, headers=_headers(_token(client, "manager@acme.test"), org_id=org.id)
+    ).json()
+
+    assert "owner" in owner_sees["assignable_roles"]
+    assert "owner" not in manager_sees["assignable_roles"]
+    # The picker never offers what the API would refuse — that is the whole
+    # contract of shipping this list from the server.
+    assert set(manager_sees["assignable_roles"]) < set(owner_sees["assignable_roles"])
+
+
+def test_an_admin_cannot_appoint_a_billing_admin(client, db_session):
+    """Looks like a bug, is the rule: buying things stays with the Owner.
+
+    `billing:manage` is exactly the permission an Admin is denied, so an Admin
+    delegating it would be granting authority they do not hold.
+    """
+
+    org = _org_with_members(client, db_session)
+    _member_with_role(client, db_session, org, "admin@acme.test", "admin")
+
+    body = client.get(
+        MEMBERS, headers=_headers(_token(client, "admin@acme.test"), org_id=org.id)
+    ).json()
+    assert "billing_admin" not in body["assignable_roles"]
+    # The Owner, who does hold it, can.
+    owner_body = client.get(MEMBERS, headers=_headers(_token(client, "owner@acme.test"))).json()
+    assert "billing_admin" in owner_body["assignable_roles"]
+
+
+def test_disabling_a_member_stops_their_existing_session_immediately(client, db_session):
+    """Not "from their next login" — that is a different, much weaker promise.
+
+    An access token is a self-contained JWT nobody can recall, so without a
+    per-request status check a disabled user carries on working in the tab they
+    already have open until the token happens to expire.
+    """
+
+    _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+    victim_token = _token(client, "viewer@acme.test")
+
+    # The token works before the change.
+    assert client.get(ME, headers=_headers(victim_token)).status_code == 200
+
+    client.patch(
+        f"{MEMBERS}/{victim.id}",
+        headers=_headers(_token(client, "owner@acme.test")),
+        json={"status": "disabled"},
+    )
+
+    # ...and is refused straight after it, with no new request from the victim.
+    assert client.get(ME, headers=_headers(victim_token)).status_code == 401
+
+
+def test_disabling_a_member_revokes_their_refresh_sessions(client, db_session):
+    """The slow half: they must not be able to mint a fresh access token either."""
+
+    from app.db.models import AuthSession
+
+    _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+    _token(client, "viewer@acme.test")
+
+    live_before = db_session.scalars(
+        sa.select(AuthSession).where(
+            AuthSession.user_id == victim.id, AuthSession.revoked_at.is_(None)
+        )
+    ).all()
+    assert len(live_before) >= 1
+
+    client.patch(
+        f"{MEMBERS}/{victim.id}",
+        headers=_headers(_token(client, "owner@acme.test")),
+        json={"status": "disabled"},
+    )
+    db_session.expire_all()
+
+    live_after = db_session.scalars(
+        sa.select(AuthSession).where(
+            AuthSession.user_id == victim.id, AuthSession.revoked_at.is_(None)
+        )
+    ).all()
+    assert live_after == []
+
+    event = db_session.scalar(
+        sa.select(AuditEvent)
+        .where(AuditEvent.action == "member:update", AuditEvent.entity_id == victim.id)
+        .order_by(AuditEvent.occurred_at.desc())
+    )
+    assert event.detail["devices_signed_out"] >= 1
+
+
+def test_re_enabling_restores_access(client, db_session):
+    """Revocation must not be a one-way door: they log in again and it works."""
+
+    _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+    owner = _headers(_token(client, "owner@acme.test"))
+
+    client.patch(f"{MEMBERS}/{victim.id}", headers=owner, json={"status": "disabled"})
+    client.patch(f"{MEMBERS}/{victim.id}", headers=owner, json={"status": "active"})
+
+    assert client.get(ME, headers=_headers(_token(client, "viewer@acme.test"))).status_code == 200

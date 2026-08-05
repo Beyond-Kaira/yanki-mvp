@@ -20,10 +20,13 @@ the parallel build. When in doubt, don't write; report the blocker instead.
 |---|---|---|
 | **Backend spine** | backend-spine agent | `backend/pyproject.toml`, `backend/Dockerfile`, `backend/alembic/**`, `backend/app/{__init__,config.py,worker.py}`, `backend/app/api/**`, `backend/app/db/**`, `backend/app/jobs/**`, `backend/app/services/**`, `backend/tests/conftest.py`, `backend/tests/test_api.py`, `backend/tests/test_queue.py`, `backend/tests/test_queue_postgres.py` |
 | **Pipeline + providers** | pipeline agent | `backend/app/pipeline/**`, `backend/app/providers/**`, `backend/tests/pipeline/**` (incl. its own `tests/pipeline/conftest.py`) |
+| **SERP** | pipeline agent | `backend/app/serp/**` — the footprint step's source seam, so it moves with the pipeline |
+| **Site Audit** | its own agent when one is running, else backend-spine | `backend/app/site_audit/**` — a self-contained crawler with its own queue and worker |
+| **Backlinks** | its own agent when one is running, else backend-spine | `backend/app/backlink/**` — the M2 engine behind the `BacklinkSource` seam |
 | **Frontend** | frontend agent | `frontend/**` |
 | **Infra** | infra agent | `Makefile`, `deploy/**`, `scripts/**`, `.github/**`, `.gitignore`, `CONTRIBUTING.md`, `SECURITY.md`, plus README.md link fixes |
 | **Docs** | doc agents | `docs/**` — **one file per agent** |
-| **Generated (nobody hand-edits)** | `make gen-types` | `shared/contracts/openapi.json`, `frontend/lib/types.ts` |
+| **Generated (nobody hand-edits)** | `make gen-types` | everything under `shared/contracts/` (`openapi.json`, `checker_methodology.json`) and `frontend/lib/types.ts` |
 
 `frontend/lib/contracts.ts` is **not** generated — it's the hand-maintained
 friendly-name seam over `types.ts` (owned by the frontend agent). Edit it only

@@ -1,11 +1,18 @@
 import type {
+  AdminInvitation,
+  AdminInvitationCreated,
+  AdminInvitationList,
   AdminMember,
   AdminMemberList,
   AdminOrganization,
   Analysis,
+  AuditEventList,
+  AuditIntegrity,
   CheckerSubmitResponse,
   CreateAnalysisResponse,
     CreateSeoProjectInput,
+  InvitationPreview,
+  LoginResponse,
     SeoProject,
     SeoProjectDetail,
     SiteAuditDetail,
@@ -342,4 +349,141 @@ export async function updateMember(
   })
   if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
   return (await res.json()) as AdminMember
+}
+
+export async function removeMember(userId: string): Promise<void> {
+  const res = await authorizedFetch(`/api/v1/admin/members/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+}
+
+// --- Invitations ----------------------------------------------------------
+
+export interface InvitationQuery {
+  q?: string
+  status?: string
+  limit?: number
+  offset?: number
+}
+
+export async function fetchInvitations(
+  query: InvitationQuery = {},
+): Promise<AdminInvitationList> {
+  const params = new URLSearchParams()
+  if (query.q) params.set('q', query.q)
+  if (query.status) params.set('status', query.status)
+  if (query.limit != null) params.set('limit', String(query.limit))
+  if (query.offset != null) params.set('offset', String(query.offset))
+
+  const suffix = params.toString() ? `?${params}` : ''
+  const res = await authorizedFetch(`/api/v1/admin/invitations${suffix}`)
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AdminInvitationList
+}
+
+export async function createInvitation(
+  email: string,
+  role: string,
+): Promise<AdminInvitationCreated> {
+  const res = await authorizedFetch('/api/v1/admin/invitations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, role }),
+  })
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AdminInvitationCreated
+}
+
+export async function resendInvitation(id: string): Promise<AdminInvitationCreated> {
+  const res = await authorizedFetch(
+    `/api/v1/admin/invitations/${encodeURIComponent(id)}/resend`,
+    { method: 'POST' },
+  )
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AdminInvitationCreated
+}
+
+export async function revokeInvitation(id: string): Promise<AdminInvitation> {
+  const res = await authorizedFetch(`/api/v1/admin/invitations/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AdminInvitation
+}
+
+// The two public halves of the flow. Neither is authorized — the token IS the
+// credential — so both use plain `fetch`. A signed-in caller's bearer is passed
+// on the accept, because an existing user joining a second organization must be
+// recognized rather than told their address is taken.
+export async function previewInvitation(token: string): Promise<InvitationPreview> {
+  const res = await fetch(`/api/v1/invitations/${encodeURIComponent(token)}`, {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as InvitationPreview
+}
+
+export async function acceptInvitation(
+  token: string,
+  password: string,
+): Promise<LoginResponse> {
+  const res = await authorizedFetch(
+    `/api/v1/invitations/${encodeURIComponent(token)}/accept`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password }),
+    },
+  )
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as LoginResponse
+}
+
+// --- Audit log ------------------------------------------------------------
+
+export interface AuditQuery {
+  q?: string
+  action?: string
+  actor_id?: string
+  entity_type?: string
+  entity_id?: string
+  outcome?: string
+  occurred_from?: string
+  occurred_to?: string
+  sort?: string
+  order?: 'asc' | 'desc'
+  limit?: number
+  offset?: number
+}
+
+export async function fetchAuditEvents(query: AuditQuery = {}): Promise<AuditEventList> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString() ? `?${params}` : ''
+  const res = await authorizedFetch(`/api/v1/admin/audit-events${suffix}`)
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AuditEventList
+}
+
+export async function fetchRecordHistory(
+  entityType: string,
+  entityId: string,
+): Promise<AuditEventList> {
+  const res = await authorizedFetch(
+    `/api/v1/admin/audit-events/history/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`,
+  )
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AuditEventList
+}
+
+export async function fetchAuditIntegrity(): Promise<AuditIntegrity> {
+  const res = await authorizedFetch('/api/v1/admin/audit-events/integrity')
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AuditIntegrity
 }

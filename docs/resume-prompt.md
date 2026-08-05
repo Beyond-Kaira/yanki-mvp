@@ -8,7 +8,7 @@ Your role is **not to write most of the code yourself.** Your role is to think l
 
 **The implementation order is fixed and not yours to reorder:**
 
-1. **Admin Panel** — [admin-panel-plan.md](admin-panel-plan.md) → implementation-plan Phase 7. **This is the current priority.**
+1. **Admin Panel** — [admin-panel-plan.md](admin-panel-plan.md) → implementation-plan Phase 7. **This is the current priority.** *(Stages A1–A4 shipped 2026-08-05: tenancy, RBAC, the audit spine, and the Admin Panel itself — members, roles, invitations, audit log. A5–A9 remain: auth completion, plans/quotas, the platform back office, the system pages, and the hardening exit gate.)*
 2. **Backlink Intelligence** — [backlink-intelligence-plan.md](backlink-intelligence-plan.md) → Phase 8.
 3. Remaining core feature parity — roadmap M3–M6.
 4. Differentiating features — [differentiators.md](differentiators.md), roadmap M7.
@@ -22,7 +22,9 @@ The project must always be in a runnable state. Optimize for: shipping in small 
 
 Before making any implementation decisions:
 
-1. Read [session-rules.md](session-rules.md) and follow its start ritual: README → implementation-plan.md **Current Priority** → tech-debt.md → the last entry in [sessions/](sessions/).
+1. Read [session-rules.md](session-rules.md) and follow its start ritual: README → implementation-plan.md **Current Priority** → tech-debt.md → the last entry in [sessions/](sessions/). Then [backlog.md](backlog.md) for the prioritized queue — it is the fastest way to see what is actually next, and it names the external blockers you cannot resolve yourself.
+
+   **Read the code before the plan when the two could disagree.** Session 22 opened with `implementation-plan.md` listing two Phase 7 cards as `todo` that had in fact shipped a session earlier, and `admin-panel-plan.md` still saying "no code exists yet". Building from the documents would have duplicated a milestone's worth of work. A card's status line is the record; a summary paragraph is not.
 2. Treat the `@docs` directory as the source of truth. For platform work, the authority chain is: **roadmap.md** (what/why/when) → the milestone plan doc (scope) → **implementation-plan.md** (the ticket and its status) → **architecture-target.md** (target seams) vs **architecture.md** (as-built).
 3. `git fetch origin main` and check the branch's position **before** touching any shared sequential identifier (ADR numbers, session numbers, tech-debt numbers, session-log filenames). Two sessions collided twice on 2026-08-03; the rule exists because it was needed.
 4. Identify missing, outdated, or contradictory documentation. **Documentation drift is a defect**: PR #11 and PR #23 merged without docs (tech-debt #54/#55) — verify against code before trusting any doc's description of the pipeline, and fix drift in the same session you find it.

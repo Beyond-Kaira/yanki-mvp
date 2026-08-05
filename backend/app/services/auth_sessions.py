@@ -297,6 +297,52 @@ def _lock_refresh_family(
     )
 
 
+def revoke_all_sessions_for_user(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    now: datetime | None = None,
+) -> int:
+    """Revoke every live refresh session this user holds, on every device.
+
+    What an administrator means by "disable this account" is *stop them*, and
+    an account that keeps working until its refresh token happens to expire is
+    not disabled — it is scheduled for disablement, which is a different and
+    much weaker promise. So disabling calls this.
+
+    It closes the slow half of the problem. The fast half is the access token,
+    which is a self-contained JWT this service cannot recall; that is handled
+    at the other end, where ``get_current_user`` refuses a non-active user on
+    every request.
+
+    Does not commit — the caller owns the transaction, because revoking the
+    sessions of an account whose disablement then rolls back would sign someone
+    out of a change that never happened. Returns the number of rows revoked, so
+    the caller can record it.
+    """
+
+    revoked_at = _resolve_now(now)
+    # Counted before the UPDATE rather than read from `rowcount`: the ORM's
+    # `Result` does not expose it in a typed way, and the count is only ever
+    # used as audit detail — an approximate number in a log is worse than one
+    # read from the same transaction that performs the write.
+    live = session.scalars(
+        select(AuthSession.id).where(
+            AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None)
+        )
+    ).all()
+    if not live:
+        return 0
+
+    session.execute(
+        update(AuthSession)
+        .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+        .values(revoked_at=revoked_at),
+        execution_options={"synchronize_session": "fetch"},
+    )
+    return len(live)
+
+
 def _revoke_family(
     session: Session,
     *,

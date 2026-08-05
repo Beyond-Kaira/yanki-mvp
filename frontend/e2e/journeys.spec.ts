@@ -41,7 +41,11 @@ scenario('the landing page is the front door, not the app', async ({ page }) => 
 scenario('a signed-out visitor cannot reach the product', async ({ page }) => {
   await page.goto('/dashboard')
 
-  await expect(page).toHaveURL(/\/login\?next=/, { timeout: 15_000 })
+  // 30s, not 15s: the e2e stack runs `next dev`, so the FIRST request for a
+  // route pays its compile. The redirect is client-side and cannot happen until
+  // the page hydrates, which makes this assertion a hostage to compile time on
+  // a loaded runner rather than to anything about the guard.
+  await expect(page).toHaveURL(/\/login\?next=/, { timeout: 30_000 })
   await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible()
 })
 
@@ -86,6 +90,7 @@ scenario('the admin panel lists members and can change a role', async ({ page })
   await signUp(page, email, { organization: 'Admin Co' })
 
   await page.goto('/admin')
+  await expect(page.getByRole('heading', { level: 1, name: 'Admin Panel' })).toBeVisible()
   await expect(page.getByRole('heading', { name: /members/i })).toBeVisible()
 
   // Scope to the table: the email legitimately also appears in the shell
@@ -93,10 +98,139 @@ scenario('the admin panel lists members and can change a role', async ({ page })
   const row = page.locator('tbody tr', { hasText: email })
   await expect(row).toBeVisible({ timeout: 15_000 })
   await expect(row.getByRole('combobox')).toBeDisabled()
-  await expect(row.getByRole('button')).toBeDisabled()
+  await expect(row.getByRole('button', { name: 'Disable' })).toBeDisabled()
+  await expect(row.getByRole('button', { name: 'Remove' })).toBeDisabled()
 
   // And the picker never offers a platform role.
   await expect(page.getByRole('option', { name: /super admin/i })).toHaveCount(0)
+})
+
+scenario('the Admin Panel is one surface with three tabs', async ({ page }) => {
+  await signUp(page, unique('tabs'), { organization: 'Tabs Co' })
+
+  await page.goto('/admin')
+  const tabs = page.getByRole('navigation', { name: /admin panel sections/i })
+  await expect(tabs.getByRole('link', { name: 'Members & roles' })).toBeVisible()
+  await expect(tabs.getByRole('link', { name: 'Invitations' })).toBeVisible()
+  await expect(tabs.getByRole('link', { name: 'Audit log' })).toBeVisible()
+
+  await tabs.getByRole('link', { name: 'Invitations' }).click()
+  await expect(page).toHaveURL(/\/admin\/invitations/)
+  // The heading stays "Admin Panel" — the tabs change the section, not the page.
+  await expect(page.getByRole('heading', { level: 1, name: 'Admin Panel' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Invitations' })).toBeVisible()
+
+  await tabs.getByRole('link', { name: 'Audit log' }).click()
+  await expect(page).toHaveURL(/\/admin\/audit/)
+  await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
+})
+
+scenario('inviting a colleague seats them with the invited role', async ({ page }) => {
+  const owner = unique('inviter')
+  const invitee = unique('invitee')
+  await signUp(page, owner, { organization: 'Invite Co' })
+
+  await page.goto('/admin/invitations')
+  await page.getByLabel('Email address').fill(invitee)
+  await page.getByLabel('Role').selectOption('editor')
+  await page.getByRole('button', { name: /send invitation/i }).click()
+
+  // Email is off in the DRY_RUN stack, so the panel says so and shows the link
+  // rather than claiming a send that never happened.
+  await expect(page.getByText(/email is not configured/i)).toBeVisible({ timeout: 15_000 })
+  const link = await page.locator('code').first().innerText()
+  expect(link).toContain('/invite/')
+
+  const row = page.locator('tbody tr', { hasText: invitee })
+  await expect(row).toBeVisible()
+  await expect(row.getByText('Pending')).toBeVisible()
+
+  // Accept it as the invitee, in a clean context so no session leaks across.
+  const inviteePage = await page.context().browser()!.newContext()
+  const acceptTab = await inviteePage.newPage()
+  await acceptTab.goto(new URL(link).pathname)
+  await expect(acceptTab.getByRole('heading', { name: /join invite co/i })).toBeVisible({
+    timeout: 15_000,
+  })
+  await acceptTab.getByLabel('Choose a password').fill(PASSWORD)
+  await acceptTab.getByLabel('Confirm password').fill(PASSWORD)
+  await acceptTab.getByRole('button', { name: /create account and join/i }).click()
+  await expect(acceptTab).toHaveURL(/\/dashboard/, { timeout: 30_000 })
+  // Seated with the invited role, in the inviter's organization.
+  await expect(acceptTab.getByText('Invite Co').first()).toBeVisible({ timeout: 15_000 })
+  await expect(acceptTab.getByText(/Editor/).first()).toBeVisible()
+  await inviteePage.close()
+
+  // And the owner now sees them as a member with that role.
+  await page.goto('/admin')
+  const memberRow = page.locator('tbody tr', { hasText: invitee })
+  await expect(memberRow).toBeVisible({ timeout: 15_000 })
+  await expect(memberRow.getByRole('combobox')).toHaveValue('editor')
+})
+
+scenario('a used invitation link cannot be used twice', async ({ page }) => {
+  const owner = unique('once')
+  const invitee = unique('once-invitee')
+  await signUp(page, owner, { organization: 'Once Co' })
+
+  await page.goto('/admin/invitations')
+  await page.getByLabel('Email address').fill(invitee)
+  await page.getByRole('button', { name: /send invitation/i }).click()
+  await expect(page.getByText(/email is not configured/i)).toBeVisible({ timeout: 15_000 })
+  const link = new URL(await page.locator('code').first().innerText()).pathname
+
+  const first = await page.context().browser()!.newContext()
+  const firstTab = await first.newPage()
+  await firstTab.goto(link)
+  await firstTab.getByLabel('Choose a password').fill(PASSWORD)
+  await firstTab.getByLabel('Confirm password').fill(PASSWORD)
+  await firstTab.getByRole('button', { name: /create account and join/i }).click()
+  await expect(firstTab).toHaveURL(/\/dashboard/, { timeout: 30_000 })
+  await first.close()
+
+  const second = await page.context().browser()!.newContext()
+  const secondTab = await second.newPage()
+  await secondTab.goto(link)
+  await expect(secondTab.getByRole('heading', { name: /can't be used/i })).toBeVisible({
+    timeout: 15_000,
+  })
+  // Matched by text, not by role: Next renders a permanently-empty
+  // `role="alert"` route announcer, so `getByRole('alert')` is ambiguous on
+  // every page in this app.
+  await expect(secondTab.getByText(/already been used/i)).toBeVisible()
+  await second.close()
+})
+
+scenario('the audit log records what the admin did, with before and after', async ({ page }) => {
+  const owner = unique('audit')
+  await signUp(page, owner, { organization: 'Audit Co' })
+
+  await page.goto('/admin/audit')
+  await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
+
+  // Signing up is itself an audited event, so the log is never empty here.
+  const row = page.locator('tbody tr', { hasText: 'auth:signup' })
+  await expect(row).toBeVisible({ timeout: 15_000 })
+
+  await row.getByRole('button', { name: 'Show' }).click()
+  // Every event carries the request that produced it.
+  await expect(row.getByText(/^Request$/)).toBeVisible()
+
+  // And the integrity sweep reports a clean log.
+  await expect(page.getByText(/recent entries verified against their stored hash/i)).toBeVisible()
+})
+
+scenario('a member row links to that record\'s own history', async ({ page }) => {
+  const owner = unique('history')
+  await signUp(page, owner, { organization: 'History Co' })
+
+  await page.goto('/admin')
+  const row = page.locator('tbody tr', { hasText: owner })
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  await row.getByRole('link', { name: 'History' }).click()
+
+  await expect(page).toHaveURL(/\/admin\/audit\?entity_type=user&entity_id=/)
+  await expect(page.getByRole('heading', { name: 'Change history' })).toBeVisible()
 })
 
 scenario('the nav advertises nothing that does not exist', async ({ page }) => {

@@ -4,7 +4,18 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-05, **session 21 close — Admin Platform, Backlink
+Last updated: 2026-08-05, **session 22 close**.
+
+> **Read this first: session 22's work is NOT merged and NOT live.** The Admin
+> Panel, invitations and the audit trail sit on `feat/admin-panel-invitations-audit`
+> — three commits, local-only, never pushed, no PR. Production still runs
+> `f4c33e8` at alembic `0017`. **B12** is the decision that changes that, and it
+> gates B10 and B11. Everything described below the divider was true at session
+> 21 close and remains true; nothing has been un-deployed.
+
+---
+
+Previously — 2026-08-05, **session 21 close — Admin Platform, Backlink
 backend, and the auth/UI work, ALL MERGED AND DEPLOYED** (PRs #27, #28, #29,
 #30; live on `4806c1a`).
 
@@ -259,6 +270,61 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   → Answer: ______
 
 ## B. Actions only you can do (in priority order)
+
+- [ ] **B12. Decide what happens to `feat/admin-panel-invitations-audit`
+  (added 2026-08-05, session 22 — this gates everything else in this section).**
+  Session 22's work is **three commits on a local-only branch that has never
+  been pushed**. There is no PR. `main` and `origin/main` are both still
+  `f4c33e8`, production runs `yanki-api:f4c33e8` at alembic `0017_user_status`,
+  and the `invitations` table does not exist in the production database. So
+  none of the Admin Panel, invitations or audit-trail work is live.
+
+  That is deliberate, not an oversight: **merging to `main` auto-deploys**, with
+  no staging environment, so a merge is a release and the call is yours. The
+  branch carries migration `0018`, which the deploy chain will run against the
+  production database — it is additive (a nullable column, a new empty table,
+  two triggers) and nothing in the backend writes UPDATE, DELETE or TRUNCATE to
+  `audit_events`, but it has not been rehearsed against a copy of prod data.
+
+  ```bash
+  cd ~/repo/yanki-mvp
+  git log --oneline main..feat/admin-panel-invitations-audit   # the three commits
+  git push -u origin feat/admin-panel-invitations-audit        # needs the SSH remote
+  gh pr create --fill                                          # then review + merge
+  ```
+
+  **Do B10 before the merge reaches production**, or the first invitation
+  anybody sends will contain a link to `localhost`.
+
+- [ ] **B10. Set `PUBLIC_BASE_URL` in the prod `deploy/.env` before anyone
+  sends an invitation (added 2026-08-05, session 22; one line, do it before the
+  Admin Panel is used).** The Admin Panel can now invite people, and an
+  invitation is a link. That link is the one value the API **cannot** work out
+  for itself: the request arrives at the internal container on
+  `127.0.0.1:8143`, not at `https://yanki.beyondkaira.com`, so nothing in the
+  request tells it the public origin. It falls back to the dev default,
+  `http://localhost:8140`, which on a production box means every invitation
+  email points at a page that does not exist.
+
+  ```
+  PUBLIC_BASE_URL=https://yanki.beyondkaira.com
+  ```
+
+  Add that line and redeploy (or restart the stack). Optionally also
+  `INVITATION_TTL_DAYS` — default 14, range 1–90. Nothing else breaks without
+  it; only invitation links do, and they break silently from the sender's point
+  of view, which is why this is B-priority rather than a note.
+
+- [ ] **B11. (Optional) turn invitation email on (added 2026-08-05, session
+  22).** `EMAILS_ENABLED` defaults to `0`, so today the panel creates the
+  invitation, tells the administrator plainly that **no email was sent**, and
+  shows the link to pass on by hand. That is a working flow, deliberately
+  labelled rather than pretending. To make it self-serve, set `EMAILS_ENABLED=1`
+  and an `EMAIL_FROM` on a Resend-verified domain — the default
+  `onboarding@resend.dev` is Resend testing mode and delivers only to the
+  Resend account owner, so an invitation to a colleague would silently go
+  nowhere. Same key and same domain as the waitlist mail (see **B4** for
+  rotation), so if that is already verified this is a one-line flip.
 
 - [ ] **B9. Check one Tavily invoice and correct the per-search price
   (added 2026-08-05, session 21; low urgency, no rush).** This session found

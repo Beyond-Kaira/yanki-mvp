@@ -10,8 +10,20 @@ baseline ([Yanki_Geo_Intelligence_Report.pdf](Yanki_Geo_Intelligence_Report.pdf)
 §10–§11), extended with the platform-operator (Super Admin) layer the report
 leaves implicit.*
 
-**Status: planning approved for decomposition — no code exists yet.
-Nothing in this document is implemented unless a Phase 7 card says `done`.**
+**Status (2026-08-05, session 22): stages A1–A4 are built and merged; A5–A9
+are open.** Concretely: tenancy and personal-org backfill (A1, ADR-35), the
+ten-role permission model enforced at the API layer (A2), the audit spine with
+request identity and tamper evidence (A3, ADR-38/39), and the **Admin Panel**
+itself — members, roles, invitations and a queryable audit log (A4, ADR-37).
+Still unbuilt: auth completion (A5 — password reset, MFA, session management),
+plans/quotas/credit ledger (A6), the platform back office (A7), the system
+pages (A8) and the hardening exit gate (A9). §7 of this document is entirely
+A7/A8 and none of it exists.
+
+**Nothing in this document is implemented unless the corresponding Phase 7 card
+in [implementation-plan.md](implementation-plan.md) says so** — that ledger, not
+this paragraph, is the record. The prioritized queue of what remains lives in
+[backlog.md](backlog.md).
 
 ---
 

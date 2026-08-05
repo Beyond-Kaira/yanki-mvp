@@ -10,6 +10,7 @@ import {
   signup,
 } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
+import { acceptInvitation } from '@/lib/api'
 import { refreshAccessToken, setAccessToken } from '@/lib/session'
 
 // 'loading' is its own state rather than "anonymous until proven otherwise": on
@@ -29,6 +30,9 @@ interface AuthContextValue {
     options?: { accountType?: 'individual' | 'organization'; organizationName?: string },
   ) => Promise<void>
   signOut: () => Promise<void>
+  // Redeems an invitation token and signs the invitee in — the endpoint returns
+  // the same session envelope as login, so no second round trip is needed.
+  acceptInvite: (token: string, password: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -114,6 +118,17 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  // Accepting an invitation IS a sign-in: the endpoint returns the same
+  // { user, access_token } envelope as login and sets the same refresh cookie,
+  // so the invitee lands inside the product rather than at a login form holding
+  // a password they typed thirty seconds ago.
+  const acceptInvite = useCallback(async (token: string, password: string) => {
+    const session = await acceptInvitation(token, password)
+    setAccessToken(session.access_token)
+    setUser((await fetchCurrentUser()) ?? (session.user as AuthUser))
+    setStatus('authenticated')
+  }, [])
+
   // Signing out always succeeds locally. Whatever the request does, the token is
   // dropped and the state clears, and the caller is given nothing to handle:
   // there is no useful recovery from "we could not tell the server", and an
@@ -130,7 +145,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ status, user, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ status, user, signIn, signUp, signOut, acceptInvite }}>
       {children}
     </AuthContext.Provider>
   )

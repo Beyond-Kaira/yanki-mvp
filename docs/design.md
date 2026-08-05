@@ -1362,3 +1362,84 @@ decision → consequences**, with one line on why the alternative was rejected.
   *retrofitting docs for PR #11/#23 in this session* (a docs-only session
   cannot verify behaviour against a running stack honestly; recorded as
   debt with owners instead).
+
+### ADR-34 — The measured/simulated GEO pivot, documented after the fact (PR #11, merged 2026-07-29; recorded 2026-08-05)
+
+*Retroactive. This ADR is the repayment of tech-debt **#54**'s documentation
+half: PR #11 replaced the pipeline's most expensive step on the live default
+path and merged with no ADR, no plan card and no session log. It is written in
+session 21 by reading the merged code against a running stack — not from the
+PR description — and it records what is true on `main` today, including two
+things the PR did not intend.*
+
+- **Context:** through Phase 5 the GEO score came from a **multi-engine
+  panel**. Step 4 (`pipeline/execute.py`) fanned each prompt out across
+  Anthropic / OpenAI / Gemini / Perplexity, wrote one `responses` row per
+  (prompt × engine) with that vendor in `engine`, and the score was the
+  **mention rate** — the fraction of answers naming the brand, a 0–1 fraction.
+  That measures whether a model *already knows* a brand from its training
+  data. It answers a weaker question than the product claims to answer, it
+  cannot say *why* a brand was or was not named, and it produces no evidence a
+  customer can act on. A separate codebase, `kaira-geo-api`, had a richer
+  approach; PR #11 ported it.
+- **Decision (as merged):** step 4 becomes `pipeline/execute_measured.py`, with
+  **two modes** selected by `GEO_MODE` and **one `responses` row per prompt**,
+  where `engine` now names the *mode* rather than a vendor:
+  - **`measured`** (the default, and what production runs): **Tavily** search
+    for the prompt → `measure_search_visibility` over the results → an
+    **OpenRouter** grounded answer constrained to those results → a second
+    OpenRouter call for **audit extraction** → `merge_measured_record`. The
+    question changes from "does the model recall this brand?" to "when an
+    answer engine searches the live web for this question, does this brand
+    surface, where, cited how, and why not?"
+  - **`simulated`**: one OpenRouter call from a system prompt, no search — the
+    cheap path, and the honest name for what the old panel was doing.
+  Around it: **`geo_records`** (migration 0011) stores a columnar twin of each
+  audit record so brand-level analysis need not dig through JSON;
+  `analyses` gains `reliability_score`, `interventions` and `citation_summary`
+  (0010/0011); step 5 runs a **reliability auditor** (`reliability.py`,
+  per-claim evidence checks) alongside footprint; step 6 runs an
+  **interventions engine** (`interventions.py`, insight → action) and a
+  **composite 0–100 GEO score** (`scoring.geo_score`: mention × position ×
+  citation × sentiment, weighted by reliability), falling back to the old
+  mention rate × 100 only when there are no audit records at all.
+- **Consequences:**
+  - **The score changed meaning and scale.** It is now a 0–100 composite;
+    pre-PR-#11 rows still hold a 0–1 mention-rate fraction in the same column.
+    Any chart or comparison spanning 2026-07-29 is comparing two different
+    metrics. The model docstring says so; nothing enforces it.
+  - **Two new keys became mandatory.** `OpenRouterProvider` raises on
+    construction without `OPEN_ROUTER_KEY` when `DRY_RUN=0`, and `measured`
+    additionally needs `TAVILY_API_KEY`. A live deploy missing either fails
+    every analysis. This was flagged as operator item **B7** and verified
+    satisfied in production on 2026-08-05.
+  - **The four legacy provider keys and `PANEL_ENGINES` no longer affect the
+    live path**, and `pipeline/execute.py` is now referenced only by its own
+    tests — dead on every runtime path while still carrying the multi-engine
+    adapters. Deliberately left in place; its fate belongs to M4, which owns
+    engine coverage.
+  - **Cost accounting silently broke, and stayed broken for a week.**
+    `execute_measured` wrote a literal `Decimal("0")` into
+    `responses.cost_usd` while `measured.py` was computing each call's real
+    price and discarding it, and Tavily reported no cost at all. Since
+    `CHECKER_DAILY_USD_CAP` is enforced by summing that column, the dollar cap
+    could not trip on the live path; only the count caps bounded spend. Found
+    and fixed in session 21 (`ed384a1`); the pinned Tavily price that fix
+    depends on is tech-debt **#58** / operator **B9**. Recorded here because it
+    is the clearest illustration of what the missing ADR cost: a reviewer
+    reading a written-down decision would have asked where the cost went.
+  - **Three unproductized differentiator seeds now exist in the repo** — the
+    reliability auditor, the interventions library, and grounded citation
+    records — and [differentiators.md](differentiators.md) builds on them.
+- **Rejected** (reconstructed from the code, and endorsed here rather than
+  merely reported): *keeping the multi-engine panel as the primary measure*
+  (it measures recall, not retrievability, and the product's claim is about
+  the latter); *adding measured mode as a fifth panel engine* (it is a
+  different question, not another opinion on the same one — averaging them
+  would blur both); *one provider per vendor instead of OpenRouter* (one
+  OpenAI-compatible endpoint behind one key is fewer adapters and lets the
+  model be an env var, at the cost of a dependency on a broker and of the
+  per-vendor cost detail the old adapters computed themselves). Also rejected
+  *now*, in session 21: **deleting `execute.py`** — M4 owns the question of
+  whether multi-engine coverage returns, and deleting a working adapter set to
+  tidy a dead import is the kind of cleanup that is expensive to undo.

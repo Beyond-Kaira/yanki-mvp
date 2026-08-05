@@ -675,6 +675,19 @@ devDependencies).)
     (operator B7).** Repay by: a retroactive ADR + plan card, doc sync
     against verified behaviour, and a decision on `execute.py` (delete or
     re-wire as the multi-engine surface — roadmap M4 wants the latter).
+
+    **PARTIALLY REPAID, session 21 (2026-08-05).** Done: the retroactive
+    **ADR-34** is written, from the merged code read against a running stack
+    rather than from the PR description, and it records two things the PR did
+    not intend — that the GEO score changed meaning *and scale* across
+    2026-07-29 (0–100 composite now, 0–1 mention rate before, same column), and
+    that cost accounting silently broke (fixed separately, `ed384a1`; see
+    **#58**). The **B7** key edge is verified satisfied in production and
+    ticked. `execute.py` is confirmed dead on every runtime path and
+    deliberately **kept** — that decision is now recorded in ADR-34 rather than
+    left open, and belongs to M4. **Still open:** architecture.md §1–2 and the
+    README still describe the four-engine panel execute; that sync is the
+    remaining half of this item.
 55. **The Site Audit backend (PR #23) is merged but undocumented beyond
     `site-audit-integration.md`, unhardened, and unreachable** (2026-08-05,
     session 20; merged 2026-08-03/04 outside the session process). It ships
@@ -730,3 +743,23 @@ devDependencies).)
     in a feature branch. Not urgent; do it before the Phase 7 lanes start
     running in parallel, because that is when reformat noise starts causing
     real merge conflicts.
+
+58. **The Tavily per-search price is a pinned guess** (2026-08-05, session 21,
+    with the cost-recording fix `ed384a1`). Search spend is now counted into
+    `responses.cost_usd` — but at `TAVILY_SEARCH_USD`, default **$0.008**,
+    which is **UNVERIFIED**. Tavily bills in plan-dependent API credits that
+    the application cannot read, and no agent here can see an invoice. The
+    number is deliberately set high, because the direction of the error
+    matters: an over-estimate makes a cost cap trip early (annoying, safe), an
+    under-estimate makes it trip late (expensive). Same posture as #23's
+    unverified flash-lite prices, and it wants the same fix — one look at a
+    real invoice, then correct `TAVILY_SEARCH_USD` in `deploy/.env`. Operator
+    item **B9**. Note the asymmetry: OpenRouter reports its own per-call cost
+    in the response, so only the search leg is guessed.
+
+    A second, subtler edge rides with it. The fix makes
+    `CHECKER_DAILY_USD_CAP` **functional for the first time on the measured
+    path** — it has been summing a column of zeros. Nothing changes today
+    (`CHECKER_ENABLED=0`, so the checker is dark), but whoever performs the
+    P5.11 go-live should know the cap is now live, is denominated partly in a
+    guessed price, and will bite at `$5.00/day` of *estimated* spend.

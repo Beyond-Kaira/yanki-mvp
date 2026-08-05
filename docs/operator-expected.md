@@ -190,6 +190,24 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 
 ## B. Actions only you can do (in priority order)
 
+- [ ] **B9. Check one Tavily invoice and correct the per-search price
+  (added 2026-08-05, session 21; low urgency, no rush).** This session found
+  that the live measured path recorded **no spend at all** — the pipeline
+  computed each call's cost and then wrote a literal `0` into
+  `responses.cost_usd`, so `CHECKER_DAILY_USD_CAP`, which is enforced by
+  summing that column, could never trip. Fixed (`ed384a1`): every stage now
+  reports its price and the row stores the total. One input is still a guess —
+  **Tavily's per-search price**, pinned at `TAVILY_SEARCH_USD=0.008` and marked
+  UNVERIFIED, because Tavily bills in plan-dependent credits nothing in the app
+  can read. It is set high on purpose so a cap fails safe. When a real invoice
+  arrives, divide by the search count and set the true value in `deploy/.env`
+  (no redeploy needed beyond the usual restart). OpenRouter needs no such pin —
+  it reports its own cost per call. Two things worth knowing rather than doing:
+  spend on the live path has been **invisible, not uncapped** — the count caps
+  (5/IP/hour, 100/day, 10 prompts/run) were doing the bounding all along; and
+  the daily USD cap becomes genuinely live from this change, so factor it into
+  the P5.11 go-live (**B3**).
+
 - [ ] **B8. Review + merge this session's PR — it is what finally lands the
   session-20 planning docs on `main` (added 2026-08-05, session 21).**
   Session 20 wrote the whole roadmap set and committed it as `19d8236` on the

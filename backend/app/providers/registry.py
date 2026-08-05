@@ -1,8 +1,8 @@
-"""Pick which providers to use, honouring DRY_RUN and PANEL_ENGINES.
+"""Pick which providers to use, honouring DRY_RUN.
 
-``get_panel`` returns the list of engines each prompt is run against; when
-``DRY_RUN`` is on they are all deterministic mocks. ``get_analysis_provider``
-returns the single provider used for the KYC call.
+Measured GEO path uses OpenRouter for all LLM calls (KYC + grounded + audit)
+and Tavily for search. Legacy multi-engine panel helpers remain for transitional
+tests until execute.py is fully removed.
 """
 
 from __future__ import annotations
@@ -35,11 +35,18 @@ def _build_real(engine: str, settings) -> Provider:
         from app.providers.perplexity_provider import PerplexityProvider
 
         return PerplexityProvider(api_key=getattr(settings, "perplexity_api_key", ""))
-    # Unknown engine name → fall back to a mock so the pipeline never crashes.
+    if engine == "openrouter":
+        from app.providers.openrouter import OpenRouterProvider
+
+        return OpenRouterProvider(
+            api_key=getattr(settings, "open_router_key", ""),
+            model=getattr(settings, "openrouter_model", "openai/gpt-4o-mini"),
+        )
     return MockProvider(engine)
 
 
 def get_panel(settings) -> list[Provider]:
+    """Legacy multi-engine panel (tests / transitional). Prefer measured path."""
     engines = _panel_engines(settings)
     if getattr(settings, "dry_run", True):
         return [MockProvider(engine) for engine in engines]
@@ -47,8 +54,28 @@ def get_panel(settings) -> list[Provider]:
 
 
 def get_analysis_provider(settings) -> Provider:
+    """KYC LLM: OpenRouter in live mode, mock under DRY_RUN."""
     if getattr(settings, "dry_run", True):
         return MockProvider("mock")
-    engines = _panel_engines(settings)
-    kyc_engine = engines[0] if engines else "anthropic"
-    return _build_real(kyc_engine, settings)
+    return _build_real("openrouter", settings)
+
+
+def get_measured_llm(settings):
+    """OpenRouter chat client for grounded answer + audit extraction."""
+    if getattr(settings, "dry_run", True):
+        return None
+    from app.providers.openrouter import OpenRouterProvider
+
+    return OpenRouterProvider(
+        api_key=getattr(settings, "open_router_key", ""),
+        model=getattr(settings, "openrouter_model", "openai/gpt-4o-mini"),
+    )
+
+
+def get_search_client(settings):
+    """Tavily client for measured search; None under DRY_RUN (mock_search used)."""
+    if getattr(settings, "dry_run", True):
+        return None
+    from app.providers.tavily import TavilyClient
+
+    return TavilyClient(api_key=getattr(settings, "tavily_api_key", ""))

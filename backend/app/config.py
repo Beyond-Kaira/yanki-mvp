@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     gemini_api_key: str = ""
     perplexity_api_key: str = ""
+    # Measured / simulated GEO path (OpenRouter LLM + optional Tavily search).
+    # Required when dry_run=False; ignored under dry_run. Keep blanks in source —
+    # set real values only in deploy/.env (gitignored).
+    open_router_key: str = ""
+    tavily_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4o-mini"
+    # measured = Tavily + grounded answer; simulated = OpenRouter-only SYSTEM_PROMPT
+    geo_mode: str = "measured"
 
     # Pipeline behaviour
     dry_run: bool = True
@@ -56,6 +64,20 @@ class Settings(BaseSettings):
     # Worker / queue
     worker_poll_seconds: int = 2
     stale_claim_seconds: int = 300
+
+    # Site Audit runs in a separate worker and queue. Browser crawls heartbeat
+    # after every persisted page, so a longer stale window tolerates one slow
+    # navigation without letting a crashed job remain running forever.
+    site_audit_worker_poll_seconds: int = Field(default=2, gt=0)
+    site_audit_stale_claim_seconds: int = Field(default=900, gt=0)
+    site_audit_page_timeout_ms: int = Field(default=30_000, ge=1_000)
+    site_audit_render_wait_ms: int = Field(default=1_500, ge=0)
+    site_audit_crawl_delay_seconds: float = Field(default=0.25, ge=0)
+    site_audit_max_robots_bytes: int = Field(default=512_000, ge=1_024)
+    site_audit_sitemap_url_limit: int = Field(default=1_000, ge=0, le=10_000)
+    site_audit_max_sitemap_bytes: int = Field(default=5_000_000, ge=1_024)
+    site_audit_max_html_chars: int = Field(default=2_000_000, ge=10_000)
+    site_audit_max_queue_urls: int = Field(default=5_000, ge=10, le=50_000)
 
     # Rate limiting (P5.0) — the LIVE POST /api/v1/analyses is public with real
     # keys; these guard it before any row is created or money is spent.

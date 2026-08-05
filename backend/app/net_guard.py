@@ -29,9 +29,8 @@ def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 def is_public_host(host: str | None) -> bool:
     """True if every address ``host`` resolves to is public.
 
-    An unresolvable host is treated as public: the subsequent connection would
-    fail on its own, so there is no internal target to protect against, and this
-    keeps offline environments (CI with no DNS) working.
+    Resolution failures are rejected. A worker must never turn a temporary DNS
+    failure into permission to let another network stack resolve the host later.
     """
     if not host:
         return False
@@ -39,7 +38,7 @@ def is_public_host(host: str | None) -> bool:
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
-        return True
+        return False
     for info in infos:
         try:
             ip = ipaddress.ip_address(info[4][0])

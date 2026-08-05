@@ -72,7 +72,7 @@ def test_alert_fires_on_failed_terminal_status(worker_session_factory, monkeypat
 
     _no_network_discovery(monkeypatch)
 
-    def _boom(footprints, total):
+    def _boom(records, *, reliability_score=None):
         raise PipelineError("scoring exploded")
 
     monkeypatch.setattr(scoring, "geo_score", _boom)

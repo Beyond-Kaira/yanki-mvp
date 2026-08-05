@@ -8,7 +8,9 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '@/components/AuthProvider'
+import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { SECTION_ICONS } from '@/components/shell/icons'
 import ShellAuthBar from '@/components/shell/ShellAuthBar'
 import {
@@ -40,24 +42,64 @@ function sectionOverviewHref(section: ShellSection): string | null {
   return firstLive?.href ?? null
 }
 
+function withRememberedAnalysis(href: string, analysisId: string | null): string {
+  if (!analysisId) return href
+  if (
+    !href.startsWith('/ai-visibility') &&
+    !href.startsWith('/search-visibility')
+  ) {
+    return href
+  }
+  if (href.includes('analysis=')) return href
+  return `${href}${href.includes('?') ? '&' : '?'}analysis=${analysisId}`
+}
+
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { status, user } = useAuth()
+  const { analysisId: rememberedAnalysisId } = useAnalysisSession()
   const pathSection = sectionFromPath(pathname)
   const [hoveredSection, setHoveredSection] = useState<ShellSectionId | null>(
     null,
   )
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null,
+  )
+  const [portalReady, setPortalReady] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const itemRefs = useRef(new Map<ShellSectionId, HTMLElement>())
 
   useEffect(() => {
+    setPortalReady(true)
     return () => {
       if (closeTimer.current) clearTimeout(closeTimer.current)
     }
   }, [])
 
+  useEffect(() => {
+    if (!hoveredSection) return
+
+    function syncPosition() {
+      const el = itemRefs.current.get(hoveredSection!)
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      setMenuPos({ top: rect.top, left: rect.right + 4 })
+    }
+
+    syncPosition()
+    window.addEventListener('resize', syncPosition)
+    window.addEventListener('scroll', syncPosition, true)
+    return () => {
+      window.removeEventListener('resize', syncPosition)
+      window.removeEventListener('scroll', syncPosition, true)
+    }
+  }, [hoveredSection])
+
   const signedIn = status === 'authenticated' && Boolean(user?.email)
   const loadingAuth = status === 'loading'
+  const activeSection =
+    SHELL_SECTIONS.find((section) => section.id === hoveredSection) ?? null
 
   function clearCloseTimer() {
     if (closeTimer.current) {
@@ -68,6 +110,11 @@ export default function AppShell({ children }: AppShellProps) {
 
   function openHover(id: ShellSectionId) {
     clearCloseTimer()
+    const el = itemRefs.current.get(id)
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      setMenuPos({ top: rect.top, left: rect.right + 4 })
+    }
     setHoveredSection(id)
   }
 
@@ -75,6 +122,7 @@ export default function AppShell({ children }: AppShellProps) {
     clearCloseTimer()
     closeTimer.current = setTimeout(() => {
       setHoveredSection(null)
+      setMenuPos(null)
     }, HOVER_CLOSE_MS)
   }
 
@@ -82,14 +130,77 @@ export default function AppShell({ children }: AppShellProps) {
     const href = sectionOverviewHref(section)
     if (href) {
       setHoveredSection(null)
-      router.push(href)
+      setMenuPos(null)
+      router.push(withRememberedAnalysis(href, rememberedAnalysisId))
     }
   }
 
+  const flyout =
+    portalReady &&
+    activeSection &&
+    menuPos &&
+    activeSection.items.length > 0 ? (
+      <div
+        role="menu"
+        aria-label={activeSection.flyoutTitle ?? activeSection.label}
+        className="fixed z-[200] w-[240px] rounded-lg border border-surface-border bg-surface py-2 shadow-lg"
+        style={{ top: menuPos.top, left: menuPos.left }}
+        onMouseEnter={clearCloseTimer}
+        onMouseLeave={scheduleCloseHover}
+      >
+        <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-surface-subtle">
+          {activeSection.flyoutTitle ?? activeSection.label}
+        </p>
+        <div className="flex max-h-[min(70vh,420px)] flex-col gap-0.5 overflow-y-auto px-1.5">
+          {activeSection.items.map((item) => {
+            const active = flyoutItemActive(pathname, item)
+            if (!item.href) {
+              return (
+                <div
+                  key={item.id}
+                  role="menuitem"
+                  aria-disabled="true"
+                  className="flex min-h-[36px] items-center justify-between rounded-md px-2.5 text-sm text-surface-subtle"
+                >
+                  <span>{item.label}</span>
+                  <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-surface-subtle">
+                    N/A
+                  </span>
+                </div>
+              )
+            }
+            return (
+              <Link
+                key={item.id}
+                href={withRememberedAnalysis(item.href, rememberedAnalysisId)}
+                role="menuitem"
+                onClick={() => {
+                  setHoveredSection(null)
+                  setMenuPos(null)
+                }}
+                className={`flex min-h-[36px] items-center justify-between rounded-md px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  active
+                    ? 'bg-primary-soft font-medium text-primary-strong'
+                    : 'text-surface-foreground hover:bg-surface-muted'
+                }`}
+              >
+                <span>{item.label}</span>
+                {item.badge === 'live' ? (
+                  <span className="rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success-strong">
+                    Live
+                  </span>
+                ) : null}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+    ) : null
+
   return (
-    <div className="flex min-h-screen bg-surface-muted text-surface-foreground">
+    <div className="flex h-screen overflow-hidden bg-surface-muted text-surface-foreground">
       <aside
-        className="relative z-30 flex w-[220px] shrink-0 flex-col bg-ink text-ink-foreground"
+        className="relative z-30 flex h-full w-[220px] shrink-0 flex-col bg-ink text-ink-foreground"
         aria-label="Product navigation"
       >
         <div className="px-5 pb-4 pt-5">
@@ -101,7 +212,10 @@ export default function AppShell({ children }: AppShellProps) {
           </Link>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-0.5 px-2" aria-label="Toolkits">
+        <nav
+          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2"
+          aria-label="Toolkits"
+        >
           {SHELL_SECTIONS.map((section) => {
             const Icon = SECTION_ICONS[section.id]
             const selected = pathSection === section.id
@@ -111,7 +225,10 @@ export default function AppShell({ children }: AppShellProps) {
             return (
               <div
                 key={section.id}
-                className="relative"
+                ref={(node) => {
+                  if (node) itemRefs.current.set(section.id, node)
+                  else itemRefs.current.delete(section.id)
+                }}
                 onMouseEnter={() => {
                   if (hasMenu) openHover(section.id)
                 }}
@@ -136,60 +253,6 @@ export default function AppShell({ children }: AppShellProps) {
                   <Icon className="h-5 w-5 shrink-0" />
                   <span className="truncate">{section.label}</span>
                 </button>
-
-                {menuOpen ? (
-                  <div
-                    role="menu"
-                    aria-label={section.flyoutTitle ?? section.label}
-                    className="absolute left-full top-0 z-50 ml-1 w-[240px] rounded-lg border border-surface-border bg-surface py-2 shadow-lg"
-                    onMouseEnter={clearCloseTimer}
-                    onMouseLeave={scheduleCloseHover}
-                  >
-                    <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-surface-subtle">
-                      {section.flyoutTitle ?? section.label}
-                    </p>
-                    <div className="flex flex-col gap-0.5 px-1.5">
-                      {section.items.map((item) => {
-                        const active = flyoutItemActive(pathname, item)
-                        if (!item.href) {
-                          return (
-                            <div
-                              key={item.id}
-                              role="menuitem"
-                              aria-disabled="true"
-                              className="flex min-h-[36px] items-center justify-between rounded-md px-2.5 text-sm text-surface-subtle"
-                            >
-                              <span>{item.label}</span>
-                              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-surface-subtle">
-                                N/A
-                              </span>
-                            </div>
-                          )
-                        }
-                        return (
-                          <Link
-                            key={item.id}
-                            href={item.href}
-                            role="menuitem"
-                            onClick={() => setHoveredSection(null)}
-                            className={`flex min-h-[36px] items-center justify-between rounded-md px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                              active
-                                ? 'bg-primary-soft font-medium text-primary-strong'
-                                : 'text-surface-foreground hover:bg-surface-muted'
-                            }`}
-                          >
-                            <span>{item.label}</span>
-                            {item.badge === 'live' ? (
-                              <span className="rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success-strong">
-                                Live
-                              </span>
-                            ) : null}
-                          </Link>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
               </div>
             )
           })}
@@ -234,10 +297,12 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
         <ShellAuthBar />
-        <main className="min-w-0 flex-1 overflow-auto">{children}</main>
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
       </div>
+
+      {flyout ? createPortal(flyout, document.body) : null}
     </div>
   )
 }

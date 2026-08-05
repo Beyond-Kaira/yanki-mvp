@@ -5,6 +5,8 @@ null/empty until the pipeline produces them, so the frontend can render partial
 state (and failures keep their partial results queryable — FR-7).
 """
 
+from __future__ import annotations
+
 import re
 import uuid
 from datetime import datetime
@@ -156,6 +158,65 @@ class ResponseOut(BaseModel):
     footprint: bool | None
     matched_snippet: str | None
     cost_usd: float
+    audit: dict[str, Any] | None = None
+
+
+class GeoRecordOut(BaseModel):
+    """One Kaira-style audit record persisted columnar in ``geo_records``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    response_id: uuid.UUID
+    brand: str
+    sector: str | None = None
+    prompt: str
+    prompt_group: str | None = None
+    intent: str | None = None
+    measurement_mode: str | None = None
+    search_provider: str | None = None
+    search_results: list[Any] | dict[str, Any] | None = None
+    search_visibility: dict[str, Any] | None = None
+    grounded_answer: str | None = None
+    simulated_answer: str | None = None
+    mentioned: bool | None = None
+    rank_position: int | None = None
+    mention_context: str | None = None
+    competitors: list[Any] | None = None
+    answer_summary: str | None = None
+    recommendation_reasoning: str | None = None
+    reasoning_trace: dict[str, Any] | None = None
+    citations: list[Any] | None = None
+    citation_metrics: dict[str, Any] | None = None
+    visibility_drivers: dict[str, Any] | None = None
+    visibility_gaps: dict[str, Any] | None = None
+    trust_signals: list[Any] | None = None
+    entities_associated_with_brand: list[Any] | None = None
+    sentiment: str | None = None
+    content_improvement_opportunities: list[Any] | None = None
+    model: str | None = None
+    generated_at: datetime | None = None
+    error: bool | None = None
+    schema_version: str | None = None
+    owned_domains: list[Any] | None = None
+
+    @field_validator(
+        "competitors",
+        "citations",
+        "trust_signals",
+        "entities_associated_with_brand",
+        "content_improvement_opportunities",
+        "owned_domains",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_str_to_list(cls, value: Any) -> Any:
+        # Live LLM rows sometimes store a bare string instead of a list.
+        if value is None or isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            return [value] if value.strip() else []
+        return [value]
 
 
 class EnginePresence(BaseModel):
@@ -260,9 +321,14 @@ class ResultOut(BaseModel):
     kyc: dict[str, Any] | None
     prompts: list[PromptOut]
     responses: list[ResponseOut]
+    # Composite GEO on 0–100 (measured path). Legacy rows may still be 0–1.
     geo_score: float | None
     footprint_count: int | None
     total_responses: int | None
+    reliability_score: float | None = None
+    interventions: list[dict[str, Any]] | dict[str, Any] | None = None
+    citation_summary: dict[str, Any] | None = None
+    geo_records: list[GeoRecordOut] = []
     # Checker-only read-time aggregates (P5.3); null for MVP / legacy rows.
     engine_presence: list[EnginePresence] | None
     competitors_appeared: list[CompetitorMention] | None

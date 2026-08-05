@@ -1,4 +1,5 @@
 import type { Analysis } from '@/lib/contracts'
+import { citationsFromAnalysis } from '@/lib/ai-visibility-data'
 
 export interface CitationDomainRow {
   domain: string
@@ -44,55 +45,11 @@ const SAMPLE: AiOverviewModel = {
   analysisId: null,
 }
 
-function hostnameFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>
   }
   return null
-}
-
-function domainFromCitation(raw: unknown): string | null {
-  const row = asRecord(raw)
-  if (!row) return null
-  const domain = row.source_domain ?? row.domain
-  if (typeof domain === 'string' && domain.trim()) return domain.trim().toLowerCase()
-  const url = row.url
-  if (typeof url === 'string') {
-    try {
-      return new URL(url).hostname.replace(/^www\./, '')
-    } catch {
-      return null
-    }
-  }
-  return null
-}
-
-function collectCitations(analysis: Analysis): CitationDomainRow[] {
-  const counts = new Map<string, number>()
-  for (const response of analysis.result.responses) {
-    const audit = asRecord(
-      (response as { audit?: unknown }).audit ?? null,
-    )
-    const citations = audit?.citations
-    if (!Array.isArray(citations)) continue
-    for (const item of citations) {
-      const domain = domainFromCitation(item)
-      if (!domain) continue
-      counts.set(domain, (counts.get(domain) ?? 0) + 1)
-    }
-  }
-  return [...counts.entries()]
-    .map(([domain, count]) => ({ domain, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8)
 }
 
 function collectInterventions(analysis: Analysis): InterventionRow[] {
@@ -125,22 +82,27 @@ export function sampleOverview(): AiOverviewModel {
 
 export function overviewFromAnalysis(analysis: Analysis): AiOverviewModel {
   const result = analysis.result
+  const citationsPage = citationsFromAnalysis(analysis)
   const total = result.total_responses ?? result.responses.length
-  const hits = result.footprint_count ?? result.responses.filter((r) => r.footprint).length
-  const citeRate = total > 0 ? hits / total : null
-  const reliability = (result as { reliability_score?: number | null }).reliability_score
-  const citations = collectCitations(analysis)
-  const interventions = collectInterventions(analysis)
-  const company =
-    result.kyc && typeof result.kyc.company === 'string' ? result.kyc.company : null
+  const hits =
+    result.footprint_count ??
+    result.responses.filter((response) => response.footprint).length
+  // Prefer measured citation_summary cite_rate when present.
+  const citeRate =
+    citationsPage.summary.citeRate ?? (total > 0 ? hits / total : null)
+  const reliability = (result as { reliability_score?: number | null })
+    .reliability_score
 
   return {
-    domain: company || hostnameFromUrl(analysis.url),
+    domain: citationsPage.domain,
     geoScore: normalizeGeoScore(result.geo_score),
     citeRate,
     reliability: typeof reliability === 'number' ? reliability : null,
-    citations,
-    interventions,
+    citations: citationsPage.domains.slice(0, 8).map(({ domain, count }) => ({
+      domain,
+      count,
+    })),
+    interventions: collectInterventions(analysis),
     isSample: false,
     analysisId: analysis.id,
   }

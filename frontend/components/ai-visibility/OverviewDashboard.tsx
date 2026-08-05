@@ -257,7 +257,7 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
           <Link
             href={
               model.analysisId
-                ? `/analyses/${model.analysisId}`
+                ? `/ai-visibility/drivers?analysis=${model.analysisId}`
                 : '/ai-visibility/drivers'
             }
             className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover"

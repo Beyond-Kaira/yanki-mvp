@@ -164,10 +164,9 @@ function Results({
   const footprints =
     result.footprint_count ??
     result.responses.filter((response) => response.footprint).length
-  // geo_score is a 0–1 fraction; ScoreSummary takes a 0–100 percentage, and
-  // null when there is nothing to score (the backend reports 0.0 either way).
+  // Backend composite GEO is already 0–100; ScoreSummary expects that scale.
   const percent =
-    result.geo_score === null ? null : Math.round(result.geo_score * 100)
+    result.geo_score === null ? null : Math.round(result.geo_score)
   // Checker rows carry `engine_presence` from the backend, whose aggregate walks
   // the responses it has and so omits an engine that answered nothing. Passing
   // it through the same helper keeps the reported numbers while seeding the

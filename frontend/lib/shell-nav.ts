@@ -41,10 +41,15 @@ export const SHELL_SECTIONS: ShellSection[] = [
   {
     id: 'search-visibility',
     label: 'Search Visibility',
-    href: null,
+    href: '/search-visibility',
     flyoutTitle: 'Search Visibility',
     items: [
-      { id: 'seo-overview', label: 'SEO Overview', href: null, badge: 'na' },
+      {
+        id: 'overview',
+        label: 'Overview',
+        href: '/search-visibility',
+        badge: 'live',
+      },
       { id: 'site-audit', label: 'Site Audit', href: null, badge: 'na' },
       { id: 'positions', label: 'Position Tracking', href: null, badge: 'na' },
       { id: 'organic', label: 'Organic Research', href: null, badge: 'na' },
@@ -150,6 +155,7 @@ export function sectionFromPath(pathname: string): ShellSectionId {
   if (pathname === '/' || pathname === '') return 'home'
   if (pathname.startsWith('/checker')) return 'free-checker'
   if (pathname.startsWith('/methodology')) return 'methodology'
+  if (pathname.startsWith('/search-visibility')) return 'search-visibility'
   if (pathname.startsWith('/ai-visibility/settings')) return 'settings'
   if (pathname.startsWith('/ai-visibility')) return 'ai-visibility'
   if (pathname.startsWith('/analyses')) return 'ai-visibility'
@@ -160,6 +166,11 @@ export function flyoutItemActive(pathname: string, item: ShellFlyoutItem): boole
   if (!item.href) return false
   if (item.href === '/ai-visibility') {
     return pathname === '/ai-visibility' || pathname === '/ai-visibility/'
+  }
+  if (item.href === '/search-visibility') {
+    return (
+      pathname === '/search-visibility' || pathname === '/search-visibility/'
+    )
   }
   if (item.href === '/') {
     return pathname === '/' || pathname === ''
@@ -172,6 +183,7 @@ export function isShellPath(pathname: string): boolean {
   if (pathname === '/' || pathname === '') return true
   return (
     pathname.startsWith('/ai-visibility') ||
+    pathname.startsWith('/search-visibility') ||
     pathname.startsWith('/checker') ||
     pathname.startsWith('/methodology') ||
     pathname.startsWith('/analyses')

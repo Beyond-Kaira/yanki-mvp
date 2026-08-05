@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Button from '@/components/Button'
+import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { createAnalysis } from '@/lib/api'
 
 function looksLikeUrl(value: string): boolean {
@@ -19,6 +20,8 @@ const ERROR_ID = 'url-error'
 
 export default function UrlForm() {
   const router = useRouter()
+  const pathname = usePathname()
+  const { setAnalysisId } = useAnalysisSession()
   const [url, setUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -40,7 +43,15 @@ export default function UrlForm() {
     setSubmitting(true)
     try {
       const { id } = await createAnalysis(trimmed)
-      router.push(`/analyses/${id}`)
+      // One shared analysis for the whole AI Visibility shell (and later tabs).
+      setAnalysisId(id)
+      if (pathname.startsWith('/search-visibility')) {
+        router.push(`/search-visibility?analysis=${id}`)
+      } else if (pathname.startsWith('/ai-visibility')) {
+        router.push(`/ai-visibility?analysis=${id}`)
+      } else {
+        router.push(`/analyses/${id}`)
+      }
     } catch (err) {
       setSubmitting(false)
       setError(

@@ -11,7 +11,7 @@ server-side defaults for Postgres.
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
@@ -51,6 +51,8 @@ class Analysis(Base):
     kyc: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+    # Composite GEO score on a 0–100 scale (mention × position × citation ×
+    # sentiment). Legacy MVP rows may still hold a 0–1 mention-rate fraction.
     geo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     footprint_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     total_responses: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
@@ -71,6 +73,14 @@ class Analysis(Base):
     seo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     seo_grade: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     seo_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    reliability_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    interventions: Mapped[list[Any] | dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    # Rolled-up citation metrics across geo_records / responses.audit for this run.
+    citation_summary: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -91,6 +101,9 @@ class Analysis(Base):
     )
     seo_checks: Mapped[list["SeoCheck"]] = relationship(
         cascade="all, delete-orphan", order_by="SeoCheck.created_at"
+    )
+    geo_records: Mapped[list["GeoRecord"]] = relationship(
+        cascade="all, delete-orphan", order_by="GeoRecord.created_at"
     )
 
 
@@ -123,6 +136,11 @@ class Response(Base):
     raw_text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     footprint: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
     matched_snippet: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Measured-audit payload (search_visibility, citations, gaps, …). Null on
+    # legacy multi-engine panel rows.
+    audit: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     cost_usd: Mapped[Decimal] = mapped_column(sa.Numeric(10, 6), nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
@@ -204,6 +222,85 @@ class SeoCheck(Base):
     )
 
 
+class GeoRecord(Base):
+    """Columnar copy of one Kaira-style measured/simulated audit record.
+
+    Mirrors ``merge_measured_record`` / simulated output keys so brand-level
+    visualizations and later models can query without digging into
+    ``responses.audit``. One row per prompt response.
+    """
+
+    __tablename__ = "geo_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("analyses.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    response_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("responses.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    brand: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    sector: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    prompt: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    prompt_group: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    intent: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    measurement_mode: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    search_provider: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    search_results: Mapped[list[Any] | dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    search_visibility: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    grounded_answer: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    simulated_answer: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    mentioned: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
+    rank_position: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    mention_context: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    competitors: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    answer_summary: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    recommendation_reasoning: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    reasoning_trace: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    citations: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    citation_metrics: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    visibility_drivers: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    visibility_gaps: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    trust_signals: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    entities_associated_with_brand: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    sentiment: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    content_improvement_opportunities: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    model: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    generated_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    error: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
+    schema_version: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    owned_domains: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
 class CheckerSubmission(Base):
     """One accepted checker submit (P5.1) — append-only demand signal + lead.
 
@@ -274,6 +371,171 @@ class User(Base):
         nullable=False,
         default=_utcnow,
     )
+
+
+class SeoProject(Base):
+    """One user-owned domain that can have many Site Audit runs.
+
+    Projects are deliberately separate from ``analyses``. A GEO analysis is a
+    one-off AI visibility measurement; an SEO project is a durable user-owned
+    domain whose technical audit can be run repeatedly over time.
+    """
+
+    __tablename__ = "seo_projects"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "user_id",
+            "domain_key",
+            name="uq_seo_projects_user_domain_key",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Normalized host[:port], with a leading ``www.`` removed. This is the
+    # per-user identity key, so https://example.com and https://www.example.com
+    # cannot quietly become two projects for the same site.
+    domain_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    audits: Mapped[list["SiteAudit"]] = relationship(
+        cascade="all, delete-orphan",
+        back_populates="project",
+        order_by="SiteAudit.created_at",
+    )
+
+
+class SiteAudit(Base):
+    """One durable crawl job for an SEO project.
+
+    This table is a queue independent from ``analyses`` so browser-heavy site
+    crawls can be claimed by a dedicated worker without delaying GEO jobs.
+    """
+
+    __tablename__ = "site_audits"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "page_limit BETWEEN 1 AND 500",
+            name="ck_site_audits_page_limit",
+        ),
+        sa.CheckConstraint(
+            "progress BETWEEN 0 AND 100",
+            name="ck_site_audits_progress",
+        ),
+        sa.CheckConstraint(
+            "health_score IS NULL OR health_score BETWEEN 0 AND 100",
+            name="ck_site_audits_health_score",
+        ),
+        # The service checks first for a friendly 409; this database invariant
+        # closes the race between two concurrent rerun requests.
+        sa.Index(
+            "uq_site_audits_one_active_per_project",
+            "project_id",
+            unique=True,
+            postgresql_where=sa.text("status IN ('queued', 'running')"),
+            sqlite_where=sa.text("status IN ('queued', 'running')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("seo_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[Literal["queued", "running", "done", "failed"]] = mapped_column(
+        sa.Text, nullable=False, default="queued"
+    )
+    progress: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    current_step: Mapped[
+        Literal["discovery", "crawl", "analysis", "finalize"] | None
+    ] = mapped_column(sa.Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    page_limit: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=10)
+    profile_id: Mapped[
+        Literal["site_audit_mobile", "site_audit_desktop"]
+    ] = mapped_column(sa.Text, nullable=False, default="site_audit_mobile")
+    js_rendering: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+
+    pages_discovered: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    pages_crawled: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    total_errors: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    total_warnings: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    total_notices: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    health_score: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+
+    claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    project: Mapped[SeoProject] = relationship(back_populates="audits")
+    pages: Mapped[list["SiteAuditPage"]] = relationship(
+        cascade="all, delete-orphan",
+        back_populates="audit",
+        order_by="SiteAuditPage.created_at",
+    )
+
+
+class SiteAuditPage(Base):
+    """One page snapshot and its structured findings within a Site Audit."""
+
+    __tablename__ = "site_audit_pages"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "audit_id",
+            "final_url",
+            name="uq_site_audit_pages_audit_final_url",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    audit_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("site_audits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    requested_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    final_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status_code: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    title: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    h1_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    meta_description: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    html_lang: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Findings use stable codes and structured details rather than display text
+    # as identity. This lets the UI group "missing_image_alt" across pages even
+    # when each page has a different missing-image count.
+    issues: Mapped[list[dict[str, Any]]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=False, default=list
+    )
+    schemas: Mapped[list[dict[str, Any]]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=False, default=list
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    audit: Mapped[SiteAudit] = relationship(back_populates="pages")
 
 
 class AuthSession(Base):

@@ -144,7 +144,8 @@ function makeAnalysis(responses: Analysis['result']['responses']): Analysis {
     updated_at: '2026-07-10T00:00:00Z',
     result: {
       footprint_count: 1,
-      geo_score: 0.33,
+      geo_score: 33,
+      geo_records: [],
       kyc: null,
       prompts: [{ id: 'p1', category: 'comparison', text: 'Best note app?' }],
       responses,

@@ -342,11 +342,34 @@ reporting, not a fault. Two new tech-debt items, **#43** (DRY_RUN forces the
 mock SERP source) and **#44** (two of four engines refused per query, so the
 score leans on `google cse`). Full detail: `sessions/2026-08-03-02.md`.
 
-➡️ **Next up: P5.11 (operator go-live)** — everything agent-buildable is done.
-Blockers are all operator items: A1 decisions, **A2 (new: rule on discovery/KYC
-steps 2b + 6)**, B1 Resend domain, B2 vendor ToS/pricing check, then the
-`CHECKER_ENABLED=1` flip + live 4-engine smoke + week-1 cost read (incl. the
-pinned-price retune).
+📐 **Session 20 (2026-08-05): the re-planning session — the platform roadmap
+adopted (ADR-33). Docs only; no code changed.** The operator's brief:
+analyze the repo + the planning baseline
+(`docs/Yanki_Geo_Intelligence_Report.pdf`, Aug 2026), establish competitive
+feature parity, and re-plan around a fixed implementation order — **Admin
+Panel first, Backlink Intelligence second, remaining parity third,
+differentiators fourth, enterprise last.** Delivered: the milestone roadmap
+rewrite ([roadmap.md](roadmap.md), M1–M9), the parity analysis
+([feature-parity.md](feature-parity.md)), the differentiation proposal
+([differentiators.md](differentiators.md)), the M1 admin plan
+([admin-panel-plan.md](admin-panel-plan.md) → **Phase 7** below), the M2
+backlink plan ([backlink-intelligence-plan.md](backlink-intelligence-plan.md)
+→ **Phase 8** below), the target architecture
+([architecture-target.md](architecture-target.md)), and the updated
+orchestrator brief ([resume-prompt.md](resume-prompt.md)). The session also
+recorded that four PRs merged 2026-08-03/04 outside the session process —
+**#4, #13 (P6.1 is therefore MERGED), #23 (Site Audit backend), #11 (the
+measured/simulated GEO pivot: Tavily + OpenRouter, `geo_records`,
+interventions, reliability)** — the last two with no ADR/plan/session docs:
+tech-debt **#54/#55**, and a possibly production-affecting key requirement
+flagged as operator item **B7**. Full log: `sessions/2026-08-05-01.md`.
+
+➡️ **Next up: Phase 7 — Admin Platform (roadmap M1).** First card **P7.1**
+(tenancy schema + personal-org backfill), gated on the operator ratifying
+the roadmap (**A3**) and the B7 key check. **P5.11 (checker go-live) stays
+operator-gated and independent** — its blockers are unchanged: A1 decisions,
+A2, B2 vendor ToS/pricing check, then the `CHECKER_ENABLED=1` flip + live
+smoke + week-1 cost read.
 
 ### Readiness snapshot (updated at each session close)
 
@@ -2149,15 +2172,130 @@ starts a new phase deliberately: Phase 5 is the free public checker (roadmap
   one tab and **across tabs** — produce exactly one rotation; a 401 refreshes
   once and replays the original request; every field error is announced; no
   screen ships a control the API cannot honour.
-- **Status:** 🔍 **in review — session 19 (2026-08-03)**,
-  [PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) on
-  `feat/auth-screens`. Review returned changes-requested; all nine items are
-  answered (`sessions/2026-08-03-04.md` §1). **Two features were deliberately
-  removed rather than shipped** — password reset (no endpoint: tech-debt #49)
-  and the terms checkbox (no terms: tech-debt #50). Frontend 122 passed / 26
-  files, tsc + eslint clean. Not deployed: merging `main` auto-deploys, and
-  tech-debt #52 (an account grants nothing yet) is an open timing question for
-  the operator.
+- **Status:** ✅ **done — merged 2026-08-03**
+  ([PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13); recorded
+  post-hoc in session 20 — the merge happened outside a session). The session-19
+  review response held: all nine items answered
+  (`sessions/2026-08-03-04.md` §1); **password reset and the terms checkbox
+  were deliberately removed rather than shipped** (tech-debt #49/#50, both now
+  scheduled for repayment inside Phase 7 — P7.5 and P7.6's terms dependency).
+  Tech-debt #52 (an account grants nothing) is now answered by the roadmap
+  itself: the first signed-in destination is the M1 org admin (P7.4).
+
+---
+
+## Phase 7 — Admin Platform (roadmap M1) — CURRENT PRIORITY
+
+*Spec: [admin-panel-plan.md](admin-panel-plan.md) (scope authority for this
+phase) · product frame: [roadmap.md](roadmap.md) M1 · target seams:
+[architecture-target.md](architecture-target.md). Cards below are
+**planning-level stages (A1–A9)**; each is decomposed into session-sized
+sub-cards at build time, per the doc's §9. No card starts before the
+operator ratifies the roadmap (operator-expected **A3**) and the **B7** key
+check clears. Nothing in this phase is implemented as of 2026-08-05.*
+
+### P7.1 — Tenancy schema + personal-org backfill (stage A1)
+- **Goal:** organizations → workspaces → projects exist; every existing row
+  (users, analyses, seo_projects, checker/geo data) lands in a personal org;
+  reads are org-scoped at the data layer.
+- **Why now:** the riskiest migration, cheapest while the surface is small;
+  every later milestone consumes it.
+- **Dependencies:** A3 ratification; staging rehearsal of the backfill.
+- **Complexity:** L · **Status:** todo
+- **Acceptance:** additive migrations up+down clean; every pre-existing row
+  reachable through exactly one org; zero behaviour change for anonymous
+  flows; cross-org read attempts fail in tests.
+
+### P7.2 — RBAC: roles, permissions, API-layer enforcement (stage A2)
+- **Goal:** the ten-role model (Super Admin → Guest) with resource-based
+  permissions (`resource:action`), deny-by-default, enforced as FastAPI
+  dependencies; permission test suite generated from the baseline §11.2
+  matrix.
+- **Dependencies:** P7.1. · **Complexity:** L · **Status:** todo
+
+### P7.3 — Audit-event spine (stage A3)
+- **Goal:** append-only `audit_events` with actor/org/entity/before/after/
+  ip_hash/outcome, emitted from auth + every mutating route; secret-redacted
+  diffs.
+- **Dependencies:** P7.1. · **Complexity:** M · **Status:** todo
+
+### P7.4 — Org admin UI v1 (stage A4)
+- **Goal:** the first signed-in destination: org/workspace/member/invitation
+  screens (repays the product half of tech-debt #52).
+- **Dependencies:** P7.2. · **Complexity:** M · **Status:** todo
+
+### P7.5 — Auth completion: password reset, MFA, sessions (stage A5)
+- **Goal:** password-reset endpoint + restored screen (repays #49;
+  enumeration-safe), TOTP MFA with backup codes, device/session list with
+  remote revoke, org-level require-MFA policy.
+- **Dependencies:** P7.2 (policy), P7.3 (events). · **Complexity:** M ·
+  **Status:** todo
+
+### P7.6 — Plans, subscriptions, quotas, credit ledger (stage A6)
+- **Goal:** plan catalog as data; Stripe subscription lifecycle; quota
+  service enforced on submission paths; credit ledger seeded from existing
+  `cost_usd`; terms text is a hard dependency (tech-debt #50 — operator/legal).
+- **Dependencies:** P7.1–P7.3; Stripe account (operator). · **Complexity:** L
+  · **Status:** todo
+
+### P7.7 — Platform back office (stage A7)
+- **Goal:** Super Admin/Support surface: org directory, plan overrides,
+  feature flags (global + per-org), audit-log viewer, logged impersonation.
+- **Dependencies:** P7.2, P7.3. · **Complexity:** M · **Status:** todo
+
+### P7.8 — System pages: jobs, queues, providers, health, usage (stage A8)
+- **Goal:** operational visibility — job/queue boards with retry/cancel,
+  AI-provider status (keys present, models, pinned prices, spend rollups,
+  geo_mode/DRY_RUN visibility), health probes, usage analytics, error
+  tracking wiring.
+- **Dependencies:** P7.3 (events), P7.6 (spend data). · **Complexity:** M ·
+  **Status:** todo
+
+### P7.9 — Hardening + docs (stage A9, exit gate)
+- **Goal:** cross-tenant leakage suite (the merge gate for everything after),
+  audit completeness review, ADRs, operator runbook, docs sync.
+- **Dependencies:** all of Phase 7. · **Complexity:** M · **Status:** todo
+
+---
+
+## Phase 8 — Backlink Intelligence (roadmap M2)
+
+*Spec: [backlink-intelligence-plan.md](backlink-intelligence-plan.md)
+(scope authority) · stages B1–B8 → cards P8.1–P8.8, decomposed at build
+time. Gated on Phase 7's quota/credit foundation (P7.6) and the operator's
+vendor + budget decision (**A4**). Nothing implemented as of 2026-08-05.*
+
+- **P8.1 — `BacklinkSource` seam + mock + schema v1** (S/M): protocol,
+  deterministic mock, `backlink_profiles`/`backlinks`/`link_events`; $0
+  DRY_RUN end-to-end. Status: todo.
+- **P8.2 — First licensed adapter + metered import** (M): vendor per A4;
+  cost tagging into the credit ledger; quota-gated initial import. Status:
+  todo (blocked: A4).
+- **P8.3 — Inventory UI: links / referring domains / anchors** (M):
+  filtering, sorting, CSV/XLSX export. Status: todo.
+- **P8.4 — Monitoring: scheduled refresh, new/lost deltas, liveness
+  verification** (M/L). Status: todo.
+- **P8.5 — Metrics: transparent Yanki Authority, velocity, history** (M):
+  formula published on the methodology page. Status: todo.
+- **P8.6 — Toxicity assessment + disavow export** (M): advisory wording;
+  reasons always shown. Status: todo.
+- **P8.7 — Competitor profiles, gap analysis, outreach lists** (M/L): incl.
+  unlinked-mention source from existing footprint/citation data. Status:
+  todo.
+- **P8.8 — Alerts, report blocks, cost-soak, docs** (M): exit gate per the
+  plan doc's acceptance list. Status: todo.
+
+---
+
+## Phases 9+ — reserved (roadmap M3–M9)
+
+*Reserved to keep IDs stable: Phase 9 = M3 (Technical SEO & Site Audit
+productization), Phase 10 = M4 (AI Visibility & GEO Monitoring), Phase 11 =
+M5 (Entity & Local), Phase 12 = M6 (Competitive & Reporting), Phase 13 = M7
+(Automation & Agents), Phase 14 = M8 (Enterprise), Phase 15 = M9 (Advanced
+AI). Each is decomposed into cards only when its milestone starts — the
+product-level scope lives in [roadmap.md](roadmap.md) and
+[feature-parity.md](feature-parity.md) until then.*
 
 ---
 

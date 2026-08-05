@@ -1306,3 +1306,59 @@ decision → consequences**, with one line on why the alternative was rejected.
   runtime dependency beyond React; the validators are plain functions and a
   swap later replaces call sites and nothing else); retrying more than once on
   401 (a refresh loop).
+
+### ADR-33 — The platform roadmap: planning baseline adopted, admin-first implementation order (2026-08-05)
+
+- **Context:** the MVP-era plan was complete (Phases 0–4 32/32; the checker
+  built and dark behind the operator's P5.11), and three things had changed at
+  once. (1) The operator dropped a 47-page strategy document into the repo —
+  `docs/Yanki_Geo_Intelligence_Report.pdf` ("Planning baseline — intended as
+  the primary planning document", Aug 2026): a full competitive analysis, PRD,
+  multi-tenant architecture, RBAC model, subscription design, and 24-month
+  roadmap for a Geo Intelligence platform. (2) The operator issued a
+  re-planning brief with a **fixed implementation order**: Admin Panel first,
+  Backlink Intelligence second, remaining competitive parity third,
+  differentiators fourth, enterprise last — and an explicit instruction to
+  update planning documentation only, implementing nothing. (3) Four PRs
+  (#4, #13, #23, #11) had merged outside the session process, two of them
+  undocumented (tech-debt #54/#55), showing the project now has multiple
+  humans merging to an auto-deploying `main` — itself an argument for the
+  governance the admin milestone builds.
+- **Decision:** adopt the report as the strategy source ("the planning
+  baseline") and re-plan the product as **milestones M1–M9** in a rewritten
+  [roadmap.md](roadmap.md) (M1 Admin Platform · M2 Backlink Intelligence ·
+  M3 Technical SEO & Site Audit · M4 AI Visibility & GEO Monitoring · M5
+  Entity & Local · M6 Competitive & Reporting · M7 Automation & Agents · M8
+  Enterprise · M9 Advanced AI), with a new planning doc set as scope
+  authority per milestone: [feature-parity.md](feature-parity.md) (the
+  REQUIRED backlog), [differentiators.md](differentiators.md),
+  [admin-panel-plan.md](admin-panel-plan.md),
+  [backlink-intelligence-plan.md](backlink-intelligence-plan.md), and
+  [architecture-target.md](architecture-target.md) (target seams, kept
+  separate so [architecture.md](architecture.md) can stay strictly
+  as-built). Implementation-plan phase numbering continues rather than
+  restarting: **Phase 7 = M1, Phase 8 = M2, Phases 9–15 reserved for
+  M3–M9** — task IDs are never renumbered in this repo, and the roadmap's
+  "Phase 1–9" labels from the operator brief map to M1–M9 explicitly.
+  02-mvp.md remains the scope authority for the *MVP surface only*;
+  platform scope authority is the milestone plan doc named by each phase.
+- **Consequences:** the next build session starts Phase 7 (P7.1, tenancy),
+  gated on the operator ratifying the roadmap (operator-expected A3) and
+  the B7 key check. The old roadmap's Now/Next/Later structure is
+  superseded (git history holds it); P5.11 checker go-live remains an
+  independent operator gate, and Turkish remains parked on the operator's
+  word. Competitive claims inherit the baseline's Aug-2026 snapshot caveat
+  and must be re-verified before external use. The undocumented merges are
+  recorded as debt (#54/#55) with scheduled homes (retroactive ADRs at M4/
+  M3) rather than papered over.
+- **Rejected:** *implementing the report's own 0–3/3–6/6–12-month roadmap
+  as-is* (it opens with geo-grid tracking; the operator's order puts
+  admin + backlinks first — the report supplies the models, the operator
+  supplies the sequence); *renumbering implementation phases to match the
+  brief's Phase 1–9* (breaks the stable-ID rule and every existing
+  cross-reference); *treating the PDF itself as the working plan* (not
+  diffable or editable in PRs — its content is transcribed into the
+  markdown planning set, with the PDF kept as the reference source);
+  *retrofitting docs for PR #11/#23 in this session* (a docs-only session
+  cannot verify behaviour against a running stack honestly; recorded as
+  debt with owners instead).

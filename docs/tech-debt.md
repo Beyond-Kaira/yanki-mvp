@@ -4,7 +4,18 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-03 (account screens, PR #13 review response, merged
+Last updated: 2026-08-05 (session 20, the re-planning session — docs only,
+no code changed: two new items — **#54** (PR #11's measured/simulated GEO
+pivot merged with zero documentation: no ADR, no session log, no plan card;
+architecture.md/README pipeline descriptions and recorded test counts are
+stale against it; `geo_mode=measured` makes OpenRouter + Tavily keys
+**required** when `DRY_RUN=0` — see operator-expected **B7**, possibly
+production-affecting) and **#55** (PR #23's Site Audit backend merged with
+only `site-audit-integration.md`: no ADR, no plan card, its production-
+hardening list unresolved, its worker absent from the prod compose, and no
+UI reaches it). No repayments this pass — but #49, #50 and #52 now have
+scheduled homes in Phase 7 (P7.5, P7.6, P7.4 respectively). Earlier —
+2026-08-03 (account screens, PR #13 review response, merged
 against main after items #27-48 landed there: five new items — **#49**
 (password reset has no endpoint, so it ships no screen), **#50**
 (no terms text, so sign-up asks for no agreement), **#51** (every cold load POSTs
@@ -623,3 +634,33 @@ devDependencies).)
     that can race, and the fallback is the behaviour every tab had before. A
     BroadcastChannel leader would cover them, at the cost of an election and
     token material crossing a channel (ADR-32, "Rejected").
+54. **PR #11 (measured/simulated GEO pivot) is live in `main` and entirely
+    undocumented** (2026-08-05, session 20 — found during re-planning, merged
+    2026-08-04 outside the session process). What it changed: the runner's
+    execute step is now `execute_measured` — `geo_mode=measured` (Tavily
+    search → grounded OpenRouter answer → audit record) or `simulated`
+    (OpenRouter-only) — with `geo_records` (migration 0011) + per-analysis
+    citation summaries, an interventions engine
+    (`pipeline/interventions.py` + `data/intervention_library.json`), a
+    reliability auditor (`pipeline/reliability.py`), and OpenRouter/Tavily
+    providers. What that breaks in the docs: architecture.md §1–2 and the
+    README describe the old 4-engine panel execute; recorded test counts
+    predate it; `pipeline/execute.py` remains in-tree but unwired; ADR/
+    session/plan records don't exist. **Operational edge: with `DRY_RUN=0`
+    and `geo_mode=measured` (the default), missing `OPEN_ROUTER_KEY` /
+    `TAVILY_API_KEY` fails live analyses — verify prod `deploy/.env`
+    (operator B7).** Repay by: a retroactive ADR + plan card, doc sync
+    against verified behaviour, and a decision on `execute.py` (delete or
+    re-wire as the multi-engine surface — roadmap M4 wants the latter).
+55. **The Site Audit backend (PR #23) is merged but undocumented beyond
+    `site-audit-integration.md`, unhardened, and unreachable** (2026-08-05,
+    session 20; merged 2026-08-03/04 outside the session process). It ships
+    real capability — `seo_projects`/`site_audits`/`site_audit_pages`,
+    authenticated APIs, a Chromium-rendering crawler with its own queue/
+    worker — but: no ADR or plan card names it; its own doc lists unresolved
+    production requirements (egress isolation, non-root Chromium, transfer
+    budgets, retries, quotas, migration gate, deploy verification); the
+    dedicated worker is in no compose file, so nothing runs it in prod; and
+    no frontend reaches its APIs. Deliberately scheduled rather than hidden:
+    productization + hardening is **roadmap M3 (Phase 9)**; the retroactive
+    ADR should land with the first M3 card.

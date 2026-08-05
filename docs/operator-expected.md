@@ -4,7 +4,26 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-03, **session 17 close.** You answered **B6** — yes,
+Last updated: 2026-08-05, **session 20 close — the re-planning session.**
+Docs only; no code, no deploy, nothing flipped. Per your brief, the project
+now has a **platform roadmap** ([roadmap.md](roadmap.md), milestones M1–M9)
+built from your PDF (`docs/Yanki_Geo_Intelligence_Report.pdf`) and a full
+repo + competitive analysis: **Admin Platform first (Phase 7), Backlink
+Intelligence second (Phase 8)**, then parity → differentiators → enterprise.
+New/updated docs: feature-parity, differentiators, admin-panel-plan,
+backlink-intelligence-plan, architecture-target, roadmap, resume-prompt,
+implementation-plan (Phases 7/8), ADR-33. Three things are yours before the
+next build session: **A3** (ratify the roadmap — "proceed" is a complete
+answer), **A4** (backlink data vendor + budget, needed before Phase 8, not
+Phase 7), and **B7** — a real one, please read it: **PR #11 changed the live
+pipeline's provider requirements, and prod may need two new keys in
+`deploy/.env`.** Also for your awareness: PRs #4, #13, #23, #11 merged
+2026-08-03/04 outside the session process; #23 and #11 carried no docs —
+recorded as tech-debt #54/#55 with scheduled repayment, not as blame.
+**A1 and A2 remain open and unchanged**; the checker go-live (P5.11) is
+still yours and still independent of all of this.
+
+Earlier — 2026-08-03, **session 17 close.** You answered **B6** — yes,
 run it — and it is done: the SearXNG instance is standing in production and
 **SERP visibility is ON**. `deploy/.env` on the server gained three lines
 (`COMPOSE_PROFILES=serp`, `SERP_ENABLED=1`, `SERP_BASE_URL=http://searxng:8080`),
@@ -123,8 +142,38 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
     you'd rather it were gated on language, say so and it is one module to
     change. → Objection? ______
 
+- [ ] **A3. Ratify the platform roadmap (added 2026-08-05, session 20).**
+  The milestone order in [roadmap.md](roadmap.md) — M1 Admin Platform → M2
+  Backlink Intelligence → M3–M6 parity → M7 automation → M8 enterprise →
+  M9 advanced AI — implements your re-planning brief. Phase 7 (P7.1,
+  tenancy schema) starts on your word. *Default: proceed as written.*
+  → Answer: ______
+- [ ] **A4. Backlink data vendor + budget (added 2026-08-05, session 20;
+  blocks Phase 8, not Phase 7).** The plan
+  ([backlink-intelligence-plan.md](backlink-intelligence-plan.md)) licenses
+  an index behind an adapter seam rather than crawling one. Needed from you
+  before P8.2: which vendor to contract first (DataForSEO-class wholesale
+  is the plan's default candidate; Majestic and Moz Links API are the named
+  alternatives) and a monthly data budget so quotas and plan gates can be
+  sized against real COGS. ToS review is part of the same decision.
+  → Answer: ______
+
 ## B. Actions only you can do (in priority order)
 
+- [ ] **B7. Verify prod `deploy/.env` against the PR #11 provider change
+  (added 2026-08-05, session 20 — do this first; possibly
+  production-affecting today).** PR #11 (merged 2026-08-04) rewired the
+  pipeline's execute step: the default `GEO_MODE=measured` path calls
+  **Tavily** (search) and **OpenRouter** (LLM), and with `DRY_RUN=0` the
+  OpenRouter client **refuses to construct without `OPEN_ROUTER_KEY`** —
+  meaning live analyses fail if the keys are absent. On the server check
+  `deploy/.env` for `OPEN_ROUTER_KEY` and `TAVILY_API_KEY` (names per
+  `deploy/.env.example`); either paste both keys (then redeploy), or set
+  `GEO_MODE=simulated` (OpenRouter key still required), or park the live
+  pipeline with `DRY_RUN=1` until you decide. A quick live check: submit
+  one analysis on prod and see whether it completes. This session was
+  docs-only and could not verify the server file — that is exactly why
+  this item exists.
 - [x] **B1. Resend sending domain — DONE 2026-07-10** (you verified
   `beyondkaira.com` and supplied a new key + sender). Prod now sends as
   `Yanki <aytek@beyondkaira.com>` (new key in gitignored `deploy/.env`,

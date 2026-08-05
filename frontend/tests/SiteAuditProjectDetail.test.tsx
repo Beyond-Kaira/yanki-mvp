@@ -60,7 +60,7 @@ describe('SiteAuditProjectDetail', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Site health 78%' })).toBeInTheDocument()
     expect(screen.getByText('Pages crawled: 1/10')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Crawled page results' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Crawled pages' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Findings by severity' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Top issues' })).toBeInTheDocument()
     expect(screen.getByText('Canonical link is missing.')).toBeInTheDocument()

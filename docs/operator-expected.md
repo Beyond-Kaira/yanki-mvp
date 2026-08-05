@@ -4,7 +4,33 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-05, **session 21 — first Phase 7 build session.**
+Last updated: 2026-08-05, **session 21 close — the Admin Platform spine and
+the Backlink backend.** Two things are yours, both small: **B8** (merge this
+session's PR — it is what finally lands session 20's planning docs on `main`)
+and **B9** (glance at one Tavily invoice and correct a pinned price). **B7 is
+DONE and you closed it** — details below.
+
+**What shipped, so you know what merging means.** Backend only; no UI card was
+started, per your "skip ui issues". Admin Platform: tenancy
+(organizations → workspaces → projects, every existing user given a personal
+org), RBAC (ten roles, deny-by-default), the audit spine (append-only, with
+credentials redacted before storage), and plans/quotas/credit ledger. Backlink
+Intelligence: the vendor seam, a deterministic $0 mock, five tables, the delta
+engine, Yanki Authority, toxicity + disavow, and gap/outreach analysis — then
+the two joined, so every backlink import reserves quota before calling a
+vendor and settles the real cost after.
+
+**Merging changes almost nothing live**, and the exceptions are worth knowing.
+Backlinks ship dark (`BACKLINKS_ENABLED=0`) with no vendor configured, so that
+whole module is inert. Tenancy adds tables and backfills 3 personal orgs;
+anonymous analyses are untouched. The one *visible* change is a fix: the
+measured pipeline had been recording **$0 for every analysis** since PR #11 —
+the cost was computed and then thrown away — so `CHECKER_DAILY_USD_CAP` could
+never trip. It now records real cost, which means that cap becomes live for
+the first time (relevant to **B3**, the checker go-live). Spend was never
+uncapped, only invisible: the count caps were doing the bounding.
+
+Earlier the same day — **session 21 open.**
 **Good news first: B7 is DONE, and it was you who closed it.** This session
 could verify it, because this checkout sits on the production VPS: the file
 the live stack actually reads (`/home/aytek/deploy/yanki-mvp/deploy/.env`)

@@ -25,11 +25,20 @@ eleven routes under `/api/v1/seo-projects/{id}/backlinks`, registered in
 404 — not a 403 — while the flag is off. A refresh runs synchronously against
 the mock at $0, records its cost in the credit ledger, and is audited.
 
+**B3 is now complete** (session 23): `/backlinks` and `/backlinks/[projectId]`
+ship the inventory, referring domains with their toxicity reasons, anchors,
+new/lost events and outreach opportunities, and the nav entry is `live`. The
+UI carries the module's honesty rules up to the surface — a null score renders
+as `—` and never `0`, an unmeasurable pull is labelled wherever its numbers
+appear, and the switched-off state is a first-class screen rather than an
+error, because off is what production serves.
+
 **Still open:** B2, the first licensed vendor adapter — blocked on operator
-decision **A4** (vendor + budget), so every number is still fixture data; B3's
-**screens**, which is what a customer would actually see (the shell nav still
-reads `soon`) and XLSX alongside the CSV; B4's residual — the liveness
-verifier and scheduled refresh, both needing worker wiring; and B8.
+decision **A4** (vendor + budget), so **every number a customer would see today
+is fixture data, which is the reason the module stays dark in production**;
+XLSX alongside the shipped CSV, and a screen for competitor management (the
+API has it); B4's residual — the liveness verifier and scheduled refresh, both
+needing worker wiring; and B8.
 
 Anything below that reads as unbuilt should be checked against those cards
 before it is built. The `$0` DRY_RUN end-to-end framing still holds: the mock

@@ -116,15 +116,21 @@ export const SHELL_SECTIONS: ShellSection[] = [
     items: [],
   },
   {
-    // The backlink ENGINE shipped (seam, deltas, authority, toxicity, gap
-    // analysis) but has no screens yet, so this is the one honest 'soon' —
-    // the work exists and is on the plan as P8.3.
+    // Now a real destination. The engine shipped in session 21, the API in 23,
+    // and these screens complete P8.3 — so the entry graduates from 'soon' to
+    // 'live' under this file's own rule.
+    //
+    // 'live' is the honest badge even though BACKLINKS_ENABLED is off in
+    // production today: the screens exist and are reachable, and a customer who
+    // opens one is told plainly that no index is connected yet. That is a
+    // different statement from "this feature does not exist", which is what
+    // 'soon' claimed and what a hidden entry would imply.
     id: 'backlinks',
     label: 'Backlinks',
-    href: null,
+    href: '/backlinks',
     flyoutTitle: 'Backlinks',
     items: [
-      { id: 'bl-inventory', label: 'Backlink inventory', href: null, badge: 'soon' },
+      { id: 'bl-inventory', label: 'Backlink inventory', href: '/backlinks', badge: 'live' },
     ],
   },
   {
@@ -171,6 +177,7 @@ export function sectionFromPath(pathname: string): ShellSectionId {
   if (pathname.startsWith('/settings')) return 'settings'
   if (pathname.startsWith('/ai-visibility')) return 'ai-visibility'
   if (pathname.startsWith('/analyses')) return 'ai-visibility'
+  if (pathname.startsWith('/backlinks')) return 'backlinks'
   return 'home'
 }
 
@@ -201,6 +208,7 @@ export function isShellPath(pathname: string): boolean {
     pathname.startsWith('/admin') ||
     pathname.startsWith('/settings') ||
     pathname.startsWith('/site-audit') ||
+    pathname.startsWith('/backlinks') ||
     pathname.startsWith('/ai-visibility') ||
     pathname.startsWith('/search-visibility') ||
     pathname.startsWith('/checker') ||

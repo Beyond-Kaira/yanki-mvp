@@ -6,7 +6,7 @@
 
 *State at generation time (session 22, per implementation-plan §Phase 7): M1 stages **A1–A4 are done** (tenancy backfill, RBAC enforcement, audit spine, Admin Panel v1). **A5–A9 are open** — that is the bulk of P1 below. M2 backlink engine is built in code (P8.1/P8.5/P8.6/P8.7 done) but has no router and no customer surface. Everything M3+ is unstarted.*
 
-*Delta since generation (session 23): the backlink **router landed** — P8.3's API half is done and registered, so "no router" above is stale. The customer-surface half (screens) is still open; see P2 below.*
+*Delta since generation (session 23): **P8.3 shipped whole** — the backlink router, and then the screens. "No router and no customer surface" above is stale on both counts. What is still missing is a licensed index, not code; see P2 below.*
 
 ## How to read this
 
@@ -85,15 +85,15 @@ M1 is large and mostly open. A1–A4 shipped the tenancy spine, RBAC enforcement
 
 ## Priority 2 — the milestone after (M2, Backlink Intelligence)
 
-The M2 engine is built in code (delta, authority, toxicity, gap, disavow — P8.1/P8.4-delta/P8.5/P8.6/P8.7 done) and, since session 23, **is registered in `main.py`** behind `BACKLINKS_ENABLED`. What remains between it and a paying customer is the **UI**: the shell nav still shows Backlinks as `href:null / "soon"`, so the data is reachable by API and by nobody else. M2 is unblocked by M1's quota/credit foundation and by the operator's vendor decision.
+The M2 engine is built, registered in `main.py`, and — since session 23 — has screens: P8.3 is done end to end and the nav entry is `live`. What now stands between it and a paying customer is **a licensed index**: `BACKLINKS_ENABLED` stays off in production because every number the mock produces is fixture data, and shipping fixture data as a customer's backlink profile is the one mistake this module cannot recover from. M2's remaining work is therefore the vendor adapter, not the product surface.
 
 | id | title | track | size | depends-on |
 |---|---|---|---|---|
-| `backlink-inventory-ui-and-api` | ~~Backlink router~~ (**done, session 23**) + inventory / referring-domains / anchors **UI** with filter/sort, and XLSX beside the shipped CSV (P8.3) | feat | M | — |
+| `backlink-inventory-ui-and-api` | ~~Backlink router + inventory / referring-domains / anchors UI with filter/sort~~ (**done, session 23** — P8.3). Residual only: XLSX beside the shipped CSV, and a competitor-management screen for the API that already exists | feat | S | — |
 | `backlink-vendor-adapter-metered-import` | First licensed `BacklinkSource` adapter with cost-tagged, quota-gated import (P8.2) — only the mock adapter exists, so every number is fixture data | feat | M | `enforce-quota-on-spend-paths`, `stripe-subscription-lifecycle`, *backlink vendor A4* |
 | `backlink-monitoring-scheduled-refresh-liveness` | Scheduled refresh + `LinkVerifier` liveness so new/lost/velocity events actually accrue (P8.4 residual) | feat | M | `backlink-vendor-adapter-metered-import`, *minimal scheduler seam* |
 
-**Ordering honesty.** `backlink-inventory-ui-and-api` can be built now against the mock adapter (schema, engine and — since session 23 — the API all exist), so it needs only M1 sequencing, not new code deps. `backlink-monitoring-scheduled-refresh-liveness` needs a scheduler, and the full scheduler is an M4 item (`scheduled-recurring-runs-history`) that comes *after* M2 in the fixed order. The roadmap resolves this: M2 builds a **minimal scheduling seam** if M4 hasn't landed. Treat that seam — not the full M4 scheduler — as the dependency, and design it so M4 subsumes it.
+**Ordering honesty.** `backlink-inventory-ui-and-api` is done, built against the mock adapter as predicted. That makes `backlink-vendor-adapter-metered-import` the true gate on M2: everything else in the milestone now works and is simply not switched on. `backlink-monitoring-scheduled-refresh-liveness` needs a scheduler, and the full scheduler is an M4 item (`scheduled-recurring-runs-history`) that comes *after* M2 in the fixed order. The roadmap resolves this: M2 builds a **minimal scheduling seam** if M4 hasn't landed. Treat that seam — not the full M4 scheduler — as the dependency, and design it so M4 subsumes it.
 
 ---
 

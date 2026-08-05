@@ -2386,8 +2386,30 @@ vendor + budget decision (**A4**). Engine done and now reachable over HTTP
   cost tagging into the credit ledger; quota-gated initial import. Status:
   todo (blocked: A4).
 - **P8.3 — Inventory UI: links / referring domains / anchors** (M):
-  filtering, sorting, CSV/XLSX export. **Status: PARTIAL** (2026-08-05,
-  session 23) — the **API half is done**: eleven routes under
+  filtering, sorting, CSV/XLSX export. **Status: DONE** (2026-08-06, session
+  23) — screens shipped on top of the API half. `/backlinks` picks a project
+  (deliberately no second create-project flow — two front doors to one entity
+  is how a domain ends up with a split profile) and `/backlinks/[projectId]`
+  carries five tabs: Overview (authority decomposed into its published terms
+  plus its caveats, velocity, anchors, toxicity bands), Backlinks
+  (server-side filter/sort/page), Referring domains (every band rendered with
+  its reasons, never behind a click), New & lost, and Opportunities (gap +
+  unlinked mentions, each labelled with where it came from). The nav entry
+  graduates from `soon` to `live`.
+  Three things the UI is responsible for that the API cannot enforce: a
+  **null score renders as an em dash**, never a confident `0`; an
+  **unmeasurable pull is labelled as such** wherever its numbers appear, so a
+  flat chart is not read as stability; and the **switched-off state is
+  first-class**, since `BACKLINKS_ENABLED=0` is what production actually
+  serves — the page tells the customer no index is connected rather than
+  showing an error. Off is told apart from missing by asking whether the SEO
+  project itself loads, not by matching on the 404's prose.
+  Exports are authorized fetches rather than links: the access token is
+  bearer-only and held in memory, so an `<a href>` would 401 as a page
+  navigation. **Residual:** XLSX (CSV ships), and competitor management still
+  has no screen — the API has it. Frontend suite 281 → **305**.
+  The earlier partial status, for the record — the **API half**: eleven routes
+  under
   `/api/v1/seo-projects/{id}/backlinks` (summary, inventory,
   referring-domains, anchors, events, opportunities, competitors CRUD,
   refresh, CSV + disavow export), registered in `app/api/main.py` and dark
@@ -2398,9 +2420,8 @@ vendor + budget decision (**A4**). Engine done and now reachable over HTTP
   because `run_import` deliberately stops at the rollups. Reading is
   `backlink:view`, refreshing is `backlink:refresh` (it spends), exporting is
   `export:data`; quota refusal is 429 and credit refusal 402, so a UI can tell
-  them apart. **Not done:** the screens — the shell nav still shows Backlinks
-  as `href:null / "soon"` — and XLSX (CSV only, capped at the list ceiling;
-  a full-profile dump belongs in an export artifact, plan §4).
+  them apart. CSV is capped at the list ceiling — a full-profile dump belongs
+  in an export artifact (plan §4), not a synchronous request.
 - **P8.4 — Monitoring: scheduled refresh, new/lost deltas, liveness
   verification** (M/L). **Status: PARTIAL** (2026-08-05, session 21) — the
   delta engine is done and is the milestone's load-bearing piece:

@@ -613,7 +613,32 @@ def merge_measured_record(
         "error": False,
         "schema_version": SCHEMA_VERSION,
         "owned_domains": owned_domains,
+        # What this one audit cost, summed from the calls that produced it. Each
+        # stage already knew its own price and, until session 21, every one of
+        # them was thrown away here — so `responses.cost_usd` was 0 on the live
+        # default path and the daily USD cap that sums that column could never
+        # trip. The search leg is added by the caller, which is the only place
+        # that knows whether a search actually happened.
+        "_cost_usd": _call_cost(grounded_payload) + _call_cost(audit_payload),
     }
+
+
+def _call_cost(payload: dict[str, Any] | None) -> float:
+    """The dollar cost a single provider call reported, defaulting to 0.
+
+    Defensive by design: an error payload from a failed stage carries no
+    ``_cost_usd`` key, and a stage that never ran carries nothing at all.
+    Neither should make the sum explode — but note a failed call may still have
+    been billed, which is why the error paths record what they spent rather than
+    resetting to zero.
+    """
+
+    if not payload:
+        return 0.0
+    try:
+        return float(payload.get("_cost_usd") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def mock_grounded_and_audit(
@@ -743,6 +768,11 @@ def run_measured_audit(
         search_payload = search.search(prompt)
 
     search_payload = annotate_brands_in_results(search_payload, known)
+    # The search is billed the moment it returns, whatever happens downstream —
+    # so it is carried separately and added to every exit path below, including
+    # the error ones. A failed audit that already paid for a search must not
+    # report $0.
+    search_cost = _call_cost(search_payload)
 
     if dry_run or llm is None:
         return mock_grounded_and_audit(
@@ -777,6 +807,7 @@ def run_measured_audit(
             "mention_context": "not_mentioned",
             "citation_metrics": deepcopy(DEFAULT_CITATION_METRICS),
             "sentiment": "neutral",
+            "_cost_usd": search_cost + _call_cost(grounded_payload),
         }
 
     grounded_payload = normalize_grounded_citations(
@@ -827,9 +858,12 @@ def run_measured_audit(
             "sentiment": "neutral",
             "schema_version": SCHEMA_VERSION,
             "generated_at": datetime.now(UTC).isoformat(),
+            "_cost_usd": (
+                search_cost + _call_cost(grounded_payload) + _call_cost(audit_payload)
+            ),
         }
 
-    return merge_measured_record(
+    record = merge_measured_record(
         brand,
         prompt,
         prompt_group,
@@ -842,3 +876,5 @@ def run_measured_audit(
         owned_domains=owned_domains,
         sector=sector,
     )
+    record["_cost_usd"] = _call_cost(record) + search_cost
+    return record

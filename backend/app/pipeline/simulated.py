@@ -524,6 +524,8 @@ def mock_simulated_record(
         "sentiment": "positive",
         "content_improvement_opportunities": [],
         "model": "mock",
+        # Explicit, so the DRY_RUN suite's "$0" assertion is a real assertion.
+        "_cost_usd": 0.0,
     }
     return normalize_record(record, owned_domains=owned_domains, sector=sector)
 
@@ -576,6 +578,10 @@ def run_simulated_audit(
         parsed["prompt_group"] = prompt_group
         parsed["model"] = getattr(llm, "model", "")
         parsed["response_format"] = response_format
+        # One LLM call, one price, recorded on the record so the caller can
+        # persist it into ``responses.cost_usd``. Before session 21 the
+        # simulated path reported no cost at all.
+        parsed["_cost_usd"] = float(getattr(result, "cost_usd", 0) or 0)
         return parsed
     except Exception as exc:  # noqa: BLE001
         return {
@@ -596,4 +602,7 @@ def run_simulated_audit(
             "schema_version": SCHEMA_VERSION,
             "generated_at": datetime.now(UTC).isoformat(),
             "owned_domains": owned_domains,
+            # A call that raised may still have been billed upstream, but nothing
+            # here can know that — so this is an honest 0, not a claim of $0.
+            "_cost_usd": 0.0,
         }

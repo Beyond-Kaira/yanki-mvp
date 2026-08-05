@@ -10,6 +10,15 @@ import httpx
 
 TAVILY_URL = "https://api.tavily.com/search"
 
+# Pinned per-search price, in the same style as the LLM adapters' token prices.
+# **UNVERIFIED** — Tavily bills in API credits and the dollar rate depends on the
+# plan, which no agent here can read. It is deliberately an over-estimate rather
+# than a zero: a cost control that guesses high fails safe, and a search that
+# reports $0 is indistinguishable from one that never happened. The operator
+# corrects it with ``TAVILY_SEARCH_USD`` in ``deploy/.env`` once the first
+# invoice lands (tech-debt #58).
+DEFAULT_SEARCH_PRICE_USD = 0.008
+
 
 def normalize_domain(domain_or_url: str) -> str:
     value = (domain_or_url or "").lower().strip()
@@ -30,8 +39,9 @@ def owned_domains_from_url(url: str) -> list[str]:
 
 
 class TavilyClient:
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, search_price_usd: float = DEFAULT_SEARCH_PRICE_USD) -> None:
         self._api_key = (api_key or "").strip()
+        self._search_price_usd = float(search_price_usd)
         if not self._api_key:
             raise ValueError("TAVILY_API_KEY is required when DRY_RUN=0")
 
@@ -70,6 +80,9 @@ class TavilyClient:
             "search_mode": "tavily_live",
             "search_provider": "tavily",
             "searched_at": datetime.now(UTC).isoformat(),
+            # Every paid call reports what it cost, on the call itself. The
+            # measured audit sums these into ``responses.cost_usd``.
+            "_cost_usd": self._search_price_usd,
         }
 
 
@@ -112,4 +125,8 @@ def mock_search(query: str, *, brand: str = "Yanki Demo Co") -> dict[str, Any]:
         "search_mode": "mock",
         "search_provider": "mock",
         "searched_at": datetime.now(UTC).isoformat(),
+        # The mock is free, and says so explicitly rather than by omission — the
+        # DRY_RUN suite asserts a $0 total, which only means something if the
+        # zero was reported.
+        "_cost_usd": 0.0,
     }

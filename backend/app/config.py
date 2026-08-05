@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     openrouter_model: str = "openai/gpt-4o-mini"
     # measured = Tavily + grounded answer; simulated = OpenRouter-only SYSTEM_PROMPT
     geo_mode: str = "measured"
+    # Dollars per Tavily search, counted into responses.cost_usd. Tavily bills in
+    # plan-dependent API credits that no code here can read, so this is a pinned
+    # estimate deliberately set high — an over-estimate makes a cost cap fail
+    # safe. Correct it in deploy/.env once a real invoice exists (tech-debt #58).
+    tavily_search_usd: float = 0.008
 
     # Pipeline behaviour
     dry_run: bool = True

@@ -158,6 +158,28 @@ def provision_personal_org(session: Session, user: User) -> Organization:
         .limit(1)
     )
     if existing is not None:
+        # The org is there but the membership may not be — a half-failed signup,
+        # or a row removed by hand. Restore it, or the owner is locked out of
+        # their own organization with no way back in.
+        #
+        # Deliberately checks for a membership of ANY status: a *deactivated*
+        # member must stay deactivated. Healing a missing row and reviving a
+        # revoked one look similar and are opposites.
+        membership = session.scalar(
+            select(Membership).where(
+                Membership.org_id == existing.id, Membership.user_id == user.id
+            )
+        )
+        if membership is None:
+            session.add(
+                Membership(
+                    org_id=existing.id,
+                    user_id=user.id,
+                    role=ROLE_OWNER,
+                    status="active",
+                )
+            )
+            session.flush()
         return existing
 
     local_part = (user.email or "").split("@", 1)[0] or "account"

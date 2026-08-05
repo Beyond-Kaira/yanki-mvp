@@ -111,6 +111,16 @@ export function groupAuditIssues(pages: SiteAuditPage[]): GroupedAuditIssue[] {
   )
 }
 
+export function formatDelta(
+  current: number | null | undefined,
+  previous: number | null | undefined,
+): string | null {
+  if (current == null || previous == null) return null
+  const diff = current - previous
+  if (diff === 0) return 'no changes'
+  return diff > 0 ? `+${diff}` : `${diff}`
+}
+
 export function getPageStatusLabel(status: PageHealthStatus): string {
   const labels: Record<PageHealthStatus, string> = {
     healthy: 'Healthy',

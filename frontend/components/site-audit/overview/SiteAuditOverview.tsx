@@ -1,5 +1,5 @@
-import type { SiteAuditDetail } from '@/lib/contracts'
-import { groupAuditIssues } from '@/components/site-audit/siteAuditUtils'
+import type { SeoProjectDetail, SiteAuditDetail } from '@/lib/contracts'
+import { formatDelta, groupAuditIssues } from '@/components/site-audit/siteAuditUtils'
 import CrawledPagesCard from './CrawledPagesCard'
 import IssueTotalsCard from './IssueTotalsCard'
 import SiteHealthCard from './SiteHealthCard'
@@ -7,12 +7,21 @@ import TopIssuesCard from './TopIssuesCard'
 
 export default function SiteAuditOverview({
   audit,
+  project,
   onViewAllIssues,
 }: {
   audit: SiteAuditDetail
+  project: SeoProjectDetail
   onViewAllIssues: () => void
 }) {
   const groupedIssues = groupAuditIssues(audit.pages)
+  const currentIndex = project.audits.findIndex((run) => run.id === audit.id)
+  const previousAudit =
+    currentIndex >= 0
+      ? project.audits.slice(currentIndex + 1).find((run) => run.status === 'done')
+      : undefined
+  const healthDelta = formatDelta(audit.health_score, previousAudit?.health_score)
+  const pagesDelta = formatDelta(audit.pages.length, previousAudit?.pages_crawled)
 
   return (
     <div className="space-y-5">
@@ -55,8 +64,8 @@ export default function SiteAuditOverview({
         aria-label="Audit health and crawled pages"
         className="grid gap-5 lg:grid-cols-2"
       >
-        <SiteHealthCard score={audit.health_score} />
-        <CrawledPagesCard pages={audit.pages} />
+        <SiteHealthCard score={audit.health_score} delta={healthDelta} />
+        <CrawledPagesCard pages={audit.pages} delta={pagesDelta} />
       </section>
 
       <section

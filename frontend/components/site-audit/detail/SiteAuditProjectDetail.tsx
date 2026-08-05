@@ -69,7 +69,11 @@ export default function SiteAuditProjectDetail() {
             className="pt-5"
           >
             {tab === 'overview' ? (
-              <SiteAuditOverview audit={audit} onViewAllIssues={() => setTab('issues')} />
+              <SiteAuditOverview
+                audit={audit}
+                project={project}
+                onViewAllIssues={() => setTab('issues')}
+              />
             ) : null}
             {tab === 'issues' ? <SiteAuditIssuesPanel pages={audit.pages} /> : null}
             {tab === 'pages' ? (

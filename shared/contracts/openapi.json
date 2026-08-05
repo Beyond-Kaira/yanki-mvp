@@ -428,6 +428,40 @@
         "title": "AnalysisOut",
         "type": "object"
       },
+      "AnchorDistributionOut": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "money_anchor_share": {
+            "title": "Money Anchor Share",
+            "type": "number"
+          },
+          "shares": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Shares",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "counts",
+          "shares",
+          "money_anchor_share"
+        ],
+        "title": "AnchorDistributionOut",
+        "type": "object"
+      },
       "AuditEventListOut": {
         "description": "A page of audit events, plus what the filter UI needs to render itself.",
         "properties": {
@@ -686,6 +720,439 @@
         "title": "AuditIntegrityOut",
         "type": "object"
       },
+      "BacklinkImportOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "coverage_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lost_in_period": {
+            "title": "Lost In Period",
+            "type": "integer"
+          },
+          "measurable": {
+            "title": "Measurable",
+            "type": "boolean"
+          },
+          "new_in_period": {
+            "title": "New In Period",
+            "type": "integer"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provenance"
+          },
+          "reported_total_backlinks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Total Backlinks"
+          },
+          "reported_total_referring_domains": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Total Referring Domains"
+          },
+          "rows_ingested": {
+            "title": "Rows Ingested",
+            "type": "integer"
+          },
+          "snapshot_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger": {
+            "title": "Trigger",
+            "type": "string"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "vendor",
+          "trigger",
+          "measurable",
+          "rows_ingested",
+          "new_in_period",
+          "lost_in_period",
+          "cost_usd"
+        ],
+        "title": "BacklinkImportOut",
+        "type": "object"
+      },
+      "BacklinkOut": {
+        "properties": {
+          "anchor": {
+            "title": "Anchor",
+            "type": "string"
+          },
+          "anchor_class": {
+            "title": "Anchor Class",
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_follow": {
+            "title": "Is Follow",
+            "type": "boolean"
+          },
+          "is_image_link": {
+            "title": "Is Image Link",
+            "type": "boolean"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "lost_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lost At"
+          },
+          "lost_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lost Reason"
+          },
+          "source_domain": {
+            "title": "Source Domain",
+            "type": "string"
+          },
+          "source_domain_authority": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Domain Authority"
+          },
+          "source_page_authority": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page Authority"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_url": {
+            "title": "Target Url",
+            "type": "string"
+          },
+          "tld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tld"
+          },
+          "toxicity_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toxicity Band"
+          },
+          "toxicity_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toxicity Score"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "verify_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verify Verdict"
+          }
+        },
+        "required": [
+          "id",
+          "source_url",
+          "source_domain",
+          "target_url",
+          "anchor",
+          "anchor_class",
+          "is_follow",
+          "is_image_link",
+          "status",
+          "first_seen_at",
+          "last_seen_at",
+          "vendor"
+        ],
+        "title": "BacklinkOut",
+        "type": "object"
+      },
+      "BacklinkPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BacklinkOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "items"
+        ],
+        "title": "BacklinkPageOut",
+        "type": "object"
+      },
+      "BacklinkSummaryOut": {
+        "properties": {
+          "anchors": {
+            "$ref": "#/components/schemas/AnchorDistributionOut"
+          },
+          "authority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority"
+          },
+          "authority_components": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority Components"
+          },
+          "authority_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority Version"
+          },
+          "backlinks": {
+            "title": "Backlinks",
+            "type": "integer"
+          },
+          "follow_links": {
+            "title": "Follow Links",
+            "type": "integer"
+          },
+          "last_import": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacklinkImportOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lost_links": {
+            "title": "Lost Links",
+            "type": "integer"
+          },
+          "referring_domains": {
+            "title": "Referring Domains",
+            "type": "integer"
+          },
+          "subject_domain": {
+            "title": "Subject Domain",
+            "type": "string"
+          },
+          "toxicity": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Toxicity",
+            "type": "object"
+          },
+          "velocity": {
+            "items": {
+              "$ref": "#/components/schemas/VelocityPointOut"
+            },
+            "title": "Velocity",
+            "type": "array"
+          }
+        },
+        "required": [
+          "subject_domain",
+          "backlinks",
+          "follow_links",
+          "referring_domains",
+          "lost_links",
+          "anchors",
+          "toxicity"
+        ],
+        "title": "BacklinkSummaryOut",
+        "type": "object"
+      },
       "CheckerLeadRequest": {
         "properties": {
           "email": {
@@ -766,6 +1233,47 @@
           "mentions"
         ],
         "title": "CompetitorMention",
+        "type": "object"
+      },
+      "CompetitorOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "competitor_domain": {
+            "title": "Competitor Domain",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "tracked_since": {
+            "format": "date-time",
+            "title": "Tracked Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "competitor_domain",
+          "active",
+          "tracked_since"
+        ],
+        "title": "CompetitorOut",
         "type": "object"
       },
       "CreateAnalysisRequest": {
@@ -926,6 +1434,48 @@
           "total"
         ],
         "title": "EnginePresence",
+        "type": "object"
+      },
+      "GapRowOut": {
+        "properties": {
+          "competitor_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Competitor Domains",
+            "type": "array"
+          },
+          "domain_authority": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Authority"
+          },
+          "linking_competitors": {
+            "title": "Linking Competitors",
+            "type": "integer"
+          },
+          "referring_domain": {
+            "title": "Referring Domain",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "referring_domain",
+          "linking_competitors",
+          "competitor_domains",
+          "score"
+        ],
+        "title": "GapRowOut",
         "type": "object"
       },
       "GeoRecordOut": {
@@ -1354,6 +1904,121 @@
         "title": "InvitationPreviewOut",
         "type": "object"
       },
+      "LinkEventOut": {
+        "properties": {
+          "authority_at_event": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority At Event"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "detected_by": {
+            "title": "Detected By",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source_domain": {
+            "title": "Source Domain",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "target_url": {
+            "title": "Target Url",
+            "type": "string"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "detected_by",
+          "verified",
+          "source_url",
+          "source_domain",
+          "target_url",
+          "occurred_at"
+        ],
+        "title": "LinkEventOut",
+        "type": "object"
+      },
+      "LinkEventPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LinkEventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "items"
+        ],
+        "title": "LinkEventPageOut",
+        "type": "object"
+      },
       "LoginRequest": {
         "description": "Credentials required to authenticate a user.",
         "properties": {
@@ -1397,6 +2062,38 @@
           "access_token"
         ],
         "title": "LoginResponse",
+        "type": "object"
+      },
+      "OpportunitiesOut": {
+        "properties": {
+          "link_gap": {
+            "items": {
+              "$ref": "#/components/schemas/GapRowOut"
+            },
+            "title": "Link Gap",
+            "type": "array"
+          },
+          "provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Provenance",
+            "type": "object"
+          },
+          "unlinked_mentions": {
+            "items": {
+              "$ref": "#/components/schemas/UnlinkedMentionOut"
+            },
+            "title": "Unlinked Mentions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "link_gap",
+          "unlinked_mentions",
+          "provenance"
+        ],
+        "title": "OpportunitiesOut",
         "type": "object"
       },
       "OrganizationOut": {
@@ -1456,6 +2153,216 @@
           "category"
         ],
         "title": "PromptOut",
+        "type": "object"
+      },
+      "ReferringDomainOut": {
+        "properties": {
+          "domain_authority": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Authority"
+          },
+          "first_linked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Linked At"
+          },
+          "follow_links": {
+            "title": "Follow Links",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_linked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Linked At"
+          },
+          "links_count": {
+            "title": "Links Count",
+            "type": "integer"
+          },
+          "referring_domain": {
+            "title": "Referring Domain",
+            "type": "string"
+          },
+          "toxicity_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toxicity Band"
+          },
+          "toxicity_reasons": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toxicity Reasons"
+          },
+          "toxicity_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toxicity Score"
+          },
+          "toxicity_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toxicity Version"
+          }
+        },
+        "required": [
+          "id",
+          "referring_domain",
+          "links_count",
+          "follow_links"
+        ],
+        "title": "ReferringDomainOut",
+        "type": "object"
+      },
+      "ReferringDomainPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReferringDomainOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "items"
+        ],
+        "title": "ReferringDomainPageOut",
+        "type": "object"
+      },
+      "RefreshOut": {
+        "properties": {
+          "changed_links": {
+            "title": "Changed Links",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "coverage_status": {
+            "title": "Coverage Status",
+            "type": "string"
+          },
+          "import_id": {
+            "format": "uuid",
+            "title": "Import Id",
+            "type": "string"
+          },
+          "lost_links": {
+            "title": "Lost Links",
+            "type": "integer"
+          },
+          "measurable": {
+            "title": "Measurable",
+            "type": "boolean"
+          },
+          "new_links": {
+            "title": "New Links",
+            "type": "integer"
+          },
+          "regained_links": {
+            "title": "Regained Links",
+            "type": "integer"
+          },
+          "rows_ingested": {
+            "title": "Rows Ingested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "import_id",
+          "measurable",
+          "coverage_status",
+          "rows_ingested",
+          "new_links",
+          "lost_links",
+          "regained_links",
+          "changed_links",
+          "cost_usd"
+        ],
+        "title": "RefreshOut",
+        "type": "object"
+      },
+      "RefreshRequest": {
+        "properties": {
+          "trigger": {
+            "default": "manual",
+            "enum": [
+              "manual",
+              "scheduled"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "title": "RefreshRequest",
         "type": "object"
       },
       "RefreshResponse": {
@@ -2660,6 +3567,61 @@
         "title": "SiteAuditSummaryOut",
         "type": "object"
       },
+      "TrackCompetitorRequest": {
+        "properties": {
+          "domain": {
+            "maxLength": 253,
+            "minLength": 1,
+            "title": "Domain",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "title": "TrackCompetitorRequest",
+        "type": "object"
+      },
+      "UnlinkedMentionOut": {
+        "properties": {
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "seen_via": {
+            "title": "Seen Via",
+            "type": "string"
+          },
+          "source_domain": {
+            "title": "Source Domain",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_domain",
+          "source_url",
+          "evidence",
+          "seen_via"
+        ],
+        "title": "UnlinkedMentionOut",
+        "type": "object"
+      },
       "UserOut": {
         "description": "Public user fields returned by authentication endpoints.",
         "properties": {
@@ -2724,6 +3686,62 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VelocityPointOut": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "authority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority"
+          },
+          "lost": {
+            "title": "Lost",
+            "type": "integer"
+          },
+          "measurable": {
+            "title": "Measurable",
+            "type": "boolean"
+          },
+          "new": {
+            "title": "New",
+            "type": "integer"
+          },
+          "reported_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Total"
+          }
+        },
+        "required": [
+          "new",
+          "lost",
+          "measurable"
+        ],
+        "title": "VelocityPointOut",
         "type": "object"
       },
       "WaitlistRequest": {
@@ -4592,6 +5610,1081 @@
         "summary": "Read Site Audit",
         "tags": [
           "seo-projects"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks": {
+      "get": {
+        "operationId": "read_backlinks_api_v1_seo_projects__project_id__backlinks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "anchor_class",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "exact",
+                    "partial",
+                    "brand",
+                    "naked",
+                    "generic"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor Class"
+            }
+          },
+          {
+            "in": "query",
+            "name": "follow",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Follow"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_domain",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Domain"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_authority",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Authority"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "authority",
+              "enum": [
+                "authority",
+                "first_seen",
+                "last_seen",
+                "toxicity",
+                "domain"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacklinkPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Backlinks",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/anchors": {
+      "get": {
+        "operationId": "read_anchors_api_v1_seo_projects__project_id__backlinks_anchors_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnchorDistributionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Anchors",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/competitors": {
+      "get": {
+        "operationId": "read_competitors_api_v1_seo_projects__project_id__backlinks_competitors_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CompetitorOut"
+                  },
+                  "title": "Response Read Competitors Api V1 Seo Projects  Project Id  Backlinks Competitors Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Competitors",
+        "tags": [
+          "backlinks"
+        ]
+      },
+      "post": {
+        "description": "Track a competitor domain, which is what makes gap analysis have an answer.\n\n``backlink:refresh`` rather than ``project:update``: adding a competitor is\nwhat causes their profile to be pulled, so it is a spending decision.",
+        "operationId": "track_competitor_api_v1_seo_projects__project_id__backlinks_competitors_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackCompetitorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetitorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Track Competitor",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/competitors/{competitor_id}": {
+      "delete": {
+        "operationId": "untrack_competitor_api_v1_seo_projects__project_id__backlinks_competitors__competitor_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "competitor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Competitor Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Untrack Competitor",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/disavow.txt": {
+      "get": {
+        "description": "A Google-format disavow file, reasons included as comments.\n\nAdvisory, and worded that way in the file's own preamble: submitting a\ndisavow is irreversible in effect, and nothing here disavows anything on a\ncustomer's behalf.",
+        "operationId": "export_disavow_api_v1_seo_projects__project_id__backlinks_disavow_txt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minimum_band",
+            "required": false,
+            "schema": {
+              "default": "high",
+              "pattern": "^(high|medium)$",
+              "title": "Minimum Band",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Disavow",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/events": {
+      "get": {
+        "operationId": "read_events_api_v1_seo_projects__project_id__backlinks_events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "new",
+                    "lost",
+                    "regained",
+                    "changed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkEventPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Events",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/export.csv": {
+      "get": {
+        "description": "The inventory as CSV, capped at the same page ceiling as the list view.\n\nCapped deliberately: a full-profile dump belongs in an export artifact\n(plan \u00a74), not in a synchronous request that holds a database connection\nopen for a million rows.",
+        "operationId": "export_backlinks_csv_api_v1_seo_projects__project_id__backlinks_export_csv_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Backlinks Csv",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/opportunities": {
+      "get": {
+        "operationId": "read_opportunities_api_v1_seo_projects__project_id__backlinks_opportunities_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunitiesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Opportunities",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/referring-domains": {
+      "get": {
+        "operationId": "read_referring_domains_api_v1_seo_projects__project_id__backlinks_referring_domains_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "band",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Band"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "authority",
+              "enum": [
+                "authority",
+                "links",
+                "toxicity",
+                "domain"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferringDomainPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Referring Domains",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/refresh": {
+      "post": {
+        "description": "Pull one profile from the configured index and diff it against what we believed.\n\nSynchronous while P8.4's worker wiring is outstanding \u2014 see\n``services.backlinks.refresh``. A vendor that is unreachable does not fail\nthis call: the importer records a non-measurable import, mints no losses,\nand the response says so through ``coverage_status``.",
+        "operationId": "refresh_backlinks_api_v1_seo_projects__project_id__backlinks_refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RefreshRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Refresh Backlinks",
+        "tags": [
+          "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/backlinks/summary": {
+      "get": {
+        "operationId": "read_summary_api_v1_seo_projects__project_id__backlinks_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacklinkSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Summary",
+        "tags": [
+          "backlinks"
         ]
       }
     },

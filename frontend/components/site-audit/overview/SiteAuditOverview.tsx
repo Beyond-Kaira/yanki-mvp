@@ -53,7 +53,7 @@ export default function SiteAuditOverview({
 
       <section
         aria-label="Audit health and crawled pages"
-        className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]"
+        className="grid gap-5 lg:grid-cols-2"
       >
         <SiteHealthCard score={audit.health_score} />
         <CrawledPagesCard pages={audit.pages} />

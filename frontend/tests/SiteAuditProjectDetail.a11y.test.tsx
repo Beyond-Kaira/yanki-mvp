@@ -37,7 +37,7 @@ describe('SiteAuditProjectDetail accessibility', () => {
 
   it('has no axe violations in the project overview', async () => {
     const { container } = render(<SiteAuditProjectDetail />)
-    await screen.findByRole('heading', { name: 'Example', level: 1 })
+    await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 })
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 })

@@ -1,18 +1,16 @@
 import Link from 'next/link'
 import type { SeoProjectDetail, SiteAuditDetail } from '@/lib/contracts'
 
-const STATUS_LABEL: Record<SiteAuditDetail['status'], string> = {
-  queued: 'Queued',
-  running: 'Running',
-  done: 'Complete',
-  failed: 'Failed',
-}
+const UPDATED_FORMATTER = new Intl.DateTimeFormat('en', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+})
 
-const STATUS_TONE: Record<SiteAuditDetail['status'], string> = {
-  queued: 'bg-surface-muted text-surface-subtle',
-  running: 'bg-primary-soft text-primary-strong',
-  done: 'bg-success-soft text-success-strong',
-  failed: 'bg-danger-soft text-danger-strong',
+function formatUpdatedAt(value: string): string | null {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : UPDATED_FORMATTER.format(date)
 }
 
 export default function SiteAuditProjectHeader({
@@ -23,48 +21,88 @@ export default function SiteAuditProjectHeader({
   audit: SiteAuditDetail | null
 }) {
   return (
-    <div>
+    <header className="space-y-1">
       <Link
         href="/site-audit"
-        className="inline-flex min-h-[36px] items-center rounded-full bg-primary-soft px-3 text-xs font-medium text-primary-strong transition-colors hover:bg-surface-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="inline-flex min-h-[36px] items-center text-xs font-medium text-primary-strong transition-colors hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         ← All SEO projects
       </Link>
-      <header className="mt-3 rounded-xl border border-surface-border bg-surface p-5 shadow-sm sm:p-6">
-        <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-primary-strong">
-          Site Audit project
-        </p>
-        <h1 className="mt-1.5 break-words text-3xl font-semibold tracking-tight text-surface-foreground">
-          {project.name}
-        </h1>
-        <p className="mt-1.5 break-all text-sm text-surface-subtle">
-          {project.domain}
-        </p>
-        {audit ? <AuditRunMeta audit={audit} /> : null}
-      </header>
-    </div>
+      <h1 className="break-words text-3xl font-semibold tracking-tight text-surface-foreground">
+        <span className="font-medium text-surface-subtle">Site Audit: </span>
+        {project.name}
+      </h1>
+      {audit ? (
+        <AuditRunMeta project={project} audit={audit} />
+      ) : (
+        <p className="break-all text-sm text-surface-subtle">{project.domain}</p>
+      )}
+    </header>
   )
 }
 
-function AuditRunMeta({ audit }: { audit: SiteAuditDetail }) {
-  const profile = audit.profile_id === 'site_audit_mobile' ? 'Mobile' : 'Desktop'
+function MobileIcon() {
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-surface-subtle">
-      <span className="rounded-full border border-surface-border bg-surface-muted px-3 py-1.5">
-        {profile} crawler
-      </span>
-      <span className="rounded-full border border-surface-border bg-surface-muted px-3 py-1.5">
-        JavaScript {audit.js_rendering ? 'enabled' : 'disabled'}
-      </span>
-      <span className="rounded-full border border-surface-border bg-surface-muted px-3 py-1.5">
-        {audit.pages_crawled} unique page {audit.pages_crawled === 1 ? 'result' : 'results'} · limit{' '}
-        {audit.page_limit}
-      </span>
-      <span className={`rounded-full px-3 py-1.5 font-medium ${STATUS_TONE[audit.status]}`}>
-        {audit.status === 'running'
-          ? `${audit.progress}% complete`
-          : STATUS_LABEL[audit.status]}
-      </span>
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-3.5 w-3.5 flex-none"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <line x1="11" y1="18" x2="13" y2="18" />
+    </svg>
+  )
+}
+
+function AuditRunMeta({
+  project,
+  audit,
+}: {
+  project: SeoProjectDetail
+  audit: SiteAuditDetail
+}) {
+  const isMobile = audit.profile_id === 'site_audit_mobile'
+  const updatedAt = formatUpdatedAt(audit.updated_at)
+
+  const items: { key: string; icon?: React.ReactNode; label: string }[] = [
+    { key: 'domain', label: project.domain },
+  ]
+  if (updatedAt) items.push({ key: 'updated', label: `Updated: ${updatedAt}` })
+  items.push({
+    key: 'profile',
+    icon: isMobile ? <MobileIcon /> : undefined,
+    label: isMobile ? 'Mobile' : 'Desktop',
+  })
+  items.push({
+    key: 'js-rendering',
+    label: `JS rendering: ${audit.js_rendering ? 'Enabled' : 'Disabled'}`,
+  })
+  items.push({
+    key: 'pages-crawled',
+    label: `Pages crawled: ${audit.pages_crawled}/${audit.page_limit}`,
+  })
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-surface-subtle">
+      {items.map((item, index) => (
+        <span
+          key={item.key}
+          className={`flex items-center gap-1.5 ${item.key === 'domain' ? 'break-all' : ''}`}
+        >
+          {index > 0 ? (
+            <span aria-hidden="true" className="text-surface-border">
+              ·
+            </span>
+          ) : null}
+          {item.icon}
+          {item.label}
+        </span>
+      ))}
     </div>
   )
 }

@@ -19,7 +19,7 @@ export default function SiteAuditTabs({
   return (
     <nav
       aria-label="Site Audit result sections"
-      className="mt-5 overflow-x-auto border-b border-surface-border"
+      className="mt-4 overflow-x-auto border-b border-surface-border"
     >
       <div role="tablist" className="flex min-w-max gap-1">
         {tabs.map((tab) => (
@@ -50,7 +50,7 @@ export default function SiteAuditTabs({
               onChange(nextTab)
               document.getElementById(`site-audit-tab-${nextTab}`)?.focus()
             }}
-            className={`min-h-[44px] border-b-2 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+            className={`min-h-[44px] border-b-2 px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               activeTab === tab
                 ? 'border-primary text-primary-strong'
                 : 'border-transparent text-surface-subtle hover:text-surface-foreground'

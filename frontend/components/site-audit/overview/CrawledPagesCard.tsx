@@ -17,7 +17,7 @@ export default function CrawledPagesCard({ pages }: { pages: SiteAuditPage[] }) 
     <article className="rounded-xl border border-surface-border bg-surface p-6 shadow-sm">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-sm font-semibold text-surface-foreground">
+          <h2 className="text-base font-semibold text-surface-foreground">
             Crawled page results
           </h2>
           <p className="mt-1 text-xs text-surface-subtle">
@@ -30,7 +30,7 @@ export default function CrawledPagesCard({ pages }: { pages: SiteAuditPage[] }) 
       </div>
 
       <div
-        className="mt-7 flex h-3 overflow-hidden rounded-full bg-surface-muted"
+        className="mt-5 flex h-3 overflow-hidden rounded-full bg-surface-muted"
         role="img"
         aria-label={SEGMENTS.map(
           (segment) => `${segment.label}: ${counts[segment.key]}`,
@@ -46,7 +46,7 @@ export default function CrawledPagesCard({ pages }: { pages: SiteAuditPage[] }) 
         ))}
       </div>
 
-      <ul className="mt-6 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+      <ul className="mt-5 space-y-3">
         {SEGMENTS.map((segment) => (
           <li key={segment.key} className="flex items-center gap-2 text-sm">
             <span

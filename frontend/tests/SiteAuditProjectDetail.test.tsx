@@ -55,9 +55,11 @@ describe('SiteAuditProjectDetail', () => {
   it('loads the project and renders only backend audit values', async () => {
     render(<SiteAuditProjectDetail />)
 
-    expect(await screen.findByRole('heading', { name: 'Example', level: 1 })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Site health 78%' })).toBeInTheDocument()
-    expect(screen.getByText('1 unique page result · limit 10')).toBeInTheDocument()
+    expect(screen.getByText('Pages crawled: 1/10')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Crawled page results' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Findings by severity' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Top issues' })).toBeInTheDocument()
@@ -69,7 +71,7 @@ describe('SiteAuditProjectDetail', () => {
   it('switches between issue, page, and schema tabs', async () => {
     const user = userEvent.setup()
     render(<SiteAuditProjectDetail />)
-    await screen.findByRole('heading', { name: 'Example', level: 1 })
+    await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 })
 
     await user.click(screen.getByRole('tab', { name: 'Issues' }))
     expect(screen.getByRole('heading', { name: 'All issues' })).toBeInTheDocument()
@@ -90,7 +92,9 @@ describe('SiteAuditProjectDetail', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('The server is offline.')
     await user.click(screen.getByRole('button', { name: /try again/i }))
-    expect(await screen.findByRole('heading', { name: 'Example', level: 1 })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 }),
+    ).toBeInTheDocument()
   })
 
   it('does not request private results for an anonymous visitor', () => {

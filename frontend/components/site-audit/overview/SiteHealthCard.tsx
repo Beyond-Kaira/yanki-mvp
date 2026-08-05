@@ -5,13 +5,13 @@ export default function SiteHealthCard({ score }: { score: number | null }) {
   return (
     <article className="rounded-xl border border-surface-border bg-surface p-6 shadow-sm">
       <div>
-        <h2 className="text-sm font-semibold text-surface-foreground">Site health</h2>
+        <h2 className="text-base font-semibold text-surface-foreground">Site health</h2>
         <p className="mt-1 text-xs leading-relaxed text-surface-subtle">
           Calculated from the scorable pages and technical findings in this run.
         </p>
       </div>
 
-      <div className="mt-6 flex flex-col items-center">
+      <div className="mt-5 flex flex-col items-center">
         <div
           role="img"
           aria-label={

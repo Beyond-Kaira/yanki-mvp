@@ -66,7 +66,7 @@ export default function SiteAuditProjectDetail() {
             role="tabpanel"
             id={`site-audit-panel-${tab}`}
             aria-labelledby={`site-audit-tab-${tab}`}
-            className="pt-6"
+            className="pt-5"
           >
             {tab === 'overview' ? (
               <SiteAuditOverview audit={audit} onViewAllIssues={() => setTab('issues')} />
@@ -85,7 +85,7 @@ export default function SiteAuditProjectDetail() {
 
 function DetailShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-6xl px-4 py-7 sm:px-8 sm:py-8">
+    <main className="mx-auto max-w-6xl px-4 pb-7 pt-4 sm:px-8 sm:pb-8 sm:pt-5">
       {children}
     </main>
   )

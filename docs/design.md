@@ -1306,3 +1306,265 @@ decision → consequences**, with one line on why the alternative was rejected.
   runtime dependency beyond React; the validators are plain functions and a
   swap later replaces call sites and nothing else); retrying more than once on
   401 (a refresh loop).
+
+### ADR-33 — The platform roadmap: planning baseline adopted, admin-first implementation order (2026-08-05)
+
+- **Context:** the MVP-era plan was complete (Phases 0–4 32/32; the checker
+  built and dark behind the operator's P5.11), and three things had changed at
+  once. (1) The operator dropped a 47-page strategy document into the repo —
+  `docs/Yanki_Geo_Intelligence_Report.pdf` ("Planning baseline — intended as
+  the primary planning document", Aug 2026): a full competitive analysis, PRD,
+  multi-tenant architecture, RBAC model, subscription design, and 24-month
+  roadmap for a Geo Intelligence platform. (2) The operator issued a
+  re-planning brief with a **fixed implementation order**: Admin Panel first,
+  Backlink Intelligence second, remaining competitive parity third,
+  differentiators fourth, enterprise last — and an explicit instruction to
+  update planning documentation only, implementing nothing. (3) Four PRs
+  (#4, #13, #23, #11) had merged outside the session process, two of them
+  undocumented (tech-debt #54/#55), showing the project now has multiple
+  humans merging to an auto-deploying `main` — itself an argument for the
+  governance the admin milestone builds.
+- **Decision:** adopt the report as the strategy source ("the planning
+  baseline") and re-plan the product as **milestones M1–M9** in a rewritten
+  [roadmap.md](roadmap.md) (M1 Admin Platform · M2 Backlink Intelligence ·
+  M3 Technical SEO & Site Audit · M4 AI Visibility & GEO Monitoring · M5
+  Entity & Local · M6 Competitive & Reporting · M7 Automation & Agents · M8
+  Enterprise · M9 Advanced AI), with a new planning doc set as scope
+  authority per milestone: [feature-parity.md](feature-parity.md) (the
+  REQUIRED backlog), [differentiators.md](differentiators.md),
+  [admin-panel-plan.md](admin-panel-plan.md),
+  [backlink-intelligence-plan.md](backlink-intelligence-plan.md), and
+  [architecture-target.md](architecture-target.md) (target seams, kept
+  separate so [architecture.md](architecture.md) can stay strictly
+  as-built). Implementation-plan phase numbering continues rather than
+  restarting: **Phase 7 = M1, Phase 8 = M2, Phases 9–15 reserved for
+  M3–M9** — task IDs are never renumbered in this repo, and the roadmap's
+  "Phase 1–9" labels from the operator brief map to M1–M9 explicitly.
+  02-mvp.md remains the scope authority for the *MVP surface only*;
+  platform scope authority is the milestone plan doc named by each phase.
+- **Consequences:** the next build session starts Phase 7 (P7.1, tenancy),
+  gated on the operator ratifying the roadmap (operator-expected A3) and
+  the B7 key check. The old roadmap's Now/Next/Later structure is
+  superseded (git history holds it); P5.11 checker go-live remains an
+  independent operator gate, and Turkish remains parked on the operator's
+  word. Competitive claims inherit the baseline's Aug-2026 snapshot caveat
+  and must be re-verified before external use. The undocumented merges are
+  recorded as debt (#54/#55) with scheduled homes (retroactive ADRs at M4/
+  M3) rather than papered over.
+- **Rejected:** *implementing the report's own 0–3/3–6/6–12-month roadmap
+  as-is* (it opens with geo-grid tracking; the operator's order puts
+  admin + backlinks first — the report supplies the models, the operator
+  supplies the sequence); *renumbering implementation phases to match the
+  brief's Phase 1–9* (breaks the stable-ID rule and every existing
+  cross-reference); *treating the PDF itself as the working plan* (not
+  diffable or editable in PRs — its content is transcribed into the
+  markdown planning set, with the PDF kept as the reference source);
+  *retrofitting docs for PR #11/#23 in this session* (a docs-only session
+  cannot verify behaviour against a running stack honestly; recorded as
+  debt with owners instead).
+
+### ADR-34 — The measured/simulated GEO pivot, documented after the fact (PR #11, merged 2026-07-29; recorded 2026-08-05)
+
+*Retroactive. This ADR is the repayment of tech-debt **#54**'s documentation
+half: PR #11 replaced the pipeline's most expensive step on the live default
+path and merged with no ADR, no plan card and no session log. It is written in
+session 21 by reading the merged code against a running stack — not from the
+PR description — and it records what is true on `main` today, including two
+things the PR did not intend.*
+
+- **Context:** through Phase 5 the GEO score came from a **multi-engine
+  panel**. Step 4 (`pipeline/execute.py`) fanned each prompt out across
+  Anthropic / OpenAI / Gemini / Perplexity, wrote one `responses` row per
+  (prompt × engine) with that vendor in `engine`, and the score was the
+  **mention rate** — the fraction of answers naming the brand, a 0–1 fraction.
+  That measures whether a model *already knows* a brand from its training
+  data. It answers a weaker question than the product claims to answer, it
+  cannot say *why* a brand was or was not named, and it produces no evidence a
+  customer can act on. A separate codebase, `kaira-geo-api`, had a richer
+  approach; PR #11 ported it.
+- **Decision (as merged):** step 4 becomes `pipeline/execute_measured.py`, with
+  **two modes** selected by `GEO_MODE` and **one `responses` row per prompt**,
+  where `engine` now names the *mode* rather than a vendor:
+  - **`measured`** (the default, and what production runs): **Tavily** search
+    for the prompt → `measure_search_visibility` over the results → an
+    **OpenRouter** grounded answer constrained to those results → a second
+    OpenRouter call for **audit extraction** → `merge_measured_record`. The
+    question changes from "does the model recall this brand?" to "when an
+    answer engine searches the live web for this question, does this brand
+    surface, where, cited how, and why not?"
+  - **`simulated`**: one OpenRouter call from a system prompt, no search — the
+    cheap path, and the honest name for what the old panel was doing.
+  Around it: **`geo_records`** (migration 0011) stores a columnar twin of each
+  audit record so brand-level analysis need not dig through JSON;
+  `analyses` gains `reliability_score`, `interventions` and `citation_summary`
+  (0010/0011); step 5 runs a **reliability auditor** (`reliability.py`,
+  per-claim evidence checks) alongside footprint; step 6 runs an
+  **interventions engine** (`interventions.py`, insight → action) and a
+  **composite 0–100 GEO score** (`scoring.geo_score`: mention × position ×
+  citation × sentiment, weighted by reliability), falling back to the old
+  mention rate × 100 only when there are no audit records at all.
+- **Consequences:**
+  - **The score changed meaning and scale.** It is now a 0–100 composite;
+    pre-PR-#11 rows still hold a 0–1 mention-rate fraction in the same column.
+    Any chart or comparison spanning 2026-07-29 is comparing two different
+    metrics. The model docstring says so; nothing enforces it.
+  - **Two new keys became mandatory.** `OpenRouterProvider` raises on
+    construction without `OPEN_ROUTER_KEY` when `DRY_RUN=0`, and `measured`
+    additionally needs `TAVILY_API_KEY`. A live deploy missing either fails
+    every analysis. This was flagged as operator item **B7** and verified
+    satisfied in production on 2026-08-05.
+  - **The four legacy provider keys and `PANEL_ENGINES` no longer affect the
+    live path**, and `pipeline/execute.py` is now referenced only by its own
+    tests — dead on every runtime path while still carrying the multi-engine
+    adapters. Deliberately left in place; its fate belongs to M4, which owns
+    engine coverage.
+  - **Cost accounting silently broke, and stayed broken for a week.**
+    `execute_measured` wrote a literal `Decimal("0")` into
+    `responses.cost_usd` while `measured.py` was computing each call's real
+    price and discarding it, and Tavily reported no cost at all. Since
+    `CHECKER_DAILY_USD_CAP` is enforced by summing that column, the dollar cap
+    could not trip on the live path; only the count caps bounded spend. Found
+    and fixed in session 21 (`ed384a1`); the pinned Tavily price that fix
+    depends on is tech-debt **#58** / operator **B9**. Recorded here because it
+    is the clearest illustration of what the missing ADR cost: a reviewer
+    reading a written-down decision would have asked where the cost went.
+  - **Three unproductized differentiator seeds now exist in the repo** — the
+    reliability auditor, the interventions library, and grounded citation
+    records — and [differentiators.md](differentiators.md) builds on them.
+- **Rejected** (reconstructed from the code, and endorsed here rather than
+  merely reported): *keeping the multi-engine panel as the primary measure*
+  (it measures recall, not retrievability, and the product's claim is about
+  the latter); *adding measured mode as a fifth panel engine* (it is a
+  different question, not another opinion on the same one — averaging them
+  would blur both); *one provider per vendor instead of OpenRouter* (one
+  OpenAI-compatible endpoint behind one key is fewer adapters and lets the
+  model be an env var, at the cost of a dependency on a broker and of the
+  per-vendor cost detail the old adapters computed themselves). Also rejected
+  *now*, in session 21: **deleting `execute.py`** — M4 owns the question of
+  whether multi-engine coverage returns, and deleting a working adapter set to
+  tidy a dead import is the kind of cleanup that is expensive to undo.
+
+### ADR-35 — Tenancy: personal orgs, NULL-means-public, and the FK we deliberately did not add (2026-08-05, P7.1)
+
+- **Context:** the platform had a `users` table and nothing behind it
+  (tech-debt #52). Milestone M1 needs organizations before anything else can
+  be metered, permissioned or audited, and P7.1 is the migration that
+  introduces them. Two facts shaped every decision. First, **production is
+  tiny** — 3 users, 0 `seo_projects`, 47 analyses, all anonymous — so the
+  riskiest migration in the milestone is cheapest right now, exactly as
+  [admin-panel-plan.md](admin-panel-plan.md) §1 predicted. Second, **the live
+  product is anonymous**: `analyses` has never had a user column, so there is
+  no ownership to backfill and nothing to break.
+- **Decision:**
+  - Four tables — `organizations`, `workspaces`, `memberships`, `projects` —
+    with a thin `projects` row as the tracked-business anchor every later
+    module hangs from. `seo_projects` **keeps its identity** and gains
+    `org_id`/`workspace_id`/`project_id`.
+  - **Two invariants enforced by the database, not by hope**: exactly one
+    personal org per user (partial unique on `owner_user_id WHERE
+    kind='personal'`, which also closes the signup race a get-or-create
+    cannot), and exactly one default workspace per org (so "where do new
+    projects land" has one answer rather than a timestamp race).
+  - **`ON DELETE RESTRICT` on the business-data roots** (`seo_projects.org_id`,
+    `projects.org_id`). Deleting an org that still holds projects fails loudly;
+    P7.7 owns reassign-or-purge. `workspaces`/`memberships` cascade — they are
+    structure, not data.
+  - **`analyses` gains `org_id` and nothing else** — nullable, no FK, no index.
+    **NULL is the PUBLIC scope**, a first-class value rather than an unfinished
+    backfill, and a reserved system org (`PUBLIC_ORG_ID`) exists so "every row
+    reachable through exactly one org" is total.
+  - Scoping is a **service-layer seam that fails closed**: `scoped()` raises
+    without an org context instead of returning the unfiltered statement, and
+    the NULL-is-public rule lives in exactly one function
+    (`readable_analysis`). Postgres RLS is deferred — the workers open raw
+    sessions and would have to be exempted anyway.
+  - The **backfill lives outside the migration** (`app/db/org_backfill.py`) so
+    the SQLite suite can run it against adversarial fixtures.
+- **Consequences:**
+  - **A standing constraint, recorded because it is a trap:** when owned
+    analyses arrive (M4) and `analyses.org_id` gains its FK, the delete rule
+    **must be `RESTRICT`, never `SET NULL`**. Since NULL is world-readable,
+    `SET NULL` would make deleting an organization silently *republish* every
+    private analysis it owned. This ADR exists partly so that sentence is
+    somewhere a future implementer will read.
+  - Signup now provisions a user and an org in one transaction; a user with no
+    org is a state nothing downstream can serve, and `resolve_org_context`
+    heals a pre-existing one rather than 403-ing forever.
+  - Site Audit reads move from user-scoping to org-scoping, so a teammate sees
+    the org's projects. Cross-org ids return the same 404 a nonexistent id
+    does, so the response cannot enumerate other tenants.
+  - Moving the backfill out of the migration paid immediately: the SQLite tests
+    caught **two engine asymmetries Postgres tolerates silently** — `sa.text()`
+    cannot bind a UUID without type information, and Core inserts miss the
+    ORM's Python-side `created_at` default. Both would have shipped green.
+  - Verified up/down/up on Postgres with seeded colliding-slug data; users,
+    analyses and `seo_projects` all survive the downgrade.
+- **Rejected:** *renaming `seo_projects` into `projects`* — destructive DDL on
+  a populated table on an auto-deploying production database, to save one join;
+  *deferring `projects` entirely* — it leaves `workspaces` an orphan parent and
+  forces a second backfill at Phase 8/M4, on a larger surface; *stamping the
+  public org id onto every anonymous analysis* — a mass write to the hot table
+  for no functional gain, which would also make public rows *look* owned, the
+  one outcome tenant isolation must never produce; *Postgres RLS now* — the
+  workers bypass `get_session`, so it would either miss them or break them;
+  *denormalizing `org_id` onto child tables* — children are reachable only
+  through org-scoped parents, and every extra copy is another place to forget.
+
+### ADR-36 — Backlink Intelligence: an observation is not a fact (2026-08-05, Phase 8)
+
+- **Context:** backlinks are the largest missing suite capability
+  ([feature-parity.md](feature-parity.md) §2.13) and milestone M2. The strategy
+  is fixed by the planning baseline — **license the index, own the layer** — so
+  the engineering problem is not crawling the web; it is deciding what to
+  *claim* from a third-party index that is incomplete, inconsistent, and
+  occasionally wrong. A tool that announces "you lost 4,000 backlinks" on a day
+  nothing happened has destroyed the thing it was selling.
+- **Decision:** model the difference between an **observation** (what the
+  vendor said this cycle) and a **fact** (what we are willing to tell a
+  customer), and put four specific guards between them:
+  1. **Measurability gates every absence claim.** An import must be called
+     complete by the vendor *and* not have collapsed against the previous
+     import. A non-measurable import may ADD what it saw and may never
+     SUBTRACT — absence from a truncated set is not evidence of absence.
+  2. **Birth comes from the vendor's `first_seen`,** never from "absent from
+     our table". Our table is capped per plan, so the alternative mints tens of
+     thousands of fake births the moment a customer *upgrades*.
+  3. **Identity is a canonical key** (scheme-insensitive, de-`www`, tracking
+     parameters stripped), so an http→https migration does not retire and
+     recreate an entire profile.
+  4. **Two consecutive misses before "lost", and a returning link is
+     `regained`,** not a second birth — index flapping is ordinary.
+  Alongside: cost is computed from a **pinned price table on the seam** and an
+  unpriceable page **raises** (the direct lesson of ADR-34); `BacklinkImport`
+  is both the queue and the forever snapshot, so history survives row pruning
+  and a vendor switch; competitors are stored **rollup-only**; toxicity is
+  inlined at domain grain and recomputed per import; anchors, gap and outreach
+  are computed on read.
+- **Consequences:**
+  - **Yanki Authority is published, not mystical**: four weighted terms whose
+    points sum to the score shown, each carrying its inputs and an explanation,
+    with the caveats in the payload — including that it inherits the vendor's
+    biases, cannot see topical relevance, and is not PageRank.
+  - **Toxicity is advisory and decomposes or it is a bug**: a band with no
+    reasons fails a test, and the disavow export carries its evidence as
+    comments because submitting one is irreversible in effect. Nothing is ever
+    auto-disavowed.
+  - **The differentiator ships with the foundation.** `unlinked_mentions`
+    reads `geo_records.citations` and `serp_checks` to find pages that cited or
+    named the brand but never linked — the warmest outreach targets there are,
+    from data the product already collected, with **no vendor call**. A
+    link-only index cannot build that list (D10).
+  - The module is dark by default (`BACKLINKS_ENABLED=0`) and has no vendor:
+    **P8.2 remains blocked on operator A4**, and an unrecognised vendor reports
+    "not measured" rather than falling back to fixtures that would look like
+    real data.
+- **Rejected:** *set-diffing stored rows to detect new/lost* — the obvious
+  implementation, and the one that manufactures mass churn from a plan change;
+  *trusting the vendor's echoed cost* — precisely the openrouter.py pattern
+  that cost this project a week of blind spend; *storing competitor links
+  individually* — multiplies row count by competitor count to answer a question
+  (which *domains* link to them) that rollups already answer; *materializing
+  anchor/gap/outreach tables* — every denormalized copy is a place a number can
+  disagree with its source, and these are `GROUP BY`s over a capped set;
+  *picking a vendor* — that is the operator's call (A4), and the adapter-shaped
+  hole is one branch wide.

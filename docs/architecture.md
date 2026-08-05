@@ -6,6 +6,19 @@ topology. For the **why** behind these choices (the ADR log), see
 [design.md](design.md). For **scope** see [02-mvp.md](02-mvp.md); for **how
 "done" is verified** see [test-suite.md](test-suite.md).*
 
+> **Status note (2026-08-05, session 20).** This file is the **as-built**
+> record; the platform's **target** architecture (multi-tenancy, RBAC, audit
+> spine, module seams — roadmap M1–M9) lives separately in
+> [architecture-target.md](architecture-target.md). ⚠ **Known drift:** two
+> undocumented merges (2026-08-03/04) changed the system this file
+> describes — PR #11 replaced the execute step's 4-engine panel with a
+> measured/simulated path (Tavily + OpenRouter, `geo_records`; `execute.py`
+> is unwired) and PR #23 added a Site Audit backend (own tables, queue,
+> Chromium crawler worker) not shown in the diagrams below. Recorded as
+> tech-debt **#54/#55**; this file gets corrected by the session that
+> verifies the new behaviour against a running stack — do not trust §1–§2's
+> execute-step description until then.*
+
 ---
 
 ## 1. System at a glance

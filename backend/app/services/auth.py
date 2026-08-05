@@ -5,6 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import User
+from app.services import audit
+from app.services.tenancy import provision_personal_org
 
 _password_hash = PasswordHash.recommended()
 
@@ -51,7 +53,16 @@ def create_user(
     email: str,
     password: str,
 ) -> User:
-    """Create and persist a user with a hashed password."""
+    """Create and persist a user, with the personal organization that holds
+    their data.
+
+    The org is created in the **same transaction** as the user, deliberately.
+    A user row with no organization is a state nothing downstream can serve —
+    every scoped query needs an org context, and ``resolve_org_context`` raises
+    without one — so a signup that produced one would be a half-registered
+    account that fails on its first authenticated request. Committing both
+    together means either the account exists and works, or it does not exist.
+    """
 
     user = User(
         email=normalize_email(email),
@@ -59,6 +70,20 @@ def create_user(
     )
 
     session.add(user)
+    session.flush()
+    org = provision_personal_org(session, user)
+    # In the same transaction as the thing it describes, so a rolled-back
+    # signup cannot leave an event claiming an account was created.
+    audit.emit(
+        session,
+        action="auth:signup",
+        actor_type="user",
+        actor_id=user.id,
+        actor_label=user.email,
+        entity_type="user",
+        entity_id=user.id,
+        after={"email": user.email, "org_id": str(org.id), "org_slug": org.slug},
+    )
     session.commit()
     session.refresh(user)
 
@@ -79,10 +104,34 @@ def authenticate_user(
     valid, updated_hash = verify_and_update_password(password, password_hash)
 
     if user is None or not valid:
+        # A failed login is the event most worth having. Recorded with the
+        # attempted address, never the attempted password.
+        audit.emit(
+            session,
+            action="auth:login",
+            actor_type="user" if user is not None else "anonymous",
+            actor_id=user.id if user is not None else None,
+            actor_label=normalize_email(email),
+            entity_type="user",
+            entity_id=user.id if user is not None else None,
+            outcome="denied",
+            detail={"reason": "invalid_credentials"},
+        )
+        session.commit()
         return None
 
     if updated_hash is not None:
         user.password_hash = updated_hash
-        session.commit()
+
+    audit.emit(
+        session,
+        action="auth:login",
+        actor_type="user",
+        actor_id=user.id,
+        actor_label=user.email,
+        entity_type="user",
+        entity_id=user.id,
+    )
+    session.commit()
 
     return user

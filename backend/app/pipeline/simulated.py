@@ -104,64 +104,64 @@ SYSTEM_PROMPT_TEMPLATE = (
     "Return ONLY valid JSON with this schema:\n"
     "\n"
     "{{\n"
-    "  \"brand\": \"string\",\n"
-    "  \"sector\": \"{sector}\",\n"
-    "  \"prompt\": \"string\",\n"
-    "  \"intent\": \"informational | comparison | transactional | alternative_search\",\n"
-    "  \"simulated_answer\": \"string\",\n"
-    "  \"mentioned\": true,\n"
-    "  \"rank_position\": 1,\n"
-    "  \"mention_context\": \"primary_recommendation | secondary_recommendation | "
-    "comparison_candidate | alternative_option | competitor_only | not_mentioned\",\n"
-    "  \"competitors\": [\"string\"],\n"
-    "  \"answer_summary\": \"string\",\n"
-    "  \"recommendation_reasoning\": \"string\",\n"
-    "  \"citations\": [\n"
+    '  "brand": "string",\n'
+    '  "sector": "{sector}",\n'
+    '  "prompt": "string",\n'
+    '  "intent": "informational | comparison | transactional | alternative_search",\n'
+    '  "simulated_answer": "string",\n'
+    '  "mentioned": true,\n'
+    '  "rank_position": 1,\n'
+    '  "mention_context": "primary_recommendation | secondary_recommendation | '
+    'comparison_candidate | alternative_option | competitor_only | not_mentioned",\n'
+    '  "competitors": ["string"],\n'
+    '  "answer_summary": "string",\n'
+    '  "recommendation_reasoning": "string",\n'
+    '  "citations": [\n'
     "    {{\n"
-    "      \"source_title\": \"string\",\n"
-    "      \"source_domain\": \"string\",\n"
-    "      \"source_type\": \"comparison | review | news | official | forum | regulatory | "
-    "other\",\n"
-    "      \"url\": \"string\",\n"
-    "      \"brands_referenced\": [\"string\"],\n"
-    "      \"mentions_target_brand\": true,\n"
-    "      \"citation_position\": 1\n"
+    '      "source_title": "string",\n'
+    '      "source_domain": "string",\n'
+    '      "source_type": "comparison | review | news | official | forum | regulatory | '
+    'other",\n'
+    '      "url": "string",\n'
+    '      "brands_referenced": ["string"],\n'
+    '      "mentions_target_brand": true,\n'
+    '      "citation_position": 1\n'
     "    }}\n"
     "  ],\n"
-    "  \"citation_metrics\": {{\n"
-    "    \"total_citations\": 0,\n"
-    "    \"target_brand_cited\": false,\n"
-    "    \"target_brand_citation_count\": 0,\n"
-    "    \"target_brand_citation_rank\": 0,\n"
-    "    \"owned_media_cited\": false,\n"
-    "    \"earned_media_cited\": false,\n"
-    "    \"competitor_citation_share\": {{}}\n"
+    '  "citation_metrics": {{\n'
+    '    "total_citations": 0,\n'
+    '    "target_brand_cited": false,\n'
+    '    "target_brand_citation_count": 0,\n'
+    '    "target_brand_citation_rank": 0,\n'
+    '    "owned_media_cited": false,\n'
+    '    "earned_media_cited": false,\n'
+    '    "competitor_citation_share": {{}}\n'
     "  }},\n"
-    "  \"visibility_drivers\": {{\n"
-    "    \"product_strength\": [\"string\"],\n"
-    "    \"distribution_strength\": [\"string\"],\n"
-    "    \"trust_strength\": [\"string\"],\n"
-    "    \"brand_strength\": [\"string\"],\n"
-    "    \"content_strength\": [\"string\"],\n"
-    "    \"international_strength\": [\"string\"],\n"
-    "    \"ux_strength\": [\"string\"]\n"
+    '  "visibility_drivers": {{\n'
+    '    "product_strength": ["string"],\n'
+    '    "distribution_strength": ["string"],\n'
+    '    "trust_strength": ["string"],\n'
+    '    "brand_strength": ["string"],\n'
+    '    "content_strength": ["string"],\n'
+    '    "international_strength": ["string"],\n'
+    '    "ux_strength": ["string"]\n'
     "  }},\n"
-    "  \"visibility_gaps\": {{\n"
-    "    \"low_discoverability\": [\"string\"],\n"
-    "    \"weak_ranking\": [\"string\"],\n"
-    "    \"category_mismatch\": [\"string\"],\n"
-    "    \"weak_trust_signals\": [\"string\"],\n"
-    "    \"weak_feature_association\": [\"string\"],\n"
-    "    \"competitor_dominance\": [\"string\"],\n"
-    "    \"content_gap\": [\"string\"],\n"
-    "    \"international_positioning_gap\": [\"string\"],\n"
-    "    \"ux_positioning_gap\": [\"string\"],\n"
-    "    \"reputation_gap\": [\"string\"]\n"
+    '  "visibility_gaps": {{\n'
+    '    "low_discoverability": ["string"],\n'
+    '    "weak_ranking": ["string"],\n'
+    '    "category_mismatch": ["string"],\n'
+    '    "weak_trust_signals": ["string"],\n'
+    '    "weak_feature_association": ["string"],\n'
+    '    "competitor_dominance": ["string"],\n'
+    '    "content_gap": ["string"],\n'
+    '    "international_positioning_gap": ["string"],\n'
+    '    "ux_positioning_gap": ["string"],\n'
+    '    "reputation_gap": ["string"]\n'
     "  }},\n"
-    "  \"trust_signals\": [\"string\"],\n"
-    "  \"entities_associated_with_brand\": [\"string\"],\n"
-    "  \"sentiment\": \"positive | neutral | negative\",\n"
-    "  \"content_improvement_opportunities\": [\"string\"]\n"
+    '  "trust_signals": ["string"],\n'
+    '  "entities_associated_with_brand": ["string"],\n'
+    '  "sentiment": "positive | neutral | negative",\n'
+    '  "content_improvement_opportunities": ["string"]\n'
     "}}\n"
     "\n"
     "Mention context definitions:\n"
@@ -213,7 +213,7 @@ SYSTEM_PROMPT_TEMPLATE = (
     "- Do not create additional keys.\n"
     "- mentioned must be true only if the target brand appears in simulated_answer.\n"
     "- rank_position must be 0 if mentioned is false.\n"
-    "- mention_context must be \"not_mentioned\" if mentioned is false.\n"
+    '- mention_context must be "not_mentioned" if mentioned is false.\n'
     "- competitors must include brands appearing in simulated_answer.\n"
     "- citations maximum 5 items.\n"
     "- competitor_citation_share keys maximum 10 items.\n"
@@ -252,8 +252,6 @@ SYSTEM_PROMPT_TEMPLATE = (
     "- Return complete valid JSON only\n"
     ""
 )
-
-
 
 
 class ChatLLM(Protocol):
@@ -524,6 +522,8 @@ def mock_simulated_record(
         "sentiment": "positive",
         "content_improvement_opportunities": [],
         "model": "mock",
+        # Explicit, so the DRY_RUN suite's "$0" assertion is a real assertion.
+        "_cost_usd": 0.0,
     }
     return normalize_record(record, owned_domains=owned_domains, sector=sector)
 
@@ -576,6 +576,10 @@ def run_simulated_audit(
         parsed["prompt_group"] = prompt_group
         parsed["model"] = getattr(llm, "model", "")
         parsed["response_format"] = response_format
+        # One LLM call, one price, recorded on the record so the caller can
+        # persist it into ``responses.cost_usd``. Before session 21 the
+        # simulated path reported no cost at all.
+        parsed["_cost_usd"] = float(getattr(result, "cost_usd", 0) or 0)
         return parsed
     except Exception as exc:  # noqa: BLE001
         return {
@@ -596,4 +600,7 @@ def run_simulated_audit(
             "schema_version": SCHEMA_VERSION,
             "generated_at": datetime.now(UTC).isoformat(),
             "owned_domains": owned_domains,
+            # A call that raised may still have been billed upstream, but nothing
+            # here can know that — so this is an honest 0, not a claim of $0.
+            "_cost_usd": 0.0,
         }

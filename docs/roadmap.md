@@ -1,261 +1,264 @@
-# Yanki — Product Roadmap
+# Yanki — Product Roadmap (platform edition)
 
-*Audience: leadership + engineers. This is the **product** roadmap — the phased
-path from the MVP we are building now to the transparent, affordable Semrush
-alternative described in [00-first-mvp-draft.md](00-first-mvp-draft.md).*
+*Audience: leadership + engineers. This is the **product** roadmap: the
+milestone path from today's live MVP to the Geo Intelligence platform. It
+**supersedes** the MVP-era roadmap (Now/Next/Later, in git history) as of
+**2026-08-05** — ADR-33 records the decision. The strategy source is
+[Yanki_Geo_Intelligence_Report.pdf](Yanki_Geo_Intelligence_Report.pdf) ("the
+planning baseline", Aug 2026); the parity evidence is
+[feature-parity.md](feature-parity.md); the engineering decomposition lives
+in [implementation-plan.md](implementation-plan.md) (milestones map to
+implementation phases — table below). This file is the what/why/when, not
+the how.*
 
-**Scope authority is [02-mvp.md](02-mvp.md), not this file.** If it isn't in
-02-mvp.md, it isn't in the MVP — it's a phase below. **Scope is frozen until day
-60.** New ideas go to the backlog, not the sprint.
+**The implementation order is fixed (operator directive, 2026-08-05):**
 
-**This is the *what/why/when*, not the *how*.** The engineering task breakdown —
-tickets, sequencing, owners — lives in
-[implementation-plan.md](implementation-plan.md). Where a phase item needs build
-detail, follow the link; this file does not duplicate it.
-
-The three wedges every phase serves (from the draft): **show our work**
-(published methodology, every raw answer one click away), **pricing agencies can
-scale on**, and **Turkish as a first-class language** *(⚠ operator decision
-2026-07-10: Turkish is **deferred to Later** — the whole product launches
-English-only; the wedge stays on the roadmap but is not launch scope. See 2c.)*.
+1. **Admin Panel** (M1)
+2. **Backlink Intelligence** (M2)
+3. **Remaining core feature parity** (M3–M6)
+4. **Differentiating features** (M7, woven earlier where free)
+5. **Long-term enterprise capabilities** (M8, then M9)
 
 ---
 
-## Phase map at a glance
+## Where we are (2026-08-05, honest snapshot)
 
-| Phase | Horizon | Theme | Buyer it unlocks |
+**Live in production** (yanki.beyondkaira.com): anonymous URL → GEO analysis
+(discovery → KYC → prompts → execute → footprint → score) with grounded
+measured mode (Tavily search + OpenRouter answer + citation records — PR #11,
+merged 2026-08-04, *undocumented*, tech-debt #54), SERP visibility via
+self-hosted SearXNG (ADR-28/29), SEO/AI-readiness audit A–F (ADR-31),
+waitlist + transactional email. **Built, dark:** the free public checker
+(P5.11 go-live is the operator's). **Merged, unwired:** auth + account
+screens (an account still grants nothing — #52); Site Audit projects/APIs +
+Chromium crawler (PR #23, backend only, hardening unresolved — #55);
+interventions library + reliability auditor (PR #11, no UI). **Missing
+entirely:** organizations, RBAC, billing, quotas, audit logs, scheduling,
+history, dashboards, reports, alerts, keywords, rank tracking, backlinks,
+integrations, public API. That asymmetry — a strong measurement engine with
+no platform around it — is what this roadmap fixes, admin-first.
+
+## Milestone map at a glance
+
+| Milestone | Theme | Implementation phase | Order |
 |---|---|---|---|
-| **Now** | This session | Prove the core loop: URL → GEO score, anonymous | Nobody yet — internal proof |
-| **Next** | Weeks 2–8 | Public checker + real product: accounts, billing, weekly tracking, Turkish, competitors | Founder → In-house SEO → Agency |
-| **Later** | Day 60–90+ | Scale the wedges: agency plan, AI Overviews, Arabic, export/API, compliance | Agency at volume + enterprise inbound |
+| **M1** | Admin Platform (orgs, RBAC, billing, audit, system admin) | Phase 7 | 1 — next build |
+| **M2** | Backlink Intelligence | Phase 8 | 2 |
+| **M3** | Technical SEO & Site Audit productization | Phase 9 | 3 |
+| **M4** | AI Visibility & GEO monitoring (recurring, scored, alerted) | Phase 10 | 4 |
+| **M5** | Entity & Local Intelligence | Phase 11 | 5 |
+| **M6** | Competitive Intelligence & Reporting | Phase 12 | 6 |
+| **M7** | Automation & Agent Platform | Phase 13 | 7 |
+| **M8** | Enterprise | Phase 14 | 8 |
+| **M9** | Advanced AI (prediction, autonomy, data network) | Phase 15 | 9 |
+
+*(The re-planning brief's "Phase 1…Phase 9" = M1…M9 here. Implementation-plan
+phase numbers continue from the existing Phase 0–6 — IDs are never renumbered
+in this repo.)*
+
+Cross-milestone rule: **the checker go-live (P5.11) stays operator-gated and
+independent** — it can ship any day and none of M1+ blocks it. Turkish
+remains parked on the operator's word (unchanged directive, 2026-07-10);
+M8's localization work is where it revives naturally if called.
 
 ---
 
-## Now — the MVP (this session)
+## M1 — Admin Platform *(full plan: [admin-panel-plan.md](admin-panel-plan.md))*
 
-**Goal:** the entire loop in [02-mvp.md](02-mvp.md) works end-to-end on a live
-stack — *URL in → GEO score out in ~10 minutes, with every raw answer behind
-it* — and runs at $0 under `DRY_RUN=1`. This is the sole definition of done for
-the session; nothing here is negotiable and nothing below it ships first.
+- **Objectives:** turn "a users table" into a governed multi-tenant B2B
+  platform: organizations → workspaces → projects; granular resource-based
+  RBAC (Super Admin → Guest); complete audit logging with before/after
+  values; subscriptions/plans/quotas/credit metering (Stripe); MFA + session
+  management; platform back office (flags, jobs, queues, AI providers,
+  webhooks table, usage, health, logs/errors).
+- **Deliverables:** tenancy schema + backfill; RBAC enforcement at API layer
+  + permission suite; `audit_events` emitted from every mutating path; org
+  admin UI (first signed-in destination — repays #52); auth completion
+  (password reset #49, MFA); plan/quota/credit services; platform admin
+  back office; hardening pass (cross-tenant leakage suite).
+- **Dependencies:** Stripe account; terms text (#50 — legal, now
+  critical-path); operator ratification (operator-expected A3).
+- **Risks:** live-DB backfill; permission bugs = tenant leakage (exit-gated
+  by test suite); scope creep into customer dashboards (M4's job).
+- **Complexity: L** (9 stages, A1–A9).
+- **Order: 1 — the foundation every later milestone consumes.**
 
-| Item | Rationale |
-|---|---|
-| Anonymous URL submission (no auth) | Lowest-friction proof the loop delivers a defensible number; auth is pure overhead until we have paying users. |
-| Discovery → KYC → prompts → execute → footprint → scoring pipeline | The six steps ARE the product; everything later is packaging, cadence, and depth on top of this spine. |
-| Claude + OpenAI real; Gemini + Perplexity stubbed | Two real engines prove multi-engine execution and cost; stubs keep the panel shape without paying for four vendors before validation. |
-| Binary footprint + primitive score `footprints / total_responses` | Intentionally primitive so it is a pure, unit-tested, *defensible* function — the "show our work" wedge starts here (ADR-11). |
-| Deterministic template prompts (no LLM prompt-gen) | Testable and free; LLM/native prompt generation is a Next-phase quality lever, not a loop blocker. |
-| `llm_cache` within a single job's runs | Proves the caching mechanism cheaply; the cross-account version (the real cost lever) is Next. |
-| `DRY_RUN=1` mock provider + cost caps (`PROMPT_COUNT`, `MAX_RESPONSES_PER_JOB`) | CI and first-run cost $0; makes Week-1 invoice validation possible before anything goes public. |
-| **Served at `https://yanki.beyondkaira.com`** from the shared beyondkaira VPS (161.97.172.146; DNS set 2026-07-10), behind host nginx (originally the shared pulse-prod Caddy; migrated per `deploy/MIGRATION.md`) | Zero new infra for the MVP — reuse the box and TLS terminator we already run. **Hard constraint: the VPS's live sites (pulse, Ant Media, brier) must never be disturbed** — deploys are additive (an nginx *reload*, an isolated compose project, no shared ports). Build detail: P4.2 in [implementation-plan.md](implementation-plan.md). |
+## M2 — Backlink Intelligence *(full plan: [backlink-intelligence-plan.md](backlink-intelligence-plan.md))*
 
-**Sequencing:** the pipeline is strictly sequential (discovery must precede KYC,
-etc.); build and test each step behind `DRY_RUN` before wiring a real key. This
-is the whole session — do not start Next-phase work until the happy path renders
-a score. Deployment (P4.2) is the last MVP step, after the real-key cost check
-(P4.1), and is supervised.
+- **Objectives:** a Ring-1-class backlink module on licensed data: discovery,
+  monitoring, new/lost, toxic scoring + disavow, referring domains, anchors,
+  transparent authority metrics, velocity, competitor profiles, gap analysis,
+  outreach lists, alerts, history, filtering, exports, report blocks.
+- **Deliverables:** `BacklinkSource` seam (mock + first vendor adapter),
+  metered imports, inventory/anchor/domain UIs, delta engine with verified
+  losses, Yanki Authority (published formula), gap/outreach, disavow export.
+- **Dependencies:** M1 quotas/credits; vendor contract + budget (operator
+  A4); minimal scheduling if M4 hasn't landed.
+- **Risks:** vendor COGS drift; freshness disputes vs Ahrefs; storage
+  growth; toxicity over-claiming (advisory framing).
+- **Complexity: M–L** (8 stages, B1–B8).
+- **Order: 2.**
 
----
+## M3 — Technical SEO & Site Audit productization
 
-## Next — free checker + the real product (roughly weeks 2–8)
+- **Objectives:** promote the merged-but-invisible Site Audit backend
+  (PR #23) into a customer-grade technical SEO module, and close the crawl
+  gaps that block scale.
+- **Deliverables:** Site Audit UI (projects, runs, findings, health trend);
+  crawler production hardening — the unresolved list in
+  [site-audit-integration.md](site-audit-integration.md) (egress isolation,
+  non-root Chromium, transfer budgets, retries, quotas, migration gate,
+  deploy verification); audit breadth to parity (Core Web Vitals,
+  broken-link/redirect-chain depth, hreflang, llms.txt — repays #48);
+  indexing: GSC OAuth read + index-status reporting; CSV/XLSX exports;
+  audit sections registered for the future report builder.
+- **Dependencies:** M1 (projects are org-scoped; audits quota-metered);
+  Google OAuth app verification (operator); the site-audit worker actually
+  deployed (deploy topology decision — it is not in the prod compose today).
+- **Risks:** Chromium-on-shared-VPS resource pressure (capped like SearXNG,
+  or moved off-box); crawl abuse against third-party sites (quotas, robots
+  discipline — already strong).
+- **Complexity: M.** **Order: 3.**
 
-The draft's build plan: **checker ships weeks before the app** (it is the demand
-test, lead magnet, and launch asset in one), then the full self-serve product.
-Ordered by the draft's Launch 1 → Launch 3 sequence.
+## M4 — AI Visibility & GEO Monitoring (the product becomes recurring)
 
-### 2a. Free public checker — the launch wedge (weeks 3–4, ships first)
+- **Objectives:** from one-shot analyses to tracked visibility: prompt
+  panels, schedules, history, scores users can defend, alerts, dashboards —
+  the retention engine. Workstream 2 opens the **local/geo dimension** (the
+  baseline's hero bet) at beta depth.
+- **Deliverables:** editable versioned prompt panels per project; scheduled
+  runs (weekly/monthly cadences, quota-aware) on the existing queue;
+  time-series rank/score storage + trend UI; weighted AI Visibility Score
+  0–100 (mention × position × sentiment — published formula) beside the
+  primitive score; per-engine presence over time (multi-engine panel
+  restored as a product surface alongside the measured path); AI-SoV vs
+  competitors; citation trends + drill-down; sampling honesty (repeat
+  samples, variance disclosure) with the reliability auditor surfaced
+  (differentiator D2); insight feed wired to the interventions library;
+  alert engine (rules, thresholds, email/Slack/in-app, digests, dedup,
+  quiet hours); project/workspace dashboards; weekly digest email;
+  **local-AIV beta:** location-conditioned prompt sampling ("dentist near
+  X"), AI-SoLV per location, and the geo-grid/AI-Overviews vendor decision
+  (operator A5 when reached).
+- **Dependencies:** M1 (projects/quotas); LLM cost model per cadence;
+  SERP/AI-Overviews data vendor for the local workstream.
+- **Risks:** recurring-run COGS (credit allowances + caps from M1);
+  AIV sampling credibility (variance disclosure, never single-sample
+  claims); alert fatigue (digest/dedup by design).
+- **Complexity: L.** **Order: 4 — the largest customer-visible milestone.**
 
-*Engineering decomposition done (session 3): **Phase 5, P5.1–P5.11** in
-[implementation-plan.md](implementation-plan.md) — build stays frozen behind the
-MVP sign-off gate (P4.1 + P4.2 + first green CI).*
+## M5 — Entity & Local Intelligence
 
-| Item | Rationale |
-|---|---|
-| Public no-signup page: brand + category → 12 fixed prompts × 4 engines, live | Every run is a demand signal and a lead; Semrush has a checker, ours must be more generous and exist in Turkish (theirs doesn't). |
-| Score + engine-by-engine presence map + competitors that showed up + ≥1 full raw answer | "Show our work" from the first touch — not a teaser; the full report costs an email address (lead capture). |
-| Results cached 24h per brand, rate limited, email-gated | Abuse control: caching, rate limits, email gate, fixed prompt set, daily cost check (the draft's checker-abuse mitigation). |
-| ~~**English + Turkish** at checker launch~~ **English-only at launch** (operator decision 2026-07-10) | The draft called Turkish a launch differentiator; the operator chose to ship the whole product EN-only and defer Turkish to Later. The original rationale stands whenever it is revived. |
-| **Waitlist + email notifications** (operator addition 2026-07-10, built same day as P5.13): home-page signup → thank-you mail + operator alert; every analysis run alerts the operator | Lead capture starts BEFORE the checker goes loud, and the operator sees demand in their inbox in real time (runs are recorded in the DB regardless). Resend-backed, fail-open, delivery gated on domain verification. |
+- **Objectives:** own the entity layer AI engines read from: canonical
+  brand records, knowledge-surface monitoring, and the local stack
+  (GBP, citations, reviews).
+- **Deliverables:** canonical entity record per project (KYC promoted to a
+  maintained profile with owner-confirmed NAP/attributes); knowledge-panel /
+  Wikipedia/Wikidata presence checks; entity-consistency diffing (site ↔
+  listings ↔ AI answers); GBP OAuth (locations, reviews, insights, posting
+  later); local citation monitoring (~top-40 directories, accuracy diffs);
+  review ingestion + sentiment + alerts + AI reply drafts
+  (approval-gated, brand-voice); local audit flavor (GBP completeness,
+  NAP, local schema); schema/entity recommendations from existing
+  validator data.
+- **Dependencies:** M1; GBP API approval/quota (operator); M4 alerts.
+- **Risks:** GBP API access terms; citation-source scraping fragility
+  (top-40 curated set, partner data later); review-reply publish safety
+  (twice-gated per RBAC design).
+- **Complexity: M–L.** **Order: 5.**
 
-### 2b. Engine + scoring depth — make the number trustworthy
+## M6 — Competitive Intelligence & Reporting
 
-| Item | Rationale |
-|---|---|
-| Real Gemini (with search grounding) + Perplexity engines | Four real engines with grounding are the actual panel; Gemini-with-grounding stands in for Google's AI-answer surface until AIO tracking (Later). The *organic* Google surface is now measured separately — SERP visibility from an open-source metasearch instance shipped 2026-08-03, off by default (ADR-28). |
-| 2 samples per prompt, frequencies not single observations | LLM answers wobble; sampling + frequencies is how we avoid the "guesswork" reputation the category earned. |
-| Weighted AI Visibility Score 0–100: mention × position (1.0 / 0.7 / 0.4) × sentiment (1.0 / 0.9 / 0.5), averaged, ×100 | The defensible, published score the product sells on; the MVP's binary score is the honest placeholder until this lands. |
-| Sentiment + position extraction pass (cheap model) | Inputs to the weighted score; a cheap analysis model is one of the three cost protections. |
+- **Objectives:** the daily strategy layer: keywords, rank tracking, SERP
+  intelligence, competitor tracking — and the agency deliverable: white-
+  label reporting. Completes core parity.
+- **Deliverables:** keyword research on licensed data (volumes/difficulty/
+  intent; local suggestions from the existing topic engine); organic rank
+  tracking per keyword × location × device with SERP-feature capture;
+  SERP history; named-competitor tracking over time with side-by-side and
+  gap views (keywords + visibility + backlinks via M2); content
+  intelligence v1 (question/content gaps from citations + SERP data);
+  Share of Voice across surfaces — first **Unified Visibility Index**
+  release (grid beta + organic + AI, configurable weights); report builder
+  (modular sections from M2–M6 blocks, AI-drafted commentary
+  human-edited, PDF + revocable live links, schedules); white-label
+  (logo → theme → custom domain/from-address); client portal seats
+  (Guest role from M1).
+- **Dependencies:** M1 seats/branding; M4 time-series + schedules; keyword
+  data license (operator decision); M2 for link blocks.
+- **Risks:** rank-tracking COGS at cadence (credit model); keyword-license
+  terms; report-render isolation (headless service — architecture-target).
+- **Complexity: L.** **Order: 6 — closes the parity backlog.**
 
-> **Input side, delivered in two passes.**
-> [`docs/discovery-kyc-improvements.md`](discovery-kyc-improvements.md) was the
-> first: **steps 1, 2a, 3, 4 and 5 are implemented** — JSON-LD extraction,
-> diacritic and hyphen tolerance in footprint matching, a KYC parse repair plus
-> one bounded retry, a Content-Type guard on page fetches, and a gate that
-> refuses the paid execute fan-out on a profile with no company or no topic.
-> **Steps 2b and 6 are not built:** they would revive §2c scope and stay gated on
-> an operator decision — see §2c immediately below.
->
-> [`docs/pipeline-quality-plan.md`](pipeline-quality-plan.md) is the second
-> (2026-08-01), and takes the same three steps from MVP to product grade:
-> encoding-correct decoding, binary sniffing, a homepage retry, scored link
-> selection and cross-page boilerplate removal (discovery); sanitation of every
-> field plus **grounding** — a product, competitor or alias the model returned
-> that is nowhere in the crawl is dropped, because a hallucinated alias inflates
-> the score and nothing downstream can tell — and two new profile fields
-> (`category`, `use_cases`) so the buying category is *asked for* rather than
-> inferred (KYC); a category filter that keeps spec attributes out of questions,
-> rotation that reaches every topic × shape pair, and a hard invariant that no
-> scored question may name the brand it measures (prompts). All of it is
-> language-neutral and adds **no** paid call.
->
-> **Readiness side, shipped 2026-08-03 (ADR-31), the same push.** The GEO and
-> SERP scores say *whether* AI answers and search results name a company; neither
-> says *why* when the answer is no, and "why" is the only part a customer can act
-> on. The **SEO / AI-readiness audit** is that "why": it re-reads the crawl
-> discovery already paid for — plus a single `/robots.txt` fetch, no extra crawl,
-> no paid call — and returns an A–F **grade** with the failing checks behind it.
-> It leads with the checks that are AI-specific and that no classic SEO tool looks
-> at: whether the answer engines' crawlers are allowed in at all (a `robots.txt`
-> block means the site *cannot* appear in their answers — separating a retrieval
-> block that costs answers today from a training block that only erodes presence
-> over time), and whether the page says anything without JavaScript (most AI
-> crawlers don't run it). The grade is **capped by critical failures** so a
-> weighted average can't average a fatal problem away, and classic hygiene (meta
-> description, canonical, Open Graph) is weighted minor and labelled as such —
-> honest about which checks are really about AI. What it is **not**: not a rank or
-> a rank tracker, not the weighted 0–100 AI Visibility Score above (that scores
-> *presence*; this scores *legibility*), and **not** Google AI Overviews tracking
-> (Later, below) — it audits *this* site's own files, it does not read Google's
-> answer box. It runs on every URL analysis (`result.seo` is null where there was
-> no site to read, e.g. a checker submission); it is language-neutral.
+## M7 — Automation & Agent Platform *(differentiators begin)*
 
-### 2c. Turkish as a first-class language — the wedge that can't be a sprint bolt-on
+- **Objectives:** the moat the baseline names "prescriptive automation and
+  agent-readiness": the platform acts, not just reports — and agents can
+  operate it safely.
+- **Deliverables:** playbooks (trigger → conditions → actions: task, draft,
+  rescan, notify, webhook) with template gallery (D1); insight→action→
+  verification loop recording outcomes (the future prediction dataset);
+  public API v1 (org-scoped keys from M1, OpenAPI published, rate limits)
+  then write endpoints + webhooks; **MCP server** exposing scoped
+  capabilities with human-approval modes (D5); llms.txt + machine-readable
+  docs; integrations: Slack (if not earlier), Zapier, Looker Studio
+  connector; AI content generation (briefs, local pages, GBP posts,
+  replies) with EU AI Act Art. 50 labeling (D9); comments/tasks on
+  evidence (lightweight collaboration).
+- **Dependencies:** M1 audit/keys (agent governance); M4 events/alerts
+  (triggers); M6 reports (report-compile API).
+- **Risks:** automation safety (approval gates, per-key caps, kill
+  switches — designed in M1); integration maintenance surface.
+- **Complexity: M–L.** **Order: 7.**
 
-> **⚠ Deferred to Later — operator decision, 2026-07-10.** The whole product
-> ships English-only for now; everything in this subsection moves to the
-> Later bucket and is revived only on the operator's word. Consequence,
-> stated honestly: the "Turkish first-class" wedge is not part of the launch
-> story until then, and the Arabic gate below ("Turkey delivers 20%+ of
-> signups") cannot trigger while Turkish is off. Engineering decomposition
-> (P5.8/P5.9) is preserved in implementation-plan.md as skipped cards.
->
-> **Two items below now have a written, ready-to-build spec and are waiting only
-> on that word** (2026-07-28): "Turkish suffix-aware brand/footprint matching" is
-> step 2b of [`discovery-kyc-improvements.md`](discovery-kyc-improvements.md),
-> and step 6 (record `<html lang>` / ccTLD into the KYC profile) is the missing
-> *input* that native Turkish prompt generation needs. Neither is implemented.
-> The language-neutral half of the matching work (step 2a — diacritic folding and
-> hyphen/space equivalence, which helps Nestlé and Coca-Cola as much as anything
-> Turkish) **has** shipped and is not part of this deferral; a test asserts the
-> suffix behaviour stayed unchanged, so the line between the two is enforced in
-> CI rather than by memory.
+## M8 — Enterprise
 
-| Item | Rationale |
-|---|---|
-| Native Turkish prompt generation (written how Turkish users ask, not translated) | If the Turkish numbers are wrong the whole differentiation story dies on day one — this is explicitly not the corner we cut. |
-| Turkish suffix-aware brand/footprint matching | Turkish agglutination breaks naive string matching; footprint accuracy in TR depends on it. |
-| Extraction model validated on a labelled Turkish test set before launch | A precision bar before public launch + weekly human spot-checks in beta keeps the numbers honest. |
+- **Objectives:** unlock the security-review buyer without bloating the
+  core (the baseline's explicit sequencing).
+- **Deliverables:** SSO (SAML/OIDC) + SCIM; org-visible audit log with
+  retention controls + integrity hardening; custom roles (clone-and-edit);
+  data residency options (EU/TR — the `region` field placed in M1 pays
+  off); DPA templates + sub-processor list; SOC 2 Type I program → Type
+  II path; listings sync via aggregator partner (the deferred local
+  enterprise ask); log-file analysis; volume/enterprise plans + invoicing;
+  localization revival path (TR/DE/AR UI + reports) **if the operator
+  calls it**; uptime SLAs + status page.
+- **Dependencies:** M1 foundations; audit firm; aggregator contract;
+  legal budget.
+- **Risks:** compliance cost/distraction (separate lane, not the PLG
+  core); aggregator economics.
+- **Complexity: M–L (mostly process + hardening).** **Order: 8.**
 
-### 2d. The app: accounts → billing → cadence
+## M9 — Advanced AI
 
-**Status (2026-08-03): the auth slice of row 1 has started, out of sequence.**
-Email/password endpoints landed in
-[PR #9](https://github.com/Beyond-Kaira/yanki-mvp/pull/9) and the screens for
-them are in review as
-[PR #13](https://github.com/Beyond-Kaira/yanki-mvp/pull/13) (plan cards **P6.0**
-/ **P6.1**, ADR-32). Nothing else in this section is begun: there are no
-projects, no onboarding wizard, and **an account currently grants nothing** —
-no route is protected and there is no signed-in destination (tech-debt #52).
-The sequencing note below still holds; signing in becomes worth doing when the
-app has something behind it.
-
-| Item | Rationale |
-|---|---|
-| Auth, accounts, projects + onboarding wizard (brand, site, category, up to 5 competitors, language) | Turns the anonymous loop into a product people return to; first run kicks off immediately with live progress. |
-| Prompt engine: 30–60 prompts from the site + category, user edits/approves, versioned panels with annotations | "Keyword research" for GEO; site-derived panels give even small brands real signal (fixes the "small brands get junk" gap). |
-| Stripe billing, Free / $49 / $129 from day one of public launch, hard caps + in-context upgrade | Category has a proven price anchor; hard limits + upgrade-at-cap protect margin. Reprice to $59/$149 *before* launch if Week-1 invoices run high — never after. |
-| Weekly scheduling (top prompts weekly, full panel monthly) + weekly digest email + alerts | The recurring loop is the retention engine; alerts fire on score move ≥10pts, competitor enters a priority answer, or you disappear from one — max one alert mail/day. |
-| **Cross-account `llm_cache`** (identical prompt+engine cached 24h across accounts) | The big cost lever — the MVP's within-job cache generalized; central to hitting "API cost < 35% of plan price". |
-| Answers Explorer: every metric links to the raw answers behind it | The trust feature — no dead ends; this is the "show our work" wedge as UI. |
-| Competitor share-of-voice, mention rate per engine, average position, citations (own pages vs third-party) | Share-of-voice is the agency-facing story; the third-party citation list is quietly the best screen in the product. |
-
-**Sequencing:** checker (2a) ships first as the demand test and recruits 5 design
-partner agencies on free Pro; engine/scoring depth (2b) and Turkish (2c) run in
-parallel because the checker needs both to be credible; the app (2d) follows with
-partners in beta, billing in test, then public launch. Detailed tickets:
-[implementation-plan.md](implementation-plan.md).
-
----
-
-## Later — scale the wedges (day 60–90 and beyond)
-
-Deliberately deferred until the checker/app data tells us which wedge to double
-down on. Each is gated on a day-90 decision below.
-
-| Item | Rationale |
-|---|---|
-| **Agency plan ~$299/mo** — 10 projects (kept fully separate) + white-label PDF reports | The agency owner is the multiplier and the highest-leverage buyer; the 5 design partners will "pull the agency plan out of us" when it's time. Day 60–90 decision. |
-| **Google AI Overviews tracking** | Half-closed as of 2026-08-03. The *organic* half — whether the brand shows up in ordinary search results for brand-free buyer queries, alongside the AI-answer GEO score — now has a $0 answer: SERP visibility read from a self-hostable open-source metasearch instance (SearXNG, AGPL-3.0), off by default (ADR-28). That retires the old "needs SERP scraping or a paid SERP API" line for organic results — neither is needed. Still open, and still our biggest admitted gap vs Semrush: **Google AI Overviews specifically** — the AI answer box on a Google results page, a different artifact from the organic results SearXNG federates, with no $0 source yet. We keep saying the open half out loud on the comparison page and close it around day 60–90 — hiding it would cost us the transparency story. |
-| **Turkish** language support (moved from 2c, operator decision 2026-07-10) | Native prompts + suffix-aware matching + TR UI, as specced in 2c and the skipped P5.8/P5.9 cards. Revive on the operator's word; requires a native-speaker sign-off before any public Turkish. |
-| **Arabic** language support | Ship only if Turkey delivers 20%+ of signups organically — proof the native-language playbook repeats before we spend on a third language. (Gate suspended while Turkish itself is deferred.) |
-| **CSV export + public API** | Export is a Pro-tier ask already; API is "later, when someone asks and pays" — not needed to prove willingness to pay. |
-| **Compliance-grade tier $500+/mo** (accuracy guarantees, audit trails) | Only if regulated/enterprise brands come inbound asking; the pipeline already supports the audit trail, so it's packaging, not a rebuild. |
-
-**Explicitly still NOT building** (from the draft, until someone asks and pays):
-content generation, an AI recommendation engine (generic advice is the most
-mocked feature in the category — we ship specific findings instead), attribution/
-analytics integrations, SSO, mobile, more engines.
-
----
-
-## Day-90 decision gates
-
-Read the numbers at day 90 and let them pick the next investment (from
-[00-first-mvp-draft.md](00-first-mvp-draft.md)):
-
-- **Agencies dominate paying accounts:** build the agency plan next (workspaces,
-  white-label PDF).
-- **Turkey delivers 20%+ of signups organically:** ship Arabic, double the local
-  content.
-- **Regulated / enterprise brands come inbound asking about accuracy and audit
-  trails:** add a compliance-grade tier at $500+/mo — the pipeline already
-  supports it.
-- **Free-to-paid under 2%:** stop building, fix packaging and pricing first.
+- **Objectives:** the data-moat features nobody can copy without the data.
+- **Deliverables:** predictive visibility modeling (action → forecast
+  lift, ranges + backtests, D7) on the M7 outcome dataset; autonomous
+  monitoring agents (triage + propose + approve, D6); the local AIV data
+  network + benchmark reports (D8); playbook marketplace; reseller/API
+  platform packaging.
+- **Dependencies:** 12+ months of cross-org outcome data (starts accruing
+  at M4/M7 — a reason not to delay them); M8 governance for anonymization.
+- **Risks:** model-quality bar (ranges, never point promises — trust
+  brand); marketplace/reseller legal terms.
+- **Complexity: L.** **Order: 9.**
 
 ---
 
-## First-90-days success metrics
+## Parity coverage guarantee
 
-The targets we recalibrate against after two weeks of real data (from
-[00-first-mvp-draft.md](00-first-mvp-draft.md); ranges are ranges, not promises):
+Every category in the re-planning brief maps to exactly one milestone —
+the table lives in [feature-parity.md](feature-parity.md) §4. If a proposed
+feature has no milestone home, it goes to the backlog, not the sprint —
+scope discipline unchanged from the MVP era.
 
-- **3000 checker runs, 600 signups, 40 paying, $2.5–4k MRR.**
-- **Activation:** 60% of signups see their first snapshot, median under 10
-  minutes.
-- **Month-2 logo churn under 8%** — the number leadership will actually stare at;
-  monitoring tools die of curiosity churn.
-- **Run reliability 95%+, API cost per paying customer under 35% of plan price.**
+## Standing gates
 
----
-
-## How the MVP's out-of-scope list maps to phases
-
-Every item [02-mvp.md §4](02-mvp.md) marks out-of-scope has a home here — this
-table is the contract between "not now" and "when":
-
-| 02-mvp.md out-of-scope item | Phase | Where above |
-|---|---|---|
-| Auth, accounts, projects | **Next** — auth started 2026-08-03 (PR #9 endpoints, PR #13 screens in review); projects not begun | 2d — app: accounts |
-| Billing / Stripe / plan limits | **Next** | 2d — Stripe Free/$49/$129 |
-| Scheduling, recurring scans, weekly digests + alerts | **Next** | 2d — weekly scheduling + digest + alerts |
-| Sentiment analysis and position weighting (score stays binary) | **Next** | 2b — weighted 0–100 score |
-| Turkish language (native prompts + Turkish suffix matching) | **Later** (operator decision 2026-07-10; was Next) | Later — Turkish (moved from 2c) |
-| Cross-account cache (MVP caches within a job only) | **Next** | 2d — cross-account `llm_cache` |
-| Real Gemini + Perplexity engines (stubbed in MVP) | **Next** | 2b — real Gemini + Perplexity |
-| 2-samples-per-prompt sampling | **Next** | 2b — 2 samples per prompt |
-| Competitor comparison, share of voice, citations, Answers Explorer UI | **Next** | 2d — SoV, citations, Answers Explorer |
-| CSV export, historical trends | **Next / Later** | Trends land with weekly tracking (2d); CSV export is a Pro feature but full export/API is **Later**. |
-| Google AI Overviews tracking | **Later** | AI Overviews tracking |
-| Arabic | **Later** | Arabic (gated on Turkey traction) |
-| White label, API, SSO, mobile, more engines | **Later** | Agency white-label + export/API; SSO/mobile/more engines stay deferred |
-| Compliance / audit-trail tier | **Later** | Compliance-grade $500+/mo tier |
+- **Checker go-live (P5.11):** operator's, any time, independent of M1+.
+- **M1 start:** operator ratifies this roadmap (A3). **M2 start:** backlink
+  vendor + budget (A4). **M4 local workstream:** grid/AI-Overviews vendor
+  decision (A5, raised when reached).
+- **Per-milestone exit:** acceptance criteria in each plan doc; docs +
+  ADRs current; `make test` green; no cross-tenant leakage regressions.
+- **Pricing changes** ride M1 (plans-as-data) but public price points are
+  operator decisions at each launch moment.

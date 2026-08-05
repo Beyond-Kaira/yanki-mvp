@@ -872,3 +872,415 @@ class LlmCache(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )
+
+
+# ---------------------------------------------------------------------------
+# Backlink Intelligence (Phase 8 / roadmap M2)
+# ---------------------------------------------------------------------------
+
+
+class BacklinkCompetitor(Base):
+    """A competitor DOMAIN tracked for one project.
+
+    Distinct from the competitor *names* KYC already extracts: a name is a
+    discovery seed, and turning "Acme" into ``acme.com`` is a classification
+    problem nothing here solves reliably. So a tracked competitor is supplied
+    explicitly, and the KYC name rides along as ``label`` when one matched.
+    """
+
+    __tablename__ = "backlink_competitors"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "project_id", "competitor_domain", name="uq_backlink_competitors"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    competitor_domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    label: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    active: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=True, server_default=sa.true()
+    )
+    tracked_since: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class BacklinkImport(Base):
+    """One refresh of one (project, subject domain) — the queue AND the history.
+
+    Two jobs in one small row, following the house idiom that the table *is* the
+    queue (``analyses``, ``site_audits``):
+
+    * **Queue.** Status/claim columns, with a partial index so the scan stays
+      tiny however much history accumulates, and a partial unique that makes a
+      second concurrent refresh of the same subject impossible.
+    * **Analytical snapshot, kept forever.** Coverage, cost, the vendor's
+      reported totals, the period deltas, and the decomposed authority score.
+      Because history lives here rather than in the link rows, trends survive
+      both per-plan row pruning and a change of vendor — the two things that
+      would otherwise rewrite the past.
+    """
+
+    __tablename__ = "backlink_imports"
+    __table_args__ = (
+        sa.Index(
+            "ix_backlink_imports_queue",
+            "status",
+            "claimed_at",
+            "created_at",
+            postgresql_where=sa.text("status IN ('queued', 'running')"),
+            sqlite_where=sa.text("status IN ('queued', 'running')"),
+        ),
+        sa.Index(
+            "uq_backlink_imports_one_active",
+            "project_id",
+            "subject_domain",
+            unique=True,
+            postgresql_where=sa.text("status IN ('queued', 'running')"),
+            sqlite_where=sa.text("status IN ('queued', 'running')"),
+        ),
+        sa.Index(
+            "ix_backlink_imports_series", "project_id", "subject_domain", "snapshot_at"
+        ),
+        sa.CheckConstraint("attempts >= 0", name="ck_backlink_imports_attempts"),
+        sa.CheckConstraint(
+            "yanki_authority IS NULL OR yanki_authority BETWEEN 0 AND 100",
+            name="ck_backlink_imports_authority",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    subject_domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    subject_kind: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="own", server_default="own"
+    )
+    vendor: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="mock", server_default="mock"
+    )
+    trigger: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="manual", server_default="manual"
+    )
+
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="queued", server_default="queued"
+    )
+    attempts: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    error: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+
+    coverage_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Whether this import may support an ABSENCE claim. False on any truncated,
+    # failed, or suspiciously-shrunken pull — such an import records what it saw
+    # and mints zero losses.
+    measurable: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    # Marks an import whose apparent churn comes from a plan-cap or vendor
+    # change rather than the web. Its deltas are recorded but excluded from
+    # velocity, so an upgrade does not read as a link explosion.
+    retention_boundary: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    rows_ingested: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    reported_total_backlinks: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    reported_total_referring_domains: Mapped[int | None] = mapped_column(
+        sa.Integer, nullable=True
+    )
+    cost_usd: Mapped[Decimal] = mapped_column(
+        sa.Numeric(10, 6), nullable=False, default=0, server_default="0"
+    )
+
+    snapshot_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    new_in_period: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    lost_in_period: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    yanki_authority: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    authority_version: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # JSON because the decomposition is a publish-only bag read whole for the
+    # methodology panel and never filtered on; a column per sub-score would
+    # freeze the formula into DDL and block additive versioning.
+    authority_components: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    totals: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    provenance: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Backlink(Base):
+    """The current belief about one link to the project's own domain.
+
+    Identity is ``(project, vendor, source key, target key)``. ``vendor`` is in
+    the key on purpose: after a vendor switch, one index's set must never be
+    diffed against another's, which would report the entire profile as lost and
+    reborn. The keys are canonicalized (``normalize.url_key``) so cosmetic URL
+    churn cannot fork one link into a phantom new+lost pair.
+
+    Competitors are stored rollup-only — see ``ReferringDomainRollup`` — because
+    gap analysis needs their referring domains, not their individual links, and
+    storing the links would multiply the row count by the competitor count.
+    """
+
+    __tablename__ = "backlinks"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "project_id",
+            "vendor",
+            "source_url_key",
+            "target_url_key",
+            name="uq_backlinks_identity",
+        ),
+        sa.Index("ix_backlinks_project_status", "project_id", "status"),
+        sa.Index("ix_backlinks_source_domain", "project_id", "source_domain"),
+        sa.CheckConstraint("consecutive_misses >= 0", name="ck_backlinks_misses"),
+        sa.CheckConstraint(
+            "toxicity_score IS NULL OR toxicity_score BETWEEN 0 AND 100",
+            name="ck_backlinks_toxicity",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    subject_domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    vendor: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="mock", server_default="mock"
+    )
+
+    source_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    source_url_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    source_domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    target_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    target_url_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+
+    anchor: Mapped[str] = mapped_column(sa.Text, nullable=False, server_default="")
+    anchor_class: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="generic", server_default="generic"
+    )
+    is_follow: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=True, server_default=sa.true()
+    )
+    is_image_link: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    tld: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    attrs: Mapped[list[Any]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=False, default=list
+    )
+    vendor_metrics: Mapped[dict[str, Any]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=False, default=dict
+    )
+
+    # 'active' | 'missing_pending' (seen absent, not yet believed gone) |
+    # 'lost' (absence confirmed) | 'lost_unverified' (absence repeated but the
+    # verifier could not reach the page — reported as such, never as 'lost').
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="active", server_default="active"
+    )
+    # The VENDOR's first-seen, not ours. Birth is a fact about the web, not
+    # about when our table happened to learn it.
+    first_seen_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
+    last_import_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    consecutive_misses: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    lost_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    lost_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    verified_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    verify_verdict: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    source_domain_authority: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    source_page_authority: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    vendor_spam_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    toxicity_score: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    toxicity_band: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class LinkEvent(Base):
+    """Append-only log of what changed: new, lost, regained, changed.
+
+    The evidence behind every delta the product claims. Denormalized (keys,
+    domain, urls) so an event stays readable after its ``Backlink`` row is
+    pruned by a plan cap — the history must not depend on the inventory.
+    """
+
+    __tablename__ = "link_events"
+    __table_args__ = (
+        sa.Index("ix_link_events_stream", "project_id", "kind", "occurred_at"),
+        sa.Index("ix_link_events_at", "project_id", "occurred_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    backlink_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    import_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    subject_domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    vendor: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="mock", server_default="mock"
+    )
+    source_url_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    target_url_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    source_domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    target_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    kind: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    detected_by: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="vendor", server_default="vendor"
+    )
+    verified: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    detail: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    authority_at_event: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class ReferringDomainRollup(Base):
+    """Per (project, subject, referring domain) current state.
+
+    Three jobs at once, which is why it is one table and not three: the
+    gap-analysis substrate, the home of domain-grain toxicity (inlined rather
+    than a separate assessments table — the score is a pure function of the
+    import and is recomputed with it), and the LINK half of the link-meets-
+    citation view whose CITATION half is overlaid on read so it is never stale.
+
+    Competitor profiles live ONLY here.
+    """
+
+    __tablename__ = "referring_domain_rollups"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "project_id",
+            "subject_domain",
+            "referring_domain",
+            name="uq_rd_rollups_domain",
+        ),
+        sa.Index("ix_rd_rollups_gap", "project_id", "subject_kind", "referring_domain"),
+        sa.Index(
+            "ix_rd_rollups_toxicity", "project_id", "subject_domain", "toxicity_band"
+        ),
+        sa.CheckConstraint(
+            "toxicity_score IS NULL OR toxicity_score BETWEEN 0 AND 100",
+            name="ck_rd_rollups_toxicity",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    subject_domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    subject_kind: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="own", server_default="own"
+    )
+    referring_domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+
+    links_count: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    follow_links: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    first_linked_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    last_linked_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    domain_authority: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    source_subnet: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    toxicity_score: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    toxicity_band: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    toxicity_version: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # JSON because it is a variable-length list of {code,label,weight,evidence}
+    # rendered verbatim so every flag decomposes into its reasons. The BAND is
+    # the queryable field; an individual reason never is.
+    toxicity_reasons: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+
+    last_import_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )

@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     # safe. Correct it in deploy/.env once a real invoice exists (tech-debt #58).
     tavily_search_usd: float = 0.008
 
+    # Backlink Intelligence (Phase 8 / M2). OFF by default and dark until the
+    # operator picks a vendor and a budget (operator item A4) — the module runs
+    # end-to-end on the deterministic mock meanwhile, at $0. Same kill-switch
+    # shape as CHECKER_ENABLED / SERP_ENABLED.
+    backlinks_enabled: bool = False
+    backlink_vendor: str = "mock"
+
     # Pipeline behaviour
     dry_run: bool = True
     prompt_count: int = 10

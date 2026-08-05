@@ -1,0 +1,184 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SeoProject } from '@/lib/contracts'
+
+const mockedUseAuth = vi.hoisted(() => vi.fn())
+const mockedListSeoProjects = vi.hoisted(() => vi.fn())
+const mockedCreateSeoProject = vi.hoisted(() => vi.fn())
+
+vi.mock('@/components/AuthProvider', () => ({
+  useAuth: mockedUseAuth,
+}))
+
+vi.mock('@/lib/api', () => ({
+  createSeoProject: mockedCreateSeoProject,
+  listSeoProjects: mockedListSeoProjects,
+}))
+
+import SiteAuditDashboard from '@/components/site-audit/dashboard/SiteAuditDashboard'
+
+const PROJECT: SeoProject = {
+  id: '4bb0f6e1-d873-47ce-b15a-d166c43f91f8',
+  name: 'Dream Games',
+  domain: 'https://www.dreamgames.com/',
+  created_at: '2026-08-04T09:00:00Z',
+  updated_at: '2026-08-04T10:30:00Z',
+  latest_audit: {
+    id: 'fa51dd7c-6c71-45ab-b40d-b28395d8c0f6',
+    project_id: '4bb0f6e1-d873-47ce-b15a-d166c43f91f8',
+    status: 'done',
+    progress: 100,
+    current_step: null,
+    page_limit: 100,
+    profile_id: 'site_audit_mobile',
+    js_rendering: true,
+    pages_discovered: 50,
+    pages_crawled: 3,
+    total_errors: 2,
+    total_warnings: 7,
+    total_notices: 1,
+    health_score: 82,
+    error: null,
+    created_at: '2026-08-04T09:00:00Z',
+    updated_at: '2026-08-04T10:30:00Z',
+    started_at: '2026-08-04T09:00:05Z',
+    completed_at: '2026-08-04T10:30:00Z',
+  },
+}
+
+function authenticated() {
+  mockedUseAuth.mockReturnValue({ status: 'authenticated', user: null })
+}
+
+describe('SiteAuditDashboard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    authenticated()
+  })
+
+  it('shows an honest loading state while projects are requested', () => {
+    mockedListSeoProjects.mockReturnValue(new Promise(() => undefined))
+
+    render(<SiteAuditDashboard />)
+
+    expect(screen.getByRole('status')).toHaveTextContent(/loading seo projects/i)
+  })
+
+  it('shows the empty workspace state when the account has no projects', async () => {
+    mockedListSeoProjects.mockResolvedValue([])
+
+    render(<SiteAuditDashboard />)
+
+    expect(
+      await screen.findByRole('heading', {
+        name: /find the technical issues holding your website back/i,
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /domain/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /configure audit/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('creates a project and queues its first audit with the chosen settings', async () => {
+    const user = userEvent.setup()
+    mockedListSeoProjects.mockResolvedValue([])
+    mockedCreateSeoProject.mockResolvedValue(PROJECT)
+
+    render(<SiteAuditDashboard />)
+
+    await user.type(
+      await screen.findByRole('textbox', { name: /domain/i }),
+      'dreamgames.com',
+    )
+    await user.click(screen.getByRole('button', { name: /configure audit/i }))
+
+    expect(
+      screen.getByRole('dialog', { name: /configure your crawl/i }),
+    ).toBeInTheDocument()
+    const pageLimit = screen.getByRole('spinbutton', { name: /limit per audit/i })
+    await user.clear(pageLimit)
+    await user.type(pageLimit, '3')
+    await user.click(screen.getByRole('radio', { name: /desktop crawler/i }))
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: /^start audit$/i }))
+
+    expect(mockedCreateSeoProject).toHaveBeenCalledWith({
+      domain: 'dreamgames.com',
+      name: null,
+      page_limit: 3,
+      profile_id: 'site_audit_desktop',
+      js_rendering: false,
+    })
+    expect(await screen.findByText('Dream Games')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Dream Games' })).toHaveAttribute(
+      'href',
+      `/site-audit/${PROJECT.id}`,
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('validates the domain before opening crawl settings', async () => {
+    const user = userEvent.setup()
+    mockedListSeoProjects.mockResolvedValue([])
+
+    render(<SiteAuditDashboard />)
+
+    await user.type(
+      await screen.findByRole('textbox', { name: /domain/i }),
+      'https://',
+    )
+    await user.click(screen.getByRole('button', { name: /configure audit/i }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/valid domain/i)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockedCreateSeoProject).not.toHaveBeenCalled()
+  })
+
+  it('shows a retryable error and reloads the project list', async () => {
+    const user = userEvent.setup()
+    mockedListSeoProjects
+      .mockRejectedValueOnce(new Error('The network is offline.'))
+      .mockResolvedValueOnce([PROJECT])
+
+    render(<SiteAuditDashboard />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The network is offline.',
+    )
+    await user.click(screen.getByRole('button', { name: /try again/i }))
+
+    expect(await screen.findByText('Dream Games')).toBeInTheDocument()
+    expect(mockedListSeoProjects).toHaveBeenCalledTimes(2)
+  })
+
+  it('renders only backend-supported project and audit fields', async () => {
+    mockedListSeoProjects.mockResolvedValue([PROJECT])
+
+    render(<SiteAuditDashboard />)
+
+    expect(await screen.findByText('Dream Games')).toBeInTheDocument()
+    expect(screen.getByText('https://www.dreamgames.com/')).toBeInTheDocument()
+    expect(screen.getByText('3 / 100')).toBeInTheDocument()
+    expect(screen.getByText('82%')).toBeInTheDocument()
+    expect(screen.getByText('2 errors')).toBeInTheDocument()
+    expect(screen.getByText('7 warnings')).toBeInTheDocument()
+    expect(screen.getByText('Complete')).toBeInTheDocument()
+  })
+
+  it('does not request account projects for an anonymous visitor', async () => {
+    mockedUseAuth.mockReturnValue({ status: 'anonymous', user: null })
+
+    render(<SiteAuditDashboard />)
+
+    expect(
+      screen.getByRole('heading', { name: /sign in to view site audit/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^sign in$/i })).toHaveAttribute(
+      'href',
+      '/login',
+    )
+    await waitFor(() => expect(mockedListSeoProjects).not.toHaveBeenCalled())
+  })
+})

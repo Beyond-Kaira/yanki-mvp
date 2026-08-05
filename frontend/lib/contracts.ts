@@ -112,3 +112,22 @@ export type Credentials = Schemas['LoginRequest']
 export type SignupCredentials = Schemas['SignupRequest']
 
 export type LoginResponse = Schemas['LoginResponse']
+
+// Independent Site Audit projects. These aliases stay deliberately thin: the
+// backend OpenAPI schema is the source of truth for every field rendered by the
+// project dashboard.
+export type SeoProject = Schemas['SeoProjectOut']
+
+export type SeoProjectDetail = Schemas['SeoProjectDetailOut']
+
+export type SiteAuditRunSummary = Schemas['SiteAuditSummaryOut']
+
+export type SiteAuditDetail = Schemas['SiteAuditDetailOut']
+
+export type SiteAuditPage = Schemas['SiteAuditPageOut']
+
+export type SiteAuditIssue = Schemas['SiteAuditIssueOut']
+
+export type SiteAuditSchema = Schemas['SiteAuditSchemaOut']
+
+export type CreateSeoProjectInput = Schemas['CreateSeoProjectRequest']

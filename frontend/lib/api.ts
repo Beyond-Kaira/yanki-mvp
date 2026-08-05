@@ -2,6 +2,10 @@ import type {
   Analysis,
   CheckerSubmitResponse,
   CreateAnalysisResponse,
+    CreateSeoProjectInput,
+    SeoProject,
+    SeoProjectDetail,
+    SiteAuditDetail,
   WaitlistSignupResponse,
 } from './contracts'
 import { getAccessToken, refreshAccessToken } from './session'
@@ -159,4 +163,132 @@ export async function getAnalysis(id: string): Promise<Analysis> {
     throw new ApiError(message, res.status)
   }
   return (await res.json()) as Analysis
+}
+
+export async function listSeoProjects(signal?: AbortSignal): Promise<SeoProject[]> {
+  let res: Response
+  try {
+    res = await authorizedFetch('/api/v1/seo-projects', {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to view your Site Audit projects.'
+        : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as SeoProject[]
+}
+
+export async function createSeoProject(
+  input: CreateSeoProjectInput,
+): Promise<SeoProject> {
+  let res: Response
+  try {
+    res = await authorizedFetch('/api/v1/seo-projects', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to start a Site Audit.'
+        : res.status === 409
+          ? 'A Site Audit project for this domain already exists.'
+          : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as SeoProject
+}
+
+export async function getSeoProject(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<SeoProjectDetail> {
+  let res: Response
+  try {
+    res = await authorizedFetch(`/api/v1/seo-projects/${encodeURIComponent(projectId)}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to view this Site Audit.'
+        : res.status === 404 || res.status === 422
+          ? "We couldn't find that SEO project."
+          : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as SeoProjectDetail
+}
+
+export async function getSiteAudit(
+  projectId: string,
+  auditId: string,
+  signal?: AbortSignal,
+): Promise<SiteAuditDetail> {
+  let res: Response
+  try {
+    res = await authorizedFetch(
+      `/api/v1/seo-projects/${encodeURIComponent(projectId)}/audits/${encodeURIComponent(auditId)}`,
+      {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        signal,
+      },
+    )
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to view this Site Audit.'
+        : res.status === 404 || res.status === 422
+          ? "We couldn't find that audit run."
+          : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as SiteAuditDetail
 }

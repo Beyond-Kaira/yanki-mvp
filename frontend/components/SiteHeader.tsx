@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useAuth } from '@/components/AuthProvider'
+import { isShellPath } from '@/lib/shell-nav'
 
 // Quiet nav link. `order-*` only matters on a phone, where the nav is a 2x2
 // grid; at `sm` it returns to a single row in document order.
@@ -15,23 +16,19 @@ const QUIET =
 const ACCENT =
   'inline-flex min-h-[40px] items-center justify-self-end rounded-md bg-primary px-3 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 sm:order-none'
 
-// Slim, additive site header rendered on every page above the routed content.
-// Brand rules from brandkit v2: surface (white) bar, surface-border bottom
-// hairline, one accent. Nav targets are >=40px tall with visible focus rings.
-//
-// A client component because the right-hand side depends on who is signed in.
+// Marketing/auth header. Product routes use AppShell (vertical nav + ShellAuthBar)
+// so this returns null there. On login/signup only logo + auth actions remain.
 export default function SiteHeader() {
+  const pathname = usePathname()
+  if (isShellPath(pathname)) return null
+
   return (
     <header className="border-b border-surface-border bg-surface">
       <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
-        {/* shrink-0: with four nav items the row runs out of width on a phone,
-            and without this the flex container compresses the logo instead of
-            wrapping the nav. */}
         <Link
           href="/"
           className="inline-flex shrink-0 items-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          {/* Plain img: byte-identical brand SVG, no next/image loader needed. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/yanki-logo-horizontal.svg"
@@ -41,18 +38,10 @@ export default function SiteHeader() {
             className="h-8 w-auto"
           />
         </Link>
-        {/* Phone: a 2x2 grid, so the two actions share the first row and the
-            reference links sit under them. At `sm` it is a single row. */}
         <nav
-          aria-label="Primary"
-          className="grid grid-cols-2 items-center gap-x-1 gap-y-1 whitespace-nowrap sm:flex sm:gap-x-2"
+          aria-label="Account"
+          className="flex items-center gap-x-2"
         >
-          <Link href="/checker" className={`order-1 ${QUIET}`}>
-            Free checker
-          </Link>
-          <Link href="/methodology" className={`order-4 ${QUIET}`}>
-            Methodology
-          </Link>
           <AuthNav />
         </nav>
       </div>

@@ -19,15 +19,21 @@ import KycCard from '@/components/KycCard'
 import SerpVisibility from '@/components/SerpVisibility'
 import SeoAudit from '@/components/SeoAudit'
 import WaitlistForm from '@/components/WaitlistForm'
+import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 
 const POLL_MS = 2000
 
 export default function AnalysisPage() {
   const params = useParams<{ id: string }>()
   const id = params.id
+  const { setAnalysisId } = useAnalysisSession()
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (id) setAnalysisId(id)
+  }, [id, setAnalysisId])
 
   useEffect(() => {
     let cancelled = false
@@ -43,6 +49,7 @@ export default function AnalysisPage() {
       try {
         const data = await getAnalysis(id)
         if (cancelled) return
+        setAnalysisId(data.id)
         setAnalysis(data)
         setLoadError(null)
         if (data.status === 'done' || data.status === 'failed') stop()
@@ -64,7 +71,7 @@ export default function AnalysisPage() {
       cancelled = true
       stop()
     }
-  }, [id])
+  }, [id, setAnalysisId])
 
   // Nothing loaded and an error came back: there is no run to point at a step
   // within, so the load failure itself is the only thing to report.
@@ -175,6 +182,21 @@ function Results({ analysis }: { analysis: Analysis }) {
       {result.serp ? <SerpVisibility serp={result.serp} /> : null}
 
       {result.seo ? <SeoAudit seo={result.seo} /> : null}
+
+      <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <a
+          href={`/ai-visibility?analysis=${analysis.id}`}
+          className="font-medium text-primary hover:text-primary-hover"
+        >
+          Open in AI Visibility overview →
+        </a>
+        <a
+          href={`/search-visibility?analysis=${analysis.id}`}
+          className="font-medium text-primary hover:text-primary-hover"
+        >
+          Open in Search Visibility overview →
+        </a>
+      </p>
 
       {presence.length > 0 ? <EnginePresenceMap presence={presence} /> : null}
 

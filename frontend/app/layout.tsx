@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { Sora, IBM_Plex_Mono } from 'next/font/google'
 import AuthProvider from '@/components/AuthProvider'
+import AnalysisSessionProvider from '@/components/AnalysisSessionProvider'
 import SiteHeader from '@/components/SiteHeader'
 import './globals.css'
 
@@ -41,8 +42,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* Session state is read by the header and the auth screens, so the
             provider wraps everything below it. */}
         <AuthProvider>
-          <SiteHeader />
-          {children}
+          <AnalysisSessionProvider>
+            <SiteHeader />
+            {children}
+          </AnalysisSessionProvider>
         </AuthProvider>
       </body>
     </html>

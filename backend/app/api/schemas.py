@@ -461,3 +461,150 @@ class AdminOrganizationOut(BaseModel):
     status: str
     created_at: datetime
     member_count: int
+
+
+# --- Invitations ----------------------------------------------------------
+
+
+class AdminInvitationOut(BaseModel):
+    """One invitation, as an administrator sees it.
+
+    Note what is absent: the token. It exists in the email and nowhere else, so
+    this response cannot be replayed into a working invitation even by the
+    administrator who created it. ``accept_url`` on the create response is the
+    single deliberate exception, and it is returned exactly once.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    role: str
+    status: str
+    # Derived, not stored: an invitation is expired when its clock says so, not
+    # when a sweeper gets around to relabelling it.
+    expired: bool
+    created_at: datetime
+    expires_at: datetime
+    accepted_at: datetime | None = None
+    revoked_at: datetime | None = None
+    last_sent_at: datetime | None = None
+    sent_count: int
+    invited_by_email: str | None = None
+
+
+class AdminInvitationListOut(BaseModel):
+    """A page of invitations, plus the roles this caller may hand out."""
+
+    total: int
+    limit: int
+    offset: int
+    assignable_roles: list[str]
+    invitations: list[AdminInvitationOut]
+
+
+class AdminInvitationCreateRequest(BaseModel):
+    """Invite one person to the caller's organization."""
+
+    email: NormalizedEmail
+    role: str = Field(max_length=40)
+
+
+class AdminInvitationCreatedOut(BaseModel):
+    """The created invitation and the one-time link that accepts it.
+
+    ``accept_url`` is returned so an administrator can pass the link on directly
+    when email is not configured — which is the case for any fresh deployment,
+    and would otherwise make invitations silently useless. It is the only
+    response in the API that carries an invitation token, it is never returned
+    again, and issuing it is audit-logged like everything else here.
+    """
+
+    invitation: AdminInvitationOut
+    accept_url: str
+    email_sent: bool
+
+
+class InvitationPreviewOut(BaseModel):
+    """What an invited person is told before they commit to signing up.
+
+    Carries the organization name and the offered role so the accept screen can
+    say what is actually being joined. It carries the invited **email** too:
+    that address is already known to whoever holds the link (it was sent to
+    them), so echoing it leaks nothing and lets the form prefill.
+    """
+
+    email: str
+    role: str
+    organization_name: str
+    expires_at: datetime
+
+
+class InvitationAcceptRequest(BaseModel):
+    """Create an account from an invitation.
+
+    The password is the only field: the email comes from the invitation, so an
+    invitation cannot be redirected to a different address by editing the form.
+    """
+
+    password: str = Field(min_length=8, max_length=128)
+
+
+# --- Audit log ------------------------------------------------------------
+
+
+class AuditEventOut(BaseModel):
+    """One audit event.
+
+    ``before``/``after`` arrive already redacted — the redaction happened at
+    write time, so there is no unredacted copy for this endpoint to leak.
+    ``integrity`` is this row's self-hash verdict: ``ok`` intact, ``altered``
+    if the stored content no longer matches its hash, ``unverifiable`` for rows
+    written before hashing existed.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    occurred_at: datetime
+    action: str
+    outcome: str
+    actor_type: str
+    actor_id: uuid.UUID | None = None
+    actor_label: str | None = None
+    entity_type: str | None = None
+    entity_id: uuid.UUID | None = None
+    before: dict[str, Any] | None = None
+    after: dict[str, Any] | None = None
+    changed: dict[str, Any] | None = None
+    ip_hash: str | None = None
+    user_agent: str | None = None
+    request_id: str | None = None
+    integrity: Literal["ok", "altered", "unverifiable"]
+
+
+class AuditEventListOut(BaseModel):
+    """A page of audit events, plus what the filter UI needs to render itself."""
+
+    total: int
+    limit: int
+    offset: int
+    sort: str
+    order: Literal["asc", "desc"]
+    actions: list[str]
+    events: list[AuditEventOut]
+
+
+class AuditIntegrityOut(BaseModel):
+    """The result of re-hashing recent audit rows.
+
+    ``altered`` above zero means somebody edited the audit table out of band,
+    which is the one number on this response worth alerting on.
+    """
+
+    checked: int
+    intact: int
+    altered: int
+    unverifiable: int
+    altered_ids: list[uuid.UUID]
+    ok: bool

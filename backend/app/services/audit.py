@@ -22,19 +22,33 @@ change already happened, and the honest outcome is a logged warning about the
 missing audit row rather than a lie to the user about the operation. That is a
 real trade (a silently missing event) and it is recorded as tech-debt rather
 than hidden: hardening it into an outbox belongs with M1's exit gate.
+
+**Tamper-evident, within stated limits.** Every row carries
+:func:`compute_record_hash` over its own content, and migration 0018 installs a
+Postgres trigger that raises on UPDATE or DELETE. Together those make an edit
+detectable (:func:`verify_row`) and a deletion impossible through the database's
+own rules. What they do NOT do is survive a superuser who drops the trigger
+first — see the ``record_hash`` column comment for why a hash chain was not the
+answer, and :func:`verify_integrity` for what the admin surface can actually
+prove.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AuditEvent
+from app.request_context import current_request_info
 from app.services.tenancy import OrgContext
 
 logger = logging.getLogger(__name__)
@@ -130,6 +144,128 @@ def diff(before: dict[str, Any] | None, after: dict[str, Any] | None) -> dict[st
     return changed
 
 
+# The fields the record hash covers. Everything an investigator would read, and
+# nothing that is derived from them — a hash over its own column would be
+# self-referential, and one over a mutable field would break for a legitimate
+# reason and teach reviewers to ignore failures.
+_HASHED_FIELDS = (
+    "id",
+    "occurred_at",
+    "org_id",
+    "workspace_id",
+    "actor_type",
+    "actor_id",
+    "actor_label",
+    "action",
+    "entity_type",
+    "entity_id",
+    "before",
+    "after",
+    "ip_hash",
+    "user_agent",
+    "request_id",
+    "outcome",
+    "detail",
+)
+
+
+def _canonical(value: Any) -> Any:
+    """A JSON-stable view of one field, so the same row always hashes the same."""
+
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        # Normalized to aware UTC first: SQLite hands back naive datetimes for
+        # the same instant Postgres returns as aware, and a hash that depends on
+        # the driver would fail verification on the wrong database rather than
+        # on a tampered row.
+        moment = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return moment.astimezone(UTC).isoformat()
+    return value
+
+
+def compute_record_hash(event: AuditEvent) -> str:
+    """SHA-256 over the row's audited content, as canonical JSON.
+
+    ``sort_keys`` and a fixed field order make the digest depend on the values
+    and nothing else — not on dict insertion order, not on the JSON column's
+    round-trip, not on which database served the read.
+    """
+
+    payload = {field: _canonical(getattr(event, field, None)) for field in _HASHED_FIELDS}
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def verify_row(event: AuditEvent) -> bool | None:
+    """Does this row still hash to what it claims?
+
+    ``True`` intact, ``False`` altered, ``None`` unverifiable — the last for rows
+    written before ``record_hash`` existed. Three answers rather than two,
+    because reporting a pre-existing row as *altered* would cry wolf and reporting
+    it as *intact* would be a claim the data cannot support.
+    """
+
+    if not event.record_hash:
+        return None
+    return event.record_hash == compute_record_hash(event)
+
+
+@dataclass(frozen=True)
+class IntegrityReport:
+    """The result of sweeping a set of audit rows for tampering."""
+
+    checked: int
+    intact: int
+    altered: int
+    unverifiable: int
+    altered_ids: list[uuid.UUID]
+
+    @property
+    def ok(self) -> bool:
+        return self.altered == 0
+
+
+def verify_integrity(
+    session: Session,
+    *,
+    org_id: uuid.UUID | None = None,
+    limit: int = 5000,
+) -> IntegrityReport:
+    """Re-hash recent audit rows and report any that no longer match.
+
+    Bounded by ``limit`` on purpose: this runs from an HTTP request, and an
+    unbounded re-hash of every row a mature org has ever produced is a
+    self-inflicted denial of service. Newest-first, because a tamperer edits
+    what is still being looked at.
+    """
+
+    statement = select(AuditEvent).order_by(AuditEvent.occurred_at.desc()).limit(limit)
+    if org_id is not None:
+        statement = statement.where(AuditEvent.org_id == org_id)
+
+    intact = altered = unverifiable = 0
+    altered_ids: list[uuid.UUID] = []
+    rows = list(session.scalars(statement))
+    for row in rows:
+        verdict = verify_row(row)
+        if verdict is None:
+            unverifiable += 1
+        elif verdict:
+            intact += 1
+        else:
+            altered += 1
+            altered_ids.append(row.id)
+
+    return IntegrityReport(
+        checked=len(rows),
+        intact=intact,
+        altered=altered,
+        unverifiable=unverifiable,
+        altered_ids=altered_ids,
+    )
+
+
 def emit(
     session: Session,
     *,
@@ -154,13 +290,26 @@ def emit(
     ``project:create``, ``member:role_change``) so the taxonomy extends without
     a schema change — the same reasoning that keeps roles as text in P7.2.
 
+    ``request_id``, ``ip_hash`` and ``user_agent`` default to the ambient
+    request's values (:mod:`app.request_context`) when the caller does not pass
+    them, which is how every pre-existing call site gained those fields without
+    being rewritten. An explicit argument always wins, so a worker that knows
+    better is not overridden by whatever request happens to be on the stack.
+
     Returns the row, or ``None`` if the write failed. Adds to the session
     without committing: the event belongs in the caller's transaction, so an
     action that rolls back does not leave an audit row claiming it happened.
     """
 
     try:
+        info = current_request_info()
+        if info is not None:
+            request_id = request_id or info.request_id
+            ip_hash = ip_hash or info.ip_hash
+            user_agent = user_agent or info.user_agent
+
         event = AuditEvent(
+            id=uuid.uuid4(),
             occurred_at=datetime.now(UTC),
             org_id=context.org_id if context else None,
             workspace_id=context.default_workspace_id if context else None,
@@ -178,6 +327,10 @@ def emit(
             outcome=outcome,
             detail=redact(detail) if detail is not None else None,
         )
+        # Hashed before the insert, over the values as constructed — not read
+        # back afterwards, which would hash whatever the database returned and
+        # so would verify a row against itself rather than against the event.
+        event.record_hash = compute_record_hash(event)
         session.add(event)
         session.flush()
         return event
@@ -204,31 +357,138 @@ def emit_change(
     return emit(session, action=action, before=before, after=after, detail=detail, **kwargs)
 
 
-def events_for_org(
-    session: Session,
-    *,
-    org_id: uuid.UUID,
-    limit: int = 100,
-    action: str | None = None,
-) -> list[AuditEvent]:
-    """The org's audit trail, newest first. Org-scoped like everything else."""
+# ---------------------------------------------------------------------------
+# Querying — what the Admin Panel's audit log runs on
+#
+# There was briefly a second, simpler pair of readers here (`events_for_org`
+# and `entity_timeline`). They were removed rather than kept: `search_events`
+# below answers both questions, nothing in the application called them, and two
+# ways to read the same table is two places for a scoping rule to be applied
+# differently. The tests that covered them now exercise the path the product
+# actually uses.
+# ---------------------------------------------------------------------------
 
-    statement = select(AuditEvent).where(AuditEvent.org_id == org_id)
-    if action:
-        statement = statement.where(AuditEvent.action == action)
-    return list(session.scalars(statement.order_by(AuditEvent.occurred_at.desc()).limit(limit)))
+# Sortable columns are an allow-list, not a getattr on user input. An
+# attacker-chosen ORDER BY is not injection here (SQLAlchemy would quote it) but
+# it does let a caller sort by a column the response never shows, which is a way
+# to read one field's ordering out of rows they otherwise only see redacted.
+SORTABLE = {
+    "occurred_at": AuditEvent.occurred_at,
+    "action": AuditEvent.action,
+    "actor_label": AuditEvent.actor_label,
+    "entity_type": AuditEvent.entity_type,
+    "outcome": AuditEvent.outcome,
+}
+DEFAULT_SORT = "occurred_at"
 
 
-def entity_timeline(
-    session: Session, *, entity_type: str, entity_id: uuid.UUID, limit: int = 100
-) -> list[AuditEvent]:
-    """Everything that ever touched one record — the admin UI's timeline view."""
+@dataclass(frozen=True)
+class EventQuery:
+    """Every way the audit log can be narrowed. All optional, all combinable.
 
-    return list(
+    A dataclass rather than a pile of keyword arguments because the route, the
+    service and the tests all need to agree on the shape, and because adding a
+    filter should be one field rather than three signatures.
+    """
+
+    org_id: uuid.UUID | None = None
+    q: str | None = None
+    action: str | None = None
+    actor_id: uuid.UUID | None = None
+    entity_type: str | None = None
+    entity_id: uuid.UUID | None = None
+    outcome: str | None = None
+    occurred_from: datetime | None = None
+    occurred_to: datetime | None = None
+    sort: str = DEFAULT_SORT
+    descending: bool = True
+    limit: int = 50
+    offset: int = 0
+
+
+@dataclass(frozen=True)
+class EventPage:
+    """One page of results, plus the total the filters matched."""
+
+    total: int
+    events: list[AuditEvent]
+
+
+def _apply_filters(statement: Select, query: EventQuery) -> Select:
+    if query.org_id is not None:
+        statement = statement.where(AuditEvent.org_id == query.org_id)
+    if query.action:
+        # Prefix match, so `member:` finds every membership event without the
+        # caller having to know the full taxonomy. `member:update` still matches
+        # itself exactly, so the precise query is unaffected.
+        statement = statement.where(AuditEvent.action.like(f"{query.action}%"))
+    if query.actor_id is not None:
+        statement = statement.where(AuditEvent.actor_id == query.actor_id)
+    if query.entity_type:
+        statement = statement.where(AuditEvent.entity_type == query.entity_type)
+    if query.entity_id is not None:
+        statement = statement.where(AuditEvent.entity_id == query.entity_id)
+    if query.outcome:
+        statement = statement.where(AuditEvent.outcome == query.outcome)
+    if query.occurred_from is not None:
+        statement = statement.where(AuditEvent.occurred_at >= query.occurred_from)
+    if query.occurred_to is not None:
+        statement = statement.where(AuditEvent.occurred_at <= query.occurred_to)
+    if query.q:
+        needle = f"%{query.q.strip().lower()}%"
+        # Searched across the three human-readable columns only. Deliberately NOT
+        # over before/after: those are JSON of arbitrary shape, a LIKE over them
+        # is a full scan on every row, and the fields most worth searching are
+        # exactly the ones redaction has already replaced.
+        statement = statement.where(
+            or_(
+                func.lower(AuditEvent.action).like(needle),
+                func.lower(AuditEvent.actor_label).like(needle),
+                func.lower(AuditEvent.entity_type).like(needle),
+            )
+        )
+    return statement
+
+
+def search_events(session: Session, query: EventQuery) -> EventPage:
+    """Filter, search, sort and page the audit trail.
+
+    The total is computed over the same filtered statement rather than the whole
+    table, so "showing 1–50 of 3" means what a reader assumes it means.
+
+    The sort always ends with ``id`` as a tiebreaker. Two events written inside
+    the same transaction share a timestamp to microsecond precision often enough
+    that without it, page 2 can repeat a row from page 1 and skip another — the
+    classic unstable-pagination bug, and an especially bad one in a log people
+    read to prove a negative.
+    """
+
+    base = _apply_filters(select(AuditEvent), query)
+    total = int(session.scalar(select(func.count()).select_from(base.subquery())) or 0)
+
+    column = SORTABLE.get(query.sort, SORTABLE[DEFAULT_SORT])
+    primary = column.desc() if query.descending else column.asc()
+    tiebreak = AuditEvent.id.desc() if query.descending else AuditEvent.id.asc()
+
+    rows = list(
         session.scalars(
-            select(AuditEvent)
-            .where(AuditEvent.entity_type == entity_type, AuditEvent.entity_id == entity_id)
-            .order_by(AuditEvent.occurred_at.desc())
-            .limit(limit)
+            base.order_by(primary, tiebreak).limit(max(1, query.limit)).offset(max(0, query.offset))
         )
     )
+    return EventPage(total=total, events=rows)
+
+
+def distinct_actions(session: Session, *, org_id: uuid.UUID | None, limit: int = 200) -> list[str]:
+    """The action strings this org has actually produced.
+
+    The filter dropdown is built from these rather than from a constant, because
+    the taxonomy is deliberately open (``resource:action`` strings, no enum) and
+    a hardcoded list would offer filters that match nothing while hiding the ones
+    that do.
+    """
+
+    statement = select(AuditEvent.action).distinct().order_by(AuditEvent.action).limit(limit)
+    if org_id is not None:
+        statement = statement.where(AuditEvent.org_id == org_id)
+    result: Sequence[str] = session.scalars(statement).all()
+    return [action for action in result if action]

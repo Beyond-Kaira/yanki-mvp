@@ -145,5 +145,6 @@ export const SECTION_ICONS = {
   'free-checker': IconSearch,
   methodology: IconFile,
   backlinks: IconLink,
+  admin: IconShield,
   settings: IconSettings,
 } as const

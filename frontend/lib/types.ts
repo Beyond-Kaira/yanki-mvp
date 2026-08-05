@@ -4,6 +4,162 @@
  */
 
 export interface paths {
+    "/api/v1/admin/audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit Events
+         * @description The organization's audit trail: filter, search, sort, page.
+         *
+         *     **Org-scoped at the query.** ``org_id`` comes from the caller's context and
+         *     is not a parameter, so there is no combination of filters that reaches
+         *     another tenant's events — the platform-wide view is a different surface with
+         *     a different permission (P7.7).
+         *
+         *     An unknown ``sort`` falls back to ``occurred_at`` rather than erroring: a
+         *     stale bookmark should show the log, not a validation message.
+         */
+        get: operations["list_audit_events_api_v1_admin_audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit-events/history/{entity_type}/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Record History
+         * @description Everything that ever touched one record — "what happened to this user?".
+         *
+         *     Oldest first here, unlike the main log: a history is read as a story from
+         *     the beginning, where a log is read from the latest thing that happened.
+         */
+        get: operations["record_history_api_v1_admin_audit_events_history__entity_type___entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit-events/integrity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit Integrity
+         * @description Re-hash this org's recent audit rows and report anything that changed.
+         *
+         *     The honest scope of this check is stated in the audit module: it detects an
+         *     edit to a row's content. Deletion is prevented at the database by the
+         *     append-only trigger rather than detected here.
+         */
+        get: operations["audit_integrity_api_v1_admin_audit_events_integrity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invitations
+         * @description Outstanding and historical invitations for the caller's organization.
+         *
+         *     Readable by anyone who may read members (`member:read`), because "who has
+         *     been invited" is part of the same question as "who is here" — and hiding it
+         *     from a Manager who can invite would make the list they created invisible
+         *     to them.
+         */
+        get: operations["list_invitations_api_v1_admin_invitations_get"];
+        put?: never;
+        /**
+         * Create Invitation
+         * @description Invite someone to this organization with a role.
+         *
+         *     The role is validated against ``ASSIGNABLE_ROLES`` — the same list the role
+         *     picker uses, with the platform roles removed. Without that check this
+         *     endpoint would be a way for any Manager to mint a Yanki Super Admin, which
+         *     is precisely the escalation an invitation table invites.
+         */
+        post: operations["create_invitation_api_v1_admin_invitations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/invitations/{invitation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Invitation
+         * @description Withdraw a pending invitation. Its link stops working immediately.
+         *
+         *     Returns the invitation rather than 204 so the UI can show it moved to
+         *     'revoked' instead of guessing — the row stays as history, which is the point
+         *     of revoking rather than deleting.
+         */
+        delete: operations["revoke_invitation_api_v1_admin_invitations__invitation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/invitations/{invitation_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Invitation
+         * @description Mint a fresh link for an existing invitation and email it again.
+         *
+         *     The previous token stops working the moment this returns, which is what
+         *     makes resend the fix for a link that went to the wrong inbox.
+         */
+        post: operations["resend_invitation_api_v1_admin_invitations__invitation_id__resend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/members": {
         parameters: {
             query?: never;
@@ -39,7 +195,22 @@ export interface paths {
         get: operations["read_member_api_v1_admin_members__user_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Remove Member
+         * @description Remove a member's seat in this organization.
+         *
+         *     This deletes the **membership**, never the user. Two different things are
+         *     being confused whenever a product offers one button for both: the person may
+         *     hold seats in other organizations, and their authored rows — analyses,
+         *     audits, the audit trail itself — must survive their departure or the history
+         *     becomes unreadable. Deleting the account is a GDPR path with a soft window
+         *     (P7.5), not this.
+         *
+         *     Guarded exactly like a role change, and for the same reason: removing the
+         *     last owner, or removing yourself, is how an organization ends up with nobody
+         *     who can administer it.
+         */
+        delete: operations["remove_member_api_v1_admin_members__user_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -245,6 +416,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invitations/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Invitation
+         * @description What this link is for, so the accept screen can say what is being joined.
+         *
+         *     Read-only and side-effect free: opening the link must not consume it, or an
+         *     email client's link prefetcher would burn the invitation before the invitee
+         *     ever saw it.
+         */
+        get: operations["preview_invitation_api_v1_invitations__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invitations/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Invitation
+         * @description Take the seat: create the account if needed, then join the organization.
+         *
+         *     Three callers reach this, and each gets the only sensible answer:
+         *
+         *     * **Nobody signed in, no account for the invited address** — the normal
+         *       path. The account is created with the supplied password and the invited
+         *       address, seated in the org with the invited role, and signed in.
+         *     * **Signed in as the invited address** — seated directly; the password in
+         *       the body is ignored rather than used to silently change their existing
+         *       one, which would be a password reset disguised as an invitation.
+         *     * **An account already exists for the address but nobody is signed in** —
+         *       409 telling them to sign in first. Accepting with a *new* password here
+         *       would be an account takeover by anyone who intercepted the link.
+         *
+         *     All of it in one transaction: a consumed invitation that granted nothing is
+         *     unrecoverable without support.
+         */
+        post: operations["accept_invitation_api_v1_invitations__token__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/seo-projects": {
         parameters: {
             query?: never;
@@ -352,6 +582,93 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdminInvitationCreateRequest
+         * @description Invite one person to the caller's organization.
+         */
+        AdminInvitationCreateRequest: {
+            /** Email */
+            email: string;
+            /** Role */
+            role: string;
+        };
+        /**
+         * AdminInvitationCreatedOut
+         * @description The created invitation and the one-time link that accepts it.
+         *
+         *     ``accept_url`` is returned so an administrator can pass the link on directly
+         *     when email is not configured — which is the case for any fresh deployment,
+         *     and would otherwise make invitations silently useless. It is the only
+         *     response in the API that carries an invitation token, it is never returned
+         *     again, and issuing it is audit-logged like everything else here.
+         */
+        AdminInvitationCreatedOut: {
+            /** Accept Url */
+            accept_url: string;
+            /** Email Sent */
+            email_sent: boolean;
+            invitation: components["schemas"]["AdminInvitationOut"];
+        };
+        /**
+         * AdminInvitationListOut
+         * @description A page of invitations, plus the roles this caller may hand out.
+         */
+        AdminInvitationListOut: {
+            /** Assignable Roles */
+            assignable_roles: string[];
+            /** Invitations */
+            invitations: components["schemas"]["AdminInvitationOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * AdminInvitationOut
+         * @description One invitation, as an administrator sees it.
+         *
+         *     Note what is absent: the token. It exists in the email and nowhere else, so
+         *     this response cannot be replayed into a working invitation even by the
+         *     administrator who created it. ``accept_url`` on the create response is the
+         *     single deliberate exception, and it is returned exactly once.
+         */
+        AdminInvitationOut: {
+            /** Accepted At */
+            accepted_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email */
+            email: string;
+            /** Expired */
+            expired: boolean;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invited By Email */
+            invited_by_email?: string | null;
+            /** Last Sent At */
+            last_sent_at?: string | null;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Role */
+            role: string;
+            /** Sent Count */
+            sent_count: number;
+            /** Status */
+            status: string;
+        };
         /**
          * AdminMemberOut
          * @description One member of an organization, as an administrator sees them.
@@ -471,6 +788,109 @@ export interface components {
             updated_at: string;
             /** Url */
             url: string;
+        };
+        /**
+         * AuditEventListOut
+         * @description A page of audit events, plus what the filter UI needs to render itself.
+         */
+        AuditEventListOut: {
+            /** Actions */
+            actions: string[];
+            /** Events */
+            events: components["schemas"]["AuditEventOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Order
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /** Sort */
+            sort: string;
+            /** Total */
+            total: number;
+        };
+        /**
+         * AuditEventOut
+         * @description One audit event.
+         *
+         *     ``before``/``after`` arrive already redacted — the redaction happened at
+         *     write time, so there is no unredacted copy for this endpoint to leak.
+         *     ``integrity`` is this row's self-hash verdict: ``ok`` intact, ``altered``
+         *     if the stored content no longer matches its hash, ``unverifiable`` for rows
+         *     written before hashing existed.
+         */
+        AuditEventOut: {
+            /** Action */
+            action: string;
+            /** Actor Id */
+            actor_id?: string | null;
+            /** Actor Label */
+            actor_label?: string | null;
+            /** Actor Type */
+            actor_type: string;
+            /** After */
+            after?: {
+                [key: string]: unknown;
+            } | null;
+            /** Before */
+            before?: {
+                [key: string]: unknown;
+            } | null;
+            /** Changed */
+            changed?: {
+                [key: string]: unknown;
+            } | null;
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Entity Type */
+            entity_type?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Integrity
+             * @enum {string}
+             */
+            integrity: "ok" | "altered" | "unverifiable";
+            /** Ip Hash */
+            ip_hash?: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Outcome */
+            outcome: string;
+            /** Request Id */
+            request_id?: string | null;
+            /** User Agent */
+            user_agent?: string | null;
+        };
+        /**
+         * AuditIntegrityOut
+         * @description The result of re-hashing recent audit rows.
+         *
+         *     ``altered`` above zero means somebody edited the audit table out of band,
+         *     which is the one number on this response worth alerting on.
+         */
+        AuditIntegrityOut: {
+            /** Altered */
+            altered: number;
+            /** Altered Ids */
+            altered_ids: string[];
+            /** Checked */
+            checked: number;
+            /** Intact */
+            intact: number;
+            /** Ok */
+            ok: boolean;
+            /** Unverifiable */
+            unverifiable: number;
         };
         /** CheckerLeadRequest */
         CheckerLeadRequest: {
@@ -699,6 +1119,39 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * InvitationAcceptRequest
+         * @description Create an account from an invitation.
+         *
+         *     The password is the only field: the email comes from the invitation, so an
+         *     invitation cannot be redirected to a different address by editing the form.
+         */
+        InvitationAcceptRequest: {
+            /** Password */
+            password: string;
+        };
+        /**
+         * InvitationPreviewOut
+         * @description What an invited person is told before they commit to signing up.
+         *
+         *     Carries the organization name and the offered role so the accept screen can
+         *     say what is actually being joined. It carries the invited **email** too:
+         *     that address is already known to whoever holds the link (it was sent to
+         *     them), so echoing it leaks nothing and lets the form prefill.
+         */
+        InvitationPreviewOut: {
+            /** Email */
+            email: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Organization Name */
+            organization_name: string;
+            /** Role */
+            role: string;
         };
         /**
          * LoginRequest
@@ -1270,6 +1723,255 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_audit_events_api_v1_admin_audit_events_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                action?: string | null;
+                actor_id?: string | null;
+                entity_type?: string | null;
+                entity_id?: string | null;
+                outcome?: string | null;
+                occurred_from?: string | null;
+                occurred_to?: string | null;
+                sort?: string;
+                order?: "asc" | "desc";
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_history_api_v1_admin_audit_events_history__entity_type___entity_id__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                entity_type: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_integrity_api_v1_admin_audit_events_integrity_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditIntegrityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_invitations_api_v1_admin_invitations_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminInvitationListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_invitation_api_v1_admin_invitations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminInvitationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminInvitationCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_invitation_api_v1_admin_invitations__invitation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminInvitationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_invitation_api_v1_admin_invitations__invitation_id__resend_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminInvitationCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_members_api_v1_admin_members_get: {
         parameters: {
             query?: {
@@ -1328,6 +2030,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminMemberOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_member_api_v1_admin_members__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1651,6 +2384,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_invitation_api_v1_invitations__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_invitation_api_v1_invitations__token__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
                 };
             };
             /** @description Validation Error */

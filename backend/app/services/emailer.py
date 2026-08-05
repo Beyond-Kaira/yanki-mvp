@@ -22,6 +22,7 @@ only ever call ``send_email``.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 import httpx
 
@@ -84,6 +85,41 @@ def send_waitlist_emails(email: str, total: int, settings: Settings) -> None:
     if settings.notify_email:
         body = f"New waitlist signup: {email}\n\nTotal signups: {total}"
         send_email(settings.notify_email, "New waitlist signup", body, settings)
+
+
+def send_invitation_email(
+    *,
+    to: str,
+    organization_name: str,
+    role_label: str,
+    accept_url: str,
+    invited_by: str | None,
+    expires_at: datetime,
+    settings: Settings,
+) -> bool:
+    """Send one invitation link. Best-effort, like every other send here.
+
+    Returns whether it went out, and the caller **surfaces that answer** rather
+    than swallowing it: on a deployment with email disabled — which is every
+    fresh one, since ``emails_enabled`` defaults False — an administrator who is
+    told "invitation sent" would wait forever for something that never left the
+    process. The API instead reports ``email_sent: false`` and hands back the
+    link to pass on by hand.
+
+    The body names who invited them and when the link dies, because an
+    unexplained link asking for a password is indistinguishable from phishing.
+    """
+
+    inviter = f"{invited_by} has invited you" if invited_by else "You have been invited"
+    body = (
+        f"{inviter} to join {organization_name} on Yanki as a {role_label}.\n\n"
+        f"Accept the invitation here:\n{accept_url}\n\n"
+        f"The link works once and expires on {expires_at.strftime('%d %B %Y')}.\n"
+        "If you were not expecting this, you can ignore this email — "
+        "no account is created until you set a password.\n\n"
+        "- The Yanki team"
+    )
+    return send_email(to, f"You're invited to {organization_name} on Yanki", body, settings)
 
 
 def send_run_alert(analysis: Analysis, settings: Settings) -> None:

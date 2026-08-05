@@ -1568,3 +1568,162 @@ things the PR did not intend.*
   disagree with its source, and these are `GROUP BY`s over a capped set;
   *picking a vendor* — that is the operator's call (A4), and the adapter-shaped
   hole is one branch wide.
+
+### ADR-37 — Invitations: the token is never stored, and the failure is always specific (2026-08-05, P7.4)
+
+- **Context:** an invitation is the only way to obtain a role in an
+  organization you did not create, which makes it simultaneously the product's
+  growth mechanic and its largest privilege-escalation surface. Two questions
+  had to be answered before any of it could be written: what is stored, and
+  what is said when the link does not work.
+- **Decision:** **store a SHA-256, never the token.** The plaintext exists once,
+  in the email (and, when email is unconfigured, once in the create response so
+  an administrator can pass it on by hand). This mirrors `auth_sessions`'
+  treatment of refresh tokens deliberately — one token discipline across the
+  codebase is easier to keep than two — and plain SHA-256 rather than a password
+  hash is correct here because the value carries 256 bits of CSPRNG entropy:
+  there is nothing for a slow hash to defend, and an Argon2 verify on a public,
+  unauthenticated endpoint is a denial-of-service surface.
+
+  And **distinguish the failures**, which is the opposite of what this codebase
+  does everywhere else. A cross-org member id answers 404 precisely so it cannot
+  be used to enumerate accounts; an invitation token answers *expired* /
+  *withdrawn* / *already used* / *not valid* with four different messages. The
+  reasoning is that enumeration is the threat the 404 defends against, and a
+  256-bit token is not enumerable — so anyone holding one is the intended
+  recipient, and telling them "this expired on Tuesday" is the difference
+  between a recoverable moment and an inexplicable dead end.
+- **Consequences:**
+  - **Expiry is derived, never stored.** `status` moves `pending → accepted |
+    revoked` and nothing else; "expired" is computed from `expires_at` at read
+    time. A status column would need a sweeper to stay honest and would be wrong
+    between sweeps — and the partial unique index on `(org_id, email) WHERE
+    status = 'pending'` then means what it says.
+  - **Re-inviting replaces rather than duplicates.** Creating a second
+    invitation to a live address revokes the first, so an invitee never holds
+    two working links and revoking one is not a partial measure. Resending does
+    the same thing: it mints a new token and retires the old one, which is what
+    makes "resend" the fix for a link sent to the wrong inbox.
+  - **The invited address is authoritative.** The account is created with the
+    email the invitation names — there is no field to override it — because
+    otherwise an invitation addressed to alice@ would be a way to create an
+    account as bob@ holding alice's granted role.
+  - **An existing account must sign in first.** Accepting anonymously with a
+    *new* password would be an account takeover by anyone who intercepted the
+    link. A signed-in invitee is seated directly and their password is untouched.
+  - Platform roles are excluded from the assignable set, so no invitation can
+    mint Yanki staff.
+- **Rejected:** *storing the token in plaintext so it can be re-displayed* — an
+  invitation list would then be a set of working credentials; *a single generic
+  "invalid link" for every failure* — safe by reflex, useless in practice, and
+  defending against a threat that does not exist at this entropy; *expiry as a
+  status column* — needs a sweeper, lies between runs; *deleting invitations on
+  revoke* — the row is the record of who tried to let whom in, which is exactly
+  what the audit question needs.
+
+### ADR-38 — Tamper evidence for the audit trail: a self-hash and a trigger, not a chain (2026-08-05, P7.3/P7.4)
+
+- **Context:** [admin-panel-plan.md](admin-panel-plan.md) §6 asks for an
+  append-only audit trail that future compliance requirements can build on, and
+  defers hash-chaining to M8. "Append-only" was, until this card, a property of
+  the *code* — no service issued an UPDATE or DELETE — which is a claim about
+  discipline rather than about the database.
+- **Decision:** two mechanisms with different failure modes, and honesty about
+  the gap between them.
+  1. **A per-row self-hash.** `record_hash` is a SHA-256 over the row's audited
+     content as canonical JSON, computed at insert from the values as
+     constructed (not read back, which would verify a row against itself).
+     Editing any audited field without recomputing it — which is what an editor
+     with SQL access does — makes the row fail verification, and the Admin
+     Panel's integrity endpoint reports it.
+  2. **A Postgres trigger that raises on UPDATE or DELETE** (migration 0018).
+     `FOR EACH ROW`, so a `DELETE FROM audit_events` with no `WHERE` fails too.
+     Postgres only: SQLite unit tests build their schema from the models, which
+     is what makes the "an edited row reports itself as altered" test possible
+     to stage at all.
+
+  **A hash chain was rejected on concurrency grounds, not on effort.** A chain
+  detects deletion as well as edits, but computing one requires reading and
+  locking the chain head on every write — which would serialize every audited
+  request in the application behind a single row. Deletion is instead prevented
+  at the database rather than detected after the fact.
+- **Consequences:**
+  - **Three verdicts, not two.** A row verifies as `ok`, `altered`, or
+    `unverifiable`; the last is for rows written before the column existed.
+    Back-filling those would manufacture evidence, reporting them as altered
+    would cry wolf, and reporting them as intact would be a claim the data
+    cannot support — so the API says which it is and the integrity sweep counts
+    them separately without failing on them.
+  - **The honest limit is stated in the code.** A superuser who drops the
+    trigger first is not detectable by either mechanism. Closing that needs an
+    external append-only sink, which is an M8 card and not a promise made here.
+  - The integrity sweep is bounded (5000 rows, newest first) because it runs
+    from an HTTP request and an unbounded re-hash is a self-inflicted denial of
+    service.
+
+### ADR-39 — Request identity rides a ContextVar, so every audit event gets it for free (2026-08-05, P7.3)
+
+- **Context:** the audit schema has carried `request_id`, `ip_hash` and
+  `user_agent` since P7.3 and every one of them was NULL in every row: the
+  values are known at the ASGI layer and needed in whatever service happens to
+  mutate something, with a dozen call sites in between.
+- **Decision:** a `ContextVar` set once by middleware
+  (`app/request_context.py`), read by `audit.emit` as a **default** for any
+  field the caller did not pass. Explicit arguments always win, so a worker that
+  knows its own identifiers is not overridden by whatever request is on the
+  stack. The IP is hashed with the **same salt the rate limiter uses** — there
+  is deliberately no second salt, because two would make one visitor look like
+  two people depending on which subsystem recorded them.
+- **Consequences:**
+  - Every pre-existing `audit.emit` call site gained three fields without being
+    rewritten, and a new one cannot forget them.
+  - **`ContextVar`, not a thread-local**: Starlette may resume a coroutine on a
+    different worker thread, so a thread-local would silently lose the value
+    mid-request; and the context is reset in a `finally`, without which a
+    pooled task could attribute the next request to the previous caller's IP.
+  - **An inbound `X-Request-Id` is bounded and character-restricted before it is
+    believed**, and replaced rather than rejected when it is not — a malformed
+    header is not worth failing a request over. The id is echoed on the response
+    so a user reporting a problem can quote the string that appears in the row.
+  - Outside a request the context is empty and all three fields are NULL. That
+    is the truth about the worker and the CLI rather than a gap to paper over.
+  - Auth events gained an organization at the same time and for the same reason:
+    `audit_events` is queried **by org**, so a login written with a NULL org was
+    a sign-in trail nobody could read. A failed login for a *known* address is
+    now attributed too — "somebody is guessing at my colleague's password" is
+    precisely the event an administrator needs to find — while an unknown
+    address stays NULL, because it belongs to no tenant.
+
+### ADR-40 — The formatting gate is scoped to changed files (2026-08-05)
+
+- **Context:** CI has gated `ruff check` since the first workflow and never
+  `ruff format`, so roughly fifty backend files on `main` are unformatted
+  (tech-debt #57). The quality bar asks for formatting to be verified
+  automatically; turning the gate on repo-wide has exactly two outcomes, and
+  both are bad — red CI on every unrelated PR, or a reformat-the-world commit
+  that buries every real diff after it in review.
+- **Decision:** gate the files the branch changed, computed from the merge base
+  (`.github/scripts/format_changed.sh`). New and edited files are held to the
+  standard from now on; untouched files stay unformatted and stay unchecked.
+- **Consequences:** the unformatted set can only shrink, and a PR that edits an
+  unformatted file must format it — which is the right moment, since the diff
+  is already open. The residual debt is real and is repaid by a dedicated
+  formatting PR that will fail loudly on whatever is left, which is the point.
+
+  **The frontend half is deliberately not gated yet.** There is no
+  `.prettierrc` in this repo, and Prettier's defaults (semicolons, double
+  quotes) are the opposite of the code that exists. A gate there would not be
+  checking the project's standard, it would be inventing one — and measurement
+  says no config is a no-op: 61, 55 and 68 files differ at print width 80, 90
+  and 100 respectively. Choosing one is a decision and its own PR. The script
+  looks for a config file and switches the check on by itself when one appears;
+  until then eslint at `--max-warnings 0` remains the frontend's style gate,
+  which is what it has always been. Recorded as tech-debt #62 — and #62 also
+  records the sharper edge found while measuring it: `make fmt` currently
+  documents a command that would rewrite the whole frontend into a style nobody
+  chose.
+- **Rejected:** *repo-wide `ruff format --check` now* — correct in principle,
+  and it would have turned this branch red on ~47 files it never touched;
+  *adopting a Prettier config as a side effect of this card* — a formatting
+  standard is a team decision, and inventing one inside a feature branch is how
+  it becomes nobody's decision.

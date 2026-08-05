@@ -1,12 +1,15 @@
 """Authentication service helpers."""
 
+import uuid
+from datetime import UTC, datetime
+
 from pwdlib import PasswordHash
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import User
+from app.db.models import Membership, User
 from app.services import audit
-from app.services.tenancy import provision_org
+from app.services.tenancy import OrgContext, provision_org
 
 _password_hash = PasswordHash.recommended()
 
@@ -37,6 +40,32 @@ def verify_and_update_password(
 ) -> tuple[bool, str | None]:
     """Verify a password and return an upgraded hash when needed."""
     return _password_hash.verify_and_update(password, password_hash)
+
+
+def _audit_context(session: Session, user: User) -> OrgContext | None:
+    """The organization an auth event belongs to, for the audit trail.
+
+    Login and signup are the events an administrator most wants to see, and
+    ``audit_events`` is queried **by organization**. An event written with a NULL
+    org is therefore invisible in the Admin Panel's log — which is where these
+    were, until this function existed: a sign-in trail nobody could read.
+
+    Resolves the user's first active membership rather than calling
+    ``resolve_org_context``, deliberately. That function provisions a personal
+    org for a user who has none, and a *failed* login must not create anything.
+    A user with no membership yields ``None`` and the event keeps a NULL org,
+    which is the honest answer for an account that belongs to no tenant.
+    """
+
+    org_id: uuid.UUID | None = session.scalar(
+        select(Membership.org_id)
+        .where(Membership.user_id == user.id, Membership.status == "active")
+        .order_by(Membership.created_at)
+        .limit(1)
+    )
+    if org_id is None:
+        return None
+    return OrgContext(org_id=org_id, user_id=user.id)
 
 
 def get_user_by_email(session: Session, email: str) -> User | None:
@@ -84,6 +113,9 @@ def create_user(
     audit.emit(
         session,
         action="auth:signup",
+        # The org exists as of the line above, so the very first event in an
+        # organization's life is already attributed to it.
+        context=OrgContext(org_id=org.id, user_id=user.id),
         actor_type="user",
         actor_id=user.id,
         actor_label=user.email,
@@ -122,6 +154,11 @@ def authenticate_user(
         audit.emit(
             session,
             action="auth:login",
+            # An unknown address belongs to no organization, so its failed login
+            # keeps a NULL org. A KNOWN address's failure is attributed, because
+            # "somebody is guessing at my colleague's password" is precisely the
+            # event an administrator needs to find.
+            context=_audit_context(session, user) if user is not None else None,
             actor_type="user" if user is not None else "anonymous",
             actor_id=user.id if user is not None else None,
             actor_label=normalize_email(email),
@@ -139,6 +176,7 @@ def authenticate_user(
         audit.emit(
             session,
             action="auth:login",
+            context=_audit_context(session, user),
             actor_type="user",
             actor_id=user.id,
             actor_label=user.email,
@@ -153,9 +191,16 @@ def authenticate_user(
     if updated_hash is not None:
         user.password_hash = updated_hash
 
+    # The member list shows "last active", and until now the column was written
+    # by nothing — every account read as having never signed in. A login is the
+    # coarse-but-true signal; per-request touching would cost a write on every
+    # authenticated call for a column nobody reads that precisely.
+    user.last_active_at = datetime.now(UTC)
+
     audit.emit(
         session,
         action="auth:login",
+        context=_audit_context(session, user),
         actor_type="user",
         actor_id=user.id,
         actor_label=user.email,

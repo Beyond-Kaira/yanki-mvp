@@ -1,11 +1,13 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/components/AuthProvider'
 import {
   ApiError,
   fetchMembers,
   fetchOrganization,
+  removeMember,
   updateMember,
   type MemberQuery,
 } from '@/lib/api'
@@ -136,17 +138,50 @@ export default function AdminClient() {
     }
   }
 
+  // Removal is the one irreversible action on this screen — the seat and its
+  // role are gone, and getting the person back means inviting them again. It
+  // therefore asks first, which nothing else here does.
+  async function confirmRemove(member: AdminMember) {
+    const ok = window.confirm(
+      `Remove ${member.email} from this organization?\n\n` +
+        'They keep their account and their own data. To let them back in you ' +
+        'will have to invite them again.',
+    )
+    if (!ok) return
+
+    setSavingId(member.id)
+    setNotice(null)
+    setError(null)
+    try {
+      await removeMember(member.id)
+      setList((current) =>
+        current
+          ? {
+              ...current,
+              total: Math.max(0, current.total - 1),
+              members: current.members.filter((m) => m.id !== member.id),
+            }
+          : current,
+      )
+      setNotice(`${member.email} no longer has a seat in this organization.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That member could not be removed.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
   const members = list?.members ?? []
   const roles = list?.assignable_roles ?? []
   const total = list?.total ?? 0
   const showingTo = Math.min(offset + PAGE_SIZE, total)
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <section aria-labelledby="members-heading">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+        <h2 id="members-heading" className="text-lg font-semibold tracking-tight">
           Members &amp; roles
-        </h1>
+        </h2>
         {org ? (
           <p className="mt-1 text-sm text-surface-subtle">
             {org.name} · {org.kind === 'company' ? 'Organization' : 'Individual'} account ·{' '}
@@ -300,23 +335,39 @@ export default function AdminClient() {
                     <td className="px-4 py-3 text-surface-subtle">
                       {formatDate(member.created_at)}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        disabled={busy || isSelf}
-                        onClick={() =>
-                          applyChange(member, {
-                            status: member.status === 'active' ? 'disabled' : 'active',
-                          })
-                        }
-                        className="inline-flex min-h-[44px] items-center rounded-md border border-surface-border px-3 text-sm font-medium transition-colors hover:border-primary hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      >
-                        {busy
-                          ? 'Saving…'
-                          : member.status === 'active'
-                            ? 'Disable'
-                            : 'Enable'}
-                      </button>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <Link
+                          href={`/admin/audit?entity_type=user&entity_id=${encodeURIComponent(member.id)}`}
+                          className="inline-flex min-h-[44px] items-center rounded-md px-2 text-sm text-surface-subtle underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          History
+                        </Link>
+                        <button
+                          type="button"
+                          disabled={busy || isSelf}
+                          onClick={() =>
+                            applyChange(member, {
+                              status: member.status === 'active' ? 'disabled' : 'active',
+                            })
+                          }
+                          className="inline-flex min-h-[44px] items-center rounded-md border border-surface-border px-3 text-sm font-medium transition-colors hover:border-primary hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          {busy
+                            ? 'Saving…'
+                            : member.status === 'active'
+                              ? 'Disable'
+                              : 'Enable'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy || isSelf}
+                          onClick={() => confirmRemove(member)}
+                          className="inline-flex min-h-[44px] items-center rounded-md border border-surface-border px-3 text-sm font-medium text-danger-strong transition-colors hover:border-danger-border hover:bg-danger-soft disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -351,6 +402,6 @@ export default function AdminClient() {
           </div>
         </div>
       ) : null}
-    </div>
+    </section>
   )
 }

@@ -65,6 +65,14 @@ M8's localization work is where it revives naturally if called.
 
 ## M1 — Admin Platform *(full plan: [admin-panel-plan.md](admin-panel-plan.md))*
 
+> **Two names, one milestone, and they are not synonyms.** The **Admin Panel**
+> is the shipped user-facing surface at `/admin` — members, roles, invitations,
+> audit log — and that is what it is called everywhere in the product: nav,
+> page title, breadcrumb, route. The **Admin Platform** is this milestone, which
+> is larger: it also covers billing, plans, quotas, the Yanki-staff back office
+> and the system pages, none of which are part of the customer's Admin Panel.
+> Stages A1–A4 (the Panel and everything under it) shipped 2026-08-05.
+
 - **Objectives:** turn "a users table" into a governed multi-tenant B2B
   platform: organizations → workspaces → projects; granular resource-based
   RBAC (Super Admin → Guest); complete audit logging with before/after

@@ -17,6 +17,17 @@ platform** — the milestone roadmap (Admin Platform first, Backlink
 Intelligence second, then full competitive parity and differentiators) lives
 in [docs/roadmap.md](docs/roadmap.md) (adopted 2026-08-05, ADR-33).
 
+Around that measurement engine there is now a **platform**: signing up creates
+an organization, and the **Admin Panel** at `/admin` is where it is governed.
+Three tabs — *Members & roles*, *Invitations*, *Audit log* — cover inviting a
+colleague with a role (a single-use expiring link that creates their account),
+assigning, changing or removing roles, disabling and re-enabling accounts, and
+reading a complete, tamper-evident record of every change with its before and
+after values. Ten roles and thirty `resource:action` permissions sit behind it,
+denied by default and enforced at the API rather than in the UI. The detail is
+in [docs/architecture.md §3](docs/architecture.md) and the spec is
+[docs/admin-panel-plan.md](docs/admin-panel-plan.md).
+
 This README is the front door. It gets a new engineer from `git clone` to a
 running local stack in about five minutes. Deeper docs live in [`docs/`](#documentation).
 
@@ -210,6 +221,7 @@ network.
 | [docs/feature-parity.md](docs/feature-parity.md)        | PM / leadership       | Competitive parity analysis vs the field; the REQUIRED backlog. |
 | [docs/differentiators.md](docs/differentiators.md)      | PM / leadership       | Post-parity differentiation proposal (D1–D10).          |
 | [docs/admin-panel-plan.md](docs/admin-panel-plan.md)    | Engineers / PM        | Milestone M1 spec: orgs, RBAC, audit logs, billing, system admin. |
+| [docs/backlog.md](docs/backlog.md)                      | Engineers / PM        | The prioritized, dependency-ordered work queue across every milestone. |
 | [docs/backlink-intelligence-plan.md](docs/backlink-intelligence-plan.md) | Engineers / PM | Milestone M2 spec: the backlink module on licensed data. |
 | [docs/architecture-target.md](docs/architecture-target.md) | Engineers          | Target platform architecture (planning; as-built stays in architecture.md). |
 | [docs/frontend-brandkit.md](docs/frontend-brandkit.md)  | Frontend              | Colors, type, spacing, components, voice/tone (EN + TR).|

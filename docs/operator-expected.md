@@ -260,6 +260,36 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 
 ## B. Actions only you can do (in priority order)
 
+- [ ] **B10. Set `PUBLIC_BASE_URL` in the prod `deploy/.env` before anyone
+  sends an invitation (added 2026-08-05, session 22; one line, do it before the
+  Admin Panel is used).** The Admin Panel can now invite people, and an
+  invitation is a link. That link is the one value the API **cannot** work out
+  for itself: the request arrives at the internal container on
+  `127.0.0.1:8143`, not at `https://yanki.beyondkaira.com`, so nothing in the
+  request tells it the public origin. It falls back to the dev default,
+  `http://localhost:8140`, which on a production box means every invitation
+  email points at a page that does not exist.
+
+  ```
+  PUBLIC_BASE_URL=https://yanki.beyondkaira.com
+  ```
+
+  Add that line and redeploy (or restart the stack). Optionally also
+  `INVITATION_TTL_DAYS` — default 14, range 1–90. Nothing else breaks without
+  it; only invitation links do, and they break silently from the sender's point
+  of view, which is why this is B-priority rather than a note.
+
+- [ ] **B11. (Optional) turn invitation email on (added 2026-08-05, session
+  22).** `EMAILS_ENABLED` defaults to `0`, so today the panel creates the
+  invitation, tells the administrator plainly that **no email was sent**, and
+  shows the link to pass on by hand. That is a working flow, deliberately
+  labelled rather than pretending. To make it self-serve, set `EMAILS_ENABLED=1`
+  and an `EMAIL_FROM` on a Resend-verified domain — the default
+  `onboarding@resend.dev` is Resend testing mode and delivers only to the
+  Resend account owner, so an invitation to a colleague would silently go
+  nowhere. Same key and same domain as the waitlist mail (see **B4** for
+  rotation), so if that is already verified this is a one-line flip.
+
 - [ ] **B9. Check one Tavily invoice and correct the per-search price
   (added 2026-08-05, session 21; low urgency, no rush).** This session found
   that the live measured path recorded **no spend at all** — the pipeline

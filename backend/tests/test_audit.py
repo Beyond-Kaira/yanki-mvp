@@ -237,8 +237,8 @@ def test_events_are_org_scoped(db_session):
     audit.emit(db_session, action="project:create", context=OrgContext(org_id=org_b))
     db_session.commit()
 
-    assert len(audit.events_for_org(db_session, org_id=org_a)) == 1
-    assert len(audit.events_for_org(db_session, org_id=org_b)) == 1
+    assert audit.search_events(db_session, audit.EventQuery(org_id=org_a)).total == 1
+    assert audit.search_events(db_session, audit.EventQuery(org_id=org_b)).total == 1
 
 
 def test_entity_timeline_collects_everything_that_touched_one_record(db_session):
@@ -250,9 +250,11 @@ def test_entity_timeline_collects_everything_that_touched_one_record(db_session)
     )
     db_session.commit()
 
-    timeline = audit.entity_timeline(db_session, entity_type="seo_project", entity_id=entity)
-    assert len(timeline) == 3
-    assert {e.action for e in timeline} == {
+    timeline = audit.search_events(
+        db_session, audit.EventQuery(entity_type="seo_project", entity_id=entity)
+    )
+    assert timeline.total == 3
+    assert {e.action for e in timeline.events} == {
         "project:create",
         "project:update",
         "project:delete",

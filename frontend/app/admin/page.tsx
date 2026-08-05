@@ -1,15 +1,8 @@
 'use client'
 
 import AdminClient from './AdminClient'
-import AppShell from '@/components/shell/AppShell'
-import RequireAuth from '@/components/RequireAuth'
 
-export default function AdminPage() {
-  return (
-    <RequireAuth>
-      <AppShell>
-        <AdminClient />
-      </AppShell>
-    </RequireAuth>
-  )
+/** Admin Panel → Members & roles. Chrome and the auth gate live in the layout. */
+export default function AdminPanelMembersPage() {
+  return <AdminClient />
 }

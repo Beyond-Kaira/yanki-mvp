@@ -482,3 +482,109 @@ def test_the_org_endpoint_returns_the_callers_own_org(client, db_session):
     assert body["name"] == "Acme"
     assert body["kind"] == "company"
     assert body["member_count"] == 3
+
+
+# --------------------------------------------------------------------------
+# Removing a member
+# --------------------------------------------------------------------------
+
+
+def test_removing_a_member_frees_the_seat_without_deleting_the_person(client, db_session):
+    org = _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+
+    response = client.delete(
+        f"{MEMBERS}/{victim.id}", headers=_headers(_token(client, "owner@acme.test"))
+    )
+    assert response.status_code == 204
+
+    # The membership is gone; the user is not. They hold their own personal org,
+    # they authored rows, and the audit trail names them — deleting the account
+    # here would orphan all three.
+    assert (
+        db_session.scalar(
+            sa.select(Membership).where(
+                Membership.org_id == org.id, Membership.user_id == victim.id
+            )
+        )
+        is None
+    )
+    assert db_session.get(User, victim.id) is not None
+
+    body = client.get(MEMBERS, headers=_headers(_token(client, "owner@acme.test"))).json()
+    assert all(member["email"] != "viewer@acme.test" for member in body["members"])
+
+
+def test_a_removed_member_can_still_log_in_to_their_own_account(client, db_session):
+    _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+    client.delete(f"{MEMBERS}/{victim.id}", headers=_headers(_token(client, "owner@acme.test")))
+
+    # Losing a seat is not losing an account. Their own personal org is intact.
+    me = client.get(ME, headers=_headers(_token(client, "viewer@acme.test"))).json()
+    assert me["organization"]["kind"] == "personal"
+
+
+def test_removing_a_member_of_another_org_is_a_404(client, db_session):
+    _org_with_members(client, db_session)
+    _signup(client, "outsider@globex.test", account_type="organization", organization_name="Globex")
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+
+    response = client.delete(
+        f"{MEMBERS}/{victim.id}", headers=_headers(_token(client, "outsider@globex.test"))
+    )
+    assert response.status_code == 404
+
+
+def test_you_cannot_remove_yourself(client, db_session):
+    _org_with_members(client, db_session)
+    owner = db_session.scalar(sa.select(User).where(User.email == "owner@acme.test"))
+
+    response = client.delete(
+        f"{MEMBERS}/{owner.id}", headers=_headers(_token(client, "owner@acme.test"))
+    )
+    assert response.status_code == 409
+    assert "cannot remove yourself" in response.json()["detail"]
+
+
+def test_the_last_owner_cannot_be_removed(client, db_session):
+    org = _org_with_members(client, db_session)
+    owner = db_session.scalar(sa.select(User).where(User.email == "owner@acme.test"))
+    second = db_session.scalar(sa.select(User).where(User.email == "editor@acme.test"))
+
+    # Promote the editor so somebody other than the owner can try the removal.
+    membership = db_session.scalar(
+        sa.select(Membership).where(Membership.org_id == org.id, Membership.user_id == second.id)
+    )
+    membership.role = "admin"
+    db_session.commit()
+
+    response = client.delete(
+        f"{MEMBERS}/{owner.id}",
+        headers=_headers(_token(client, "editor@acme.test"), org_id=org.id),
+    )
+    assert response.status_code == 409
+    assert "at least one active owner" in response.json()["detail"]
+
+
+def test_an_editor_cannot_remove_members(client, db_session):
+    org = _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+
+    response = client.delete(
+        f"{MEMBERS}/{victim.id}",
+        headers=_headers(_token(client, "editor@acme.test"), org_id=org.id),
+    )
+    assert response.status_code == 403
+
+
+def test_a_removal_is_audited_with_the_role_that_was_lost(client, db_session):
+    _org_with_members(client, db_session)
+    victim = db_session.scalar(sa.select(User).where(User.email == "viewer@acme.test"))
+    client.delete(f"{MEMBERS}/{victim.id}", headers=_headers(_token(client, "owner@acme.test")))
+
+    event = db_session.scalar(sa.select(AuditEvent).where(AuditEvent.action == "member:remove"))
+    assert event is not None
+    assert event.entity_id == victim.id
+    assert event.before["role"] == "viewer"
+    assert event.after is None

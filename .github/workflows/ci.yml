@@ -6,6 +6,31 @@ on:
   pull_request:
 
 jobs:
+  format:
+    name: formatting (changed files only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The gate compares against the merge base, which needs history.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+      - name: Backend deps
+        working-directory: backend
+        run: uv sync
+      - name: Frontend deps
+        working-directory: frontend
+        run: npm ci || npm install
+      - name: Check formatting of changed files
+        # Scoped rather than repo-wide on purpose — the script explains why, and
+        # the short version is that ~50 files on main predate any format gate.
+        run: |
+          base="origin/${{ github.base_ref || 'main' }}"
+          bash .github/scripts/format_changed.sh "$base"
+
   backend:
     name: backend (ruff + mypy + pytest)
     runs-on: ubuntu-latest
@@ -42,7 +67,25 @@ jobs:
       - name: Mypy
         working-directory: backend
         run: uv run mypy app
-      - name: Pytest
+      # Named separately from the rest of the suite so a red check says WHICH
+      # promise broke. A generic "pytest failed" on a governance surface is the
+      # difference between a five-minute fix and a bisect.
+      - name: Database migrations (up, model drift, down) + audit append-only guard
+        working-directory: backend
+        run: uv run pytest tests/test_migrations.py tests/test_audit_append_only_postgres.py -q
+      - name: Authorization rules (RBAC matrix, deny-by-default, tenant isolation)
+        working-directory: backend
+        run: uv run pytest tests/test_permissions.py tests/test_tenancy.py -q
+      - name: Admin Panel API (members, roles, invitations, audit log)
+        working-directory: backend
+        run: |
+          uv run pytest \
+            tests/test_admin_api.py \
+            tests/test_invitations.py \
+            tests/test_audit_api.py \
+            tests/test_audit.py \
+            tests/test_admin_panel_e2e.py -q
+      - name: Pytest (full suite)
         working-directory: backend
         run: uv run pytest
 
@@ -158,10 +201,19 @@ jobs:
         #
         # The refresh cookie is Secure by default and this stack serves plain
         # http on localhost, so a Secure cookie would never be sent back.
+        #
+        # PUBLIC_BASE_URL is what invitation links are built from. The API only
+        # ever sees the internal container origin, so without this an emailed
+        # link would point at http://localhost:8140 by default — which happens
+        # to be right here, and would be wrong the moment the port changes.
+        # Setting it explicitly makes the invitation e2e test what it claims to.
         run: |
-          printf 'DRY_RUN=1\n' > deploy/.env
-          printf 'JWT_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> deploy/.env
-          printf 'AUTH_REFRESH_COOKIE_SECURE=0\n' >> deploy/.env
+          {
+            printf 'DRY_RUN=1\n'
+            printf 'JWT_SECRET_KEY=%s\n' "$(openssl rand -hex 32)"
+            printf 'AUTH_REFRESH_COOKIE_SECURE=0\n'
+            printf 'PUBLIC_BASE_URL=http://localhost:8140\n'
+          } > deploy/.env
       - name: Boot the DRY_RUN stack
         run: docker compose -f deploy/docker-compose.yml up -d --build
       - name: Wait for API health
@@ -195,6 +247,19 @@ jobs:
         # example.com — treat a red here after green health waits as a
         # possible network flake before suspecting the app.
         run: npx playwright test e2e/happy-path.spec.ts
+      # Separated from the happy path because they fail for different reasons:
+      # the happy path needs runner egress to example.com, these need nothing
+      # outside the stack. A red here is the application, not the network.
+      - name: Run Admin Panel journeys (invitations, roles, audit log)
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:8140
+        run: npx playwright test e2e/journeys.spec.ts --workers=1
+      - name: Run the viewport matrix
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:8140
+        run: npx playwright test e2e/viewports.spec.ts --workers=1
       - name: Dump stack logs on failure
         if: failure()
         run: docker compose -f deploy/docker-compose.yml logs

@@ -24,7 +24,14 @@ const SIZES = [
 ]
 
 const PUBLIC_PAGES = ['/', '/login', '/signup', '/checker', '/methodology']
-const PRIVATE_PAGES = ['/dashboard', '/admin', '/settings', '/site-audit']
+const PRIVATE_PAGES = [
+  '/dashboard',
+  '/admin',
+  '/admin/invitations',
+  '/admin/audit',
+  '/settings',
+  '/site-audit',
+]
 
 async function horizontalOverflow(page: Page): Promise<number> {
   return page.evaluate(

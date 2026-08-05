@@ -95,7 +95,7 @@ export default function SettingsPage() {
                       href="/admin"
                       className="mt-4 inline-flex min-h-[44px] items-center rounded-md border border-surface-border px-4 text-sm font-medium transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
-                      Manage members &amp; roles
+                      Open the Admin Panel
                     </Link>
                   </>
                 ) : (

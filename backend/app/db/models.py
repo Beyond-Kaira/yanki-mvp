@@ -1284,3 +1284,69 @@ class ReferringDomainRollup(Base):
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
+
+
+class AuditEvent(Base):
+    """Append-only record of everything that changed, and who changed it (P7.3).
+
+    Append-only is the whole point: no service writes an UPDATE or DELETE here,
+    and no code path exposes one. An audit log that can be edited answers a
+    weaker question than the one it exists to answer.
+
+    Recorded per event: the actor (a user, an API key, a job, or ``system``),
+    the org and entity it touched, the action as a ``resource:action`` string,
+    the **before/after values with secrets redacted**, a salted ip hash reusing
+    the existing rate-limit salt, and the outcome — including ``denied``,
+    because a refused attempt is often the interesting one.
+
+    ``org_id`` is nullable, and that is not an oversight: the anonymous public
+    surface produces real, auditable events (a checker submit, a waitlist
+    signup) that belong to no tenant. The same NULL-is-public convention as
+    ``analyses`` (ADR-35).
+    """
+
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        sa.Index("ix_audit_events_org_occurred", "org_id", "occurred_at"),
+        sa.Index("ix_audit_events_entity", "entity_type", "entity_id"),
+        sa.Index("ix_audit_events_actor", "actor_type", "actor_id"),
+        sa.Index("ix_audit_events_action", "action", "occurred_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    occurred_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    # No FK: an audit event must outlive the organization it describes. A row
+    # that disappears when the thing it audits is deleted is not an audit trail.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+
+    # 'user' | 'api_key' | 'job' | 'system' | 'anonymous'
+    actor_type: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="system", server_default="system"
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    actor_label: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    action: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    entity_type: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+
+    before: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    after: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+
+    ip_hash: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    request_id: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # 'success' | 'denied' | 'error'
+    outcome: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="success", server_default="success"
+    )
+    detail: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )

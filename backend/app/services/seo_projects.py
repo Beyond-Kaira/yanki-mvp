@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import SeoProject, SiteAudit
+from app.services import audit as audit_service
 from app.services.tenancy import OrgContext, create_project
 
 _DNS_HOST_RE = re.compile(
@@ -147,6 +148,21 @@ def create_project_with_audit(
     )
     session.add_all([project, audit])
 
+    audit_service.emit(
+        session,
+        action="project:create",
+        context=context,
+        actor_type="user",
+        actor_id=user_id,
+        entity_type="seo_project",
+        entity_id=project.id,
+        after={
+            "name": project.name,
+            "domain": project.domain,
+            "domain_key": project.domain_key,
+        },
+    )
+
     try:
         session.commit()
     except IntegrityError as exc:
@@ -214,19 +230,34 @@ def queue_site_audit(
     if active_id is not None:
         raise SiteAuditAlreadyActive
 
-    audit = SiteAudit(
+    site_audit = SiteAudit(
         project_id=project.id,
         page_limit=page_limit,
         profile_id=profile_id,
         js_rendering=js_rendering,
     )
-    session.add(audit)
+    session.add(site_audit)
+    session.flush()
+    audit_service.emit(
+        session,
+        action="site_audit:queue",
+        actor_type="user",
+        actor_id=project.user_id,
+        entity_type="site_audit",
+        entity_id=site_audit.id,
+        after={
+            "project_id": str(project.id),
+            "page_limit": page_limit,
+            "profile_id": profile_id,
+            "js_rendering": js_rendering,
+        },
+    )
     try:
         session.commit()
     except IntegrityError as exc:
         session.rollback()
         raise SiteAuditAlreadyActive from exc
-    return audit
+    return site_audit
 
 
 def get_org_audit(

@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 from app.backlink.base import BacklinkPage, BacklinkRow, BacklinkSource, BacklinkSourceUnavailable
 from app.backlink.normalize import classify_anchor, domain_key, subnet_24, url_key
 from app.db.models import Backlink, BacklinkImport, LinkEvent, ReferringDomainRollup
+from app.services import billing
 
 # How many consecutive measurable misses before a link is called lost. Two, not
 # one: a single-cycle disappearance is the most common form of index flapping,
@@ -102,12 +103,18 @@ def run_import(
     brand: str = "",
     trigger: str = "manual",
     now: datetime | None = None,
+    meter: bool = True,
 ) -> ImportOutcome:
     """Fetch one profile, diff it against what we believed, record the truth.
 
     ``now`` is injectable because every assertion in the delta tests is about
     ordering across cycles, and a test that depends on the wall clock is a test
     that fails at midnight.
+
+    ``meter`` gates the quota reservation and ledger settle (P7.6). It exists
+    so a test can exercise the delta logic without also constructing a plan and
+    a subscription — never so production can skip the check, which is why the
+    default is on and the reservation happens BEFORE the vendor is called.
     """
 
     moment = now or datetime.now(UTC)
@@ -126,6 +133,19 @@ def run_import(
     session.add(record)
     session.flush()
 
+    # Reserve before the call, not after it. A vendor that answers and then
+    # crashes us locally has still been paid; refusing here — where nothing has
+    # been spent — is the only refusal that is free (ADR-34's lesson, P7.6).
+    reservation = None
+    if meter:
+        reservation = billing.reserve(
+            session,
+            org_id,
+            metric=billing.METRIC_BACKLINK_REFRESHES,
+            estimate_usd=source.price_estimate(subject),
+            now=moment,
+        )
+
     try:
         page = source.fetch_backlinks(subject)
     except BacklinkSourceUnavailable as exc:
@@ -135,6 +155,17 @@ def run_import(
         record.measurable = False
         record.error = str(exc)[:500]
         record.completed_at = moment
+        if reservation is not None:
+            # The call failed, but a failed call can still have been billed —
+            # settle at zero so the attempt is visible in the ledger rather
+            # than absent from it.
+            billing.settle(
+                session,
+                reservation,
+                Decimal("0"),
+                source_type="backlink_import",
+                source_id=record.id,
+            )
         session.flush()
         return ImportOutcome(
             import_id=record.id,
@@ -301,6 +332,14 @@ def run_import(
             else "incomplete or shrunken pull — recorded, but no losses claimed"
         ),
     }
+    if reservation is not None:
+        billing.settle(
+            session,
+            reservation,
+            page.cost,
+            source_type="backlink_import",
+            source_id=record.id,
+        )
     session.flush()
 
     rebuild_rollups(

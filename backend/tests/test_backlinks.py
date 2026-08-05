@@ -33,10 +33,13 @@ from app.backlink.toxicity import assess_project, band_for, disavow_file
 from app.db.models import (
     Backlink,
     BacklinkImport,
+    CreditLedgerEntry,
     LinkEvent,
     Organization,
+    Plan,
     Project,
     ReferringDomainRollup,
+    Subscription,
     Workspace,
 )
 
@@ -72,6 +75,7 @@ def _run(db_session, project, cycle: int, *, day: int = 0):
         subject_domain=SUBJECT,
         brand="acme",
         now=datetime(2026, 6, 1, tzinfo=UTC) + timedelta(days=day),
+        meter=False,
     )
     db_session.commit()
     return outcome
@@ -361,6 +365,7 @@ def test_an_unavailable_index_degrades_the_refresh_instead_of_failing(db_session
         org_id=project.org_id,
         project_id=project.id,
         subject_domain=SUBJECT,
+        meter=False,
     )
     db_session.commit()
 
@@ -650,3 +655,98 @@ def test_one_projects_links_are_invisible_to_another(db_session, project):
     )
     assert compute_authority(db_session, project_id=other.id, subject_domain=SUBJECT).value == 0
     assert link_gap(db_session, project_id=other.id, own_domain="other.example") == []
+
+
+# --------------------------------------------------------------------------
+# Metering — no path reaches a paid index without a reservation (P7.6)
+# --------------------------------------------------------------------------
+
+
+def test_a_metered_import_reserves_quota_and_settles_the_real_cost(db_session, project):
+    from app.services import billing
+
+    billing.seed_plans(db_session)
+    plan = db_session.scalar(sa.select(Plan).where(Plan.key == "pro"))
+    db_session.add(Subscription(org_id=project.org_id, plan_id=plan.id, status="active"))
+    billing.grant_credit(db_session, project.org_id, Decimal("10"))
+    db_session.commit()
+
+    outcome = run_import(
+        db_session,
+        source=MockBacklinkSource(cycle=0),
+        org_id=project.org_id,
+        project_id=project.id,
+        subject_domain=SUBJECT,
+        now=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+    db_session.commit()
+
+    assert (
+        billing.usage(
+            db_session,
+            project.org_id,
+            billing.METRIC_BACKLINK_REFRESHES,
+            now=datetime(2026, 6, 1, tzinfo=UTC),
+        )
+        == 1
+    )
+    # The mock is free — and the ledger says so explicitly rather than by
+    # having no row at all.
+    entry = db_session.scalars(
+        sa.select(CreditLedgerEntry).order_by(CreditLedgerEntry.created_at.desc())
+    ).first()
+    assert entry is not None
+    assert entry.source_type == "backlink_import"
+    assert entry.source_id == outcome.import_id
+    assert entry.delta_usd == Decimal("0")
+
+
+def test_a_plan_without_backlinks_cannot_start_an_import_at_all(db_session, project):
+    """Free has 0 refreshes — the refusal happens before the vendor is called."""
+
+    from app.services import billing
+
+    billing.seed_plans(db_session)
+    plan = db_session.scalar(sa.select(Plan).where(Plan.key == "free"))
+    db_session.add(Subscription(org_id=project.org_id, plan_id=plan.id, status="active"))
+    db_session.commit()
+
+    with pytest.raises(billing.QuotaExceeded):
+        run_import(
+            db_session,
+            source=MockBacklinkSource(cycle=0),
+            org_id=project.org_id,
+            project_id=project.id,
+            subject_domain=SUBJECT,
+            now=datetime(2026, 6, 1, tzinfo=UTC),
+        )
+
+
+def test_a_failed_import_still_settles_so_the_attempt_is_visible(db_session, project):
+    from app.services import billing
+
+    billing.seed_plans(db_session)
+    plan = db_session.scalar(sa.select(Plan).where(Plan.key == "pro"))
+    db_session.add(Subscription(org_id=project.org_id, plan_id=plan.id, status="active"))
+    db_session.commit()
+
+    class _Broken:
+        name = "mock"
+
+        def fetch_backlinks(self, subject_domain, *, cursor=None):
+            raise BacklinkSourceUnavailable("index down")
+
+        def price_estimate(self, subject_domain):
+            return Decimal("0")
+
+    run_import(
+        db_session,
+        source=_Broken(),
+        org_id=project.org_id,
+        project_id=project.id,
+        subject_domain=SUBJECT,
+        now=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+    db_session.commit()
+
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(CreditLedgerEntry)) == 1

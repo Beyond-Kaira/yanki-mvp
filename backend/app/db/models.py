@@ -1350,3 +1350,147 @@ class AuditEvent(Base):
     detail: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+
+
+class Plan(Base):
+    """A plan and its limits, as DATA rather than code (P7.6).
+
+    The baseline's tiers (Free/Starter/Pro/Business/Enterprise) are seeded rows,
+    not constants, because pricing changes far more often than schema should.
+    ``limits`` is JSON for the same reason: every new metered thing (backlink
+    rows at M2, keyword slots at M6) would otherwise be a migration and a deploy
+    ordering problem.
+    """
+
+    __tablename__ = "plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    key: Mapped[str] = mapped_column(sa.Text, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    limits: Mapped[dict[str, Any]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=False, default=dict
+    )
+    monthly_price_usd: Mapped[Decimal] = mapped_column(
+        sa.Numeric(10, 2), nullable=False, default=0, server_default="0"
+    )
+    active: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=True, server_default=sa.true()
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class Subscription(Base):
+    """Which plan an organization is on. Stripe fills in later (P7.6b).
+
+    Deliberately thin: this card needs "what may this org do" to have an answer,
+    not a billing lifecycle. The Stripe columns exist so adding the lifecycle is
+    an UPDATE rather than a migration on a populated table.
+    """
+
+    __tablename__ = "subscriptions"
+    __table_args__ = (
+        sa.Index(
+            "uq_subscriptions_one_active_per_org",
+            "org_id",
+            unique=True,
+            postgresql_where=sa.text("status IN ('trialing', 'active', 'past_due')"),
+            sqlite_where=sa.text("status IN ('trialing', 'active', 'past_due')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("plans.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="active", server_default="active"
+    )
+    stripe_customer_id: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class CreditLedgerEntry(Base):
+    """Append-only money movement, per org. The one place spend is true.
+
+    Append-only and signed: a grant is positive, a charge negative, and the
+    balance is their sum. Nothing updates a row — correcting a mistake means
+    writing its reversal, which leaves both the error and the correction
+    visible. A mutable balance column would be faster and would also be the
+    number nobody could ever reconcile.
+
+    ``balance_after`` is stored anyway, as a running check: if it ever disagrees
+    with the sum of deltas, something wrote out of order and the ledger says so
+    rather than quietly drifting.
+    """
+
+    __tablename__ = "credit_ledger"
+    __table_args__ = (
+        sa.Index("ix_credit_ledger_org_created", "org_id", "created_at"),
+        sa.Index("ix_credit_ledger_reason", "org_id", "reason"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Signed: + grant, − charge.
+    delta_usd: Mapped[Decimal] = mapped_column(sa.Numeric(12, 6), nullable=False)
+    balance_after_usd: Mapped[Decimal] = mapped_column(sa.Numeric(12, 6), nullable=False)
+    reason: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # What incurred it — 'analysis', 'backlink_import', 'site_audit', 'grant'.
+    source_type: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    detail: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class UsageCounter(Base):
+    """How much of a metered thing an org has used in one window.
+
+    Separate from the ledger because they answer different questions: the ledger
+    is money and is kept forever; this is "have you hit your limit this month"
+    and is a small, updatable counter. Conflating them would make either the
+    money mutable or the quota check a sum over history.
+    """
+
+    __tablename__ = "usage_counters"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "org_id", "metric", "window_start", name="uq_usage_counters_window"
+        ),
+        sa.Index("ix_usage_counters_org_metric", "org_id", "metric"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    metric: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    window_start: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
+    used: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )

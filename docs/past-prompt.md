@@ -204,3 +204,33 @@ sign-off" (2b, 6). The clear five were implemented, one commit each, plus five
 docs commits; **nothing pushed, nothing deployed**. The two parked steps became
 operator question **A2**. Full log:
 [sessions/2026-07-28-02.md](sessions/2026-07-28-02.md) — §8 is the next brief.
+
+---
+
+## Session 20 — 2026-08-05
+
+**Prompt executed:** the operator's re-planning brief — "Analyze Yanki,
+create a roadmap, and update planning documents": read
+`docs/Yanki_Geo_Intelligence_Report.pdf` completely, analyze the whole
+repository, build a competitive feature-parity analysis and differentiation
+proposal, plan the Admin Panel (highest priority) and Backlink Intelligence
+(second), produce a milestone roadmap, and update every planning/handoff
+document — **implementing nothing**.
+
+**Note on the previous brief:** session 19's next-session prompt
+(sessions/2026-08-03-04.md §10 — push PR #13 and PR #4, don't merge without
+an answer on tech-debt #52) was **overtaken by events before any session ran
+it**: PRs #4, #13, #23 and #11 were pushed and merged by the team on
+2026-08-03/04 outside the session process. Its durable items were carried
+into the new plan instead (#49/#50/#52 → Phase 7; the merge-hygiene rule →
+resume-prompt.md First Task).
+
+**Outcome:** the platform roadmap adopted (ADR-33): roadmap.md rewritten as
+milestones M1–M9; new planning set (feature-parity.md, differentiators.md,
+admin-panel-plan.md, backlink-intelligence-plan.md, architecture-target.md);
+implementation-plan gained Phase 7 (Admin Platform, current priority) and
+Phase 8 (Backlink Intelligence); resume-prompt.md updated to the platform
+mission; tech-debt #54/#55 recorded for the undocumented merges; operator
+items A3/A4/B7 raised. Docs only — no code changed. Full log:
+[sessions/2026-08-05-01.md](sessions/2026-08-05-01.md) — §8 is the next
+brief.

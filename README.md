@@ -12,8 +12,10 @@ into), but this deployment runs it on. And an **SEO / AI-readiness audit** grade
 (A–F) *why* an answer engine can or can't read the site itself — are the AI
 crawlers allowed in, is the content in the HTML or only in JavaScript — reusing
 the crawl already performed for the cost of one extra `/robots.txt` fetch.
-Long-term goal: an affordable, transparent Semrush alternative for AI-answer rank
-tracking.
+Long-term goal: an affordable, transparent, agency-native **Geo Intelligence
+platform** — the milestone roadmap (Admin Platform first, Backlink
+Intelligence second, then full competitive parity and differentiators) lives
+in [docs/roadmap.md](docs/roadmap.md) (adopted 2026-08-05, ADR-33).
 
 This README is the front door. It gets a new engineer from `git clone` to a
 running local stack in about five minutes. Deeper docs live in [`docs/`](#documentation).
@@ -204,7 +206,12 @@ network.
 | [docs/design.md](docs/design.md)                        | Whole team            | Repo structure, folder rationale, ownership, ADR log.   |
 | [docs/architecture.md](docs/architecture.md)            | Engineers / on-call   | System + data-flow diagrams, job lifecycle, deploy topology. |
 | [docs/02-mvp.md](docs/02-mvp.md)                        | PM / QA / founders    | MVP PRD: scope, users, flow, acceptance criteria, out-of-scope. |
-| [docs/roadmap.md](docs/roadmap.md)                      | Leadership / engineers| Phased path from MVP to the Semrush alternative.        |
+| [docs/roadmap.md](docs/roadmap.md)                      | Leadership / engineers| The platform roadmap: milestones M1–M9 (admin-first).   |
+| [docs/feature-parity.md](docs/feature-parity.md)        | PM / leadership       | Competitive parity analysis vs the field; the REQUIRED backlog. |
+| [docs/differentiators.md](docs/differentiators.md)      | PM / leadership       | Post-parity differentiation proposal (D1–D10).          |
+| [docs/admin-panel-plan.md](docs/admin-panel-plan.md)    | Engineers / PM        | Milestone M1 spec: orgs, RBAC, audit logs, billing, system admin. |
+| [docs/backlink-intelligence-plan.md](docs/backlink-intelligence-plan.md) | Engineers / PM | Milestone M2 spec: the backlink module on licensed data. |
+| [docs/architecture-target.md](docs/architecture-target.md) | Engineers          | Target platform architecture (planning; as-built stays in architecture.md). |
 | [docs/frontend-brandkit.md](docs/frontend-brandkit.md)  | Frontend              | Colors, type, spacing, components, voice/tone (EN + TR).|
 | [docs/test-suite.md](docs/test-suite.md)                | Every engineer        | Test pyramid, TDD workflow, fixtures, coverage targets. |
 | [docs/discovery-kyc-improvements.md](docs/discovery-kyc-improvements.md) | Pipeline engineers | Six steps for discovery + KYC; five shipped, 2b/6 await operator sign-off. |

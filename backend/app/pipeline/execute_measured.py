@@ -96,19 +96,13 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
             engine = "measured"
 
         mentioned = bool(record.get("mentioned"))
-        grounded = (
-            record.get("grounded_answer")
-            or record.get("simulated_answer")
-            or ""
-        )
+        grounded = record.get("grounded_answer") or record.get("simulated_answer") or ""
         if not grounded:
             grounded = _error_text(record)
         snippet = grounded[:200] if mentioned and grounded else None
 
         model_name = record.get("model") or (
-            getattr(settings, "openrouter_model", "openai/gpt-4o-mini")
-            if not dry_run
-            else "mock"
+            getattr(settings, "openrouter_model", "openai/gpt-4o-mini") if not dry_run else "mock"
         )
 
         row = Response(
@@ -163,8 +157,5 @@ def _record_cost(record: dict[str, Any]) -> Decimal:
 
 def _error_text(record: dict[str, Any]) -> str:
     if record.get("error"):
-        return (
-            f"[geo error] {record.get('error_stage')}: "
-            f"{record.get('error_response')}"
-        )
+        return f"[geo error] {record.get('error_stage')}: {record.get('error_response')}"
     return ""

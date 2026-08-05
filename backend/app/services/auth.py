@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import User
+from app.services.tenancy import provision_personal_org
 
 _password_hash = PasswordHash.recommended()
 
@@ -51,7 +52,16 @@ def create_user(
     email: str,
     password: str,
 ) -> User:
-    """Create and persist a user with a hashed password."""
+    """Create and persist a user, with the personal organization that holds
+    their data.
+
+    The org is created in the **same transaction** as the user, deliberately.
+    A user row with no organization is a state nothing downstream can serve —
+    every scoped query needs an org context, and ``resolve_org_context`` raises
+    without one — so a signup that produced one would be a half-registered
+    account that fails on its first authenticated request. Committing both
+    together means either the account exists and works, or it does not exist.
+    """
 
     user = User(
         email=normalize_email(email),
@@ -59,6 +69,8 @@ def create_user(
     )
 
     session.add(user)
+    session.flush()
+    provision_personal_org(session, user)
     session.commit()
     session.refresh(user)
 

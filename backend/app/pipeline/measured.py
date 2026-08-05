@@ -102,51 +102,50 @@ AUDIT_EXTRACTION_SYSTEM_PROMPT = (
     "- Return ONLY valid JSON:\n"
     "\n"
     "{\n"
-    "  \"brand\": \"string\",\n"
-    "  \"sector\": \"string\",\n"
-    "  \"prompt\": \"string\",\n"
-    "  \"intent\": \"informational | comparison | transactional | alternative_search\",\n"
-    "  \"mention_context\": \"primary_recommendation | secondary_recommendation | "
-    "comparison_candidate | alternative_option | competitor_only | not_mentioned\",\n"
-    "  \"recommendation_reasoning\": \"string\",\n"
-    "  \"reasoning_trace\": {\n"
-    "    \"search_findings\": \"string\",\n"
-    "    \"answer_findings\": \"string\",\n"
-    "    \"brand_evaluation\": \"string\",\n"
-    "    \"confidence\": 0.0\n"
+    '  "brand": "string",\n'
+    '  "sector": "string",\n'
+    '  "prompt": "string",\n'
+    '  "intent": "informational | comparison | transactional | alternative_search",\n'
+    '  "mention_context": "primary_recommendation | secondary_recommendation | '
+    'comparison_candidate | alternative_option | competitor_only | not_mentioned",\n'
+    '  "recommendation_reasoning": "string",\n'
+    '  "reasoning_trace": {\n'
+    '    "search_findings": "string",\n'
+    '    "answer_findings": "string",\n'
+    '    "brand_evaluation": "string",\n'
+    '    "confidence": 0.0\n'
     "  },\n"
-    "  \"visibility_drivers\": {\n"
-    "    \"product_strength\": [\"string\"],\n"
-    "    \"distribution_strength\": [\"string\"],\n"
-    "    \"trust_strength\": [\"string\"],\n"
-    "    \"brand_strength\": [\"string\"],\n"
-    "    \"content_strength\": [\"string\"],\n"
-    "    \"international_strength\": [\"string\"],\n"
-    "    \"ux_strength\": [\"string\"]\n"
+    '  "visibility_drivers": {\n'
+    '    "product_strength": ["string"],\n'
+    '    "distribution_strength": ["string"],\n'
+    '    "trust_strength": ["string"],\n'
+    '    "brand_strength": ["string"],\n'
+    '    "content_strength": ["string"],\n'
+    '    "international_strength": ["string"],\n'
+    '    "ux_strength": ["string"]\n'
     "  },\n"
-    "  \"visibility_gaps\": {\n"
-    "    \"low_discoverability\": [\"string\"],\n"
-    "    \"weak_ranking\": [\"string\"],\n"
-    "    \"category_mismatch\": [\"string\"],\n"
-    "    \"weak_trust_signals\": [\"string\"],\n"
-    "    \"weak_feature_association\": [\"string\"],\n"
-    "    \"competitor_dominance\": [\"string\"],\n"
-    "    \"content_gap\": [\"string\"],\n"
-    "    \"international_positioning_gap\": [\"string\"],\n"
-    "    \"ux_positioning_gap\": [\"string\"],\n"
-    "    \"reputation_gap\": [\"string\"]\n"
+    '  "visibility_gaps": {\n'
+    '    "low_discoverability": ["string"],\n'
+    '    "weak_ranking": ["string"],\n'
+    '    "category_mismatch": ["string"],\n'
+    '    "weak_trust_signals": ["string"],\n'
+    '    "weak_feature_association": ["string"],\n'
+    '    "competitor_dominance": ["string"],\n'
+    '    "content_gap": ["string"],\n'
+    '    "international_positioning_gap": ["string"],\n'
+    '    "ux_positioning_gap": ["string"],\n'
+    '    "reputation_gap": ["string"]\n'
     "  },\n"
-    "  \"trust_signals\": [\"string\"],\n"
-    "  \"entities_associated_with_brand\": [\"string\"],\n"
-    "  \"sentiment\": \"positive | neutral | negative\",\n"
-    "  \"content_improvement_opportunities\": [\"string\"]\n"
+    '  "trust_signals": ["string"],\n'
+    '  "entities_associated_with_brand": ["string"],\n'
+    '  "sentiment": "positive | neutral | negative",\n'
+    '  "content_improvement_opportunities": ["string"]\n'
     "}\n"
     "\n"
     "Use predefined visibility_gaps keys exactly. Empty categories stay as empty arrays.\n"
     "Maximum 3 items per drivers/gaps category. Maximum 5 trust_signals.\n"
     ""
 )
-
 
 
 class ChatLLM(Protocol):
@@ -858,9 +857,7 @@ def run_measured_audit(
             "sentiment": "neutral",
             "schema_version": SCHEMA_VERSION,
             "generated_at": datetime.now(UTC).isoformat(),
-            "_cost_usd": (
-                search_cost + _call_cost(grounded_payload) + _call_cost(audit_payload)
-            ),
+            "_cost_usd": (search_cost + _call_cost(grounded_payload) + _call_cost(audit_payload)),
         }
 
     record = merge_measured_record(

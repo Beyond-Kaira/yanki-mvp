@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.auth_dependencies import get_current_user
+from app.api.org_dependencies import get_org_context
 from app.api.site_audit_schemas import (
     CreateSeoProjectRequest,
     SeoProjectDetailOut,
@@ -15,7 +15,7 @@ from app.api.site_audit_schemas import (
     SiteAuditSettingsRequest,
     SiteAuditSummaryOut,
 )
-from app.db.models import SeoProject, SiteAudit, User
+from app.db.models import SeoProject, SiteAudit
 from app.db.session import get_session
 from app.net_guard import is_public_url
 from app.services.seo_projects import (
@@ -23,12 +23,13 @@ from app.services.seo_projects import (
     InvalidProjectDomain,
     SiteAuditAlreadyActive,
     create_project_with_audit,
-    get_user_audit,
-    get_user_project,
-    list_user_projects,
+    get_org_audit,
+    get_org_project,
+    list_org_projects,
     normalize_project_domain,
     queue_site_audit,
 )
+from app.services.tenancy import OrgContext
 
 router = APIRouter(prefix="/api/v1/seo-projects", tags=["seo-projects"])
 
@@ -83,7 +84,7 @@ def _project_detail(project: SeoProject) -> SeoProjectDetailOut:
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=SeoProjectOut)
 def create_seo_project(
     payload: CreateSeoProjectRequest,
-    current_user: User = Depends(get_current_user),
+    org: OrgContext = Depends(get_org_context),
     session: Session = Depends(get_session),
 ) -> SeoProjectOut:
     try:
@@ -101,7 +102,8 @@ def create_seo_project(
     try:
         project = create_project_with_audit(
             session,
-            user_id=current_user.id,
+            user_id=org.require_user_id,
+            context=org,
             domain=domain,
             name=payload.name,
             page_limit=payload.page_limit,
@@ -119,19 +121,19 @@ def create_seo_project(
 
 @router.get("", response_model=list[SeoProjectOut])
 def read_seo_projects(
-    current_user: User = Depends(get_current_user),
+    org: OrgContext = Depends(get_org_context),
     session: Session = Depends(get_session),
 ) -> list[SeoProjectOut]:
-    return [_project_out(project) for project in list_user_projects(session, current_user.id)]
+    return [_project_out(project) for project in list_org_projects(session, org.require_org_id)]
 
 
 @router.get("/{project_id}", response_model=SeoProjectDetailOut)
 def read_seo_project(
     project_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    org: OrgContext = Depends(get_org_context),
     session: Session = Depends(get_session),
 ) -> SeoProjectDetailOut:
-    project = get_user_project(session, user_id=current_user.id, project_id=project_id)
+    project = get_org_project(session, org_id=org.require_org_id, project_id=project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="SEO project not found")
     return _project_detail(project)
@@ -145,10 +147,10 @@ def read_seo_project(
 def create_site_audit(
     project_id: uuid.UUID,
     payload: SiteAuditSettingsRequest,
-    current_user: User = Depends(get_current_user),
+    org: OrgContext = Depends(get_org_context),
     session: Session = Depends(get_session),
 ) -> SiteAuditSummaryOut:
-    project = get_user_project(session, user_id=current_user.id, project_id=project_id)
+    project = get_org_project(session, org_id=org.require_org_id, project_id=project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="SEO project not found")
 
@@ -176,12 +178,12 @@ def create_site_audit(
 def read_site_audit(
     project_id: uuid.UUID,
     audit_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    org: OrgContext = Depends(get_org_context),
     session: Session = Depends(get_session),
 ) -> SiteAuditDetailOut:
-    audit = get_user_audit(
+    audit = get_org_audit(
         session,
-        user_id=current_user.id,
+        org_id=org.require_org_id,
         project_id=project_id,
         audit_id=audit_id,
     )

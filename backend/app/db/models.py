@@ -48,6 +48,26 @@ class Analysis(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    # Tenancy (P7.1). Nullable, and with **no ForeignKey and no index**, all
+    # three deliberate.
+    #
+    # NULL means the PUBLIC scope. The product's whole live surface is
+    # anonymous — all 47 analyses in production on 2026-08-05 were submitted by
+    # nobody, and this table has never had a user column — so NULL is the
+    # overwhelmingly common value and a real one, not an unfinished backfill.
+    #
+    # No FK, because of what the FK's delete rule would have to be. `SET NULL`
+    # is actively unsafe here: NULL is world-readable, so deleting an
+    # organization would silently *republish* every private analysis it owned.
+    # When owned analyses arrive (M4) the FK must be added as **ON DELETE
+    # RESTRICT** — org deletion is then forced through an explicit reassign or
+    # purge. That standing constraint is recorded in ADR-35; deferring the FK
+    # keeps it from being got wrong by default now.
+    #
+    # No index, because this is the hot queue table and every row's value is
+    # NULL: a btree over one repeated value earns nothing and an FK validation
+    # scan would take ACCESS EXCLUSIVE on the shared box for no benefit.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
     url: Mapped[str] = mapped_column(sa.Text, nullable=False)
     status: Mapped[str] = mapped_column(sa.Text, nullable=False, default="queued")
     progress: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
@@ -399,6 +419,197 @@ class User(Base):
     )
 
 
+class Organization(Base):
+    """A tenant — the billing and security boundary (M1 / P7.1).
+
+    Every signed-in user has at least one: signup creates a **personal org**, so
+    "a user" is never a thing that owns data directly. That indirection is the
+    whole point — converting a solo account into a company account later is then
+    a membership change, not a data migration (baseline §10.4).
+
+    ``slug`` is the human-facing identifier and is globally unique. ``region`` is
+    recorded from day one although nothing reads it yet: data residency is an M8
+    promise, and adding the column to a populated table later is exactly the
+    migration this card exists to avoid.
+    """
+
+    __tablename__ = "organizations"
+    __table_args__ = (
+        # "Exactly one personal org per user" is an invariant the product relies
+        # on, so the database enforces it rather than the service layer hoping.
+        # It also closes the signup race a get-or-create cannot: two concurrent
+        # requests for the same new user both see no org, both insert, and one
+        # loses here instead of minting a second home.
+        sa.Index(
+            "uq_organizations_personal_owner",
+            "owner_user_id",
+            unique=True,
+            postgresql_where=sa.text("kind = 'personal'"),
+            sqlite_where=sa.text("kind = 'personal'"),
+        ),
+        sa.Index("ix_organizations_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    slug: Mapped[str] = mapped_column(sa.Text, nullable=False, unique=True)
+    # 'active' | 'trial' | 'suspended' | 'closed'. Plain Text, like every other
+    # status column here: a stored row must stay readable when the set changes.
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="active", server_default="active"
+    )
+    region: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # 'personal' (auto-created at signup) | 'company' (converted or created
+    # outright) | 'system' (the reserved public org — see PUBLIC_ORG_ID). Three
+    # values rather than a boolean because 'system' is genuinely a third thing,
+    # and because the conversion wizard needs to tell "one human" from "a
+    # company that happens to have one member" without counting members.
+    kind: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="personal", server_default="personal"
+    )
+    # SET NULL, not CASCADE: deleting the owning user must never silently delete
+    # an organization and everything under it. Ownership transfer is P7.5's job;
+    # until then an ownerless org is a visible problem rather than a vanished one.
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Workspace(Base):
+    """A lane inside an organization — a client for agencies, a brand or region
+    for multi-location businesses.
+
+    Workspaces exist in M1 rather than later because the wedge depends on them
+    (differentiator D4: free client seats, workspace-per-client).
+    """
+
+    __tablename__ = "workspaces"
+    __table_args__ = (
+        sa.UniqueConstraint("org_id", "slug", name="uq_workspaces_org_slug"),
+        sa.Index("ix_workspaces_org_id", "org_id"),
+        # "Which workspace do new projects land in?" must have exactly one
+        # answer. Picking the oldest row works until two share a timestamp — a
+        # retried backfill is enough — after which the answer is whatever the
+        # planner felt like. The database settles it instead.
+        sa.Index(
+            "uq_workspaces_one_default_per_org",
+            "org_id",
+            unique=True,
+            postgresql_where=sa.text("is_default"),
+            sqlite_where=sa.text("is_default"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    slug: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    is_default: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Membership(Base):
+    """One user's place in one organization, and the role they hold there.
+
+    Multi-org membership is supported from the start (contractor mode, baseline
+    §10.4): the unique constraint is on the *pair*, not on ``user_id``.
+
+    ``role`` is deliberately plain Text with **no CHECK constraint**. M8 turns
+    roles into data (custom roles by clone-and-edit), so a database-level
+    enumeration would guarantee a migration for every role the product ever
+    adds. Validation lives in the service layer, where P7.2 puts the permission
+    model that actually interprets these strings.
+    """
+
+    __tablename__ = "memberships"
+    __table_args__ = (
+        sa.UniqueConstraint("org_id", "user_id", name="uq_memberships_org_user"),
+        sa.Index("ix_memberships_user_id", "user_id"),
+        sa.Index("ix_memberships_org_id", "org_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # 'invited' | 'active' | 'deactivated'
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="active", server_default="active"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Project(Base):
+    """A tracked business inside a workspace: one domain, watched over time.
+
+    This is the anchor every later module hangs from — Site Audit runs, backlink
+    profiles (Phase 8), rank tracking, scheduled analyses. It is deliberately
+    **not** a rename of ``seo_projects``: that table is the Site Audit module's
+    own row and keeps its identity, gaining a ``project_id`` that points here.
+    Renaming a populated table on an auto-deploying production database to save
+    one join is the trade this card exists to refuse.
+
+    ``domain_key`` repeats ``seo_projects``' normalization (host, no leading
+    ``www.``) so one tracked business cannot become two through a URL spelling.
+    """
+
+    __tablename__ = "projects"
+    __table_args__ = (
+        sa.UniqueConstraint("org_id", "domain_key", name="uq_projects_org_domain_key"),
+        sa.Index("ix_projects_org_id", "org_id"),
+        sa.Index("ix_projects_workspace_id", "workspace_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    # RESTRICT, matching seo_projects: an organization holding tracked
+    # businesses cannot be deleted out from under them. P7.7 owns org deletion
+    # and must reassign or purge explicitly.
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    domain_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    locale: Mapped[str] = mapped_column(sa.Text, nullable=False, default="en", server_default="en")
+    # 'active' | 'paused' | 'archived'
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="active", server_default="active"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
 class SeoProject(Base):
     """One user-owned domain that can have many Site Audit runs.
 
@@ -414,6 +625,7 @@ class SeoProject(Base):
             "domain_key",
             name="uq_seo_projects_user_domain_key",
         ),
+        sa.Index("ix_seo_projects_org_id", "org_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
@@ -421,6 +633,30 @@ class SeoProject(Base):
         sa.ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+    # Tenancy (P7.1). Nullable at the database level only because the migration
+    # adds the columns before it fills them — every row is backfilled in the
+    # same migration, and the service layer writes all three on create. They are
+    # not left nullable because "some rows have no org": a Site Audit project
+    # always belongs to the org of the user who made it.
+    #
+    # ``org_id`` is denormalized here rather than reached through ``project_id``
+    # so org scoping stays a single predicate on the table being queried. That
+    # is what makes the scoping helper cheap enough that nobody is tempted to
+    # skip it, and what a Postgres RLS policy would key on later.
+    #
+    # RESTRICT, not CASCADE: deleting an organization must not silently take a
+    # customer's projects and audit history with it. P7.7 owns org deletion and
+    # will reassign or purge explicitly; until then the database refuses, which
+    # is the failure mode you want on a shared production box.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=True
+    )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
     name: Mapped[str] = mapped_column(sa.Text, nullable=False)
     domain: Mapped[str] = mapped_column(sa.Text, nullable=False)
@@ -483,6 +719,11 @@ class SiteAudit(Base):
         nullable=False,
         index=True,
     )
+    # No org column here, on purpose. A site audit is reachable only through its
+    # project, which is org-scoped, so the join already answers "whose is this?"
+    # — and `get_org_audit` makes that join. Denormalizing org onto children
+    # costs a backfill and creates one more place to forget; it earns its keep
+    # only when a query genuinely starts at the child, which none does yet.
     status: Mapped[Literal["queued", "running", "done", "failed"]] = mapped_column(
         sa.Text, nullable=False, default="queued"
     )

@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import SeoProject, SiteAudit
+from app.services.tenancy import OrgContext, create_project
 
 _DNS_HOST_RE = re.compile(
     r"^(?=.{1,253}\.?$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*"
@@ -101,7 +102,17 @@ def create_project_with_audit(
     page_limit: int,
     profile_id: AuditProfileId,
     js_rendering: bool,
+    context: OrgContext | None = None,
 ) -> SeoProject:
+    """Create a Site Audit project and queue its first crawl.
+
+    ``context`` is optional only so this stays callable from tests and from the
+    pre-tenancy call path; when present — which is every HTTP request after
+    P7.1 — the row is stamped with the caller's org/workspace and mirrored into
+    a tenancy-level ``projects`` row, so Phase 8's backlink profiles have
+    something to hang from.
+    """
+
     existing_id = session.scalar(
         select(SeoProject.id).where(
             SeoProject.user_id == user_id,
@@ -117,6 +128,17 @@ def create_project_with_audit(
         domain=domain.url,
         domain_key=domain.key,
     )
+    if context is not None and context.org_id is not None:
+        tracked = create_project(
+            session,
+            context=context,
+            name=name or domain.default_name,
+            domain=domain.url,
+            domain_key=domain.key,
+        )
+        project.org_id = context.org_id
+        project.workspace_id = tracked.workspace_id
+        project.project_id = tracked.id
     audit = SiteAudit(
         project=project,
         page_limit=page_limit,
@@ -134,28 +156,42 @@ def create_project_with_audit(
     return project
 
 
-def list_user_projects(session: Session, user_id: uuid.UUID) -> list[SeoProject]:
+def list_org_projects(session: Session, org_id: uuid.UUID) -> list[SeoProject]:
+    """Every Site Audit project in one organization.
+
+    Scoped by ``org_id``, not ``user_id``: a teammate must see the org's
+    projects, and after P7.1 the org is the ownership boundary. Strict equality,
+    so a missing or wrong org returns nothing rather than everything.
+    """
+
     return list(
         session.scalars(
             select(SeoProject)
-            .where(SeoProject.user_id == user_id)
+            .where(SeoProject.org_id == org_id)
             .options(selectinload(SeoProject.audits))
             .order_by(SeoProject.created_at.desc())
         )
     )
 
 
-def get_user_project(
+def get_org_project(
     session: Session,
     *,
-    user_id: uuid.UUID,
+    org_id: uuid.UUID,
     project_id: uuid.UUID,
 ) -> SeoProject | None:
+    """One project, only if it belongs to this organization.
+
+    A cross-org id resolves to None here and the route turns that into the same
+    404 a nonexistent id gets — so the response cannot be used to probe whether
+    another tenant's project exists.
+    """
+
     return session.scalar(
         select(SeoProject)
         .where(
             SeoProject.id == project_id,
-            SeoProject.user_id == user_id,
+            SeoProject.org_id == org_id,
         )
         .options(selectinload(SeoProject.audits))
     )
@@ -193,20 +229,26 @@ def queue_site_audit(
     return audit
 
 
-def get_user_audit(
+def get_org_audit(
     session: Session,
     *,
-    user_id: uuid.UUID,
+    org_id: uuid.UUID,
     project_id: uuid.UUID,
     audit_id: uuid.UUID,
 ) -> SiteAudit | None:
+    """One audit, scoped through the project that owns it.
+
+    ``site_audits`` carries no ``org_id`` of its own — this join IS the scoping,
+    which is why the child table needed no backfill.
+    """
+
     return session.scalar(
         select(SiteAudit)
         .join(SeoProject, SeoProject.id == SiteAudit.project_id)
         .where(
             SiteAudit.id == audit_id,
             SiteAudit.project_id == project_id,
-            SeoProject.user_id == user_id,
+            SeoProject.org_id == org_id,
         )
         .options(selectinload(SiteAudit.pages))
     )

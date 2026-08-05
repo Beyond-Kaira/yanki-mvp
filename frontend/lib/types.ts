@@ -1302,7 +1302,9 @@ export interface operations {
     read_seo_projects_api_v1_seo_projects_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1317,12 +1319,23 @@ export interface operations {
                     "application/json": components["schemas"]["SeoProjectOut"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_seo_project_api_v1_seo_projects_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1355,7 +1368,9 @@ export interface operations {
     read_seo_project_api_v1_seo_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1386,7 +1401,9 @@ export interface operations {
     create_site_audit_api_v1_seo_projects__project_id__audits_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1421,7 +1438,9 @@ export interface operations {
     read_site_audit_api_v1_seo_projects__project_id__audits__audit_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 audit_id: string;

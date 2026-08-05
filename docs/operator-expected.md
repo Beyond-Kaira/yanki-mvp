@@ -4,8 +4,26 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-05, **session 21 close — the Admin Platform spine and
-the Backlink backend, MERGED AND DEPLOYED.** **Only one thing is yours now:
+Last updated: 2026-08-05, **session 21 close — Admin Platform, Backlink
+backend, and the auth/UI work, ALL MERGED AND DEPLOYED** (PRs #27, #28, #29,
+#30; live on `4806c1a`).
+
+**The product now has a front door.** `/` was the analysis form inside the
+signed-out app; it is a landing page, the app moved behind sign-in, and a
+signed-out visitor can no longer reach a product page. Sign-up asks whether
+you are an **individual or an organization**, the navbar no longer shows
+fifteen "N/A" placeholders (Site Audit, which was fully built, was marked
+unavailable alongside features that do not exist), the shell shows your
+organization and role rather than guessing a name from your email, there is a
+working **admin panel** (search, roles, enable/disable), and the whole thing
+works on a phone — the sidebar was a fixed 220px column that left ~123px of
+content at 375px.
+
+Verified on the live site after deploy: an organization signup returns the
+right org and role, the admin API is org-scoped, and no page serves an "N/A".
+
+Earlier the same session — **the Admin Platform spine and the Backlink
+backend.** **Only one thing is yours now:
 B9** — glance at one Tavily invoice and correct a pinned price. No rush.
 **B7 you had already closed; B8 is now done too** — on your instruction the
 session merged PR #27 (and #28, a follow-up fix), so session 20's planning

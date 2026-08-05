@@ -12,7 +12,15 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AfterValidator,
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.services.auth import normalize_email
 
@@ -101,10 +109,32 @@ class WaitlistResponse(BaseModel):
 
 
 class SignupRequest(BaseModel):
-    """Credentials required to create a user account."""
+    """Credentials required to create a user account.
+
+    ``account_type`` decides what kind of organization the new user gets. Both
+    kinds are real organizations with the same machinery behind them — an
+    individual is not a special case with less structure, it is a company of
+    one. That is what makes "convert to a team account" a rename plus an
+    invitation rather than a data migration.
+    """
 
     email: NormalizedEmail
     password: str = Field(min_length=8, max_length=128)
+    account_type: Literal["individual", "organization"] = "individual"
+    # Required when account_type is 'organization'; ignored otherwise. An
+    # individual's org is named after their email local part.
+    organization_name: str | None = Field(default=None, max_length=120)
+
+    @field_validator("organization_name")
+    @classmethod
+    def _strip_name(cls, value: str | None) -> str | None:
+        return value.strip() if value else None
+
+    @model_validator(mode="after")
+    def _organization_needs_a_name(self) -> SignupRequest:
+        if self.account_type == "organization" and not self.organization_name:
+            raise ValueError("organization_name is required for an organization account")
+        return self
 
 
 class LoginRequest(BaseModel):
@@ -122,6 +152,33 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: str
     created_at: datetime
+
+
+class OrganizationOut(BaseModel):
+    """The organization a request is acting within."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    kind: str
+    status: str
+
+
+class CurrentUserOut(UserOut):
+    """``/auth/me`` — who you are AND what you can do.
+
+    The role and permission list ride along so the UI can reflect authority
+    without a second round trip. They are for RENDERING only: the API enforces
+    every one of them independently, and a client that lies about its
+    permissions gets a 403 exactly as before.
+    """
+
+    status: str
+    organization: OrganizationOut | None = None
+    role: str | None = None
+    permissions: list[str] = Field(default_factory=list)
 
 
 class LoginResponse(BaseModel):
@@ -348,3 +405,59 @@ class AnalysisOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     result: ResultOut
+
+
+class AdminMemberOut(BaseModel):
+    """One member of an organization, as an administrator sees them."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    status: str
+    created_at: datetime
+    last_active_at: datetime | None = None
+    role: str
+    membership_status: str
+    membership_id: uuid.UUID
+
+
+class AdminUserListOut(BaseModel):
+    """A page of members, plus what the UI needs to render its controls.
+
+    ``assignable_roles`` ships with the list so the role picker is populated
+    from the server's idea of what may be assigned rather than a hardcoded
+    frontend copy that drifts. Platform roles are excluded there, so a customer
+    cannot even be offered one.
+    """
+
+    total: int
+    limit: int
+    offset: int
+    assignable_roles: list[str]
+    members: list[AdminMemberOut]
+
+
+class AdminMemberUpdateRequest(BaseModel):
+    """Change a member's role, their account status, or both.
+
+    Both optional: a PATCH that sets neither is a no-op rather than an error,
+    which keeps a form that only touched one field simple to submit.
+    """
+
+    role: str | None = Field(default=None, max_length=40)
+    status: str | None = Field(default=None, max_length=20)
+
+
+class AdminOrganizationOut(BaseModel):
+    """The caller's organization."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    kind: str
+    status: str
+    created_at: datetime
+    member_count: int

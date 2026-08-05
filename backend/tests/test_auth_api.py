@@ -283,7 +283,20 @@ def test_me_returns_user_for_valid_access_token(
     )
 
     assert response.status_code == 200
-    assert response.json() == user_body
+    body = response.json()
+
+    # The identity fields still match the signup response exactly — this part
+    # of the contract is unchanged.
+    for field in ("id", "email", "created_at"):
+        assert body[field] == user_body[field]
+
+    # And /me now additionally carries what the UI needs to render authority
+    # without a second round trip: the org, the caller's role in it, and the
+    # permission list. Enforcement stays server-side — this is for rendering.
+    assert body["status"] == "active"
+    assert body["organization"]["kind"] == "personal"
+    assert body["role"] == "owner"
+    assert "project:read" in body["permissions"]
 
 
 def test_me_rejects_missing_token_and_refresh_token(

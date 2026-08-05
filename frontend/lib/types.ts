@@ -4,6 +4,74 @@
  */
 
 export interface paths {
+    "/api/v1/admin/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Members
+         * @description Members of the caller's organization, searchable.
+         *
+         *     Search is a case-insensitive substring over the email, which is the only
+         *     human-readable identifier a user has today. It is applied in SQL rather
+         *     than after fetching, so the limit means what it says on a large org.
+         */
+        get: operations["list_members_api_v1_admin_members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Member */
+        get: operations["read_member_api_v1_admin_members__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Member
+         * @description Change a member's role, or enable/disable their account.
+         *
+         *     Both guards below prevent the same class of accident — an organization
+         *     locking itself out with no way back in except a support ticket.
+         */
+        patch: operations["update_member_api_v1_admin_members__user_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/organization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Organization
+         * @description The caller's own organization, with its member count.
+         */
+        get: operations["read_organization_api_v1_admin_organization_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analyses": {
         parameters: {
             query?: never;
@@ -87,7 +155,12 @@ export interface paths {
         };
         /**
          * Me
-         * @description Return the user represented by the access bearer token.
+         * @description Who you are, which organization you are acting in, and what you may do.
+         *
+         *     The role and permission list ride along so the UI can hide a control the
+         *     caller cannot use, instead of showing it and failing on click. They are for
+         *     RENDERING ONLY — every endpoint enforces its own permission independently,
+         *     so a client that lies about this list gets a 403 exactly as before.
          */
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
@@ -279,6 +352,97 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdminMemberOut
+         * @description One member of an organization, as an administrator sees them.
+         */
+        AdminMemberOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Active At */
+            last_active_at?: string | null;
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /** Membership Status */
+            membership_status: string;
+            /** Role */
+            role: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * AdminMemberUpdateRequest
+         * @description Change a member's role, their account status, or both.
+         *
+         *     Both optional: a PATCH that sets neither is a no-op rather than an error,
+         *     which keeps a form that only touched one field simple to submit.
+         */
+        AdminMemberUpdateRequest: {
+            /** Role */
+            role?: string | null;
+            /** Status */
+            status?: string | null;
+        };
+        /**
+         * AdminOrganizationOut
+         * @description The caller's organization.
+         */
+        AdminOrganizationOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Member Count */
+            member_count: number;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * AdminUserListOut
+         * @description A page of members, plus what the UI needs to render its controls.
+         *
+         *     ``assignable_roles`` ships with the list so the role picker is populated
+         *     from the server's idea of what may be assigned rather than a hardcoded
+         *     frontend copy that drifts. Platform roles are excluded there, so a customer
+         *     cannot even be offered one.
+         */
+        AdminUserListOut: {
+            /** Assignable Roles */
+            assignable_roles: string[];
+            /** Limit */
+            limit: number;
+            /** Members */
+            members: components["schemas"]["AdminMemberOut"][];
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** AnalysisOut */
         AnalysisOut: {
             /**
@@ -396,6 +560,36 @@ export interface components {
              * @enum {string}
              */
             profile_id: "site_audit_mobile" | "site_audit_desktop";
+        };
+        /**
+         * CurrentUserOut
+         * @description ``/auth/me`` — who you are AND what you can do.
+         *
+         *     The role and permission list ride along so the UI can reflect authority
+         *     without a second round trip. They are for RENDERING only: the API enforces
+         *     every one of them independently, and a client that lies about its
+         *     permissions gets a 403 exactly as before.
+         */
+        CurrentUserOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            organization?: components["schemas"]["OrganizationOut"] | null;
+            /** Permissions */
+            permissions?: string[];
+            /** Role */
+            role?: string | null;
+            /** Status */
+            status: string;
         };
         /**
          * EnginePresence
@@ -530,6 +724,25 @@ export interface components {
              */
             token_type: "bearer";
             user: components["schemas"]["UserOut"];
+        };
+        /**
+         * OrganizationOut
+         * @description The organization a request is acting within.
+         */
+        OrganizationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
         };
         /** PromptOut */
         PromptOut: {
@@ -781,10 +994,24 @@ export interface components {
         /**
          * SignupRequest
          * @description Credentials required to create a user account.
+         *
+         *     ``account_type`` decides what kind of organization the new user gets. Both
+         *     kinds are real organizations with the same machinery behind them — an
+         *     individual is not a special case with less structure, it is a company of
+         *     one. That is what makes "convert to a team account" a rename plus an
+         *     invitation rather than a data migration.
          */
         SignupRequest: {
+            /**
+             * Account Type
+             * @default individual
+             * @enum {string}
+             */
+            account_type: "individual" | "organization";
             /** Email */
             email: string;
+            /** Organization Name */
+            organization_name?: string | null;
             /** Password */
             password: string;
         };
@@ -1043,6 +1270,144 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_members_api_v1_admin_members_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                status?: string | null;
+                role?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_member_api_v1_admin_members__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_member_api_v1_admin_members__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminMemberUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_organization_api_v1_admin_organization_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrganizationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_analysis_api_v1_analyses_post: {
         parameters: {
             query?: never;
@@ -1173,7 +1538,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserOut"];
+                    "application/json": components["schemas"]["CurrentUserOut"];
                 };
             };
         };

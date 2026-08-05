@@ -23,7 +23,11 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>
   // Creates the account and signs in with the same credentials, because the
   // signup endpoint returns no session of its own.
-  signUp: (email: string, password: string) => Promise<void>
+  signUp: (
+    email: string,
+    password: string,
+    options?: { accountType?: 'individual' | 'organization'; organizationName?: string },
+  ) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -73,26 +77,42 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const session = await login({ email, password })
-    setUser(session.user)
+    // `login` returns the narrow user; `/auth/me` returns the same person plus
+    // their organization, role and permissions. Fetching it here means the
+    // shell shows "Acme · Owner" from the first painted frame instead of a bare
+    // email that only becomes an identity after the next page load.
+    setUser((await fetchCurrentUser()) ?? session.user)
     setStatus('authenticated')
   }, [])
 
-  const signUp = useCallback(async (email: string, password: string) => {
-    await signup({ email, password })
+  const signUp = useCallback(
+    async (
+      email: string,
+      password: string,
+      options?: { accountType?: 'individual' | 'organization'; organizationName?: string },
+    ) => {
+      await signup({
+        email,
+        password,
+        account_type: options?.accountType ?? 'individual',
+        organization_name: options?.organizationName ?? null,
+      })
 
-    // Signing up leaves you anonymous, so spend the credentials we already hold
-    // rather than sending someone to type them a second time. Past this line
-    // the account exists, so a failure here is a different story to tell.
-    try {
-      const session = await login({ email, password })
-      setUser(session.user)
-      setStatus('authenticated')
-    } catch (err) {
-      throw new SignedUpButNotSignedInError(
-        err instanceof Error ? err.message : 'Sign-in failed.',
-      )
-    }
-  }, [])
+      // Signing up leaves you anonymous, so spend the credentials we already
+      // hold rather than sending someone to type them a second time. Past this
+      // line the account exists, so a failure here is a different story to tell.
+      try {
+        const session = await login({ email, password })
+        setUser((await fetchCurrentUser()) ?? session.user)
+        setStatus('authenticated')
+      } catch (err) {
+        throw new SignedUpButNotSignedInError(
+          err instanceof Error ? err.message : 'Sign-in failed.',
+        )
+      }
+    },
+    [],
+  )
 
   // Signing out always succeeds locally. Whatever the request does, the token is
   // dropped and the state clears, and the caller is given nothing to handle:

@@ -7,9 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_cookies import clear_refresh_cookie, set_refresh_cookie
 from app.api.auth_dependencies import get_current_user
-from app.api.schemas import LoginRequest, LoginResponse, RefreshResponse, SignupRequest, UserOut
+from app.api.schemas import (
+    CurrentUserOut,
+    LoginRequest,
+    LoginResponse,
+    OrganizationOut,
+    RefreshResponse,
+    SignupRequest,
+    UserOut,
+)
 from app.config import Settings, get_settings
-from app.db.models import User
+from app.db.models import Organization, User
 from app.db.session import get_session
 from app.services.auth import authenticate_user, create_user, get_user_by_email
 from app.services.auth_sessions import (
@@ -19,6 +27,8 @@ from app.services.auth_sessions import (
     rotate_refresh_session,
     start_refresh_session,
 )
+from app.services.permissions import permissions_for
+from app.services.tenancy import OrgScopeRequired, resolve_org_context
 from app.services.tokens import TokenConfigurationError
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -46,6 +56,8 @@ def signup(
             session,
             email=payload.email,
             password=payload.password,
+            account_type=payload.account_type,
+            organization_name=payload.organization_name,
         )
     except IntegrityError as exc:
         # Handles the race where two requests try to register the same email
@@ -196,14 +208,45 @@ def logout(
 
 @router.get(
     "/me",
-    response_model=UserOut,
+    response_model=CurrentUserOut,
 )
 def me(
     current_user: User = Depends(get_current_user),
-) -> UserOut:
-    """Return the user represented by the access bearer token."""
+    session: Session = Depends(get_session),
+) -> CurrentUserOut:
+    """Who you are, which organization you are acting in, and what you may do.
 
-    return UserOut.model_validate(current_user)
+    The role and permission list ride along so the UI can hide a control the
+    caller cannot use, instead of showing it and failing on click. They are for
+    RENDERING ONLY — every endpoint enforces its own permission independently,
+    so a client that lies about this list gets a 403 exactly as before.
+    """
+
+    organization = None
+    role = None
+    permissions: list[str] = []
+    try:
+        context = resolve_org_context(session, user=current_user)
+    except OrgScopeRequired:
+        # A user with no organization can still see who they are. Failing the
+        # whole call would make an edge case look like a broken session.
+        context = None
+    if context is not None and context.org_id is not None:
+        org = session.get(Organization, context.org_id)
+        if org is not None:
+            organization = OrganizationOut.model_validate(org)
+        role = context.role
+        permissions = sorted(permissions_for(context.role))
+
+    return CurrentUserOut(
+        id=current_user.id,
+        email=current_user.email,
+        created_at=current_user.created_at,
+        status=current_user.status,
+        organization=organization,
+        role=role,
+        permissions=permissions,
+    )
 
 
 def _invalid_refresh_response(

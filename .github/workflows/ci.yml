@@ -149,7 +149,19 @@ jobs:
         # deploy/.env is gitignored; the compose file reads it via env_file.
         # DRY_RUN=1 is already the backend default, but set it explicitly so the
         # e2e stack never depends on that default drifting.
-        run: printf 'DRY_RUN=1\n' > deploy/.env
+        #
+        # The JWT key is GENERATED PER RUN rather than committed — nothing
+        # secret enters the repository, and each run gets a distinct key. It is
+        # needed because the happy path now signs up and logs in: without a key
+        # the API answers 503 "authentication unavailable", which is correct
+        # fail-closed behaviour and exactly what this stack was missing.
+        #
+        # The refresh cookie is Secure by default and this stack serves plain
+        # http on localhost, so a Secure cookie would never be sent back.
+        run: |
+          printf 'DRY_RUN=1\n' > deploy/.env
+          printf 'JWT_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> deploy/.env
+          printf 'AUTH_REFRESH_COOKIE_SECURE=0\n' >> deploy/.env
       - name: Boot the DRY_RUN stack
         run: docker compose -f deploy/docker-compose.yml up -d --build
       - name: Wait for API health

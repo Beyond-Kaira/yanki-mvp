@@ -44,6 +44,7 @@ from app.db.org_backfill import (
 
 __all__ = [
     "OrgContext",
+    "provision_org",
     "OrgScopeRequired",
     "create_project",
     "default_workspace",
@@ -138,6 +139,51 @@ def generate_unique_org_slug(session: Session, base: str) -> str:
         suffix += 1
         candidate = f"{root}-{suffix}"
     return candidate
+
+
+def provision_org(
+    session: Session,
+    user: User,
+    *,
+    account_type: str = "individual",
+    organization_name: str | None = None,
+) -> Organization:
+    """Create the organization a new account lives in.
+
+    An **individual** gets a ``personal`` org named after their email local
+    part; an **organization** account gets a ``company`` org with the name they
+    chose. Both are real organizations with identical machinery — an individual
+    is not a lesser case, it is a company of one — which is what makes "convert
+    to a team account" a rename plus an invitation rather than a migration.
+
+    The one asymmetry is deliberate: ``uq_organizations_personal_owner`` allows
+    exactly one *personal* org per user but any number of company orgs, because
+    a contractor legitimately owns several companies and only ever has one self.
+    """
+
+    if account_type == "organization" and organization_name:
+        org = Organization(
+            name=organization_name,
+            slug=generate_unique_org_slug(session, organization_name),
+            kind="company",
+            status="active",
+            owner_user_id=user.id,
+        )
+        session.add(org)
+        session.flush()
+        session.add(
+            Workspace(
+                org_id=org.id,
+                name=DEFAULT_WORKSPACE_NAME,
+                slug=DEFAULT_WORKSPACE_SLUG,
+                is_default=True,
+            )
+        )
+        session.add(Membership(org_id=org.id, user_id=user.id, role=ROLE_OWNER, status="active"))
+        session.flush()
+        return org
+
+    return provision_personal_org(session, user)
 
 
 def provision_personal_org(session: Session, user: User) -> Organization:

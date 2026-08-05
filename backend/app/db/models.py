@@ -412,6 +412,16 @@ class User(Base):
         sa.Text,
         nullable=False,
     )
+    # 'active' | 'disabled'. An administrator disabling an account must stop it
+    # logging in, which is a different thing from deleting it: the history, the
+    # audit trail and the org membership all survive, and re-enabling restores
+    # access rather than recreating a person.
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="active", server_default="active"
+    )
+    last_active_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
@@ -890,9 +900,7 @@ class BacklinkCompetitor(Base):
 
     __tablename__ = "backlink_competitors"
     __table_args__ = (
-        sa.UniqueConstraint(
-            "project_id", "competitor_domain", name="uq_backlink_competitors"
-        ),
+        sa.UniqueConstraint("project_id", "competitor_domain", name="uq_backlink_competitors"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
@@ -949,9 +957,7 @@ class BacklinkImport(Base):
             postgresql_where=sa.text("status IN ('queued', 'running')"),
             sqlite_where=sa.text("status IN ('queued', 'running')"),
         ),
-        sa.Index(
-            "ix_backlink_imports_series", "project_id", "subject_domain", "snapshot_at"
-        ),
+        sa.Index("ix_backlink_imports_series", "project_id", "subject_domain", "snapshot_at"),
         sa.CheckConstraint("attempts >= 0", name="ck_backlink_imports_attempts"),
         sa.CheckConstraint(
             "yanki_authority IS NULL OR yanki_authority BETWEEN 0 AND 100",
@@ -980,16 +986,10 @@ class BacklinkImport(Base):
     status: Mapped[str] = mapped_column(
         sa.Text, nullable=False, default="queued", server_default="queued"
     )
-    attempts: Mapped[int] = mapped_column(
-        sa.Integer, nullable=False, default=0, server_default="0"
-    )
+    attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0, server_default="0")
     error: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    claimed_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
 
     coverage_status: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     # Whether this import may support an ABSENCE claim. False on any truncated,
@@ -1008,16 +1008,12 @@ class BacklinkImport(Base):
         sa.Integer, nullable=False, default=0, server_default="0"
     )
     reported_total_backlinks: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
-    reported_total_referring_domains: Mapped[int | None] = mapped_column(
-        sa.Integer, nullable=True
-    )
+    reported_total_referring_domains: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     cost_usd: Mapped[Decimal] = mapped_column(
         sa.Numeric(10, 6), nullable=False, default=0, server_default="0"
     )
 
-    snapshot_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    snapshot_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     new_in_period: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=0, server_default="0"
     )
@@ -1123,24 +1119,16 @@ class Backlink(Base):
     )
     # The VENDOR's first-seen, not ours. Birth is a fact about the web, not
     # about when our table happened to learn it.
-    first_seen_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False
-    )
-    last_seen_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False
-    )
+    first_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
     last_import_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
     consecutive_misses: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=0, server_default="0"
     )
-    lost_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    lost_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     lost_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
-    verified_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    verified_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     verify_verdict: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
     source_domain_authority: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
@@ -1201,9 +1189,7 @@ class LinkEvent(Base):
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
     authority_at_event: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
-    occurred_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False
-    )
+    occurred_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -1230,9 +1216,7 @@ class ReferringDomainRollup(Base):
             name="uq_rd_rollups_domain",
         ),
         sa.Index("ix_rd_rollups_gap", "project_id", "subject_kind", "referring_domain"),
-        sa.Index(
-            "ix_rd_rollups_toxicity", "project_id", "subject_domain", "toxicity_band"
-        ),
+        sa.Index("ix_rd_rollups_toxicity", "project_id", "subject_domain", "toxicity_band"),
         sa.CheckConstraint(
             "toxicity_score IS NULL OR toxicity_score BETWEEN 0 AND 100",
             name="ck_rd_rollups_toxicity",
@@ -1474,9 +1458,7 @@ class UsageCounter(Base):
 
     __tablename__ = "usage_counters"
     __table_args__ = (
-        sa.UniqueConstraint(
-            "org_id", "metric", "window_start", name="uq_usage_counters_window"
-        ),
+        sa.UniqueConstraint("org_id", "metric", "window_start", name="uq_usage_counters_window"),
         sa.Index("ix_usage_counters_org_metric", "org_id", "metric"),
     )
 
@@ -1485,12 +1467,8 @@ class UsageCounter(Base):
         sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     metric: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    window_start: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False
-    )
-    used: Mapped[int] = mapped_column(
-        sa.Integer, nullable=False, default=0, server_default="0"
-    )
+    window_start: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    used: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import User
 from app.services import audit
-from app.services.tenancy import provision_personal_org
+from app.services.tenancy import provision_org
 
 _password_hash = PasswordHash.recommended()
 
@@ -52,6 +52,8 @@ def create_user(
     *,
     email: str,
     password: str,
+    account_type: str = "individual",
+    organization_name: str | None = None,
 ) -> User:
     """Create and persist a user, with the personal organization that holds
     their data.
@@ -71,7 +73,12 @@ def create_user(
 
     session.add(user)
     session.flush()
-    org = provision_personal_org(session, user)
+    org = provision_org(
+        session,
+        user,
+        account_type=account_type,
+        organization_name=organization_name,
+    )
     # In the same transaction as the thing it describes, so a rolled-back
     # signup cannot leave an event claiming an account was created.
     audit.emit(
@@ -82,7 +89,13 @@ def create_user(
         actor_label=user.email,
         entity_type="user",
         entity_id=user.id,
-        after={"email": user.email, "org_id": str(org.id), "org_slug": org.slug},
+        after={
+            "email": user.email,
+            "account_type": account_type,
+            "org_id": str(org.id),
+            "org_slug": org.slug,
+            "org_kind": org.kind,
+        },
     )
     session.commit()
     session.refresh(user)
@@ -116,6 +129,23 @@ def authenticate_user(
             entity_id=user.id if user is not None else None,
             outcome="denied",
             detail={"reason": "invalid_credentials"},
+        )
+        session.commit()
+        return None
+
+    if user.status != "active":
+        # Checked AFTER the password, deliberately: answering "this account is
+        # disabled" to a wrong password would confirm the address exists.
+        audit.emit(
+            session,
+            action="auth:login",
+            actor_type="user",
+            actor_id=user.id,
+            actor_label=user.email,
+            entity_type="user",
+            entity_id=user.id,
+            outcome="denied",
+            detail={"reason": "account_disabled"},
         )
         session.commit()
         return None

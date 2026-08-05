@@ -1,4 +1,7 @@
 import type {
+  AdminMember,
+  AdminMemberList,
+  AdminOrganization,
   Analysis,
   CheckerSubmitResponse,
   CreateAnalysisResponse,
@@ -291,4 +294,52 @@ export async function getSiteAudit(
   }
 
   return (await res.json()) as SiteAuditDetail
+}
+
+// --- Administration -------------------------------------------------------
+//
+// Thin clients over `/api/v1/admin/*`. They deliberately carry no permission
+// logic: the API decides, and a 403 here is the answer rather than something to
+// pre-empt. The UI hides controls the caller cannot use as a courtesy, not as a
+// security boundary.
+
+export async function fetchOrganization(): Promise<AdminOrganization> {
+  const res = await authorizedFetch('/api/v1/admin/organization')
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AdminOrganization
+}
+
+export interface MemberQuery {
+  q?: string
+  status?: string
+  role?: string
+  limit?: number
+  offset?: number
+}
+
+export async function fetchMembers(query: MemberQuery = {}): Promise<AdminMemberList> {
+  const params = new URLSearchParams()
+  if (query.q) params.set('q', query.q)
+  if (query.status) params.set('status', query.status)
+  if (query.role) params.set('role', query.role)
+  if (query.limit != null) params.set('limit', String(query.limit))
+  if (query.offset != null) params.set('offset', String(query.offset))
+
+  const suffix = params.toString() ? `?${params}` : ''
+  const res = await authorizedFetch(`/api/v1/admin/members${suffix}`)
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AdminMemberList
+}
+
+export async function updateMember(
+  userId: string,
+  changes: { role?: string; status?: string },
+): Promise<AdminMember> {
+  const res = await authorizedFetch(`/api/v1/admin/members/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(changes),
+  })
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AdminMember
 }

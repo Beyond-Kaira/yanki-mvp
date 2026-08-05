@@ -8,6 +8,9 @@ const replace = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace }),
+  // The login form reads `?next` so the auth guard can return people to the
+  // page they asked for.
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 // The network edge is mocked; the provider and the page are the real thing, so
@@ -100,7 +103,7 @@ describe('LoginPage', () => {
         password: 'hunter2!',
       }),
     )
-    expect(push).toHaveBeenCalledWith('/')
+    expect(push).toHaveBeenCalledWith('/dashboard')
   })
 
   it('surfaces an API failure and leaves the form usable', async () => {
@@ -155,7 +158,7 @@ describe('LoginPage', () => {
     vi.mocked(fetchCurrentUser).mockResolvedValue(USER)
     renderPage()
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard'))
   })
 
   it('offers no remember-me control, since the endpoint takes no such flag', () => {

@@ -131,6 +131,10 @@ describe('SignupPage', () => {
       expect(mockedSignup).toHaveBeenCalledWith({
         email: 'ada@example.com',
         password: 'hunter2!pass',
+        // Individual is the default, and it is sent explicitly rather than
+        // omitted so the request says what it means.
+        account_type: 'individual',
+        organization_name: null,
       }),
     )
     // Without this second call the new account would land back on the site
@@ -139,7 +143,7 @@ describe('SignupPage', () => {
       email: 'ada@example.com',
       password: 'hunter2!pass',
     })
-    expect(push).toHaveBeenCalledWith('/')
+    expect(push).toHaveBeenCalledWith('/dashboard')
     // The confirmation field is a client-side check and never leaves the page.
     expect(JSON.stringify(mockedSignup.mock.calls)).not.toMatch(/confirm/i)
   })
@@ -186,7 +190,7 @@ describe('SignupPage', () => {
       </AuthProvider>,
     )
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard'))
   })
 
   it('blocks a second submit while the first is in flight', async () => {
@@ -209,5 +213,44 @@ describe('SignupPage', () => {
     const field = screen.getByLabelText('Password')
     expect(field).toHaveAttribute('aria-describedby', 'password-hint')
     expect(field).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('offers both account types and defaults to individual', () => {
+    renderPage()
+
+    const individual = screen.getByRole('radio', { name: /individual/i })
+    const organization = screen.getByRole('radio', { name: /organization/i })
+
+    expect(individual).toBeChecked()
+    expect(organization).not.toBeChecked()
+    // The org-name field only exists once it is needed.
+    expect(screen.queryByLabelText(/organization name/i)).not.toBeInTheDocument()
+  })
+
+  it('requires a name for an organization account and sends it', async () => {
+    const user = userEvent.setup()
+    mockedSignup.mockResolvedValue(USER)
+    mockedLogin.mockResolvedValue({ user: USER, accessToken: 'tok' })
+    renderPage()
+
+    await user.click(screen.getByRole('radio', { name: /organization/i }))
+    await fillValidForm(user)
+
+    // Submitting with no organization name must not reach the API.
+    await user.click(screen.getByRole('button', { name: 'Sign up' }))
+    expect(mockedSignup).not.toHaveBeenCalled()
+    expect(await screen.findByText(/enter your organization name/i)).toBeVisible()
+
+    await user.type(screen.getByLabelText(/organization name/i), 'Acme Industries')
+    await user.click(screen.getByRole('button', { name: 'Sign up' }))
+
+    await waitFor(() =>
+      expect(mockedSignup).toHaveBeenCalledWith({
+        email: 'ada@example.com',
+        password: 'hunter2!pass',
+        account_type: 'organization',
+        organization_name: 'Acme Industries',
+      }),
+    )
   })
 })

@@ -5,10 +5,36 @@ do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
 Last updated: 2026-08-05, **session 21 close — the Admin Platform spine and
-the Backlink backend.** Two things are yours, both small: **B8** (merge this
-session's PR — it is what finally lands session 20's planning docs on `main`)
-and **B9** (glance at one Tavily invoice and correct a pinned price). **B7 is
-DONE and you closed it** — details below.
+the Backlink backend, MERGED AND DEPLOYED.** **Only one thing is yours now:
+B9** — glance at one Tavily invoice and correct a pinned price. No rush.
+**B7 you had already closed; B8 is now done too** — on your instruction the
+session merged PR #27 (and #28, a follow-up fix), so session 20's planning
+docs are finally on `main`.
+
+**One thing you should know about how B8 was merged.** The branch ruleset
+requires one approving review, and GitHub does not let an author approve their
+own pull request. With no second reviewer available, the merge used your admin
+bypass. That was on your explicit instruction and the work was verified first
+(see below), but it means **this code reached production without the peer
+review your own ruleset asks for** — worth knowing, and worth deciding whether
+you want that to be a habit.
+
+**What was verified before merging, since you asked whether it works.** New
+end-to-end tests that sign up, log in and carry real tokens over HTTP with
+nothing stubbed (28 of them) — they found and fixed a real bug where an owner
+whose membership row vanished was locked out of their own organization. A live
+server on a real database, exercised through signup → login → project →
+cross-tenant 404 → forged-org-header 403 → anonymous flows. The backlink
+engine driven through five real import cycles. Then, after deploying: **one
+live analysis on production, completed end-to-end.**
+
+**And one real problem found by looking at production after the deploy:** the
+plan catalog was empty. Harmless today (nothing consults a quota yet) but a
+trap for the first feature that does, because an empty catalog refuses
+everything. Fixed and redeployed as PR #28.
+
+**Live now on `6e779e1`:** containers healthy, migrations at `0016`, all eight
+co-tenant containers undisturbed, no errors in the logs.
 
 **What shipped, so you know what merging means.** Backend only; no UI card was
 started, per your "skip ui issues". Admin Platform: tenancy
@@ -234,7 +260,7 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   the daily USD cap becomes genuinely live from this change, so factor it into
   the P5.11 go-live (**B3**).
 
-- [ ] **B8. Review + merge [PR #27](https://github.com/Beyond-Kaira/yanki-mvp/pull/27) — it is what finally lands the
+- [x] **B8. DONE 2026-08-05 — merged as [PR #27](https://github.com/Beyond-Kaira/yanki-mvp/pull/27) — it is what finally lands the
   session-20 planning docs on `main` (added 2026-08-05, session 21).**
   Session 20 wrote the whole roadmap set and committed it as `19d8236` on the
   branch **`backlinking`**; no PR was ever opened, so none of it is on `main`.

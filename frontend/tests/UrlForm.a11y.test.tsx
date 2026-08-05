@@ -5,6 +5,7 @@ import { axeCheck } from './a11y'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/',
 }))
 
 vi.mock('@/lib/api', () => ({

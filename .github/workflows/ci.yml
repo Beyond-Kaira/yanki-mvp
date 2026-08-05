@@ -98,6 +98,18 @@ jobs:
             tests/test_audit_api.py \
             tests/test_audit.py \
             tests/test_admin_panel_e2e.py -q
+      # The backlink module is the one shipping DARK: its routes are registered
+      # on the app but answer 404 until BACKLINKS_ENABLED flips. That makes a
+      # regression here invisible in production — nobody is exercising it — so
+      # the gate has to be the thing that notices. Two promises it defends:
+      # the engine never invents a link loss (test_backlinks), and the surface
+      # stays dark, permission-split and metered (test_backlink_api).
+      - name: Backlink Intelligence (kill switch, permissions, delta honesty)
+        working-directory: backend
+        run: |
+          uv run pytest \
+            tests/test_backlinks.py \
+            tests/test_backlink_api.py -q
       - name: Pytest (full suite)
         working-directory: backend
         run: uv run pytest

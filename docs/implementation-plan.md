@@ -2372,7 +2372,8 @@ paragraph, as the record.*
 *Spec: [backlink-intelligence-plan.md](backlink-intelligence-plan.md)
 (scope authority) · stages B1–B8 → cards P8.1–P8.8, decomposed at build
 time. Gated on Phase 7's quota/credit foundation (P7.6) and the operator's
-vendor + budget decision (**A4**). Nothing implemented as of 2026-08-05.*
+vendor + budget decision (**A4**). Engine done and now reachable over HTTP
+(P8.1/P8.3-API/P8.4-delta/P8.5/P8.6/P8.7); no screens yet, as of 2026-08-05.*
 
 - **P8.1 — `BacklinkSource` seam + mock + schema v1** (S/M): protocol,
   deterministic mock, `backlink_profiles`/`backlinks`/`link_events`; $0
@@ -2385,7 +2386,21 @@ vendor + budget decision (**A4**). Nothing implemented as of 2026-08-05.*
   cost tagging into the credit ledger; quota-gated initial import. Status:
   todo (blocked: A4).
 - **P8.3 — Inventory UI: links / referring domains / anchors** (M):
-  filtering, sorting, CSV/XLSX export. Status: todo.
+  filtering, sorting, CSV/XLSX export. **Status: PARTIAL** (2026-08-05,
+  session 23) — the **API half is done**: eleven routes under
+  `/api/v1/seo-projects/{id}/backlinks` (summary, inventory,
+  referring-domains, anchors, events, opportunities, competitors CRUD,
+  refresh, CSV + disavow export), registered in `app/api/main.py` and dark
+  behind `BACKLINKS_ENABLED` as a router-level 404 rather than a 403.
+  `app/services/backlinks.py` is the seam: it owns the one subject-key
+  normalization both reads and writes use, advances the mock's cycle from the
+  count of prior imports, and rescores authority/toxicity after each import
+  because `run_import` deliberately stops at the rollups. Reading is
+  `backlink:view`, refreshing is `backlink:refresh` (it spends), exporting is
+  `export:data`; quota refusal is 429 and credit refusal 402, so a UI can tell
+  them apart. **Not done:** the screens — the shell nav still shows Backlinks
+  as `href:null / "soon"` — and XLSX (CSV only, capped at the list ceiling;
+  a full-profile dump belongs in an export artifact, plan §4).
 - **P8.4 — Monitoring: scheduled refresh, new/lost deltas, liveness
   verification** (M/L). **Status: PARTIAL** (2026-08-05, session 21) — the
   delta engine is done and is the milestone's load-bearing piece:

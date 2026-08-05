@@ -11,17 +11,24 @@ Moz, SE Ranking); the strategy constraint comes from the planning baseline:
 ([Yanki_Geo_Intelligence_Report.pdf](Yanki_Geo_Intelligence_Report.pdf) §6.1,
 §13).*
 
-**Status (2026-08-05, session 22): the ENGINE shipped; the product did not.**
+**Status (2026-08-05, session 23): the ENGINE shipped, and is now REACHABLE.**
 Built and merged behind `BACKLINKS_ENABLED=0` — B1 (schema + `BacklinkSource`
 seam + deterministic mock, five tables, migration 0013), B4's delta engine,
 B5 (Yanki Authority), B6 (toxicity + disavow) and B7 (gap + unlinked mentions),
 all metered through M1's quota gate and credit ledger. See
 `backend/app/backlink/` and implementation-plan P8.1/P8.4/P8.5/P8.6/P8.7.
 
+B3's **API half landed in session 23**: `app/services/backlinks.py` plus
+eleven routes under `/api/v1/seo-projects/{id}/backlinks`, registered in
+`app/api/main.py`, permission-split (`backlink:view` to read,
+`backlink:refresh` to spend, `export:data` to take a copy away) and dark as a
+404 — not a 403 — while the flag is off. A refresh runs synchronously against
+the mock at $0, records its cost in the credit ledger, and is audited.
+
 **Still open:** B2, the first licensed vendor adapter — blocked on operator
-decision **A4** (vendor + budget), so today there is only the mock; B3, the
-inventory UI and the API router that would expose any of this to a customer
-(nothing is registered in `app/api/main.py`); B4's residual — the liveness
+decision **A4** (vendor + budget), so every number is still fixture data; B3's
+**screens**, which is what a customer would actually see (the shell nav still
+reads `soon`) and XLSX alongside the CSV; B4's residual — the liveness
 verifier and scheduled refresh, both needing worker wiring; and B8.
 
 Anything below that reads as unbuilt should be checked against those cards

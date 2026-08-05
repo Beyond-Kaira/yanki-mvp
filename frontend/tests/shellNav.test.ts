@@ -74,6 +74,27 @@ describe('shell navigation', () => {
     )
   })
 
+  it('promotes Backlinks from "soon" to a real destination', () => {
+    // It was the file's one honest 'soon' while only the engine existed. The
+    // screens now exist, so leaving it as 'soon' would understate the product
+    // in the same way the old "N/A" badges overstated it.
+    const backlinks = SHELL_SECTIONS.find((section) => section.id === 'backlinks')!
+    expect(backlinks.href).toBe('/backlinks')
+    expect(backlinks.items.every((item) => item.href && item.badge === 'live')).toBe(
+      true,
+    )
+  })
+
+  it('routes backlink paths to the Backlinks section and keeps them in the shell', () => {
+    // Both helpers have to know about the prefix: one drives which nav entry
+    // lights up, the other whether the signed-in chrome renders at all. Missing
+    // the second is how a page ends up with no navigation on it.
+    expect(sectionFromPath('/backlinks')).toBe('backlinks')
+    expect(sectionFromPath('/backlinks/some-project-id')).toBe('backlinks')
+    expect(isShellPath('/backlinks')).toBe(true)
+    expect(isShellPath('/backlinks/some-project-id')).toBe(true)
+  })
+
   it('never advertises a live destination without a route', () => {
     for (const section of SHELL_SECTIONS) {
       for (const item of section.items) {

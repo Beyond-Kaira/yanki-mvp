@@ -175,3 +175,56 @@ export type AuditEvent = Schemas['AuditEventOut']
 export type AuditEventList = Schemas['AuditEventListOut']
 
 export type AuditIntegrity = Schemas['AuditIntegrityOut']
+
+// --- Backlink Intelligence (P8.3) -----------------------------------------
+//
+// The module ships behind BACKLINKS_ENABLED, so in most workspaces these
+// endpoints answer 404 and the UI renders a "not enabled" state rather than an
+// error. See `useBacklinkProfile` for how the two 404s are told apart.
+//
+// Nullable numbers here mean NOT MEASURED, never zero: an authority or
+// toxicity score of `null` renders as "—". Collapsing that to 0 would state a
+// confident number the backend deliberately declined to state.
+
+export type BacklinkSummary = Schemas['BacklinkSummaryOut']
+
+export type BacklinkImportSummary = Schemas['BacklinkImportOut']
+
+export type Backlink = Schemas['BacklinkOut']
+
+export type BacklinkPage = Schemas['BacklinkPageOut']
+
+export type ReferringDomain = Schemas['ReferringDomainOut']
+
+export type ReferringDomainPage = Schemas['ReferringDomainPageOut']
+
+export type AnchorDistribution = Schemas['AnchorDistributionOut']
+
+export type VelocityPoint = Schemas['VelocityPointOut']
+
+export type LinkEvent = Schemas['LinkEventOut']
+
+export type LinkEventPage = Schemas['LinkEventPageOut']
+
+export type BacklinkOpportunities = Schemas['OpportunitiesOut']
+
+export type LinkGapRow = Schemas['GapRowOut']
+
+export type UnlinkedMention = Schemas['UnlinkedMentionOut']
+
+export type BacklinkRefreshResult = Schemas['RefreshOut']
+
+// The toxicity reasons ride along with every flagged domain as a free-form
+// list; this is the shape the backend actually emits for each one. Typed here
+// rather than inline so the panel that renders the evidence cannot drift from
+// the panel that renders the band.
+export interface ToxicityReason {
+  code: string
+  label: string
+  weight: number
+  evidence: string
+}
+
+export type ToxicityBand = 'low' | 'medium' | 'high'
+
+export type LinkEventKind = 'new' | 'lost' | 'regained' | 'changed'

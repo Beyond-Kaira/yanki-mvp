@@ -8,11 +8,17 @@ import type {
   Analysis,
   AuditEventList,
   AuditIntegrity,
+  BacklinkOpportunities,
+  BacklinkPage,
+  BacklinkRefreshResult,
+  BacklinkSummary,
   CheckerSubmitResponse,
   CreateAnalysisResponse,
     CreateSeoProjectInput,
   InvitationPreview,
+  LinkEventPage,
   LoginResponse,
+  ReferringDomainPage,
     SeoProject,
     SeoProjectDetail,
     SiteAuditDetail,
@@ -486,4 +492,234 @@ export async function fetchAuditIntegrity(): Promise<AuditIntegrity> {
   const res = await authorizedFetch('/api/v1/admin/audit-events/integrity')
   if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
   return (await res.json()) as AuditIntegrity
+}
+
+// --- Backlink Intelligence (P8.3) -----------------------------------------
+//
+// Every route here lives behind BACKLINKS_ENABLED and answers 404 when it is
+// off — deliberately the same 404 an unknown project gets, so the flag does not
+// announce the feature. That makes a bare 404 ambiguous to the client, and
+// `useBacklinkProfile` resolves it by asking a question these routes cannot
+// answer: whether the SEO project itself loads. Project fine + backlinks 404
+// means the module is off, not that anything is missing.
+//
+// So these functions must NOT rewrite a 404 into a friendly sentence the way
+// the Site Audit calls do — the caller needs the raw status to make that
+// distinction. They pass the status through on ApiError and let the hook decide.
+
+async function backlinkFetch(path: string, signal?: AbortSignal): Promise<Response> {
+  try {
+    return await authorizedFetch(path, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+}
+
+async function backlinkJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await backlinkFetch(path, signal)
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to view backlinks.'
+        : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+  return (await res.json()) as T
+}
+
+function backlinksBase(projectId: string): string {
+  return `/api/v1/seo-projects/${encodeURIComponent(projectId)}/backlinks`
+}
+
+export async function getBacklinkSummary(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<BacklinkSummary> {
+  return backlinkJson<BacklinkSummary>(`${backlinksBase(projectId)}/summary`, signal)
+}
+
+export interface BacklinkInventoryQuery {
+  status?: string
+  anchor_class?: string
+  follow?: boolean
+  source_domain?: string
+  min_authority?: number
+  sort?: string
+  limit?: number
+  offset?: number
+}
+
+export async function listBacklinks(
+  projectId: string,
+  query: BacklinkInventoryQuery = {},
+  signal?: AbortSignal,
+): Promise<BacklinkPage> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return backlinkJson<BacklinkPage>(`${backlinksBase(projectId)}${suffix}`, signal)
+}
+
+export async function listReferringDomains(
+  projectId: string,
+  query: { band?: string; sort?: string; limit?: number; offset?: number } = {},
+  signal?: AbortSignal,
+): Promise<ReferringDomainPage> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return backlinkJson<ReferringDomainPage>(
+    `${backlinksBase(projectId)}/referring-domains${suffix}`,
+    signal,
+  )
+}
+
+export async function listLinkEvents(
+  projectId: string,
+  query: { kind?: string; limit?: number; offset?: number } = {},
+  signal?: AbortSignal,
+): Promise<LinkEventPage> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return backlinkJson<LinkEventPage>(
+    `${backlinksBase(projectId)}/events${suffix}`,
+    signal,
+  )
+}
+
+export async function getBacklinkOpportunities(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<BacklinkOpportunities> {
+  return backlinkJson<BacklinkOpportunities>(
+    `${backlinksBase(projectId)}/opportunities`,
+    signal,
+  )
+}
+
+export async function refreshBacklinks(
+  projectId: string,
+): Promise<BacklinkRefreshResult> {
+  let res: Response
+  try {
+    res = await authorizedFetch(`${backlinksBase(projectId)}/refresh`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger: 'manual' }),
+    })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    // These four are the ones a customer can act on, so each says what happened
+    // rather than "request failed". 402 and 429 are separate on purpose: one is
+    // "top up", the other is "wait for next month" — the backend keeps them
+    // distinct and collapsing them here would throw that away.
+    const message =
+      res.status === 403
+        ? 'Your role cannot start a backlink refresh. Ask an Analyst or above.'
+        : res.status === 409
+          ? 'A refresh is already running for this project.'
+          : res.status === 429
+            ? "This organization has used its backlink refreshes for the month."
+            : res.status === 402
+              ? 'Not enough credit to run a backlink refresh.'
+              : res.status === 503
+                ? 'No backlink index is configured yet, so there is nothing to refresh.'
+                : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as BacklinkRefreshResult
+}
+
+// Exports must be FETCHED, not linked.
+//
+// The obvious implementation — an <a href> straight at the route — silently
+// fails here: the access token is a bearer token held in memory on purpose
+// (never a cookie, never localStorage — see lib/session.ts), and a plain link
+// navigation carries no Authorization header. The download would 401, and it
+// would do so as a page navigation, so the customer would see a raw error body
+// rather than anything this app controls.
+//
+// So the file comes back through the same authorized fetch as everything else
+// and is handed to the browser as a blob.
+export interface DownloadedFile {
+  blob: Blob
+  filename: string
+}
+
+function filenameFrom(res: Response, fallback: string): string {
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^"]+)"?/.exec(disposition)
+  return match?.[1] ?? fallback
+}
+
+async function downloadExport(
+  path: string,
+  fallbackName: string,
+  subject: string,
+): Promise<DownloadedFile> {
+  let res: Response
+  try {
+    res = await authorizedFetch(path, { cache: 'no-store' })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 403
+        ? `Your role cannot export ${subject}. Exporting is a separate permission from viewing.`
+        : res.status === 401
+          ? 'Your session has expired. Sign in again to export.'
+          : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return { blob: await res.blob(), filename: filenameFrom(res, fallbackName) }
+}
+
+export async function downloadBacklinkCsv(projectId: string): Promise<DownloadedFile> {
+  return downloadExport(
+    `${backlinksBase(projectId)}/export.csv`,
+    'backlinks.csv',
+    'backlinks',
+  )
+}
+
+export async function downloadDisavowFile(projectId: string): Promise<DownloadedFile> {
+  return downloadExport(
+    `${backlinksBase(projectId)}/disavow.txt`,
+    'disavow.txt',
+    'the disavow file',
+  )
 }

@@ -234,7 +234,7 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   the daily USD cap becomes genuinely live from this change, so factor it into
   the P5.11 go-live (**B3**).
 
-- [ ] **B8. Review + merge this session's PR — it is what finally lands the
+- [ ] **B8. Review + merge [PR #27](https://github.com/Beyond-Kaira/yanki-mvp/pull/27) — it is what finally lands the
   session-20 planning docs on `main` (added 2026-08-05, session 21).**
   Session 20 wrote the whole roadmap set and committed it as `19d8236` on the
   branch **`backlinking`**; no PR was ever opened, so none of it is on `main`.

@@ -4,7 +4,30 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-05 (session 20, the re-planning session — docs only,
+Last updated: 2026-08-05 (session 21, the first Phase 7 build session.
+**One latent production hazard found and repaid in the same pass, before it
+fired:** `alembic check` failed on a clean, fully-migrated database — eight
+indexes existed only in migrations and never in `Base.metadata`, which
+autogenerate reads as eight indexes the models want *dropped*. The next
+routine `alembic revision --autogenerate` — exactly what P7.1 needs — would
+have proposed `DROP INDEX` against production, including the site-audit queue
+index and the checker-reuse index. Nothing caught it because every test builds
+its schema with `create_all`, so the models were the only definition under
+test. Repaid in `aa0c80c`: the eight are now declared on the models (no
+migration change, no production DDL — they already exist there), and a new
+`backend/tests/test_migrations.py` keeps it that way with an upgrade/check/
+downgrade round trip against real Postgres. Two new items — **#56** (PRs #24 and #25 merged the same day, again outside the
+session process, adding ~5,800 lines of frontend — a Semrush-style app shell
+whose navigation is a product information architecture the roadmap never
+agreed to — with no ADR, plan card or session log; and its Site Audit UI
+makes #55's unhardened backend user-reachable). One item **closed by
+evidence, not by code**: the operator-facing half of **#54** — prod
+`deploy/.env` carries both `OPEN_ROUTER_KEY` and `TAVILY_API_KEY`, and the
+eight most recent live analyses all completed, so the `GEO_MODE=measured`
+key requirement is satisfied in production (operator item **B7** ticked);
+#54's documentation half stays open. Also corrected here: the recorded test
+counts everywhere were stale — the suite is **488 backend + 205 frontend**,
+not 170/65. Earlier — session 20, the re-planning session — docs only,
 no code changed: two new items — **#54** (PR #11's measured/simulated GEO
 pivot merged with zero documentation: no ADR, no session log, no plan card;
 architecture.md/README pipeline descriptions and recorded test counts are
@@ -664,3 +687,46 @@ devDependencies).)
     no frontend reaches its APIs. Deliberately scheduled rather than hidden:
     productization + hardening is **roadmap M3 (Phase 9)**; the retroactive
     ADR should land with the first M3 card.
+
+56. **A whole product shell shipped undocumented — PRs #24 and #25**
+    (2026-08-05, session 21; both merged 2026-08-05 outside the session
+    process, and both auto-deployed to production the same hour). Together
+    they add ~5,800 lines of frontend across 64 files: a Semrush-style
+    `AppShell` with a section/flyout navigation model
+    (`frontend/lib/shell-nav.ts`), an AI-Visibility surface
+    (`app/ai-visibility/**` + `components/ai-visibility/**`), a
+    Search-Visibility overview, the Site Audit UI that finally reaches
+    #55's backend (`components/site-audit/**`), an
+    `AnalysisSessionProvider`, and a rewritten landing page. It carries its
+    own tests (frontend is now 205 across 41 files, up from the 65 the docs
+    still claim) — so this is *undocumented*, not *untested*. What is
+    missing is the same as #54/#55: no ADR, no plan card, no session log,
+    and no roadmap entry — yet `shell-nav.ts` is a **product information
+    architecture**, naming ten sections (Backlinks, Analytics, Reports,
+    Settings, Position Tracking, Keyword Magic…) whose `na` badges are now
+    a public promise the roadmap did not make. Two concrete consequences:
+    (a) the M1–M9 milestone names and this nav must be reconciled, or the
+    product says one thing and the plan another; (b) the Site Audit UI makes
+    #55's unhardened backend **user-reachable**, which raises that item's
+    priority rather than lowering it. Repay: a retroactive ADR + plan card
+    covering the shell and its IA, folded into the first M3 (Phase 9) card
+    alongside #55's, and a roadmap reconciliation pass at the next planning
+    checkpoint. Scheduled, not blamed — but this is the third such merge in
+    three days, and the pattern itself is the debt.
+
+57. **The formatter is not gated, only the linter is** (2026-08-05, session
+    21). CI's backend job runs `ruff check` but never `ruff format --check`,
+    and the frontend job runs `eslint` but never `prettier --check` — while
+    `make fmt` exists and formats both. So a file can sit unformatted
+    indefinitely: `backend/app/db/models.py` was already unformatted on `main`
+    before this session touched it (a `GeoRecord` column left in three-line
+    form by PR #11 that fits on one at the configured 100-char width), and it
+    took an unrelated `ruff format` run to notice. Consequences are small but
+    compounding: unrelated reformat noise rides along in the next diff that
+    happens to run the formatter, which is exactly what happened here. The fix
+    is one step in each CI job (`ruff format --check .`,
+    `npx prettier --check .`) — cheap, but it will fail on whatever is
+    unformatted today, so it wants its own small PR rather than a ride-along
+    in a feature branch. Not urgent; do it before the Phase 7 lanes start
+    running in parallel, because that is when reformat noise starts causing
+    real merge conflicts.

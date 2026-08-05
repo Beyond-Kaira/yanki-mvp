@@ -4,7 +4,37 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-05, **session 20 close — the re-planning session.**
+Last updated: 2026-08-05, **session 21 — first Phase 7 build session.**
+**Good news first: B7 is DONE, and it was you who closed it.** This session
+could verify it, because this checkout sits on the production VPS: the file
+the live stack actually reads (`/home/aytek/deploy/yanki-mvp/deploy/.env`)
+carries non-empty `OPEN_ROUTER_KEY` **and** `TAVILY_API_KEY`, the running
+`yanki-prod-api-1` container has both in its environment, and — the check
+that actually matters — **live analyses are completing**: the eight most
+recent prod runs are all `done` (latest 2026-08-05 07:58 UTC), and the last
+`failed` row predates the PR #11 merge. `DRY_RUN=0`, `GEO_MODE` is unset so
+it takes the code default `measured`. Production is healthy on `a326159`
+(`/healthz` → `{"status":"ok"}`). Nothing is expected from you on B7.
+
+**One new thing is genuinely yours — B8, and it is small:** session 20's
+entire planning set (roadmap, admin-panel-plan, backlink-intelligence-plan,
+feature-parity, differentiators, architecture-target, ADR-33) **never reached
+`main`**. It is one unmerged commit (`19d8236`) stranded on the branch
+`backlinking`, with no PR ever opened — so for the last day `main` has had no
+roadmap while two more PRs merged on top of it. This session merged `main`
+into the work branch and carries those docs forward, so **reviewing and
+merging this session's PR is what fixes it**. Also for your awareness, not
+your action: **PRs #24 and #25 merged 2026-08-05 outside the session
+process** (~5,800 lines of frontend — a Semrush-style app shell + nav,
+AI-Visibility and Search-Visibility pages, the Site Audit UI), again with no
+ADR, plan card or session log — recorded as tech-debt **#56**, as a schedule
+item and not as blame. **A3 is still formally open**; this session proceeded
+on its stated default ("proceed as written") because you asked it to continue
+autonomously — say the word if that was wrong and the tenancy work reverses
+cleanly. **A4 is unchanged and still blocks Phase 8 only** (not Phase 7).
+A1, A2, B2–B5 are unchanged.
+
+Earlier — 2026-08-05, **session 20 close — the re-planning session.**
 Docs only; no code, no deploy, nothing flipped. Per your brief, the project
 now has a **platform roadmap** ([roadmap.md](roadmap.md), milestones M1–M9)
 built from your PDF (`docs/Yanki_Geo_Intelligence_Report.pdf`) and a full
@@ -160,9 +190,29 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 
 ## B. Actions only you can do (in priority order)
 
-- [ ] **B7. Verify prod `deploy/.env` against the PR #11 provider change
-  (added 2026-08-05, session 20 — do this first; possibly
-  production-affecting today).** PR #11 (merged 2026-08-04) rewired the
+- [ ] **B8. Review + merge this session's PR — it is what finally lands the
+  session-20 planning docs on `main` (added 2026-08-05, session 21).**
+  Session 20 wrote the whole roadmap set and committed it as `19d8236` on the
+  branch **`backlinking`**; no PR was ever opened, so none of it is on `main`.
+  Meanwhile `main` moved 12 commits ahead (PRs #24, #25). This session merged
+  `origin/main` into the work branch `feat/p7.1-tenancy`, so its PR carries
+  **both** the stranded planning docs and the Phase 7 work. Nothing is lost
+  either way — the commit is safe on `origin/backlinking` — but until that PR
+  merges, any agent starting from `main` alone still sees no roadmap. After it
+  merges, `backlinking` can be deleted. As always, **merging auto-deploys**;
+  this PR's runtime surface is additive and reversible (see the session log's
+  deploy-impact note before you merge).
+
+- [x] **B7. Verify prod `deploy/.env` against the PR #11 provider change —
+  DONE 2026-08-05, verified in session 21.** Both keys are present in the
+  file the live stack reads and in the running container, `DRY_RUN=0`,
+  `GEO_MODE` unset (code default `measured`), and **live analyses complete**:
+  the eight most recent prod rows are all `done` (latest 2026-08-05 07:58
+  UTC); the last `failed` row is 2026-08-03 12:05 UTC, before PR #11 merged.
+  The env file was last written 12:46–12:47 UTC and the stack recreated at
+  12:49:07 UTC outside the CI deploy log — i.e. you pasted the keys and
+  redeployed by hand. Nothing further is needed. Original text, for the
+  record: PR #11 (merged 2026-08-04) rewired the
   pipeline's execute step: the default `GEO_MODE=measured` path calls
   **Tavily** (search) and **OpenRouter** (LLM), and with `DRY_RUN=0` the
   OpenRouter client **refuses to construct without `OPEN_ROUTER_KEY`** —

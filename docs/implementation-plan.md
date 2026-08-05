@@ -373,9 +373,15 @@ smoke + week-1 cost read.
 
 ### Readiness snapshot (updated at each session close)
 
-Last updated: 2026-07-10 (session 13 close — P5.4, P5.5, P5.7, P5.10,
-P5.12, P5.13 all shipped and deployed dark; the build phase of the plan is
-complete).
+Last updated: 2026-08-05 (session 21 close). **Measured this session, on the
+merged branch, before any change: the suite is 488 backend (7 skipped) + 205
+frontend across 41 files.** Every count below this line is the number that was
+true at the session it describes — historical, not current; the 170/65 figure
+in particular is three sessions stale and was never a claim about today. Prod
+is live and healthy on `a326159` with real measured analyses completing (see
+`sessions/2026-08-05-02.md` §1.1). Earlier — 2026-07-10 (session 13 close —
+P5.4, P5.5, P5.7, P5.10, P5.12, P5.13 all shipped and deployed dark; the build
+phase of the plan is complete).
 
 - **MVP plan completion (Phases 0–4): 32 / 32 tasks = 100%, all residuals
   closed.** Phases 0–3: 26/26. Phase 4: 6/6, and session 8 closed P4.1's

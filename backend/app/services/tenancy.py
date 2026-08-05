@@ -80,6 +80,10 @@ class OrgContext:
     org_id: uuid.UUID | None
     user_id: uuid.UUID | None = None
     default_workspace_id: uuid.UUID | None = None
+    # The caller's role in this org, as an opaque string. P7.2's permission
+    # model interprets it; this module never does. Empty for the anonymous and
+    # system contexts, which is why `can()` denies them by default.
+    role: str = ""
     is_system: bool = False
 
     @classmethod
@@ -250,6 +254,7 @@ def resolve_org_context(
         org_id=chosen.org_id,
         user_id=user.id,
         default_workspace_id=workspace.id if workspace is not None else None,
+        role=chosen.role,
     )
 
 

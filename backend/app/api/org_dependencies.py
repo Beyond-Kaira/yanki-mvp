@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 from app.api.auth_dependencies import get_current_user
 from app.db.models import User
 from app.db.session import get_session
+from app.services import audit
+from app.services.permissions import can
 from app.services.tenancy import OrgContext, OrgScopeRequired, resolve_org_context
 
 
@@ -59,3 +61,38 @@ def get_org_context(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="no access to the requested organization",
         ) from exc
+
+
+def requires(permission: str):
+    """A route dependency that enforces one permission. Deny by default.
+
+    Used as ``Depends(requires(PROJECT_CREATE))``. Returns the ``OrgContext``
+    so a route needs only this one dependency rather than two — which matters
+    because the failure mode of this design is a developer taking the context
+    dependency and forgetting the permission one.
+
+    A refusal is **403 and audited**: a denied attempt is often the event most
+    worth having, and P7.3 records it with ``outcome='denied'``.
+    """
+
+    def _dependency(
+        org: Annotated[OrgContext, Depends(get_org_context)],
+        session: Annotated[Session, Depends(get_session)],
+    ) -> OrgContext:
+        if not can(org, permission):
+            audit.emit(
+                session,
+                action=permission,
+                context=org,
+                actor_type="user",
+                outcome="denied",
+                detail={"reason": "permission_denied", "role": org.role},
+            )
+            session.commit()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="you do not have permission to perform this action",
+            )
+        return org
+
+    return _dependency

@@ -42,7 +42,7 @@ def verify_and_update_password(
     return _password_hash.verify_and_update(password, password_hash)
 
 
-def _audit_context(session: Session, user: User) -> OrgContext | None:
+def audit_context(session: Session, user: User) -> OrgContext | None:
     """The organization an auth event belongs to, for the audit trail.
 
     Login and signup are the events an administrator most wants to see, and
@@ -158,7 +158,7 @@ def authenticate_user(
             # keeps a NULL org. A KNOWN address's failure is attributed, because
             # "somebody is guessing at my colleague's password" is precisely the
             # event an administrator needs to find.
-            context=_audit_context(session, user) if user is not None else None,
+            context=audit_context(session, user) if user is not None else None,
             actor_type="user" if user is not None else "anonymous",
             actor_id=user.id if user is not None else None,
             actor_label=normalize_email(email),
@@ -176,7 +176,7 @@ def authenticate_user(
         audit.emit(
             session,
             action="auth:login",
-            context=_audit_context(session, user),
+            context=audit_context(session, user),
             actor_type="user",
             actor_id=user.id,
             actor_label=user.email,
@@ -200,7 +200,7 @@ def authenticate_user(
     audit.emit(
         session,
         action="auth:login",
-        context=_audit_context(session, user),
+        context=audit_context(session, user),
         actor_type="user",
         actor_id=user.id,
         actor_label=user.email,

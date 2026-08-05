@@ -24,13 +24,14 @@ real trade (a silently missing event) and it is recorded as tech-debt rather
 than hidden: hardening it into an outbox belongs with M1's exit gate.
 
 **Tamper-evident, within stated limits.** Every row carries
-:func:`compute_record_hash` over its own content, and migration 0018 installs a
-Postgres trigger that raises on UPDATE or DELETE. Together those make an edit
-detectable (:func:`verify_row`) and a deletion impossible through the database's
-own rules. What they do NOT do is survive a superuser who drops the trigger
-first — see the ``record_hash`` column comment for why a hash chain was not the
-answer, and :func:`verify_integrity` for what the admin surface can actually
-prove.
+:func:`compute_record_hash` over its own content, and migration 0018 installs
+two Postgres triggers — one raising on UPDATE or DELETE, and a separate
+statement-level one raising on TRUNCATE, which a row-level trigger does not
+catch. Together those make an edit detectable (:func:`verify_row`) and a
+deletion impossible through the database's own rules. What they do NOT do is
+survive a superuser who drops the triggers first — see the ``record_hash``
+column comment for why a hash chain was not the answer, and
+:func:`verify_integrity` for what the admin surface can actually prove.
 """
 
 from __future__ import annotations

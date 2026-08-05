@@ -210,3 +210,40 @@ describe('AuditLogClient', () => {
     expect(inTable().getByText('member:update')).toBeVisible()
   })
 })
+
+describe('AuditLogClient entity filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    searchParams = new URLSearchParams()
+    fetchAuditEvents.mockResolvedValue(
+      listOf([event()], { actions: ['auth:login', 'member:update', 'invitation:create'] }),
+    )
+    fetchAuditIntegrity.mockResolvedValue({
+      checked: 1, intact: 1, altered: 0, unverifiable: 0, altered_ids: [], ok: true,
+    })
+  })
+
+  it('offers entity types derived from the action taxonomy', async () => {
+    render(<AuditLogClient />)
+    await rowsLoaded()
+
+    const picker = screen.getByLabelText('Entity')
+    const options = within(picker).getAllByRole('option').map((o) => o.textContent)
+    // `resource:action` means the prefix IS the entity type — no second request.
+    expect(options).toEqual(['All entities', 'auth', 'invitation', 'member'])
+  })
+
+  it('narrows the query by entity type', async () => {
+    const user = userEvent.setup()
+    render(<AuditLogClient />)
+    await rowsLoaded()
+
+    await user.selectOptions(screen.getByLabelText('Entity'), 'invitation')
+
+    await waitFor(() =>
+      expect(fetchAuditEvents).toHaveBeenLastCalledWith(
+        expect.objectContaining({ entity_type: 'invitation' }),
+      ),
+    )
+  })
+})

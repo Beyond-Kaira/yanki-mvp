@@ -501,3 +501,78 @@ def test_the_hash_survives_a_database_round_trip(client, db_session):
 
     reloaded = db_session.get(AuditEvent, event_id)
     assert audit.verify_row(reloaded) is True
+
+
+def test_the_request_id_is_returned_even_when_the_request_fails(client, db_session):
+    """The id is most needed on the responses a user complains about.
+
+    A 200 that carries a request id and a 401 that does not is the wrong way
+    round: nobody quotes an identifier for a call that worked. This pins that
+    the header survives the framework's own error paths — an auth rejection and
+    a validation rejection, neither of which reaches a route function.
+    """
+
+    unauthorized = client.get(EVENTS)
+    assert unauthorized.status_code == 401
+    assert unauthorized.headers.get("x-request-id")
+
+    unprocessable = client.get("/api/v1/invitations/short")
+    assert unprocessable.status_code == 422
+    assert unprocessable.headers.get("x-request-id")
+
+    healthy = client.get("/healthz")
+    assert healthy.headers.get("x-request-id")
+    # Three distinct requests, three distinct ids — a constant would be useless.
+    assert (
+        len(
+            {
+                unauthorized.headers["x-request-id"],
+                unprocessable.headers["x-request-id"],
+                healthy.headers["x-request-id"],
+            }
+        )
+        == 3
+    )
+
+
+def test_logging_out_is_recorded(client, db_session):
+    """ "When did they leave?" is half of "were they here when this happened?".
+
+    The event has to be written from the user read BEFORE the token is spent —
+    afterwards there is nothing left to attribute it to.
+    """
+
+    _owner_org(client, db_session)
+    login = client.post(LOGIN, json={"email": "owner@acme.test", "password": PASSWORD})
+    owner = login.json()["access_token"]
+
+    assert client.post("/api/v1/auth/logout").status_code == 204
+
+    body = client.get(EVENTS, headers=_headers(owner), params={"action": "auth:logout"}).json()
+    assert body["total"] == 1
+    event = body["events"][0]
+    assert event["actor_label"] == "owner@acme.test"
+    assert event["outcome"] == "success"
+
+
+def test_a_logout_with_a_junk_token_records_nothing(client, db_session):
+    """Silence is the point: an event here would let the log probe token validity.
+
+    Logout is an idempotent no-op that must never disclose whether the supplied
+    token was ever real, and writing "somebody tried to log out with a bad
+    token" would leak precisely that through the audit trail instead.
+    """
+
+    _owner_org(client, db_session)
+    owner = _token(client, "owner@acme.test")
+
+    # Clear first: the login above left a REAL refresh cookie on the client,
+    # and setting a junk one under a misspelt name would leave the real one in
+    # place — the test would then pass a legitimate logout off as a junk one.
+    client.cookies.clear()
+    client.cookies.set("yanki_refresh_token", "not-a-real-token")
+    assert client.post("/api/v1/auth/logout").status_code == 204
+    client.cookies.clear()
+
+    body = client.get(EVENTS, headers=_headers(owner), params={"action": "auth:logout"}).json()
+    assert body["total"] == 0

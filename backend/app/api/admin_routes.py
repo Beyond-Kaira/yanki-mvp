@@ -51,6 +51,7 @@ from app.config import Settings, get_settings
 from app.db.models import AuditEvent, Invitation, Membership, Organization, User
 from app.db.session import get_session
 from app.services import audit, invitations
+from app.services.auth_sessions import revoke_all_sessions_for_user
 from app.services.emailer import send_invitation_email
 from app.services.permissions import (
     ALL_ROLES,
@@ -62,6 +63,7 @@ from app.services.permissions import (
     ORG_READ,
     OWNER,
     PLATFORM_ROLES,
+    permissions_for,
 )
 from app.services.tenancy import OrgContext
 
@@ -70,6 +72,30 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 # Roles an org administrator may assign. Platform roles are excluded on purpose:
 # they are Yanki staff, and a customer must not be able to grant them.
 ASSIGNABLE_ROLES = sorted(ALL_ROLES - PLATFORM_ROLES)
+
+
+def assignable_by(role: str | None) -> list[str]:
+    """The roles this caller may grant: only ones no more powerful than their own.
+
+    Excluding the platform roles is not sufficient on its own, and the gap it
+    left was real. ``member:invite`` is held by **Manager**, and the assignable
+    list contained ``owner`` — so a Manager could invite somebody as Owner and
+    then be administered by the account they had just created. A Manager cannot
+    *promote* anyone to Owner (that needs ``member:role_change``), so the
+    invitation path was a way around the very check that guards promotion.
+
+    The rule implemented here is the general form rather than a special case for
+    Owner: **you cannot grant what you do not hold.** A role is offerable only if
+    its permission set is a subset of the caller's own. That composes with roles
+    added later without anybody remembering to update a list — and it has one
+    consequence worth stating, because it looks like a bug and is not: an Admin
+    cannot appoint a Billing Admin, since ``billing:manage`` is exactly the
+    permission an Admin is denied. Buying things stays with the Owner, including
+    the power to delegate buying things.
+    """
+
+    held = permissions_for(role)
+    return [candidate for candidate in ASSIGNABLE_ROLES if permissions_for(candidate) <= held]
 
 
 def _member_out(user: User, membership: Membership) -> AdminMemberOut:
@@ -86,20 +112,44 @@ def _member_out(user: User, membership: Membership) -> AdminMemberOut:
 
 
 def _owner_count(session: Session, org_id: uuid.UUID) -> int:
-    return int(
-        session.scalar(
-            select(func.count())
-            .select_from(Membership)
-            .join(User, User.id == Membership.user_id)
-            .where(
-                Membership.org_id == org_id,
-                Membership.role == OWNER,
-                Membership.status == "active",
-                User.status == "active",
-            )
+    """How many active owners this organization has — counted **under a lock**.
+
+    The lock is the whole point, and it is not an optimization.
+
+    Every guard in this module is a check-then-act: count the owners, then
+    demote / disable / remove one. Without serialization that is a textbook
+    TOCTOU race, and the outcome is the worst one this file exists to prevent.
+    Two administrators pressing "demote" on the two remaining owners at the same
+    moment each read a count of 2, each pass the guard, and each commit — and
+    the organization is left with no owner at all, recoverable only by a support
+    ticket and a hand-written UPDATE. It needs no malice and no unusual load;
+    two browser tabs are enough.
+
+    So the owner memberships are selected ``FOR UPDATE`` rather than counted
+    with an aggregate. The rows themselves are locked for the caller's whole
+    transaction, so a second request touching the same organization's owners
+    blocks until the first commits and then re-reads the true count. ``of=`` is
+    specified because the statement joins ``users``: without it Postgres would
+    lock the user rows too, and an unrelated login touching that user would
+    queue behind an administrative edit.
+
+    On SQLite — every unit test — ``FOR UPDATE`` is silently omitted by the
+    dialect, which is correct: the tests run one connection and cannot race.
+    The property being defended is a Postgres one, and Postgres is what runs it.
+    """
+
+    owners = session.scalars(
+        select(Membership)
+        .join(User, User.id == Membership.user_id)
+        .where(
+            Membership.org_id == org_id,
+            Membership.role == OWNER,
+            Membership.status == "active",
+            User.status == "active",
         )
-        or 0
-    )
+        .with_for_update(of=Membership)
+    ).all()
+    return len(owners)
 
 
 @router.get("/members", response_model=AdminUserListOut)
@@ -139,7 +189,7 @@ def list_members(
         total=total,
         limit=limit,
         offset=offset,
-        assignable_roles=ASSIGNABLE_ROLES,
+        assignable_roles=assignable_by(org.role),
         members=[_member_out(user, membership) for user, membership in rows],
     )
 
@@ -185,6 +235,7 @@ def update_member(
 
     user, membership = row
     before = {"role": membership.role, "status": user.status}
+    revoked_sessions = 0
 
     if user.id == org.user_id and (payload.role is not None or payload.status is not None):
         # Self-service demotion is the other way an org loses its last admin,
@@ -195,10 +246,11 @@ def update_member(
         )
 
     if payload.role is not None:
-        if payload.role not in ASSIGNABLE_ROLES:
+        grantable = assignable_by(org.role)
+        if payload.role not in grantable:
             raise HTTPException(
                 status_code=422,
-                detail=f"role must be one of: {', '.join(ASSIGNABLE_ROLES)}",
+                detail=f"role must be one of: {', '.join(grantable)}",
             )
         if (
             membership.role == OWNER
@@ -225,6 +277,10 @@ def update_member(
             )
         user.status = payload.status
         membership.status = "active" if payload.status == "active" else "deactivated"
+        if payload.status == "disabled":
+            # Otherwise "disabled" means "disabled from their next login", and
+            # the person carries on working in the tab they already have open.
+            revoked_sessions = revoke_all_sessions_for_user(session, user_id=user.id)
 
     after = {"role": membership.role, "status": user.status}
     audit.emit_change(
@@ -236,6 +292,12 @@ def update_member(
         entity_id=user.id,
         before=before,
         after=after,
+        # NOT "sessions_revoked": the redactor matches the substring
+        # "session" and would replace this count with "[redacted]". That is
+        # the redactor being over-eager exactly as designed — it errs toward
+        # destroying a harmless field rather than leaking a credential — so
+        # the fix belongs here, in the key name, not there.
+        detail={"devices_signed_out": revoked_sessions} if revoked_sessions else None,
     )
     session.commit()
     session.refresh(user)
@@ -399,7 +461,7 @@ def list_invitations(
         total=total,
         limit=limit,
         offset=offset,
-        assignable_roles=ASSIGNABLE_ROLES,
+        assignable_roles=assignable_by(org.role),
         invitations=[
             _invitation_out(
                 row,
@@ -433,10 +495,11 @@ def create_invitation(
     is precisely the escalation an invitation table invites.
     """
 
-    if payload.role not in ASSIGNABLE_ROLES:
+    grantable = assignable_by(org.role)
+    if payload.role not in grantable:
         raise HTTPException(
             status_code=422,
-            detail=f"role must be one of: {', '.join(ASSIGNABLE_ROLES)}",
+            detail=f"role must be one of: {', '.join(grantable)}",
         )
 
     try:

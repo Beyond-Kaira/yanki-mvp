@@ -29,6 +29,30 @@ const ROLE_LABELS: Record<string, string> = {
 
 const FORM_ERROR_ID = 'invite-error'
 
+const NOT_VALID = 'That invitation link is not valid.'
+
+/**
+ * What to tell somebody whose link did not open.
+ *
+ * The API's own words are almost always the right ones — "this expired on
+ * Tuesday" is the whole reason it distinguishes its failures. The exception is
+ * **422**, which is the framework rejecting a malformed path parameter before
+ * any route runs, and whose message is Pydantic's: *"String should have at
+ * least 16 characters"*. That is a sentence about our validator, shown to
+ * somebody who only knows they clicked a link, so it is replaced with the same
+ * message a genuinely unknown token gets — which is also what it is.
+ */
+function inviteFailureMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 422) return NOT_VALID
+    if (err.status === 0) {
+      return "We couldn't reach the server. Check your connection and try again."
+    }
+    return err.message
+  }
+  return 'We could not open that invitation. Check the link and try again.'
+}
+
 /**
  * The screen an invited person lands on.
  *
@@ -72,11 +96,7 @@ export default function InviteClient({ token }: { token: string }) {
       })
       .catch((err) => {
         if (cancelled) return
-        setLoadError(
-          err instanceof ApiError
-            ? err.message
-            : 'We could not open that invitation. Check the link and try again.',
-        )
+        setLoadError(inviteFailureMessage(err))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -120,11 +140,7 @@ export default function InviteClient({ token }: { token: string }) {
       router.push('/dashboard')
     } catch (err) {
       setSubmitting(false)
-      setFormError(
-        err instanceof Error
-          ? err.message
-          : 'We could not accept that invitation. Try again.',
-      )
+      setFormError(inviteFailureMessage(err))
     }
   }
 

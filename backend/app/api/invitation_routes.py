@@ -81,10 +81,15 @@ _PROBLEM_RESPONSES = {
 _NOT_FOUND = "That invitation link is not valid."
 
 
-def _usable_or_error(session: Session, token: str) -> Invitation:
-    """The invitation this token names, or the right HTTP error explaining why not."""
+def _usable_or_error(session: Session, token: str, *, lock: bool = False) -> Invitation:
+    """The invitation this token names, or the right HTTP error explaining why not.
 
-    invitation = invitations.find_by_token(session, token)
+    ``lock`` is passed by the accept path and not by the preview — see
+    :func:`app.services.invitations.find_by_token` for why the asymmetry is
+    deliberate rather than an oversight.
+    """
+
+    invitation = invitations.find_by_token(session, token, lock=lock)
     if invitation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
 
@@ -149,7 +154,8 @@ def accept_invitation(
     unrecoverable without support.
     """
 
-    invitation = _usable_or_error(session, token)
+    # Locked: two simultaneous accepts of one link must not both proceed.
+    invitation = _usable_or_error(session, token, lock=True)
 
     existing = get_user_by_email(session, invitation.email)
     signed_in_as_invitee = current_user is not None and current_user.email == invitation.email

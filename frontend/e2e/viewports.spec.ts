@@ -11,7 +11,13 @@ async function signUp(page: Page) {
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
   await page.getByLabel(/confirm password/i).fill(PASSWORD)
   await page.getByRole('button', { name: 'Sign up' }).click()
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
+  // 60s. The e2e stack runs `next dev`, so this waits on a client-side redirect
+  // that cannot happen until the route compiles and the page hydrates — and it
+  // is the twelfth signup in a serial run. Observed failing at 30s on a loaded
+  // machine while other suites ran, and passing in 10-13s on an idle one, with
+  // the server-side signup and login both confirmed successful in the audit
+  // table. So the assertion was measuring machine load, not the product.
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 60_000 })
 }
 
 const SIZES = [

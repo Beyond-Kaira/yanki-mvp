@@ -62,6 +62,16 @@ def get_current_user(
     if user is None:
         raise _unauthorized()
 
+    # Checked on EVERY request, not only at login. An access token is a
+    # self-contained JWT that no service can recall, so without this check an
+    # administrator disabling an account would be scheduling its disablement for
+    # whenever the token happens to expire — while the person carries on working.
+    # Revoking their refresh sessions (which disabling also does) closes the slow
+    # half; this closes the fast one, at the cost of one primary-key read that
+    # every authenticated request was already performing.
+    if user.status != "active":
+        raise _unauthorized()
+
     return user
 
 
@@ -104,7 +114,14 @@ def get_optional_user(
     except (TokenValidationError, TokenConfigurationError):
         return None
 
-    return session.get(User, claims.user_id)
+    user = session.get(User, claims.user_id)
+    # A disabled account is not "signed in as somebody" — it is nobody. Same
+    # rule as `get_current_user`; returning the row here would let a disabled
+    # user accept an invitation on the strength of a token issued before they
+    # were disabled.
+    if user is not None and user.status != "active":
+        return None
+    return user
 
 
 def _unauthorized() -> HTTPException:

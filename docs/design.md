@@ -1636,8 +1636,16 @@ things the PR did not intend.*
      Editing any audited field without recomputing it — which is what an editor
      with SQL access does — makes the row fail verification, and the Admin
      Panel's integrity endpoint reports it.
-  2. **A Postgres trigger that raises on UPDATE or DELETE** (migration 0018).
-     `FOR EACH ROW`, so a `DELETE FROM audit_events` with no `WHERE` fails too.
+  2. **Two Postgres triggers** (migration 0018). The first raises on UPDATE or
+     DELETE, `FOR EACH ROW`, so a `DELETE FROM audit_events` with no `WHERE`
+     fails too. The second raises on **TRUNCATE**, `FOR EACH STATEMENT` —
+     necessary because a row-level trigger does not fire on TRUNCATE (Postgres
+     swaps the file rather than iterating rows), so a single word issued as the
+     application's own role would otherwise have erased the entire trail. That
+     gap survived the first design and was found by adversarial verification,
+     which is the case for running one: it is the more plausible act of the two,
+     since TRUNCATE is what somebody reaches for to "clear the log".
+
      Postgres only: SQLite unit tests build their schema from the models, which
      is what makes the "an edited row reports itself as altered" test possible
      to stage at all.
@@ -1655,8 +1663,12 @@ things the PR did not intend.*
     cannot support — so the API says which it is and the integrity sweep counts
     them separately without failing on them.
   - **The honest limit is stated in the code.** A superuser who drops the
-    trigger first is not detectable by either mechanism. Closing that needs an
+    triggers first is not detectable by either mechanism. Closing that needs an
     external append-only sink, which is an M8 card and not a promise made here.
+    `TRUNCATE ... CASCADE` from another table cannot reach `audit_events`
+    either, because it carries no foreign keys — a side effect of ADR-35's
+    "an event must outlive what it describes", pinned by a test because it is
+    load-bearing and invisible.
   - The integrity sweep is bounded (5000 rows, newest first) because it runs
     from an HTTP request and an unbounded re-hash is a self-inflicted denial of
     service.

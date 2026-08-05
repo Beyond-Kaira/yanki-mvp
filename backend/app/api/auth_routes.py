@@ -19,7 +19,13 @@ from app.api.schemas import (
 from app.config import Settings, get_settings
 from app.db.models import Organization, User
 from app.db.session import get_session
-from app.services.auth import authenticate_user, create_user, get_user_by_email
+from app.services import audit
+from app.services.auth import (
+    audit_context,
+    authenticate_user,
+    create_user,
+    get_user_by_email,
+)
 from app.services.auth_sessions import (
     InvalidRefreshSessionError,
     RefreshTokenReuseDetectedError,
@@ -29,7 +35,12 @@ from app.services.auth_sessions import (
 )
 from app.services.permissions import permissions_for
 from app.services.tenancy import OrgScopeRequired, resolve_org_context
-from app.services.tokens import TokenConfigurationError
+from app.services.tokens import (
+    TokenConfigurationError,
+    TokenType,
+    TokenValidationError,
+    decode_token,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -177,11 +188,30 @@ def logout(
 
     if refresh_token is not None:
         try:
-            revoke_refresh_session_family(
+            # Read the user BEFORE revoking: afterwards the token is spent and
+            # there is nothing left to attribute the event to. A logout that
+            # cannot be attributed is the one event in the session lifecycle
+            # that would be missing from the trail — "when did they leave?" is
+            # half of "were they here when this happened?".
+            revoked_user = _user_from_refresh_token(session, refresh_token, settings)
+
+            revoked = revoke_refresh_session_family(
                 session,
                 refresh_token=refresh_token,
                 settings=settings,
             )
+            if revoked and revoked_user is not None:
+                audit.emit(
+                    session,
+                    action="auth:logout",
+                    context=audit_context(session, revoked_user),
+                    actor_type="user",
+                    actor_id=revoked_user.id,
+                    actor_label=revoked_user.email,
+                    entity_type="user",
+                    entity_id=revoked_user.id,
+                )
+                session.commit()
         except TokenConfigurationError:
             unavailable_response = JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -247,6 +277,32 @@ def me(
         role=role,
         permissions=permissions,
     )
+
+
+def _user_from_refresh_token(
+    session: Session,
+    refresh_token: str,
+    settings: Settings,
+) -> User | None:
+    """Who a refresh token belongs to, or ``None`` for anything unusable.
+
+    Deliberately silent about *why* it returns None. Logout must stay an
+    idempotent no-op that never discloses whether the supplied token was ever
+    valid — the same posture ``revoke_refresh_session_family`` takes — so a
+    malformed, unknown or expired token simply produces no audit event rather
+    than an event saying "somebody tried to log out with a bad token", which
+    would be a way to probe token validity through the log.
+    """
+
+    try:
+        claims = decode_token(
+            refresh_token,
+            expected_type=TokenType.REFRESH,
+            settings=settings,
+        )
+    except TokenValidationError:
+        return None
+    return session.get(User, claims.user_id)
 
 
 def _invalid_refresh_response(

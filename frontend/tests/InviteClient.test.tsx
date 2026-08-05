@@ -155,3 +155,32 @@ describe('InviteClient', () => {
     ).toBeVisible()
   })
 })
+
+describe('InviteClient failure messages', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    authState = { status: 'anonymous', user: null }
+  })
+
+  it('never shows the framework\'s own validator message to an invitee', async () => {
+    // A path parameter shorter than the minimum is rejected before any route
+    // runs, and Pydantic's sentence — "String should have at least 16
+    // characters" — is about our validator, shown to somebody who only knows
+    // they clicked a link.
+    previewInvitation.mockRejectedValue(
+      new ApiError('String should have at least 16 characters', 422),
+    )
+    render(<InviteClient token="short" />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('That invitation link is not valid.')
+    expect(alert).not.toHaveTextContent(/16 characters/)
+  })
+
+  it('says the server is unreachable rather than blaming the link', async () => {
+    previewInvitation.mockRejectedValue(new ApiError('boom', 0))
+    render(<InviteClient token="a-perfectly-fine-token" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't reach the server/i)
+  })
+})

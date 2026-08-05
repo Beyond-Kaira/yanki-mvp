@@ -1430,9 +1430,13 @@ class AuditEvent(Base):
     # predecessor) also detects deletion, but computing it requires reading and
     # locking the chain head on every write, which would serialize every audited
     # request in the application behind one row. Deletion is instead blocked at
-    # the database: migration 0018 installs a trigger that raises on UPDATE or
-    # DELETE. What remains undetectable is a superuser who drops the trigger
-    # first; that is the honest limit of this design, and closing it is the M8
+    # the database: migration 0018 installs TWO triggers, one raising on UPDATE
+    # or DELETE and a separate statement-level one raising on TRUNCATE — a
+    # row-level trigger does not fire on TRUNCATE, so without the second, one
+    # word would have erased the whole trail using the app's own role.
+    #
+    # What remains undetectable is a superuser who drops the triggers first;
+    # that is the honest limit of this design, and closing it is the M8
     # hardening card (external append-only sink), not a promise made here.
     #
     # Nullable because the rows written before this column existed cannot be

@@ -160,3 +160,45 @@ def test_a_bulk_delete_is_refused_too(migrated_engine):
 
     with migrated_engine.connect() as connection:
         assert connection.execute(sa.text("SELECT count(*) FROM audit_events")).scalar() == 2
+
+
+def test_truncating_the_audit_table_is_refused(migrated_engine):
+    """The gap a row-level trigger leaves, and the one somebody would actually use.
+
+    `BEFORE ... FOR EACH ROW` does not fire on TRUNCATE — Postgres swaps the
+    file rather than iterating rows — so before the statement-level trigger
+    existed, one word issued as the application's own role would have erased the
+    entire trail and left nothing to notice. It is a far more plausible act than
+    the per-row DELETE above: it is what somebody reaches for to "clear the log".
+    """
+
+    with migrated_engine.begin() as connection:
+        _insert_event(connection)
+        _insert_event(connection)
+
+    with pytest.raises(sa.exc.DBAPIError) as exc:
+        with migrated_engine.begin() as connection:
+            connection.execute(sa.text("TRUNCATE audit_events"))
+    assert "append-only" in str(exc.value)
+
+    with migrated_engine.connect() as connection:
+        assert connection.execute(sa.text("SELECT count(*) FROM audit_events")).scalar() == 2
+
+
+def test_a_cascading_truncate_of_another_table_cannot_take_the_audit_with_it(migrated_engine):
+    """`TRUNCATE ... CASCADE` follows foreign keys — the audit table has none.
+
+    `audit_events.org_id` is deliberately FK-free so an event outlives the
+    organization it describes (ADR-35). A pleasant side effect, worth pinning
+    because it is load-bearing and invisible: no CASCADE from any other table
+    can reach it, so the trigger is not the only thing standing in the way.
+    """
+
+    with migrated_engine.begin() as connection:
+        _insert_event(connection)
+
+    with migrated_engine.begin() as connection:
+        connection.execute(sa.text("TRUNCATE organizations CASCADE"))
+
+    with migrated_engine.connect() as connection:
+        assert connection.execute(sa.text("SELECT count(*) FROM audit_events")).scalar() == 1

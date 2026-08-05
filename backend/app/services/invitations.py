@@ -137,18 +137,34 @@ def problem_for(invitation: Invitation, *, now: datetime | None = None) -> Invit
     return None
 
 
-def find_by_token(session: Session, token: str) -> Invitation | None:
+def find_by_token(session: Session, token: str, *, lock: bool = False) -> Invitation | None:
     """The invitation a token names, whatever state it is in.
 
     Returns rows that are expired, revoked or spent as well as usable ones —
     the caller decides what to say about them, because "this invitation expired
     last week" is a much better message than "not found" for someone holding a
     genuine link, and only the caller knows whether it is safe to say it.
+
+    ``lock=True`` takes a row lock, and the **accept** path uses it while the
+    **preview** path does not. Two simultaneous accepts of one link would
+    otherwise both read ``pending``, both pass :func:`problem_for`, and both
+    proceed — single-use enforced by a check that two callers can pass at once
+    is not single-use. Today they are backstopped by the unique constraint on
+    ``users.email``, so the second one loses with a 409 rather than creating a
+    second account; that is safety by accident of another table's constraint,
+    and it would evaporate the moment an already-registered user accepts (where
+    no insert happens at all). Locking makes it safety by design.
+
+    The preview must NOT lock: it is unauthenticated, and a lock there would
+    let anyone holding a token pin a row for the length of a request.
     """
 
     if not token:
         return None
-    return session.scalar(select(Invitation).where(Invitation.token_hash == hash_token(token)))
+    statement = select(Invitation).where(Invitation.token_hash == hash_token(token))
+    if lock:
+        statement = statement.with_for_update()
+    return session.scalar(statement)
 
 
 def list_invitations(

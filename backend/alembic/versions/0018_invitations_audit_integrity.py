@@ -14,12 +14,20 @@ rows written before it existed cannot be given a credible hash afterwards, and
 back-filling one would manufacture evidence rather than record it. The verifier
 reports those rows as unverifiable.
 
-**The guard** is a Postgres trigger that raises on UPDATE or DELETE of
-`audit_events`. The application never issues either — but "the application
-never does that" is a claim about code, and an audit trail should rest on a
-claim about the database. Postgres only: SQLite unit tests create their schema
-from the models with `create_all`, so they never see it, and nothing in the test
-suite mutates an audit row.
+**The guard** is a pair of Postgres triggers that raise on UPDATE, DELETE or
+TRUNCATE of `audit_events`. The application never issues any of them — but "the
+application never does that" is a claim about code, and an audit trail should
+rest on a claim about the database.
+
+Two triggers rather than one because a row-level trigger does not fire on
+TRUNCATE: Postgres swaps the file rather than iterating rows, so a single
+`TRUNCATE audit_events` would otherwise have erased the whole trail using
+nothing but the application's own role. TRUNCATE triggers must be
+`FOR EACH STATEMENT`.
+
+Postgres only: SQLite unit tests create their schema from the models with
+`create_all`, so they never see either trigger, and nothing in the test suite
+mutates an audit row.
 """
 
 import sqlalchemy as sa
@@ -51,6 +59,23 @@ _GUARD_TRIGGER = """
 CREATE TRIGGER audit_events_append_only
 BEFORE UPDATE OR DELETE ON audit_events
 FOR EACH ROW EXECUTE FUNCTION yanki_audit_events_append_only();
+"""
+
+# TRUNCATE needs its OWN trigger, and forgetting it is the whole game.
+#
+# A row-level trigger does not fire on TRUNCATE — Postgres does not iterate the
+# rows, it swaps the file — so `TRUNCATE audit_events` would have sailed
+# straight past the guard above and erased the entire trail using nothing but
+# the application's own database role. That is a far more plausible act than the
+# per-row DELETE the first trigger blocks: it is one word, it is what somebody
+# reaches for to "clear the log", and it leaves nothing behind to notice.
+#
+# TRUNCATE triggers must be FOR EACH STATEMENT; there are no rows to be "each"
+# of. Found by an adversarial verification pass, not by writing the first one.
+_TRUNCATE_GUARD = """
+CREATE TRIGGER audit_events_no_truncate
+BEFORE TRUNCATE ON audit_events
+FOR EACH STATEMENT EXECUTE FUNCTION yanki_audit_events_append_only();
 """
 
 
@@ -96,10 +121,12 @@ def upgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         op.execute(_GUARD_FUNCTION)
         op.execute(_GUARD_TRIGGER)
+        op.execute(_TRUNCATE_GUARD)
 
 
 def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP TRIGGER IF EXISTS audit_events_no_truncate ON audit_events")
         op.execute("DROP TRIGGER IF EXISTS audit_events_append_only ON audit_events")
         op.execute("DROP FUNCTION IF EXISTS yanki_audit_events_append_only()")
 

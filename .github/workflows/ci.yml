@@ -70,9 +70,22 @@ jobs:
       # Named separately from the rest of the suite so a red check says WHICH
       # promise broke. A generic "pytest failed" on a governance surface is the
       # difference between a five-minute fix and a bisect.
-      - name: Database migrations (up, model drift, down) + audit append-only guard
+      # These three modules skip themselves without a Postgres TEST_DATABASE_URL,
+      # and every property they defend passes VACUOUSLY on SQLite — `FOR UPDATE`
+      # is silently omitted by that dialect and the triggers do not exist there.
+      # So they are run as their own step with `-p no:randomly` off nothing and
+      # a name that says what breaks: a silent skip here would leave the
+      # tamper-resistance and lockout guarantees unprotected while the job stays
+      # green. `--no-header -q` keeps the log readable; the count in it is the
+      # thing to check if this ever looks suspiciously fast.
+      - name: Postgres-only guarantees (migrations, append-only trigger, owner lock)
         working-directory: backend
-        run: uv run pytest tests/test_migrations.py tests/test_audit_append_only_postgres.py -q
+        run: |
+          uv run pytest --no-header -q \
+            tests/test_migrations.py \
+            tests/test_audit_append_only_postgres.py \
+            tests/test_owner_guard_postgres.py
+          echo "::notice::if the line above says 'skipped', TEST_DATABASE_URL is not reaching pytest"
       - name: Authorization rules (RBAC matrix, deny-by-default, tenant isolation)
         working-directory: backend
         run: uv run pytest tests/test_permissions.py tests/test_tenancy.py -q

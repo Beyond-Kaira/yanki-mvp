@@ -80,6 +80,7 @@ export default function AuditLogClient() {
 
   const [search, setSearch] = useState('')
   const [action, setAction] = useState('')
+  const [entity, setEntity] = useState('')
   const [outcome, setOutcome] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -91,6 +92,7 @@ export default function AuditLogClient() {
     () => ({
       q: search.trim() || undefined,
       action: action || undefined,
+      entity_type: entity || undefined,
       outcome: outcome || undefined,
       occurred_from: from || undefined,
       // A date input gives a bare day; the log needs the END of that day or
@@ -101,7 +103,7 @@ export default function AuditLogClient() {
       limit: PAGE_SIZE,
       offset,
     }),
-    [search, action, outcome, from, to, sort, order, offset],
+    [search, action, entity, outcome, from, to, sort, order, offset],
   )
 
   const load = useCallback(async () => {
@@ -139,6 +141,13 @@ export default function AuditLogClient() {
 
   const events = list?.events ?? []
   const actions = list?.actions ?? []
+  // Derived from the action taxonomy rather than fetched separately: an action
+  // is `resource:action`, so its prefix IS the entity type in every case the
+  // API produces. One fewer round trip, and it cannot drift from the actions
+  // list beside it.
+  const entityTypes = Array.from(
+    new Set(actions.map((name) => name.split(':')[0]).filter(Boolean)),
+  ).sort()
   const total = list?.total ?? 0
   const showingTo = Math.min(offset + PAGE_SIZE, total)
 
@@ -195,7 +204,7 @@ export default function AuditLogClient() {
           .
         </p>
       ) : (
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="block">
             <span className="mb-1 block text-sm font-medium">Search</span>
             <input
@@ -222,6 +231,25 @@ export default function AuditLogClient() {
             >
               <option value="">All actions</option>
               {actions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">Entity</span>
+            <select
+              value={entity}
+              onChange={(event) => {
+                setOffset(0)
+                setEntity(event.target.value)
+              }}
+              className="h-11 w-full rounded-md border border-surface-border bg-surface px-3 text-sm"
+            >
+              <option value="">All entities</option>
+              {entityTypes.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>

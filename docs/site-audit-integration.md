@@ -46,7 +46,12 @@ link-local, and metadata networks.
 
 The audit worker receives only its database URL and explicit `SITE_AUDIT_*`
 settings. It does not inherit the general deployment `.env` containing auth or
-provider secrets. Chromium remains isolated to the `audit-runtime` image target.
+provider secrets. Chromium is *intended* to be isolated to an `audit-runtime` image target —
+**which is not built.** `backend/Dockerfile` is a single stage and installs no
+browser, so today the isolation described here is a design, not a boundary that
+exists. Tracked as backlog item `site-audit-chromium-image-missing`; nothing
+runs the audit worker in production either, so no unisolated Chromium is
+actually executing.
 
 ## Unresolved production decisions
 

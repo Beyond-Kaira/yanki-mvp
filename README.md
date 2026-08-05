@@ -84,8 +84,8 @@ time to list everything.
 | `make fmt`        | Auto-format backend (ruff format) and frontend (prettier).             |
 | `make typecheck`  | Type-check backend (mypy) and frontend (`tsc --noEmit`).               |
 | `make migrate`    | Run Alembic migrations locally (`alembic upgrade head`).                |
-| `make gen-types`  | Export `shared/contracts/openapi.json` + regenerate `frontend/lib/types.ts`. |
-| `make e2e`        | Run the Playwright happy-path against a running stack (needs `make dev` up). |
+| `make gen-types`  | Export `shared/contracts/` (`openapi.json` + `checker_methodology.json`) + regenerate `frontend/lib/types.ts`. |
+| `make e2e`        | Run the Playwright suite — happy path, Admin Panel journeys, viewport matrix — against a running stack (needs `make dev` up). |
 | `make deploy`     | Build, deploy, migrate, and health-check on the server (auto-rollback). |
 | `make rollback`   | Redeploy the last-good release SHA.                                     |
 | `make deploy-logs`| Tail logs from the running server stack.                                |
@@ -134,12 +134,18 @@ yanki/
 │       ├── pipeline/   # the GEO engine (discovery → kyc → prompts → execute → footprint → scoring); the SEO/AI-readiness audit — seo_audit.py + robots.py — rides inside discovery
 │       ├── providers/  # LLM adapters behind one Provider interface (+ mock)
 │       ├── serp/       # SERP sources behind one SerpSource interface (+ mock)
+│       ├── site_audit/ # the technical-SEO crawler + its own queue and worker
+│       ├── backlink/   # the M2 backlink engine behind one BacklinkSource seam (+ mock)
+│       ├── request_context.py  # per-request id + hashed IP, read by the audit trail
 │       └── worker.py   # polls the queue, runs the pipeline
-├── frontend/     # Next.js 15 + TypeScript — 3 screens (submit, progress, results)
+├── frontend/     # Next.js 15 + TypeScript — the product surface: marketing page,
+│                 #   login/signup, dashboard, analyses, free checker, AI-visibility,
+│                 #   search-visibility, site-audit, /admin (the Admin Panel) and the
+│                 #   public /invite/<token> accept page
 ├── shared/       # cross-language contract (contracts/openapi.json)
 ├── deploy/       # Docker Compose + deploy/rollback scripts (ams-pulse pattern)
 │   └── searxng/  # SearXNG SERP-instance config (tracked template + gitignored settings.yml)
-├── scripts/      # repo-level dev utilities (gen_openapi.py, check_env.py)
+├── scripts/      # repo-level dev utilities (gen_openapi.py, gen_methodology.py, check_env.py)
 ├── .github/      # CI/CD workflows + PR template
 └── docs/         # design, architecture, MVP scope, roadmap, brandkit, tests
 ```
@@ -149,8 +155,9 @@ Anything under `deploy/`, `.github/`, `shared/contracts/`, or `backend/alembic/`
 also needs the lead's review. See [`docs/design.md`](docs/design.md) for the full
 ownership map.
 
-**Do not hand-edit generated files** — `shared/contracts/openapi.json` and
-`frontend/lib/types.ts` come from `make gen-types`. The app imports its types
+**Do not hand-edit generated files** — everything under `shared/contracts/`
+(`openapi.json`, `checker_methodology.json`) and `frontend/lib/types.ts` comes
+from `make gen-types`, and CI diffs the whole directory. The app imports its types
 from `frontend/lib/contracts.ts` instead — a hand-maintained seam that aliases
 friendly names over the generated schemas and narrows the loosely-typed fields.
 

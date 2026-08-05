@@ -11,9 +11,23 @@ Moz, SE Ranking); the strategy constraint comes from the planning baseline:
 ([Yanki_Geo_Intelligence_Report.pdf](Yanki_Geo_Intelligence_Report.pdf) §6.1,
 §13).*
 
-**Status: planning approved for decomposition — no code exists yet. Build
-starts only after M1's tenancy/quota foundation, because every row here is
-metered.**
+**Status (2026-08-05, session 22): the ENGINE shipped; the product did not.**
+Built and merged behind `BACKLINKS_ENABLED=0` — B1 (schema + `BacklinkSource`
+seam + deterministic mock, five tables, migration 0013), B4's delta engine,
+B5 (Yanki Authority), B6 (toxicity + disavow) and B7 (gap + unlinked mentions),
+all metered through M1's quota gate and credit ledger. See
+`backend/app/backlink/` and implementation-plan P8.1/P8.4/P8.5/P8.6/P8.7.
+
+**Still open:** B2, the first licensed vendor adapter — blocked on operator
+decision **A4** (vendor + budget), so today there is only the mock; B3, the
+inventory UI and the API router that would expose any of this to a customer
+(nothing is registered in `app/api/main.py`); B4's residual — the liveness
+verifier and scheduled refresh, both needing worker wiring; and B8.
+
+Anything below that reads as unbuilt should be checked against those cards
+before it is built. The `$0` DRY_RUN end-to-end framing still holds: the mock
+is a pure function of `(domain, cycle)`, so multi-refresh behaviour is testable
+without a clock or a vendor.
 
 ---
 

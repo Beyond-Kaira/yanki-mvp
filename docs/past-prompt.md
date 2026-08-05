@@ -268,3 +268,63 @@ security bug in the in-progress implementation — an `ON DELETE SET NULL` on
 because NULL means public.
 
 **The next brief lives at the end of `sessions/2026-08-05-02.md` §8.**
+
+---
+
+## Session 22 — 2026-08-05
+
+**Prompt executed:** *"finish admin panel and backlink methodlogy using
+workflows"*, followed by a seven-part brief: rename the administration
+interface to **Admin Panel** everywhere; build user invitations (secure
+tokens, expiry, an account-creation flow, graceful invalid/expired handling);
+complete role management (assign / change / remove / disable / reactivate);
+build a **database audit trail** recording who, what entity, which record,
+previous values, new values, timestamp, operation type, request identifier,
+user identifier and IP, queryable from the Admin Panel with filtering,
+searching, pagination, sorting, entity/user/date filtering and per-record
+change history, tamper-resistant and extensible for compliance; generate a
+roadmap-aligned **backlog**; **validate using workflows**; extend the GitHub
+Actions workflows to gate builds, lint, format, unit/integration/e2e tests,
+migrations, audit logging, the invitation flow, role assignment, authorization
+rules and Admin Panel functionality; and a quality bar (verify every feature
+manually and automatically, remove dead code and unused components, update
+documentation and architecture docs, no failing tests, no type errors, no
+migration issues, no broken routes, all APIs documented, production-ready).
+
+**Session-21 brief (archived, superseded):** it named P7.3 then P7.2 as next
+up. Both had in fact already shipped in session 21 itself, and
+`implementation-plan.md` still said `todo` — so session 22's first substantive
+act was to read the code rather than the plan. Recorded here because it is the
+one instruction in this archive that would have wasted a session if followed.
+
+**Outcome:** M1 stages A1–A4 are complete. `/admin` became a named **Admin
+Panel** section with three tabs; invitations shipped end to end (hashed
+single-use expiring tokens, resend-rotates, a public accept flow that creates
+the account and signs the invitee in — ADR-37); member removal closed the
+`MEMBER_REMOVE` permission nobody could exercise; and the audit trail became
+usable as evidence — `request_id`/`ip_hash` had been NULL on every row, auth
+events had belonged to no organization (so the sign-in trail was invisible to
+the org-scoped query that reads it), and append-only had been a property of the
+code rather than the database (ADR-38, ADR-39). CI gained a changed-files
+formatting gate (ADR-40) and named gates for migrations, authorization and
+Admin Panel behaviour. `docs/backlog.md` was created — 53 prioritized,
+dependency-ordered items from a five-agent survey. Suite 752 → **835 backend**
+(Postgres) and 232 → **281 frontend**; 31 Playwright tests against a live stack.
+
+**A nine-agent adversarial validation pass earned its keep**, which is the
+session's real lesson. Told to *refute* each claim rather than confirm it, it
+found one blocker (the last-owner guard was a non-atomic check-then-act — two
+concurrent demotions could leave an organization with zero owners) and four
+majors: a Manager could mint an Owner through the invitation path, disabling an
+account did not invalidate its live access token, the append-only trigger did
+not cover `TRUNCATE`, and logout was never audited. A tenth agent then asked
+what nobody had checked and found two more — the Postgres-gated tests pass
+*vacuously* on SQLite, and the invitation accept path took no row lock. All
+seven were fixed with tests before the session closed.
+
+**Not merged.** The work sits on `feat/admin-panel-invitations-audit`, three
+commits, never pushed — a merge to `main` auto-deploys to production and that
+call is the operator's. Two operator items gate its usefulness there: **B10**
+(`PUBLIC_BASE_URL`) and **B11** (`EMAILS_ENABLED`).
+
+**The next brief lives at the end of `sessions/2026-08-05-03.md` §8.**

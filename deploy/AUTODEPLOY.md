@@ -10,7 +10,7 @@
 
 ```
 PR merged
-  └─ ci.yml            (push:main)  backend · frontend · contract · gitleaks · e2e
+  └─ ci.yml            (push:main)  format · backend · frontend · contract · gitleaks · e2e
        └─ deploy.yml   (workflow_run: CI completed && conclusion == success)
             └─ ssh aytek@161.97.172.146  "deploy <40-hex-sha>"
                  └─ ~/.local/bin/yanki-ci-deploy      ← forced command, not a shell

@@ -1,3 +1,9 @@
+> ⚠️ **SUPERSEDED — retired v1 palette. Do not build against this file.**
+> This is the indigo-era brand kit, kept as a record of what was fed to the
+> brand-kit generator. The live design system is teal and lives in
+> [`docs/frontend-brandkit.md`](../../docs/frontend-brandkit.md); the v2
+> rationale is in [`../brandkit/frontend-brandkit-v2.md`](../brandkit/frontend-brandkit-v2.md).
+
 # Yanki — Frontend Brand Kit
 
 *Audience: the frontend junior (there is no designer on call). This is the design

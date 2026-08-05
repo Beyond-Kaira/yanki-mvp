@@ -82,7 +82,7 @@ to per-module feature flags managed in the admin panel.
 | `Provider` (LLM) | Anthropic, OpenAI, Gemini, Perplexity, OpenRouter, mock | per-org/per-key spend caps; provider health in admin; model/price pinning surfaced |
 | `SerpSource` | SearXNG, mock | localized retrieval (gl/hl, coordinates) via a licensed SERP vendor adapter (M4-local/M6); multi-vendor failover |
 | Search/grounding | Tavily (measured path) | cost tagging into ledger; fallback vendor |
-| `BacklinkSource` | — | M2: licensed index adapters (DataForSEO-class first) + mock + liveness verifier |
+| `BacklinkSource` | mock (session 21) | M2: licensed index adapters (DataForSEO-class first) + mock + liveness verifier |
 | `KeywordSource` | — | M6: licensed keyword data adapter + mock |
 | Integrations | Resend (email) | GBP OAuth (M5), GSC/GA4 read (M3/M6), Slack (M4), Stripe (M1), Zapier/Looker (M7) |
 

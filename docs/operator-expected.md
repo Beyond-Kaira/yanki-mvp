@@ -4,7 +4,18 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-05, **session 21 close — Admin Platform, Backlink
+Last updated: 2026-08-05, **session 22 close**.
+
+> **Read this first: session 22's work is NOT merged and NOT live.** The Admin
+> Panel, invitations and the audit trail sit on `feat/admin-panel-invitations-audit`
+> — three commits, local-only, never pushed, no PR. Production still runs
+> `f4c33e8` at alembic `0017`. **B12** is the decision that changes that, and it
+> gates B10 and B11. Everything described below the divider was true at session
+> 21 close and remains true; nothing has been un-deployed.
+
+---
+
+Previously — 2026-08-05, **session 21 close — Admin Platform, Backlink
 backend, and the auth/UI work, ALL MERGED AND DEPLOYED** (PRs #27, #28, #29,
 #30; live on `4806c1a`).
 
@@ -259,6 +270,31 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   → Answer: ______
 
 ## B. Actions only you can do (in priority order)
+
+- [ ] **B12. Decide what happens to `feat/admin-panel-invitations-audit`
+  (added 2026-08-05, session 22 — this gates everything else in this section).**
+  Session 22's work is **three commits on a local-only branch that has never
+  been pushed**. There is no PR. `main` and `origin/main` are both still
+  `f4c33e8`, production runs `yanki-api:f4c33e8` at alembic `0017_user_status`,
+  and the `invitations` table does not exist in the production database. So
+  none of the Admin Panel, invitations or audit-trail work is live.
+
+  That is deliberate, not an oversight: **merging to `main` auto-deploys**, with
+  no staging environment, so a merge is a release and the call is yours. The
+  branch carries migration `0018`, which the deploy chain will run against the
+  production database — it is additive (a nullable column, a new empty table,
+  two triggers) and nothing in the backend writes UPDATE, DELETE or TRUNCATE to
+  `audit_events`, but it has not been rehearsed against a copy of prod data.
+
+  ```bash
+  cd ~/repo/yanki-mvp
+  git log --oneline main..feat/admin-panel-invitations-audit   # the three commits
+  git push -u origin feat/admin-panel-invitations-audit        # needs the SSH remote
+  gh pr create --fill                                          # then review + merge
+  ```
+
+  **Do B10 before the merge reaches production**, or the first invitation
+  anybody sends will contain a link to `localhost`.
 
 - [ ] **B10. Set `PUBLIC_BASE_URL` in the prod `deploy/.env` before anyone
   sends an invitation (added 2026-08-05, session 22; one line, do it before the

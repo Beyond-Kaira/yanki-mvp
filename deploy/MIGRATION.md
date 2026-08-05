@@ -76,7 +76,8 @@ the edge.
 ## 0. 👤 Prerequisites (once per host — shared with every other subdomain)
 
 These are host-wide and set up once for all sites (see the blueprint
-`deploy/INSTALL.md`). Verify they exist before touching Yanki:
+the host blueprint, which this repo does not carry). Verify they exist
+before touching Yanki:
 
 ```bash
 # nginx installed and running
@@ -87,7 +88,7 @@ sudo ls -l /etc/letsencrypt/live/beyondkaira.com/fullchain.pem
 dig @8.8.8.8 +short yanki.beyondkaira.com   # -> 161.97.172.146
 ```
 
-If any is missing, do the host-wide steps 1–2 of the blueprint `deploy/INSTALL.md`
+If any is missing, do the host-wide steps 1–2 of the host blueprint
 first. Do NOT issue a per-subdomain cert — the wildcard already covers Yanki.
 
 ## 1. 👤 Install the nginx site (does NOT touch :443 yet)

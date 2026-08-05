@@ -25,7 +25,7 @@ yanki/
 ├── backend/                # Python 3.12 — FastAPI api + worker + GEO engine (one image)
 │   ├── pyproject.toml       # backend deps + tool config (uv, ruff, mypy, pytest)
 │   ├── Dockerfile           # python:3.12-slim + uv sync; the SAME image runs api and worker
-│   ├── alembic/             # DB migrations — one initial migration creates all four tables
+│   ├── alembic/             # DB migrations — 18 revisions as of session 22 (0001 created the original four tables; ADR-13 explains why the MVP shipped one)
 │   ├── app/
 │   │   ├── __init__.py
 │   │   ├── config.py        # pydantic-settings: every env var + its default lives here
@@ -36,11 +36,18 @@ yanki/
 │   │   ├── jobs/            # the Postgres job queue (FOR UPDATE SKIP LOCKED claim + stale reaper)
 │   │   ├── pipeline/        # the GEO engine: discovery → kyc → prompts → execute → footprint → scoring
 │   │   ├── providers/       # LLM adapters behind one Provider interface (+ deterministic mock)
-│   │   └── serp/            # open-source SERP adapters behind one SerpSource interface (+ mock)
+│   │   ├── serp/            # open-source SERP adapters behind one SerpSource interface (+ mock)
+│   │   ├── site_audit/      # the technical-SEO crawler: parser, rules, scoring, its own queue + worker
+│   │   ├── backlink/        # the M2 engine behind one BacklinkSource seam: deltas, authority, toxicity, gap
+│   │   └── request_context.py  # per-request id + salted IP hash, read by the audit trail (ADR-39)
 │   └── tests/               # pytest: api + queue tests (incl. real-Postgres SKIP LOCKED tests),
 │                            #   plus the pipeline/ subtree owned by the pipeline agent
-├── frontend/               # Next.js 15 (App Router) + TypeScript + Tailwind — 3 screens
-│   ├── app/                 # routes: / (submit) and /analyses/[id] (progress → results / error)
+├── frontend/               # Next.js 15 (App Router) + TypeScript + Tailwind
+│   ├── app/                 # routes: / (landing), login, signup, dashboard,
+│   │                        #   analyses/[id], checker, ai-visibility, search-visibility,
+│   │                        #   site-audit, settings, methodology, admin (the Admin
+│   │                        #   Panel: members, invitations, audit log) and the public
+│   │                        #   invite/[token] accept page
 │   ├── components/          # Button, UrlForm, StepProgress, ScoreGauge, ResultsTable
 │   ├── lib/                 # api.ts (fetch wrapper), types.ts (GENERATED from openapi.json),
 │   │                        #   contracts.ts (hand-maintained friendly aliases over types.ts), score.ts
@@ -111,9 +118,11 @@ their normal owner, **also require the lead's review** on every change:
 | Path | Owner |
 | --- | --- |
 | `backend/` (spine: `pyproject.toml`, `Dockerfile`, `alembic/`, `app/{config,worker}.py`, `app/api/**`, `app/db/**`, `app/jobs/**`, `app/services/**`, `tests/{conftest,test_api,test_queue,test_queue_postgres}.py`) | backend-spine agent |
-| `backend/app/pipeline/**`, `backend/app/providers/**`, `backend/tests/pipeline/**` | pipeline agent |
+| `backend/app/pipeline/**`, `backend/app/providers/**`, `backend/app/serp/**`, `backend/tests/pipeline/**` | pipeline agent |
+| `backend/app/site_audit/**` | its own agent when one is running; otherwise the directory rule puts it with backend-spine |
+| `backend/app/backlink/**` | its own agent when one is running; otherwise the directory rule puts it with backend-spine |
 | `frontend/**` | frontend agent |
-| `shared/contracts/openapi.json` | generated — no owner hand-edits (see below); **+ lead review** |
+| `shared/contracts/**` (`openapi.json`, `checker_methodology.json`) | generated — no owner hand-edits (see below); **+ lead review** |
 | `Makefile`, `deploy/**`, `scripts/**`, `.github/**`, `.gitignore`, `CONTRIBUTING.md`, `SECURITY.md` (+ README link fixes) | infra agent |
 | `docs/**` | doc agents (one file each) |
 

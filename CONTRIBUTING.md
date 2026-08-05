@@ -60,7 +60,7 @@ make test       # backend (pytest) + frontend (vitest)
 ```
 
 If you changed the API contract (any Pydantic request/response schema), also run
-`make gen-types` and commit the regenerated `shared/contracts/openapi.json` and
+`make gen-types` and commit the regenerated `the regenerated `shared/contracts/` files (`openapi.json`, `checker_methodology.json`)` and
 `frontend/lib/types.ts`. CI fails on contract drift.
 
 ## Two rules that never bend

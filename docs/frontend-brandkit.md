@@ -11,7 +11,7 @@ system: deep petrol ink + echo teal, Sora + IBM Plex Mono. The source of truth i
 doc or component quotes the dead indigo/slate hexes.
 
 See also: [architecture.md](architecture.md) (the API these components render),
-[mvp.md](mvp.md) (the two screens they live on).
+[02-mvp.md](02-mvp.md) (the two screens they live on).
 
 ---
 

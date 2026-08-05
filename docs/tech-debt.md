@@ -4,7 +4,23 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-05 (session 21, the first Phase 7 build session.
+Last updated: 2026-08-05 (**session 22** — the Admin Panel session).
+
+**Session 22 changes to this list, up front:** **#52 REPAID** (an account now
+grants something — the Admin Panel is a real signed-in destination that invites,
+assigns roles and shows the audit trail). **#57 PARTIALLY REPAID** (a formatting
+gate exists, scoped to changed files; the repo-wide sweep is what remains).
+**Four new items — #59** (`audit.emit` swallows its own errors, so the trail is
+tamper-evident but not loss-evident), **#60** (workspace-scoped roles are
+honoured at org grain; `workspace_grants` was never built), **#61** (the
+organization profile is read-only — no PATCH), **#62** (the frontend has no
+Prettier config, so `make fmt` would rewrite it into a style nobody chose).
+**#54's documentation half is sharpened, not repaid** — see the item for the
+exact sections of `architecture.md` still describing the retired four-engine
+pipeline. Measured suite at session 22 close: **835 backend passed / 7 skipped**
+with Postgres (820/22 hermetic), **281 frontend across 51 files**.
+
+Earlier — 2026-08-05 (session 21, the first Phase 7 build session.
 **One latent production hazard found and repaid in the same pass, before it
 fired:** `alembic check` failed on a clean, fully-migrated database — eight
 indexes existed only in migrations and never in `Base.metadata`, which
@@ -693,9 +709,28 @@ devDependencies).)
     **#58**). The **B7** key edge is verified satisfied in production and
     ticked. `execute.py` is confirmed dead on every runtime path and
     deliberately **kept** — that decision is now recorded in ADR-34 rather than
-    left open, and belongs to M4. **Still open:** architecture.md §1–2 and the
-    README still describe the four-engine panel execute; that sync is the
-    remaining half of this item.
+    left open, and belongs to M4. **Still open:** the doc sync. Session 22's docs
+    inventory audit pinned exactly what is wrong, so this no longer needs
+    rediscovering:
+
+    - `docs/architecture.md` §1's provider diagram, §2's steps 4/5/6, the
+      DRY_RUN / mock-path section and the result-shape line all still describe
+      the four-engine panel and the `footprints / total` score. The live path is
+      measured/simulated (Tavily + OpenRouter, **one Response per prompt**, a
+      composite `geo_score`, a `geo_records` twin). §3 — the Admin Panel section
+      added in session 22 — is accurate and must be left alone.
+    - `docs/architecture.md`'s table list omits `geo_records`.
+    - `docs/test-suite.md`'s scoring and execute bullets, and two rows of its
+      acceptance map, teach the pre-PR-#11 definition of done.
+    - `docs/02-mvp.md` §5/§8 (scoring formula) and §3 step 5 (engines) also
+      contradict the live pipeline — but that doc is cited by `session-rules.md`
+      as the **scope authority**, so rewriting it changes what that authority
+      *is*. That is an operator decision, recorded in the session-22 log's
+      docs-audit section, not something to fix in passing. (FR-6's "two routes"
+      claim is plainly wrong regardless and can go either way.)
+
+    The README half **is** repaid as of session 22: its mini-map and
+    Make-target rows now describe the real surface.
 55. **The Site Audit backend (PR #23) is merged but undocumented beyond
     `site-audit-integration.md`, unhardened, and unreachable** (2026-08-05,
     session 20; merged 2026-08-03/04 outside the session process). It ships

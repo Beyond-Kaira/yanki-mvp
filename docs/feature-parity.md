@@ -1,5 +1,17 @@
 # Yanki — Competitive Feature Parity Analysis
 
+> **Dated snapshot — read the banner before the table.** This parity analysis
+> was taken 2026-08-05, and M1 stages A1–A4 plus the M2 backlink engine landed
+> *after* it. The "Yanki today" column is therefore wrong in three families of
+> rows: **organizations / seats / roles** are built (backend + Admin Panel UI),
+> **audit logging** is emitted, queryable and tamper-evident rather than "not
+> even emitted", and **backlinks** are an engine behind a flag rather than
+> nothing — with no API router and no UI, so the customer-facing verdict of ✖
+> still stands for that row. Everything else in the table was re-checked at
+> session 22 close and holds. The parity *verdicts* are unchanged; only those
+> current-state cells moved.
+
+
 *Audience: founders, PM, engineering leads. This document is the canonical
 answer to "what does the category consider table-stakes, and which of it does
 Yanki have?" It drives the parity portion of the roadmap

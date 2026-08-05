@@ -405,13 +405,30 @@ read.
 
 ### Readiness snapshot (updated at each session close)
 
-Last updated: 2026-08-05 (session 21 close). **Measured this session, on the
-merged branch, before any change: the suite is 488 backend (7 skipped) + 205
-frontend across 41 files.** Every count below this line is the number that was
-true at the session it describes — historical, not current; the 170/65 figure
-in particular is three sessions stale and was never a claim about today. Prod
-is live and healthy on `a326159` with real measured analyses completing (see
-`sessions/2026-08-05-02.md` §1.1). Earlier — 2026-07-10 (session 13 close —
+Last updated: 2026-08-05 (**session 22 close**).
+
+**Measured at session 22 close, on branch `feat/admin-panel-invitations-audit`:**
+
+| Metric | Value | How it was obtained |
+|---|---|---|
+| Backend suite (`make test` path, Postgres) | **835 passed, 7 skipped** | `TEST_DATABASE_URL=…` + `uv run pytest` |
+| Backend suite (default, hermetic SQLite) | **820 passed, 22 skipped** | `uv run pytest` — the extra 15 skips are the three Postgres-only modules |
+| Frontend suite | **281 passed, 51 files** | `npm test -- --run` |
+| End-to-end | **31 Playwright tests** | against a live API + web pair on a migrated Postgres |
+| Migrations | up clean · **zero model drift** · down reverses | real Postgres 16 |
+
+**Production is NOT on this branch.** Prod runs `yanki-api:f4c33e8` at alembic
+`0017_user_status`; this branch adds `0018` and has never been pushed or
+merged. The session-21 line below said prod was on `a326159`; that is
+superseded — `f4c33e8` is the tip of `main` and what is deployed.
+
+Every count *below this line* is the number that was true at the session it
+describes — historical, not current. Treat any figure in the bullets that
+follows (146/31, 170/65, 488/205) as an archive of its own moment, never as a
+claim about today. Earlier — 2026-08-05 (session 21 close): 488 backend
+(7 skipped) + 205 frontend across 41 files; prod healthy on `a326159` with real
+measured analyses completing (`sessions/2026-08-05-02.md` §1.1). Earlier —
+2026-07-10 (session 13 close —
 P5.4, P5.5, P5.7, P5.10, P5.12, P5.13 all shipped and deployed dark; the build
 phase of the plan is complete).
 

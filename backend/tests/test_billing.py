@@ -314,3 +314,51 @@ def test_ledgers_do_not_bleed_between_orgs(db_session, org):
 
     assert billing.balance(db_session, org.id) == Decimal("10")
     assert billing.balance(db_session, other.id) == Decimal("0")
+
+
+# --------------------------------------------------------------------------
+# The catalog must never be empty in a deployed database
+# --------------------------------------------------------------------------
+
+
+def test_an_empty_catalog_refuses_everything(db_session):
+    """Why migration 0016 exists.
+
+    `limit_for` falls back to Free rather than to unlimited, on purpose — an
+    unknown plan defaulting to unlimited would make every misconfiguration a
+    free-spend bug. But with no Free row to fall back TO, the fallback returns
+    0, which reads as "you may do none of this". Fail-closed is the right
+    direction and a total refusal is still an outage, which is why the catalog
+    is seeded by a migration rather than left to a startup hook that nothing
+    calls. Production ran with `plans` empty until this was caught.
+    """
+
+    from app.db.models import Organization
+
+    org = Organization(name="Empty", slug="empty-catalog", kind="company")
+    db_session.add(org)
+    db_session.commit()
+
+    # No plans seeded at all.
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(Plan)) == 0
+    assert billing.limit_for(db_session, org.id, METRIC_ANALYSES) == 0
+
+    with pytest.raises(QuotaExceeded):
+        billing.consume_quota(db_session, org.id, METRIC_ANALYSES)
+
+
+def test_the_seeded_catalog_covers_every_metric_the_code_meters(db_session):
+    """A metric the code checks but no plan declares would read as unlimited."""
+
+    billing.seed_plans(db_session)
+    db_session.commit()
+
+    metered = {
+        billing.METRIC_ANALYSES,
+        billing.METRIC_SITE_AUDITS,
+        billing.METRIC_BACKLINK_REFRESHES,
+        billing.METRIC_PROJECTS,
+    }
+    for plan in db_session.scalars(sa.select(Plan)):
+        missing = metered - set(plan.limits)
+        assert not missing, f"{plan.key} does not declare {missing}"

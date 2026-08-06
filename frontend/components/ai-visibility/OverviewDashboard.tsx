@@ -1,28 +1,29 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import type { ReactNode } from 'react'
+import Link from "next/link";
+import type { ReactNode } from "react";
 import {
   IconCheck,
   IconChevron,
   IconInfo,
   IconShield,
-} from '@/components/shell/icons'
-import type { AiOverviewModel } from '@/lib/ai-overview'
-import MentionShare from '@/components/insights/MentionShare'
-import MultiLlmComparison from '@/components/insights/MultiLlmComparison'
-import NamingOrder from '@/components/insights/NamingOrder'
+} from "@/components/shell/icons";
+import type { AiOverviewModel } from "@/lib/ai-overview";
+import MentionShare from "@/components/insights/MentionShare";
+import MultiLlmComparison from "@/components/insights/MultiLlmComparison";
+import NamingOrder from "@/components/insights/NamingOrder";
+import OverviewInsightCards from "@/components/ai-visibility/OverviewInsightCards";
 
 interface OverviewDashboardProps {
-  model: AiOverviewModel
+  model: AiOverviewModel;
 }
 
 function MetricCard({
   label,
   children,
 }: {
-  label: string
-  children: ReactNode
+  label: string;
+  children: ReactNode;
 }) {
   return (
     <section className="rounded-2xl border border-surface-border bg-surface p-5 shadow-sm">
@@ -32,14 +33,14 @@ function MetricCard({
       </div>
       {children}
     </section>
-  )
+  );
 }
 
 function Donut({ value }: { value: number }) {
-  const clamped = Math.max(0, Math.min(100, value))
-  const r = 36
-  const c = 2 * Math.PI * r
-  const offset = c * (1 - clamped / 100)
+  const clamped = Math.max(0, Math.min(100, value));
+  const r = 36;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - clamped / 100);
   return (
     <svg viewBox="0 0 96 96" className="h-20 w-20" aria-hidden>
       <circle
@@ -63,37 +64,37 @@ function Donut({ value }: { value: number }) {
         transform="rotate(-90 48 48)"
       />
     </svg>
-  )
+  );
 }
 
 function Sparkline({ points }: { points: number[] }) {
-  const w = 120
-  const h = 36
-  const min = Math.min(...points)
-  const max = Math.max(...points)
-  const span = max - min || 1
+  const w = 120;
+  const h = 36;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
   const d = points
     .map((p, i) => {
-      const x = (i / (points.length - 1)) * w
-      const y = h - ((p - min) / span) * (h - 4) - 2
-      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+      const x = (i / (points.length - 1)) * w;
+      const y = h - ((p - min) / span) * (h - 4) - 2;
+      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
     })
-    .join(' ')
+    .join(" ");
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="h-9 w-28" aria-hidden>
       <path d={d} fill="none" className="stroke-primary" strokeWidth="2" />
     </svg>
-  )
+  );
 }
 
 export default function OverviewDashboard({ model }: OverviewDashboardProps) {
-  const geo = model.geoScore
+  const geo = model.geoScore;
   const citePct =
-    model.citeRate == null ? null : Math.round(model.citeRate * 1000) / 10
+    model.citeRate == null ? null : Math.round(model.citeRate * 1000) / 10;
   const reliability =
     model.reliability == null
       ? null
-      : Math.round(model.reliability * 100) / 100
+      : Math.round(model.reliability * 100) / 100;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8">
@@ -102,7 +103,7 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
           AI Visibility
         </h1>
         <p className="mt-1 text-sm text-surface-subtle">
-          Overview ·{' '}
+          Overview ·{" "}
           <span className="font-medium text-primary">{model.domain}</span>
           {model.isSample ? (
             <span className="ml-2 rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-medium text-warning-strong">
@@ -117,18 +118,22 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
           <div className="flex items-center justify-between gap-3">
             <div>
               {geo == null ? (
-                <p className="text-3xl font-semibold text-surface-subtle">N/A</p>
+                <p className="text-3xl font-semibold text-surface-subtle">
+                  N/A
+                </p>
               ) : (
                 <p className="text-3xl font-semibold tabular-nums">
                   {geo}
                   <span className="text-lg font-normal text-surface-subtle">
-                    {' '}
+                    {" "}
                     /100
                   </span>
                 </p>
               )}
               <p className="mt-2 text-xs font-medium text-success">
-                {model.isSample ? '+6 vs last 7 days' : 'From latest measured run'}
+                {model.isSample
+                  ? "+6 vs last 7 days"
+                  : "From latest measured run"}
               </p>
             </div>
             {geo != null ? <Donut value={geo} /> : null}
@@ -139,12 +144,16 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
           <div className="flex items-end justify-between gap-3">
             <div>
               {citePct == null ? (
-                <p className="text-3xl font-semibold text-surface-subtle">N/A</p>
+                <p className="text-3xl font-semibold text-surface-subtle">
+                  N/A
+                </p>
               ) : (
-                <p className="text-3xl font-semibold tabular-nums">{citePct}%</p>
+                <p className="text-3xl font-semibold tabular-nums">
+                  {citePct}%
+                </p>
               )}
               <p className="mt-2 text-xs font-medium text-success">
-                {model.isSample ? '+3 pp vs last 7 days' : 'Mentions / answers'}
+                {model.isSample ? "+3 pp vs last 7 days" : "Mentions / answers"}
               </p>
             </div>
             <Sparkline points={[8, 10, 9, 12, 14, 13, 18]} />
@@ -155,20 +164,29 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
           <div className="flex items-end justify-between gap-3">
             <div>
               {reliability == null ? (
-                <p className="text-3xl font-semibold text-surface-subtle">N/A</p>
+                <p className="text-3xl font-semibold text-surface-subtle">
+                  N/A
+                </p>
               ) : (
                 <p className="text-3xl font-semibold tabular-nums">
                   {reliability.toFixed(2)}
                 </p>
               )}
               <p className="mt-2 text-xs font-medium text-success">
-                {model.isSample ? '+0.06 vs last 7 days' : 'Claim audit score'}
+                {model.isSample ? "+0.06 vs last 7 days" : "Claim audit score"}
               </p>
             </div>
             <Sparkline points={[0.55, 0.6, 0.58, 0.66, 0.7, 0.72, 0.77]} />
           </div>
         </MetricCard>
       </div>
+
+      {model.insights ? (
+        <OverviewInsightCards
+          insights={model.insights}
+          analysisId={model.analysisId}
+        />
+      ) : null}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <section className="rounded-2xl border border-surface-border bg-surface p-5 shadow-sm">
@@ -186,7 +204,9 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
                 <thead className="bg-surface-muted text-xs uppercase tracking-wide text-surface-subtle">
                   <tr>
                     <th className="px-3 py-2 font-medium">Domain</th>
-                    <th className="px-3 py-2 text-right font-medium">Citations</th>
+                    <th className="px-3 py-2 text-right font-medium">
+                      Citations
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -221,7 +241,7 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
             href={
               model.analysisId
                 ? `/ai-visibility/citations?analysis=${model.analysisId}`
-                : '/ai-visibility/citations'
+                : "/ai-visibility/citations"
             }
             className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover"
           >
@@ -261,7 +281,7 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
             href={
               model.analysisId
                 ? `/ai-visibility/drivers?analysis=${model.analysisId}`
-                : '/ai-visibility/drivers'
+                : "/ai-visibility/drivers"
             }
             className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover"
           >
@@ -285,8 +305,8 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
       <p className="mt-8 flex items-center gap-2 text-xs text-surface-subtle">
         <IconShield className="h-3.5 w-3.5" />
         Data from measured GEO audit
-        {model.analysisId ? ` · ${model.analysisId.slice(0, 8)}…` : ''}
+        {model.analysisId ? ` · ${model.analysisId.slice(0, 8)}…` : ""}
       </p>
     </div>
-  )
+  );
 }

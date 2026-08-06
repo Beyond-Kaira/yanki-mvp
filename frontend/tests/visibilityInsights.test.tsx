@@ -1,11 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import IntentHeatmap from "@/components/charts/IntentHeatmap";
+import OverviewInsightCards from "@/components/ai-visibility/OverviewInsightCards";
 import EntityCoverage from "@/components/insights/EntityCoverage";
 import EntityLandscape from "@/components/insights/EntityLandscape";
 import MentionShare from "@/components/insights/MentionShare";
 import MultiLlmComparison from "@/components/insights/MultiLlmComparison";
 import type { EngineInsight } from "@/lib/insights";
+import type { Insights } from "@/lib/insights";
 
 const engines: EngineInsight[] = [
   {
@@ -166,5 +168,50 @@ describe("visibility insights", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Cobot")).toBeInTheDocument();
     expect(screen.getByText("3/12")).toBeInTheDocument();
+  });
+
+  it("links simple overview charts to their detail pages", () => {
+    const insights: Insights = {
+      brand: "Yanki Demo Co",
+      subject: "warehouse automation",
+      promptSet: "mvp",
+      scoredAnswers: 8,
+      probe: null,
+      engines,
+      gap: {
+        answersLost: 2,
+        total: 8,
+        categories: [],
+      },
+      entityCoverage: {
+        present: 2,
+        total: 4,
+        entities: [],
+      },
+      entityLandscape: {
+        coreThreshold: 4,
+        entities: [],
+      },
+      drivers: [],
+    };
+
+    render(
+      <OverviewInsightCards insights={insights} analysisId="analysis-123" />,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Visibility gap: 2 of 8 answers" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Entity coverage: 2 of 4 profile terms",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "View gap details →" }),
+    ).toHaveAttribute("href", "/ai-visibility/drivers?analysis=analysis-123");
+    expect(
+      screen.getByRole("link", { name: "View entity details →" }),
+    ).toHaveAttribute("href", "/ai-visibility/entities?analysis=analysis-123");
   });
 });

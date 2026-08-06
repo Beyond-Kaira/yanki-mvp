@@ -83,7 +83,7 @@ export default function OverviewInsightCards({
         <div className="flex items-center justify-between gap-5">
           <div className="min-w-0">
             <h2 className="text-sm font-medium text-surface-foreground">
-              Visibility gap
+              Answer visibility gap
             </h2>
             <p className="mt-2 text-2xl font-semibold tabular-nums text-surface-foreground">
               {insights.gap.answersLost}/{insights.gap.total}
@@ -92,7 +92,8 @@ export default function OverviewInsightCards({
               </span>
             </p>
             <p className="mt-1 text-xs leading-5 text-surface-subtle">
-              Named another brand and left {insights.brand} out.
+              Competitor-only answers; other outcomes may include no-signal
+              results.
             </p>
           </div>
           <MiniRing
@@ -105,7 +106,7 @@ export default function OverviewInsightCards({
           href={detailHref("/ai-visibility/drivers", analysisId)}
           className="mt-4 inline-flex text-sm font-medium text-primary hover:text-primary-hover"
         >
-          View gap details →
+          View answer gap details →
         </Link>
       </article>
 

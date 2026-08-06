@@ -226,6 +226,7 @@ export interface ClaimBucket {
   category: string
   label: string
   claims: string[]
+  sourceCount: number
 }
 
 export interface InterventionDetail {
@@ -248,29 +249,39 @@ function collectCategoryClaims(
   analysis: Analysis,
   field: 'visibility_drivers' | 'visibility_gaps',
 ): ClaimBucket[] {
-  const byCategory = new Map<string, Set<string>>()
+  const byCategory = new Map<
+    string,
+    { claims: Set<string>; sources: Set<string> }
+  >()
 
   for (const record of analysis.result.geo_records ?? []) {
+    // The answer-performance modules exclude brand probes because those
+    // questions name the brand by design. Keep diagnostics on the same scope.
+    if (record.prompt_group === 'brand-probe') continue
     const block = asRecord(record[field] ?? null)
     if (!block) continue
     for (const [category, value] of Object.entries(block)) {
       if (!Array.isArray(value)) continue
-      let set = byCategory.get(category)
-      if (!set) {
-        set = new Set()
-        byCategory.set(category, set)
+      let bucket = byCategory.get(category)
+      if (!bucket) {
+        bucket = { claims: new Set(), sources: new Set() }
+        byCategory.set(category, bucket)
       }
       for (const claim of value) {
-        if (typeof claim === 'string' && claim.trim()) set.add(claim.trim())
+        if (typeof claim === 'string' && claim.trim()) {
+          bucket.claims.add(claim.trim())
+          bucket.sources.add(record.id)
+        }
       }
     }
   }
 
   return [...byCategory.entries()]
-    .map(([category, claims]) => ({
+    .map(([category, bucket]) => ({
       category,
       label: humanizeKey(category),
-      claims: [...claims],
+      claims: [...bucket.claims],
+      sourceCount: bucket.sources.size,
     }))
     .filter((bucket) => bucket.claims.length > 0)
     .sort((a, b) => b.claims.length - a.claims.length)

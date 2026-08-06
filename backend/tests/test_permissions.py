@@ -138,6 +138,13 @@ def test_guest_grants_are_built_up_not_inherited_from_viewer():
         (perm.VIEWER, perm.BACKLINK_VIEW, True),
         (perm.VIEWER, perm.BACKLINK_REFRESH, False),
         (perm.ANALYST, perm.BACKLINK_REFRESH, True),
+        # Connecting a Google account (M3) is a standing third-party grant, so
+        # it sits with the other consequential acts rather than with the reads.
+        (perm.GUEST, perm.GSC_CONNECT, False),
+        (perm.VIEWER, perm.GSC_CONNECT, False),
+        (perm.ANALYST, perm.GSC_CONNECT, True),
+        (perm.EDITOR, perm.GSC_CONNECT, True),
+        (perm.OWNER, perm.GSC_CONNECT, True),
         # Platform roles.
         (perm.SUPPORT, perm.PLATFORM_READ, True),
         (perm.SUPPORT, perm.PLATFORM_MANAGE, False),

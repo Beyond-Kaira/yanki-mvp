@@ -6,14 +6,25 @@ import type { SeoProjectDetail, SiteAuditDetail } from '@/lib/contracts'
 const mockedUseAuth = vi.hoisted(() => vi.fn())
 const mockedGetSeoProject = vi.hoisted(() => vi.fn())
 const mockedGetSiteAudit = vi.hoisted(() => vi.fn())
+// The detail page now also renders the Search Console card, so its dependencies
+// have to be stubbed here even though this file asserts nothing about them.
+// `SearchConsoleConnectionCard.test.tsx` is where that card is actually tested.
+const mockedListSearchConsoleConnections = vi.hoisted(() => vi.fn())
+const mockedGetSearchConsolePerformance = vi.hoisted(() => vi.fn())
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ projectId: 'project-1' }),
+  useRouter: () => ({ replace: vi.fn() }),
+  usePathname: () => '/site-audit/project-1',
 }))
 vi.mock('@/components/AuthProvider', () => ({ useAuth: mockedUseAuth }))
 vi.mock('@/lib/api', () => ({
   getSeoProject: mockedGetSeoProject,
   getSiteAudit: mockedGetSiteAudit,
+  listSearchConsoleConnections: mockedListSearchConsoleConnections,
+  getSearchConsolePerformance: mockedGetSearchConsolePerformance,
+  startSearchConsoleConnect: vi.fn(),
+  unlinkSearchConsoleProperty: vi.fn(),
 }))
 
 import SiteAuditProjectDetail from '@/components/site-audit/detail/SiteAuditProjectDetail'
@@ -50,6 +61,11 @@ describe('SiteAuditProjectDetail', () => {
     mockedUseAuth.mockReturnValue({ status: 'authenticated', user: null })
     mockedGetSeoProject.mockResolvedValue(PROJECT)
     mockedGetSiteAudit.mockResolvedValue(AUDIT)
+    mockedListSearchConsoleConnections.mockResolvedValue({
+      project_status: 'no_connection',
+      connections: [],
+    })
+    mockedGetSearchConsolePerformance.mockResolvedValue(null)
   })
 
   it('loads the project and renders only backend audit values', async () => {

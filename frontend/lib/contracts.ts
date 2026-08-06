@@ -147,6 +147,32 @@ export type SiteAuditSchema = Schemas['SiteAuditSchemaOut']
 
 export type CreateSeoProjectInput = Schemas['CreateSeoProjectRequest']
 
+// --- Google Search Console ------------------------------------------------
+
+export type SearchConsoleConnectStart = Schemas['SearchConsoleConnectStartOut']
+
+export type SearchConsoleConnection = Schemas['SearchConsoleConnectionOut']
+
+export type SearchConsoleConnections = Schemas['SearchConsoleConnectionsOut']
+
+// 'no_connection' | 'no_property_selected' | 'connected' | 'reauth_required'.
+// Generated as a union already, named here so the card can switch on it.
+export type SearchConsoleProjectStatus =
+  SearchConsoleConnections['project_status']
+
+export type SearchConsoleProperty = Schemas['SearchConsolePropertyOut']
+
+export type SearchConsoleProperties = Schemas['SearchConsolePropertiesOut']
+
+export type SearchConsolePropertyLink = Schemas['SearchConsolePropertyLinkOut']
+
+export type SearchConsolePropertyLinkInput =
+  Schemas['SearchConsolePropertyLinkRequest']
+
+export type SearchConsolePerformance = Schemas['SearchConsolePerformanceOut']
+
+export type SearchConsoleMetrics = Schemas['SearchConsoleMetricsOut']
+
 // --- Administration -------------------------------------------------------
 
 export type AdminMember = Schemas['AdminMemberOut']

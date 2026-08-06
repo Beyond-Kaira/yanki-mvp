@@ -6,10 +6,25 @@ import { axeCheck } from './a11y'
 const mockedUseAuth = vi.hoisted(() => vi.fn())
 const mockedGetSeoProject = vi.hoisted(() => vi.fn())
 const mockedGetSiteAudit = vi.hoisted(() => vi.fn())
+// The Search Console card renders inside the detail page now; stubbed here so
+// this file keeps auditing the page it is named after.
+const mockedListSearchConsoleConnections = vi.hoisted(() => vi.fn())
+const mockedGetSearchConsolePerformance = vi.hoisted(() => vi.fn())
 
-vi.mock('next/navigation', () => ({ useParams: () => ({ projectId: 'project-1' }) }))
+vi.mock('next/navigation', () => ({
+  useParams: () => ({ projectId: 'project-1' }),
+  useRouter: () => ({ replace: vi.fn() }),
+  usePathname: () => '/site-audit/project-1',
+}))
 vi.mock('@/components/AuthProvider', () => ({ useAuth: mockedUseAuth }))
-vi.mock('@/lib/api', () => ({ getSeoProject: mockedGetSeoProject, getSiteAudit: mockedGetSiteAudit }))
+vi.mock('@/lib/api', () => ({
+  getSeoProject: mockedGetSeoProject,
+  getSiteAudit: mockedGetSiteAudit,
+  listSearchConsoleConnections: mockedListSearchConsoleConnections,
+  getSearchConsolePerformance: mockedGetSearchConsolePerformance,
+  startSearchConsoleConnect: vi.fn(),
+  unlinkSearchConsoleProperty: vi.fn(),
+}))
 
 import SiteAuditProjectDetail from '@/components/site-audit/detail/SiteAuditProjectDetail'
 
@@ -33,6 +48,11 @@ describe('SiteAuditProjectDetail accessibility', () => {
     mockedUseAuth.mockReturnValue({ status: 'authenticated', user: null })
     mockedGetSeoProject.mockResolvedValue(PROJECT)
     mockedGetSiteAudit.mockResolvedValue(AUDIT)
+    mockedListSearchConsoleConnections.mockResolvedValue({
+      project_status: 'no_connection',
+      connections: [],
+    })
+    mockedGetSearchConsolePerformance.mockResolvedValue(null)
   })
 
   it('has no axe violations in the project overview', async () => {

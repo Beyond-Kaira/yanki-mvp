@@ -86,6 +86,12 @@ ANALYSIS_READ = "analysis:read"
 AUDIT_RUN = "site_audit:run"
 BACKLINK_VIEW = "backlink:view"
 BACKLINK_REFRESH = "backlink:refresh"
+# Authorizing Yanki against a third-party account is a consequential act, not a
+# read: it creates a standing grant on somebody else's Google estate. It sits
+# with AUDIT_RUN and BACKLINK_REFRESH rather than with the view permissions for
+# that reason — Viewer and Guest can see that a project is connected and cannot
+# connect or disconnect one.
+GSC_CONNECT = "gsc:connect"
 
 # Reports
 REPORT_DRAFT = "report:draft"
@@ -129,6 +135,7 @@ ALL_PERMISSIONS = frozenset(
         AUDIT_RUN,
         BACKLINK_VIEW,
         BACKLINK_REFRESH,
+        GSC_CONNECT,
         REPORT_DRAFT,
         REPORT_SEND,
         EXPORT,
@@ -157,7 +164,14 @@ _VIEWER: frozenset[str] = frozenset(
 # later cannot leak into it by inheritance.
 _GUEST: frozenset[str] = frozenset({PROJECT_READ, ANALYSIS_READ})
 
-_ANALYST = _VIEWER | {ANALYSIS_RUN, AUDIT_RUN, BACKLINK_REFRESH, REPORT_DRAFT, EXPORT}
+_ANALYST = _VIEWER | {
+    ANALYSIS_RUN,
+    AUDIT_RUN,
+    BACKLINK_REFRESH,
+    GSC_CONNECT,
+    REPORT_DRAFT,
+    EXPORT,
+}
 _EDITOR = _ANALYST | {PROJECT_CREATE, PROJECT_UPDATE, REPORT_SEND}
 _MANAGER = _EDITOR | {
     WORKSPACE_CREATE,

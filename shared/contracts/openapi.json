@@ -2636,6 +2636,390 @@
         "title": "ResultOut",
         "type": "object"
       },
+      "SearchConsoleConnectStartOut": {
+        "description": "Where to send the browser to authorize Yanki against Google.",
+        "properties": {
+          "authorization_url": {
+            "description": "Absolute Google OAuth 2.0 authorization URL. The frontend performs a full-page navigation to it; it carries no client secret and is single-use, because the state inside it is.",
+            "title": "Authorization Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_url"
+        ],
+        "title": "SearchConsoleConnectStartOut",
+        "type": "object"
+      },
+      "SearchConsoleConnectionOut": {
+        "description": "One connected Google account, as it is safe to describe it.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "google_account_email": {
+            "description": "From the verified ID token. Shown so several accounts can be told apart.",
+            "title": "Google Account Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Scopes Google actually granted, not the ones requested.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "selected_for_project": {
+            "description": "Whether this project's Search Console property comes from this account.",
+            "title": "Selected For Project",
+            "type": "boolean"
+          },
+          "selected_site_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The linked property, when this account is the selected one.",
+            "title": "Selected Site Url"
+          },
+          "status": {
+            "description": "'active' or 'reauth_required'.",
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "google_account_email",
+          "status",
+          "scopes",
+          "created_at",
+          "updated_at",
+          "selected_for_project"
+        ],
+        "title": "SearchConsoleConnectionOut",
+        "type": "object"
+      },
+      "SearchConsoleConnectionsOut": {
+        "description": "Every Google account in the organization, plus this project's standing.",
+        "properties": {
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/SearchConsoleConnectionOut"
+            },
+            "title": "Connections",
+            "type": "array"
+          },
+          "project_status": {
+            "enum": [
+              "no_connection",
+              "no_property_selected",
+              "connected",
+              "reauth_required"
+            ],
+            "title": "Project Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_status",
+          "connections"
+        ],
+        "title": "SearchConsoleConnectionsOut",
+        "type": "object"
+      },
+      "SearchConsoleMetricsOut": {
+        "description": "Property-wide totals for the window.\n\n``ctr`` and ``position`` are null rather than 0 when there were no\nimpressions: an average over nothing is not zero, and a position of 0 would\nread as \"ranked above the first result\".",
+        "properties": {
+          "clicks": {
+            "title": "Clicks",
+            "type": "number"
+          },
+          "ctr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ctr"
+          },
+          "impressions": {
+            "title": "Impressions",
+            "type": "number"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "required": [
+          "clicks",
+          "impressions",
+          "ctr",
+          "position"
+        ],
+        "title": "SearchConsoleMetricsOut",
+        "type": "object"
+      },
+      "SearchConsolePerformanceOut": {
+        "description": "Live Search Console performance. Nothing here is cached server-side.",
+        "properties": {
+          "data_state": {
+            "enum": [
+              "ok",
+              "no_data"
+            ],
+            "title": "Data State",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "site_url": {
+            "title": "Site Url",
+            "type": "string"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SearchConsoleMetricsOut"
+          },
+          "top_pages": {
+            "items": {
+              "$ref": "#/components/schemas/SearchConsoleRowOut"
+            },
+            "title": "Top Pages",
+            "type": "array"
+          },
+          "top_queries": {
+            "items": {
+              "$ref": "#/components/schemas/SearchConsoleRowOut"
+            },
+            "title": "Top Queries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "site_url",
+          "start_date",
+          "end_date",
+          "data_state",
+          "summary",
+          "top_queries",
+          "top_pages"
+        ],
+        "title": "SearchConsolePerformanceOut",
+        "type": "object"
+      },
+      "SearchConsolePropertiesOut": {
+        "description": "The pick-list, ordered suggested-first then selected then alphabetical.",
+        "properties": {
+          "google_account_email": {
+            "title": "Google Account Email",
+            "type": "string"
+          },
+          "google_connection_id": {
+            "format": "uuid",
+            "title": "Google Connection Id",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/SearchConsolePropertyOut"
+            },
+            "title": "Properties",
+            "type": "array"
+          }
+        },
+        "required": [
+          "google_connection_id",
+          "google_account_email",
+          "properties"
+        ],
+        "title": "SearchConsolePropertiesOut",
+        "type": "object"
+      },
+      "SearchConsolePropertyLinkOut": {
+        "description": "The link as it now stands.",
+        "properties": {
+          "connected_at": {
+            "format": "date-time",
+            "title": "Connected At",
+            "type": "string"
+          },
+          "google_account_email": {
+            "title": "Google Account Email",
+            "type": "string"
+          },
+          "google_connection_id": {
+            "format": "uuid",
+            "title": "Google Connection Id",
+            "type": "string"
+          },
+          "permission_level": {
+            "description": "Taken from Google's list at link time, never from the request.",
+            "title": "Permission Level",
+            "type": "string"
+          },
+          "property_type": {
+            "enum": [
+              "domain",
+              "url_prefix"
+            ],
+            "title": "Property Type",
+            "type": "string"
+          },
+          "site_url": {
+            "title": "Site Url",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "google_connection_id",
+          "google_account_email",
+          "site_url",
+          "property_type",
+          "permission_level",
+          "connected_at",
+          "updated_at"
+        ],
+        "title": "SearchConsolePropertyLinkOut",
+        "type": "object"
+      },
+      "SearchConsolePropertyLinkRequest": {
+        "description": "Which property to point this project at.\n\n``site_url`` is checked against the live list from Google before anything is\nstored \u2014 it names a choice, it does not assert one.",
+        "properties": {
+          "google_connection_id": {
+            "format": "uuid",
+            "title": "Google Connection Id",
+            "type": "string"
+          },
+          "site_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Site Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "google_connection_id",
+          "site_url"
+        ],
+        "title": "SearchConsolePropertyLinkRequest",
+        "type": "object"
+      },
+      "SearchConsolePropertyOut": {
+        "description": "One property the connected account can reach.",
+        "properties": {
+          "currently_selected": {
+            "title": "Currently Selected",
+            "type": "boolean"
+          },
+          "matches_project_domain": {
+            "description": "Exact host match against the project's domain. A suggestion only: nothing is ever linked automatically, and a non-matching property may still be chosen.",
+            "title": "Matches Project Domain",
+            "type": "boolean"
+          },
+          "permission_level": {
+            "description": "Google's permission string, unmapped.",
+            "title": "Permission Level",
+            "type": "string"
+          },
+          "property_type": {
+            "enum": [
+              "domain",
+              "url_prefix"
+            ],
+            "title": "Property Type",
+            "type": "string"
+          },
+          "site_url": {
+            "description": "Google's own identifier, verbatim \u2014 'sc-domain:example.com' or 'https://example.com/'. It is the argument every later API call needs.",
+            "title": "Site Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_url",
+          "permission_level",
+          "property_type",
+          "matches_project_domain",
+          "currently_selected"
+        ],
+        "title": "SearchConsolePropertyOut",
+        "type": "object"
+      },
+      "SearchConsoleRowOut": {
+        "description": "One query or one page.",
+        "properties": {
+          "clicks": {
+            "title": "Clicks",
+            "type": "number"
+          },
+          "ctr": {
+            "title": "Ctr",
+            "type": "number"
+          },
+          "impressions": {
+            "title": "Impressions",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "clicks",
+          "impressions",
+          "ctr",
+          "position"
+        ],
+        "title": "SearchConsoleRowOut",
+        "type": "object"
+      },
       "SeoAuditOut": {
         "description": "The SEO audit for one analysis (ADR-31).\n\n``grade`` is the headline rather than ``score``, because a weighted average\ncan hide a fatal problem: the grade is capped by critical failures, so a site\nthat blocks AI crawlers cannot present as healthy. Null on runs that did not\naudit \u2014 a checker submission has no site to look at.",
         "properties": {
@@ -6685,6 +7069,453 @@
         "summary": "Read Summary",
         "tags": [
           "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/search-console/connect": {
+      "post": {
+        "description": "Begin an authorization attempt and return where to send the browser.\n\n201 rather than 200: this creates a short-lived, single-use attempt. The\nresponse deliberately carries nothing but the URL \u2014 the state, nonce and\nPKCE verifier stay server-side, and only the state's hash is stored.",
+        "operationId": "start_search_console_connect_api_v1_seo_projects__project_id__search_console_connect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConsoleConnectStartOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Search Console Connect",
+        "tags": [
+          "search-console"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/search-console/connections": {
+      "get": {
+        "description": "The organization's Google accounts, and where this project stands.\n\nA read, so ``project:read`` rather than ``gsc:connect`` \u2014 a Viewer may see\nthat a project is connected without being able to change it. Nothing here\ncalls Google: it is entirely local state, which is what makes it safe to\npoll and cheap to render.",
+        "operationId": "list_search_console_connections_api_v1_seo_projects__project_id__search_console_connections_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConsoleConnectionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Search Console Connections",
+        "tags": [
+          "search-console"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/search-console/connections/{connection_id}/properties": {
+      "get": {
+        "description": "What this Google account can reach, ordered so the obvious choice is first.\n\n``gsc:connect`` rather than ``project:read``: this spends a token refresh\nand a Search Console call on every request, and it is the list a user picks\nfrom \u2014 both belong to the role that may change the connection.",
+        "operationId": "list_search_console_properties_api_v1_seo_projects__project_id__search_console_connections__connection_id__properties_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConsolePropertiesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Search Console Properties",
+        "tags": [
+          "search-console"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/search-console/performance": {
+      "get": {
+        "description": "Live Search Console performance for the linked property.\n\nFetched synchronously on every request and cached nowhere. That is a\ndeliberate MVP decision, not an oversight: caching means choosing a staleness\npolicy and owning an invalidation bug, and there is no evidence yet about how\noften this is read. It is bounded instead \u2014 three queries, a row cap, and a\ntimeout \u2014 so the worst case is knowable.",
+        "operationId": "get_search_console_performance_api_v1_seo_projects__project_id__search_console_performance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConsolePerformanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Search Console Performance",
+        "tags": [
+          "search-console"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/search-console/property": {
+      "delete": {
+        "description": "Stop reporting Search Console for this project.\n\nIdempotent: unlinking something already unlinked is a success, because the\ncaller's intent \u2014 \"this project has no property\" \u2014 is equally true either\nway. The ``GoogleConnection`` is untouched; it is shared with the\norganization's other projects, and signing them all out of Google is not\nwhat was asked.",
+        "operationId": "unlink_search_console_property_api_v1_seo_projects__project_id__search_console_property_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unlink Search Console Property",
+        "tags": [
+          "search-console"
+        ]
+      },
+      "put": {
+        "description": "Point this project at one property, or move it to a different one.\n\nThe live property list is fetched again here rather than trusted from\nwhatever the client saw. Between rendering a picker and submitting it, access\ncan be removed in Search Console \u2014 and more to the point, the request is just\na string a caller can write. ``permission_level`` comes from the match, so\nthe stored row records what Google says rather than what was claimed.",
+        "operationId": "link_search_console_property_api_v1_seo_projects__project_id__search_console_property_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchConsolePropertyLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConsolePropertyLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Link Search Console Property",
+        "tags": [
+          "search-console"
         ]
       }
     },

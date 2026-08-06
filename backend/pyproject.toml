@@ -18,6 +18,17 @@ dependencies = [
     "pwdlib[argon2]>=0.3.0",
     "pyjwt>=2.13.0,<3",
     "playwright>=1.60,<2",
+    # Fernet, for encrypting stored Google refresh tokens at rest. The only new
+    # dependency the Search Console foundation needs: no Google client library
+    # is added until a slice actually calls Google.
+    "cryptography>=44,<47",
+    # ID token verification only — signature against Google's rotating JWKS,
+    # issuer, audience and expiry. Deliberately WITHOUT the [requests] extra:
+    # app/gsc/transport.py adapts httpx to google-auth's transport interface, so
+    # this repo keeps one HTTP client instead of two. The authorization URL and
+    # the token exchange are plain httpx, which is why google-auth-oauthlib and
+    # google-api-python-client are not here.
+    "google-auth>=2.38,<3",
 ]
 
 [dependency-groups]

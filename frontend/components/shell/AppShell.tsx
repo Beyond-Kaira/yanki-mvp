@@ -270,7 +270,7 @@ export default function AppShell({ children }: AppShellProps) {
       >
         <div className="px-5 pb-4 pt-5">
           <Link
-            href="/"
+            href="/dashboard"
             className="text-lg font-semibold tracking-tight text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
           >
             Yanki

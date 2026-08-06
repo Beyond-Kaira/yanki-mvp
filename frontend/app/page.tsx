@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import RedirectIfAuthenticated from '@/components/RedirectIfAuthenticated'
 
 /**
  * The front door.
@@ -36,6 +37,7 @@ const STEPS = [
 export default function LandingPage() {
   return (
     <div className="mx-auto w-full max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
+      <RedirectIfAuthenticated />
       <section className="max-w-3xl">
         <p className="text-sm font-medium uppercase tracking-wide text-primary">
           Generative engine optimization

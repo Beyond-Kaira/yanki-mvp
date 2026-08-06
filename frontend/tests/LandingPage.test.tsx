@@ -1,6 +1,24 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import LandingPage from '@/app/page'
+
+const replace = vi.fn()
+let authState: { status: 'loading' | 'authenticated' | 'anonymous' } = {
+  status: 'anonymous',
+}
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace, push: vi.fn() }),
+}))
+
+vi.mock('@/components/AuthProvider', () => ({
+  useAuth: () => authState,
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  authState = { status: 'anonymous' }
+})
 
 /**
  * The operator's complaint was that a fresh session "navigates directly to the
@@ -35,6 +53,28 @@ describe('Landing page', () => {
     expect(screen.queryByRole('navigation', { name: /product navigation/i })).toBeNull()
     expect(screen.queryByLabelText(/url/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /run analysis/i })).toBeNull()
+  })
+
+  it('sends a signed-in visitor to the dashboard', async () => {
+    authState = { status: 'authenticated' }
+    render(<LandingPage />)
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard'))
+  })
+
+  it('keeps showing the pitch while the session resolves', () => {
+    authState = { status: 'loading' }
+    render(<LandingPage />)
+
+    expect(screen.getByRole('heading', { level: 1 })).toBeVisible()
+    expect(screen.getAllByRole('link', { name: /create an account/i }).length).toBeGreaterThan(0)
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('leaves an anonymous visitor where they are', () => {
+    render(<LandingPage />)
+
+    expect(replace).not.toHaveBeenCalled()
   })
 
   it('scales its headline down on small screens', () => {

@@ -1257,6 +1257,17 @@ export interface components {
             /** Velocity */
             velocity?: components["schemas"]["VelocityPointOut"][];
         };
+        /** CategoryGapOut */
+        CategoryGapOut: {
+            /** Category */
+            category: string;
+            /** Competitors */
+            competitors: string[];
+            /** Lost */
+            lost: number;
+            /** Total */
+            total: number;
+        };
         /** CheckerLeadRequest */
         CheckerLeadRequest: {
             /** Email */
@@ -1395,6 +1406,36 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** DriverStatOut */
+        DriverStatOut: {
+            /** Category */
+            category: string;
+            /** Contribution */
+            contribution: number;
+            /** Mentioned */
+            mentioned: number;
+            /** Total */
+            total: number;
+        };
+        /** EngineInsightOut */
+        EngineInsightOut: {
+            /** Brandanswers */
+            brandAnswers: number;
+            /** Competitors */
+            competitors: components["schemas"]["InsightCompetitorMentionOut"][];
+            /** Engine */
+            engine: string;
+            /** Firstmentions */
+            firstMentions: number;
+            /** Groups */
+            groups: components["schemas"]["IntentGroupStatOut"][];
+            /** Mentioned */
+            mentioned: number;
+            /** Share */
+            share: number | null;
+            /** Total */
+            total: number;
+        };
         /**
          * EnginePresence
          * @description One engine's presence in a checker run: ``mentioned`` of ``total`` answers
@@ -1408,6 +1449,35 @@ export interface components {
             mentioned: number;
             /** Total */
             total: number;
+        };
+        /** EntityCoverageOut */
+        EntityCoverageOut: {
+            /** Entities */
+            entities: components["schemas"]["EntityStatOut"][];
+            /** Present */
+            present: number;
+            /** Total */
+            total: number;
+        };
+        /** EntityLandscapeOut */
+        EntityLandscapeOut: {
+            /** Corethreshold */
+            coreThreshold: number;
+            /** Entities */
+            entities: components["schemas"]["EntityStatOut"][];
+        };
+        /** EntityStatOut */
+        EntityStatOut: {
+            /** Answers */
+            answers: number;
+            /** Name */
+            name: string;
+            /** Ownership */
+            ownership: string;
+            /** Presence */
+            presence?: string | null;
+            /** Tier */
+            tier: string;
         };
         /** GapRowOut */
         GapRowOut: {
@@ -1516,6 +1586,48 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InsightCompetitorMentionOut */
+        InsightCompetitorMentionOut: {
+            /** Answers */
+            answers: number;
+            /** Name */
+            name: string;
+        };
+        /** InsightRatioOut */
+        InsightRatioOut: {
+            /** Mentioned */
+            mentioned: number;
+            /** Total */
+            total: number;
+        };
+        /** InsightsOut */
+        InsightsOut: {
+            /** Brand */
+            brand: string;
+            /** Drivers */
+            drivers: components["schemas"]["DriverStatOut"][];
+            /** Engines */
+            engines: components["schemas"]["EngineInsightOut"][];
+            entityCoverage: components["schemas"]["EntityCoverageOut"];
+            entityLandscape: components["schemas"]["EntityLandscapeOut"];
+            gap: components["schemas"]["VisibilityGapOut"];
+            probe: components["schemas"]["InsightRatioOut"] | null;
+            /** Promptset */
+            promptSet: string;
+            /** Scoredanswers */
+            scoredAnswers: number;
+            /** Subject */
+            subject: string;
+        };
+        /** IntentGroupStatOut */
+        IntentGroupStatOut: {
+            /** Group */
+            group: string;
+            /** Mentioned */
+            mentioned: number;
+            /** Total */
+            total: number;
         };
         /**
          * InvitationAcceptRequest
@@ -1788,13 +1900,11 @@ export interface components {
             engine_presence: components["schemas"]["EnginePresence"][] | null;
             /** Footprint Count */
             footprint_count: number | null;
-            /**
-             * Geo Records
-             * @default []
-             */
-            geo_records: components["schemas"]["GeoRecordOut"][];
+            /** Geo Records */
+            geo_records?: components["schemas"]["GeoRecordOut"][];
             /** Geo Score */
             geo_score: number | null;
+            insights: components["schemas"]["InsightsOut"] | null;
             /** Interventions */
             interventions?: {
                 [key: string]: unknown;
@@ -2255,6 +2365,15 @@ export interface components {
             new: number;
             /** Reported Total */
             reported_total?: number | null;
+        };
+        /** VisibilityGapOut */
+        VisibilityGapOut: {
+            /** Answerslost */
+            answersLost: number;
+            /** Categories */
+            categories: components["schemas"]["CategoryGapOut"][];
+            /** Total */
+            total: number;
         };
         /**
          * WaitlistRequest

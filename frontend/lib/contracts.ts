@@ -8,6 +8,7 @@
 // shapes. Import app types from here, never from `./types`.
 
 import type { components } from './types'
+import type { Insights } from './insights'
 
 type Schemas = components['schemas']
 
@@ -80,10 +81,11 @@ export type SeoAudit = Schemas['SeoAuditOut']
 
 export type SeoCheck = Schemas['SeoCheckOut']
 
-export type AnalysisResult = Omit<Schemas['ResultOut'], 'kyc'> & {
+export type AnalysisResult = Omit<Schemas['ResultOut'], 'kyc' | 'insights'> & {
   kyc: KYC | null
   reliability_score?: number | null
   interventions?: Array<Record<string, unknown>> | Record<string, unknown> | null
+  insights?: Insights | null
 }
 
 export type Analysis = Omit<

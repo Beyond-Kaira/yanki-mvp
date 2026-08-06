@@ -1,5 +1,6 @@
 import type { Analysis } from '@/lib/contracts'
 import { citationsFromAnalysis } from '@/lib/ai-visibility-data'
+import type { Insights } from '@/lib/insights'
 
 export interface CitationDomainRow {
   domain: string
@@ -19,6 +20,7 @@ export interface AiOverviewModel {
   interventions: InterventionRow[]
   isSample: boolean
   analysisId: string | null
+  insights: Insights | null
 }
 
 const SAMPLE: AiOverviewModel = {
@@ -43,6 +45,7 @@ const SAMPLE: AiOverviewModel = {
   ],
   isSample: true,
   analysisId: null,
+  insights: null,
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -105,5 +108,6 @@ export function overviewFromAnalysis(analysis: Analysis): AiOverviewModel {
     interventions: collectInterventions(analysis),
     isSample: false,
     analysisId: analysis.id,
+    insights: result.insights ?? null,
   }
 }

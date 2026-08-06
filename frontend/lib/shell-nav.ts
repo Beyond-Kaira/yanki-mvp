@@ -99,6 +99,12 @@ export const SHELL_SECTIONS: ShellSection[] = [
         href: '/ai-visibility/drivers',
         badge: 'live',
       },
+      {
+        id: 'entities',
+        label: 'Entities',
+        href: '/ai-visibility/entities',
+        badge: 'live',
+      },
     ],
   },
   {

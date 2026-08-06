@@ -15,6 +15,7 @@ from app.api.schemas import (
     CreateAnalysisResponse,
     EnginePresence,
     GeoRecordOut,
+    InsightsOut,
     PromptOut,
     ResponseOut,
     ResultOut,
@@ -38,6 +39,7 @@ from app.services.checker import (
 )
 from app.services.checker_summary import summarize_checker
 from app.services.emailer import send_waitlist_emails
+from app.services.insights import summarize_insights
 from app.services.rate_limit import (
     WAITLIST_RATE_LIMIT_PER_IP_HOUR,
     RateLimitExceeded,
@@ -92,6 +94,13 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
             checks=[SeoCheckOut.model_validate(c) for c in analysis.seo_checks],
         )
 
+    insight_summary = summarize_insights(
+        analysis.responses,
+        analysis.prompts,
+        analysis.kyc,
+        prompt_set="checker-en-v1" if analysis.kind == "checker" else "mvp",
+    )
+
     result = ResultOut(
         kyc=analysis.kyc,
         prompts=[PromptOut.model_validate(p) for p in analysis.prompts],
@@ -107,6 +116,11 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
         competitors_appeared=competitors_appeared,
         serp=serp,
         seo=seo,
+        insights=(
+            InsightsOut.model_validate(insight_summary)
+            if insight_summary is not None
+            else None
+        ),
     )
     return AnalysisOut(
         id=analysis.id,

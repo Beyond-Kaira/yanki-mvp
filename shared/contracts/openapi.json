@@ -1153,6 +1153,37 @@
         "title": "BacklinkSummaryOut",
         "type": "object"
       },
+      "CategoryGapOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "competitors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Competitors",
+            "type": "array"
+          },
+          "lost": {
+            "title": "Lost",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category",
+          "total",
+          "lost",
+          "competitors"
+        ],
+        "title": "CategoryGapOut",
+        "type": "object"
+      },
       "CheckerLeadRequest": {
         "properties": {
           "email": {
@@ -1412,6 +1443,95 @@
         "title": "CurrentUserOut",
         "type": "object"
       },
+      "DriverStatOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "mentioned": {
+            "title": "Mentioned",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mentioned",
+          "total",
+          "category",
+          "contribution"
+        ],
+        "title": "DriverStatOut",
+        "type": "object"
+      },
+      "EngineInsightOut": {
+        "properties": {
+          "brandAnswers": {
+            "title": "Brandanswers",
+            "type": "integer"
+          },
+          "competitors": {
+            "items": {
+              "$ref": "#/components/schemas/InsightCompetitorMentionOut"
+            },
+            "title": "Competitors",
+            "type": "array"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "firstMentions": {
+            "title": "Firstmentions",
+            "type": "integer"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/IntentGroupStatOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "mentioned": {
+            "title": "Mentioned",
+            "type": "integer"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mentioned",
+          "total",
+          "engine",
+          "groups",
+          "brandAnswers",
+          "competitors",
+          "share",
+          "firstMentions"
+        ],
+        "title": "EngineInsightOut",
+        "type": "object"
+      },
       "EnginePresence": {
         "description": "One engine's presence in a checker run: ``mentioned`` of ``total`` answers\nnamed the searched brand (P5.3). Read-time aggregate of the ``footprint``\nbooleans; the per-engine totals sum to ``total_responses``.",
         "properties": {
@@ -1434,6 +1554,92 @@
           "total"
         ],
         "title": "EnginePresence",
+        "type": "object"
+      },
+      "EntityCoverageOut": {
+        "properties": {
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/EntityStatOut"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "present": {
+            "title": "Present",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "present",
+          "total",
+          "entities"
+        ],
+        "title": "EntityCoverageOut",
+        "type": "object"
+      },
+      "EntityLandscapeOut": {
+        "properties": {
+          "coreThreshold": {
+            "title": "Corethreshold",
+            "type": "integer"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/EntityStatOut"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "coreThreshold",
+          "entities"
+        ],
+        "title": "EntityLandscapeOut",
+        "type": "object"
+      },
+      "EntityStatOut": {
+        "properties": {
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "presence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presence"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "answers",
+          "ownership",
+          "tier"
+        ],
+        "title": "EntityStatOut",
         "type": "object"
       },
       "GapRowOut": {
@@ -1856,6 +2062,132 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InsightCompetitorMentionOut": {
+        "properties": {
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "answers"
+        ],
+        "title": "InsightCompetitorMentionOut",
+        "type": "object"
+      },
+      "InsightRatioOut": {
+        "properties": {
+          "mentioned": {
+            "title": "Mentioned",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mentioned",
+          "total"
+        ],
+        "title": "InsightRatioOut",
+        "type": "object"
+      },
+      "InsightsOut": {
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/DriverStatOut"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/EngineInsightOut"
+            },
+            "title": "Engines",
+            "type": "array"
+          },
+          "entityCoverage": {
+            "$ref": "#/components/schemas/EntityCoverageOut"
+          },
+          "entityLandscape": {
+            "$ref": "#/components/schemas/EntityLandscapeOut"
+          },
+          "gap": {
+            "$ref": "#/components/schemas/VisibilityGapOut"
+          },
+          "probe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InsightRatioOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "promptSet": {
+            "title": "Promptset",
+            "type": "string"
+          },
+          "scoredAnswers": {
+            "title": "Scoredanswers",
+            "type": "integer"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brand",
+          "subject",
+          "promptSet",
+          "scoredAnswers",
+          "probe",
+          "engines",
+          "gap",
+          "entityCoverage",
+          "entityLandscape",
+          "drivers"
+        ],
+        "title": "InsightsOut",
+        "type": "object"
+      },
+      "IntentGroupStatOut": {
+        "properties": {
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "mentioned": {
+            "title": "Mentioned",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mentioned",
+          "total",
+          "group"
+        ],
+        "title": "IntentGroupStatOut",
         "type": "object"
       },
       "InvitationAcceptRequest": {
@@ -2515,7 +2847,6 @@
             "title": "Footprint Count"
           },
           "geo_records": {
-            "default": [],
             "items": {
               "$ref": "#/components/schemas/GeoRecordOut"
             },
@@ -2532,6 +2863,16 @@
               }
             ],
             "title": "Geo Score"
+          },
+          "insights": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InsightsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "interventions": {
             "anyOf": [
@@ -2631,7 +2972,8 @@
           "engine_presence",
           "competitors_appeared",
           "serp",
-          "seo"
+          "seo",
+          "insights"
         ],
         "title": "ResultOut",
         "type": "object"
@@ -3742,6 +4084,32 @@
           "measurable"
         ],
         "title": "VelocityPointOut",
+        "type": "object"
+      },
+      "VisibilityGapOut": {
+        "properties": {
+          "answersLost": {
+            "title": "Answerslost",
+            "type": "integer"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryGapOut"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "answersLost",
+          "total",
+          "categories"
+        ],
+        "title": "VisibilityGapOut",
         "type": "object"
       },
       "WaitlistRequest": {

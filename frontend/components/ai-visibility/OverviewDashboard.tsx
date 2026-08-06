@@ -9,6 +9,9 @@ import {
   IconShield,
 } from '@/components/shell/icons'
 import type { AiOverviewModel } from '@/lib/ai-overview'
+import MentionShare from '@/components/insights/MentionShare'
+import MultiLlmComparison from '@/components/insights/MultiLlmComparison'
+import NamingOrder from '@/components/insights/NamingOrder'
 
 interface OverviewDashboardProps {
   model: AiOverviewModel
@@ -267,6 +270,17 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
           </Link>
         </section>
       </div>
+
+      {model.insights ? (
+        <div className="mt-8 space-y-5">
+          <MultiLlmComparison engines={model.insights.engines} />
+          <MentionShare
+            brand={model.insights.brand}
+            engines={model.insights.engines}
+          />
+          <NamingOrder engines={model.insights.engines} />
+        </div>
+      ) : null}
 
       <p className="mt-8 flex items-center gap-2 text-xs text-surface-subtle">
         <IconShield className="h-3.5 w-3.5" />

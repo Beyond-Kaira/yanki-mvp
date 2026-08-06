@@ -374,6 +374,83 @@ class SeoAuditOut(BaseModel):
     checks: list[SeoCheckOut]
 
 
+class _InsightModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InsightRatioOut(_InsightModel):
+    mentioned: int
+    total: int
+
+
+class IntentGroupStatOut(InsightRatioOut):
+    group: str
+
+
+class InsightCompetitorMentionOut(_InsightModel):
+    name: str
+    answers: int
+
+
+class EngineInsightOut(InsightRatioOut):
+    engine: str
+    groups: list[IntentGroupStatOut]
+    brandAnswers: int
+    competitors: list[InsightCompetitorMentionOut]
+    share: float | None
+    firstMentions: int
+
+
+class CategoryGapOut(_InsightModel):
+    category: str
+    total: int
+    lost: int
+    competitors: list[str]
+
+
+class VisibilityGapOut(_InsightModel):
+    answersLost: int
+    total: int
+    categories: list[CategoryGapOut]
+
+
+class EntityStatOut(_InsightModel):
+    name: str
+    answers: int
+    ownership: str
+    tier: str
+    presence: str | None = None
+
+
+class EntityCoverageOut(_InsightModel):
+    present: int
+    total: int
+    entities: list[EntityStatOut]
+
+
+class EntityLandscapeOut(_InsightModel):
+    coreThreshold: int
+    entities: list[EntityStatOut]
+
+
+class DriverStatOut(InsightRatioOut):
+    category: str
+    contribution: float
+
+
+class InsightsOut(_InsightModel):
+    brand: str
+    subject: str
+    promptSet: str
+    scoredAnswers: int
+    probe: InsightRatioOut | None
+    engines: list[EngineInsightOut]
+    gap: VisibilityGapOut
+    entityCoverage: EntityCoverageOut
+    entityLandscape: EntityLandscapeOut
+    drivers: list[DriverStatOut]
+
+
 class ResultOut(BaseModel):
     kyc: dict[str, Any] | None
     prompts: list[PromptOut]
@@ -385,7 +462,7 @@ class ResultOut(BaseModel):
     reliability_score: float | None = None
     interventions: list[dict[str, Any]] | dict[str, Any] | None = None
     citation_summary: dict[str, Any] | None = None
-    geo_records: list[GeoRecordOut] = []
+    geo_records: list[GeoRecordOut] = Field(default_factory=list)
     # Checker-only read-time aggregates (P5.3); null for MVP / legacy rows.
     engine_presence: list[EnginePresence] | None
     competitors_appeared: list[CompetitorMention] | None
@@ -393,6 +470,8 @@ class ResultOut(BaseModel):
     serp: SerpVisibilityOut | None
     # SEO / AI-readiness audit (ADR-31); null on every run that did not audit.
     seo: SeoAuditOut | None
+    # Deterministic, read-time visibility aggregates over the stored answers.
+    insights: InsightsOut | None
 
 
 class AnalysisOut(BaseModel):

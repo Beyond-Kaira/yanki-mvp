@@ -176,7 +176,7 @@ class CheckerSummary:
     competitors_appeared: list[CompetitorStat] = field(default_factory=list)
 
 
-def _exclusions(kyc: dict[str, Any] | None) -> set[str]:
+def brand_exclusions(kyc: dict[str, Any] | None) -> set[str]:
     """Casefolded names to never report: the searched company + its aliases."""
     excluded: set[str] = set()
     if not kyc:
@@ -230,7 +230,7 @@ def _clean_group(raw: str) -> str | None:
     return name
 
 
-def _names_in_answer(raw_text: str, excluded: set[str]) -> set[str]:
+def names_in_answer(raw_text: str, excluded: set[str]) -> set[str]:
     """Distinct competitor-candidate names in one answer (post-exclusion)."""
     found: set[str] = set()
     for match in _NAME_RE.finditer(raw_text or ""):
@@ -276,7 +276,7 @@ def _competitors_appeared(
     counts: Counter[str] = Counter()
     display: dict[str, str] = {}
     for response in responses:
-        for name in _names_in_answer(response.raw_text, excluded):
+        for name in names_in_answer(response.raw_text, excluded):
             key = name.casefold()
             counts[key] += 1
             display.setdefault(key, name)
@@ -294,7 +294,7 @@ def summarize_checker(
     still-running or empty analysis) — both aggregates come back empty.
     """
     rows = list(responses)
-    excluded = _exclusions(kyc)
+    excluded = brand_exclusions(kyc)
     return CheckerSummary(
         engine_presence=_engine_presence(rows),
         competitors_appeared=_competitors_appeared(rows, excluded),

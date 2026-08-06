@@ -117,7 +117,7 @@ until its Semrush column is `[x]`.
 
 | Capability | Preview | Product | Semrush | Notes / transition |
 |------------|:-------:|:-------:|:-------:|--------------------|
-| One-keyword metric cards | [ ] | [ ] | [ ] | Planned thin Overview on same expand. |
+| One-keyword metric cards | [x] | [ ] | [ ] | Preview Overview at `/search-visibility/keywords`. |
 | Organic SERP top domains widget | [ ] | [ ] | [ ] | Can reuse live SERP; Product needs consistent engines/geo. |
 | Paid / PLA copies | [ ] | [ ] | [ ] | Out of preview; Semrush Advertising adjacency. |
 | Bulk analysis (many keywords) | [ ] | [ ] | [ ] | Product after metrics source; Semrush Bulk tab. |
@@ -145,7 +145,7 @@ until its Semrush column is `[x]`.
 | Capability | Preview | Product | Semrush | Notes / transition |
 |------------|:-------:|:-------:|:-------:|--------------------|
 | Kill-switch + config (`KEYWORD_ENABLED`) | [x] | [ ] | — | Product: ops runbooks, quotas per org. |
-| Estimated / Preview badges in UI | [ ] | — | — | Required while any proxy remains; remove per-field when Product-true. |
+| Estimated / Preview badges in UI | [x] | — | — | Required while any proxy remains; remove per-field when Product-true. |
 | `KeywordSource` seam (swap vendor without UI rewrite) | [x] | [x] | [ ] | Product bar met when live SearXNG (+ later Ads) plug in; Semrush would be irrelevant if we never own their DB. |
 | Cost / rate limits / caching | [ ] | [ ] | [ ] | Product must not melt SearXNG; Semrush = their infra. |
 | Multi-country databases, freshness SLA | [ ] | [ ] | [ ] | Semrush-scale ops. |

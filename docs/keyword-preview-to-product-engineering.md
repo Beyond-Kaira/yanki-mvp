@@ -41,8 +41,8 @@ repo* and *what to change*.
 
 ### C. HTTP + UI
 
-- **Preview now:** `POST /api/v1/keywords/expand` + `/overview` (`keyword_routes.py`); 404 when `KEYWORD_ENABLED=0`; auth required; `estimated: true` on responses
-- **Product next:** org quotas, stronger rate limits, OpenAPI-driven frontend types (`make gen-types`), Estimated badges in UI (Faz 5)
+- **Preview now:** `POST /api/v1/keywords/expand` + `/overview`; UI at `/search-visibility/keywords` (+ `/magic`); Estimated badge; shell-nav live
+- **Product next:** org quotas, stronger rate limits, volume column honesty when Ads lands
 
 ### D. Rank bridge
 

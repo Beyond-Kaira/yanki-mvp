@@ -228,3 +228,11 @@ export interface ToxicityReason {
 export type ToxicityBand = 'low' | 'medium' | 'high'
 
 export type LinkEventKind = 'new' | 'lost' | 'regained' | 'changed'
+
+// Keyword Research preview (OSS / SearXNG). Responses carry `estimated: true`
+// while demand/difficulty are proxies — see docs/keyword-preview-oss.md.
+export type KeywordExpandRequest = Schemas['KeywordExpandRequest']
+export type KeywordExpandResponse = Schemas['KeywordExpandResponse']
+export type KeywordIdea = Schemas['KeywordIdeaOut']
+export type KeywordOverviewRequest = Schemas['KeywordOverviewRequest']
+export type KeywordOverviewResponse = Schemas['KeywordOverviewResponse']

@@ -1,6 +1,6 @@
 # Keyword Research preview (open-source path)
 
-**Status:** accepted for implementation  
+**Status:** preview path shipped — demand-test window  
 **Goal:** Learn whether a licensed keyword database is worth buying — by shipping a usable Search Visibility → Keywords preview **without** owning a Semrush-scale index.
 
 ## Product promise
@@ -45,11 +45,49 @@ Later volume vendors plug into the same `KeywordSource` seam; UI stays stable.
 
 ## Success criteria for “was the DB worth it?”
 
-After a short preview period, decide:
+After a short preview period (target: **2–4 weeks** of real use once
+`KEYWORD_ENABLED=1` on a live path), decide:
 
 - **A** — OSS + proxies enough for our users → defer licensed data.
 - **B** — Users bounce without real volume → add Google Ads / wholesale metrics adapter.
 - **C** — Still no case for owning our own keyword index (aligns with `feature-parity.md` M6: licensed data first).
+
+**A and C can both be true.** C is about *owning* an index; B is the only
+path that says “buy metrics now.” Do not treat Semrush parity as the decision.
+
+### Smoke before opening the window
+
+Run once locally (or on the target deploy) with **live SearXNG**, not mock:
+
+1. `DRY_RUN=0`, `KEYWORD_ENABLED=1`, `SERP_BASE_URL` pointing at a healthy SearXNG.
+2. Sign in → Search Visibility → **Keyword Overview**: expand a real seed; ideas + Estimated badges visible; empty/error if SearXNG is down (no fake rows).
+3. **Keyword Magic**: same expand; select ≤10 phrases; enter your domain; **Check ranks** returns `#n` / `no` / `n/a` (not a crash).
+4. Kill-switch: set `KEYWORD_ENABLED=0`, reload — Keywords routes/API return unavailable (404), shell entry should not look “live” if gated the same way.
+5. Optional: `DRY_RUN=1` still expands via mock for CI only — do not use that path to judge idea quality.
+
+Config knobs: `KEYWORD_MAX_IDEAS`, `KEYWORD_RANK_MAX_QUERIES` (see `deploy/.env.example`).
+
+### What to watch (lightweight — no analytics product required)
+
+Capture notes in the session / Linear / Slack; numbers can be rough.
+
+| Signal | Leans toward | Notes |
+|--------|--------------|-------|
+| Users return to Keywords without asking for “real volume” | **A** | Discovery + rank useful enough |
+| First complaint is “where is search volume / KD?” or table ignored after Estimated | **B** | Metrics adapter next |
+| Keywords nav unused; SERP overview already enough | **A or C** | Low urgency; keep kill-switch OFF or defer polish |
+| Demand for Strategy Builder / Gap / history before volume | not B yet | Those are non-goals here — park; don’t buy a DB for clustering |
+| SearXNG flaky / too slow / junk ideas dominate | Product-lite ops first | Fix instance/engines or cache before buying data |
+
+### After the window — Product-lite fork
+
+Whatever A/B/C you pick, the next *engineering* step is one of:
+
+1. **Product-lite (no volume):** keep discovery + rank; harden quotas/errors; optionally **hide or demote** estimated demand/difficulty so nobody confuses them with Semrush columns → then claim Product on discovery/rank rows only.
+2. **B path:** Google Ads Keyword Planner (or wholesale) on the same `KeywordSource` seam; replace `volume_estimated` with real volume; keep Estimated only where still proxy.
+3. **Stay Preview:** leave kill-switch OFF outside experiments; revisit after other Search Visibility work.
+
+Engineering follow-ups live in [keyword-preview-to-product-engineering.md](keyword-preview-to-product-engineering.md).
 
 ## Explicit non-goals (this preview)
 
@@ -225,6 +263,6 @@ Parked for a cleanup pass after the preview path ships. Do not treat as done.
 
 | Doc | Audience |
 |-----|----------|
-| This file | Product + eng: preview scope, quality bars, roughness |
+| This file | Product + eng: preview scope, quality bars, roughness, demand-test |
 | [keyword-preview-to-product-engineering.md](keyword-preview-to-product-engineering.md) | Engineers: codebase steps to lift Preview → Product |
 | Cursor canvas `keyword-research-quality.canvas.tsx` | Product/Business progress board |

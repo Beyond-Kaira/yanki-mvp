@@ -8,6 +8,7 @@
 // shapes. Import app types from here, never from `./types`.
 
 import type { components } from './types'
+import type { Insights } from './insights'
 
 type Schemas = components['schemas']
 
@@ -95,11 +96,12 @@ export type SeoAudit = Schemas['SeoAuditOut']
 
 export type SeoCheck = Schemas['SeoCheckOut']
 
-export type AnalysisResult = Schemas['GeoOut'] & {
+export type AnalysisResult = Omit<Schemas['GeoOut'], 'insights'> & {
   kyc: KYC | null
   prompts: Prompt[]
   serp: SerpVisibility | null
   seo: SeoAudit | null
+  insights?: Insights | null
 }
 
 /** Thin poll payload from ``GET /analyses/{id}`` (phase 2). */

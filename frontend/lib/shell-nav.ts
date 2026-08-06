@@ -129,6 +129,12 @@ export const SHELL_SECTIONS: ShellSection[] = [
         href: '/analyses',
         badge: 'live',
       },
+      {
+        id: 'entities',
+        label: 'Entities',
+        href: '/ai-visibility/entities',
+        badge: 'live',
+      },
     ],
   },
   {

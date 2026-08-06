@@ -5,12 +5,15 @@ import {
   driversFromAnalysis,
   type ClaimBucket,
 } from '@/lib/ai-visibility-data'
+import VisibilityDrivers from '@/components/insights/VisibilityDrivers'
+import VisibilityGap from '@/components/insights/VisibilityGap'
 
 export default function DriversPage() {
   return (
     <AnalysisBoundSubpage title="Drivers & Gaps">
       {(analysis) => {
         const model = driversFromAnalysis(analysis)
+        const insights = analysis.result.insights
         return (
           <>
             <p className="text-sm text-surface-subtle">
@@ -19,6 +22,16 @@ export default function DriversPage() {
                 {model.domain}
               </span>
             </p>
+
+            {insights ? (
+              <div className="space-y-4">
+                <VisibilityGap gap={insights.gap} />
+                <VisibilityDrivers
+                  drivers={insights.drivers}
+                  promptSet={insights.promptSet}
+                />
+              </div>
+            ) : null}
 
             <div className="grid gap-4 lg:grid-cols-2">
               <ClaimSection

@@ -27,6 +27,7 @@ export type AnalysisGeoSlice = {
   geo_records: AnalysisResult['geo_records']
   engine_presence: AnalysisResult['engine_presence']
   competitors_appeared: AnalysisResult['competitors_appeared']
+  insights?: AnalysisResult['insights']
 }
 
 export type FetchedAnalysisSlices = {
@@ -50,6 +51,7 @@ export function emptyAnalysisResult(): AnalysisResult {
     competitors_appeared: null,
     serp: null,
     seo: null,
+    insights: null,
   }
 }
 
@@ -75,6 +77,7 @@ export function mergeAnalysis(
       geo_records: geo?.geo_records ?? [],
       engine_presence: geo?.engine_presence ?? null,
       competitors_appeared: geo?.competitors_appeared ?? null,
+      insights: geo?.insights ?? null,
       serp: slices.serp ?? null,
       seo: slices.seo ?? null,
     },

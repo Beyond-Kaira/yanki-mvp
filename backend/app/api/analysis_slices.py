@@ -15,6 +15,7 @@ from app.api.schemas import (
     EnginePresence,
     GeoOut,
     GeoRecordOut,
+    InsightsOut,
     PromptOut,
     ResponseOut,
     SeoAuditOut,
@@ -24,6 +25,7 @@ from app.api.schemas import (
 )
 from app.db.models import Analysis
 from app.services.checker_summary import summarize_checker
+from app.services.insights import summarize_insights
 
 
 def build_envelope(analysis: Analysis) -> AnalysisOut:
@@ -99,6 +101,12 @@ def _checker_aggregates(
 
 def build_geo_out(analysis: Analysis) -> GeoOut:
     engine_presence, competitors_appeared = _checker_aggregates(analysis)
+    insight_summary = summarize_insights(
+        analysis.responses,
+        analysis.prompts,
+        analysis.kyc,
+        prompt_set="checker-en-v1" if analysis.kind == "checker" else "mvp",
+    )
     return GeoOut(
         responses=[ResponseOut.model_validate(r) for r in analysis.responses],
         geo_score=analysis.geo_score,
@@ -110,4 +118,9 @@ def build_geo_out(analysis: Analysis) -> GeoOut:
         geo_records=[GeoRecordOut.model_validate(r) for r in analysis.geo_records],
         engine_presence=engine_presence,
         competitors_appeared=competitors_appeared,
+        insights=(
+            InsightsOut.model_validate(insight_summary)
+            if insight_summary is not None
+            else None
+        ),
     )

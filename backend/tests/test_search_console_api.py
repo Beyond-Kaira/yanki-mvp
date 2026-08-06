@@ -25,6 +25,7 @@ Every test runs against ``MockGoogleOAuthProvider``, injected through
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
@@ -882,6 +883,50 @@ def test_the_published_contract_carries_no_credential_field():
     properties = schema["components"]["schemas"]["SearchConsoleConnectStartOut"]["properties"]
 
     assert set(properties) == {"authorization_url"}
+
+
+def test_the_whole_search_console_surface_is_published():
+    """Every route the frontend will call, and only those."""
+
+    paths = app.openapi()["paths"]
+    prefix = "/api/v1/seo-projects/{project_id}/search-console"
+
+    assert {path for path in paths if "search-console" in path} == {
+        f"{prefix}/connect",
+        f"{prefix}/connections",
+        f"{prefix}/connections/{{connection_id}}/properties",
+        f"{prefix}/property",
+        f"{prefix}/performance",
+    }
+
+
+def test_no_schema_in_the_contract_can_carry_a_credential():
+    """A field added here is serialized to every caller forever."""
+
+    schemas = app.openapi()["components"]["schemas"]
+    fields = {
+        name.lower()
+        for schema_name, schema in schemas.items()
+        if schema_name.startswith("SearchConsole")
+        for name in (schema.get("properties") or {})
+    }
+
+    for forbidden in (
+        "access_token",
+        "refresh_token",
+        "ciphertext",
+        "client_secret",
+        "code_verifier",
+        "nonce",
+        "state",
+    ):
+        assert forbidden not in fields
+
+
+def test_the_contract_mentions_no_google_analytics():
+    """Scope creep into Analytics would show up here first."""
+
+    assert "analytics" not in json.dumps(app.openapi()).lower()
 
 
 def test_the_connection_lands_in_the_organization_the_flow_started_in(

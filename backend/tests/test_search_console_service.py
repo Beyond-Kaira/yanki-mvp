@@ -12,23 +12,33 @@ from __future__ import annotations
 import base64
 import hashlib
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db.models import GoogleOAuthState, Organization, SeoProject, User, Workspace
+from app.gsc.base import GoogleProperty
 from app.gsc.mock import MockGoogleOAuthProvider
 from app.services.search_console import (
+    DEFAULT_LOOKBACK_DAYS,
+    FINALIZED_DATA_LAG_DAYS,
+    MAX_RANGE_DAYS,
+    InvalidDateRange,
     OAuthStateExpired,
     OAuthStateInvalid,
     canonical_scopes,
+    clamp_row_limit,
     code_challenge_for,
     consume_oauth_state,
+    default_date_range,
     hash_oauth_value,
+    offer_properties,
     purge_expired_states,
     start_authorization,
+    usable_properties,
+    validate_date_range,
 )
 from app.services.token_crypto import generate_encryption_key
 
@@ -310,3 +320,169 @@ def test_the_sweep_removes_expired_attempts_and_leaves_live_ones(
 
     assert removed == 1
     assert [row.state_hash for row in db_session.query(GoogleOAuthState).all()] == ["live"]
+
+
+# --------------------------------------------------------------------------
+# Date windows
+# --------------------------------------------------------------------------
+
+
+def test_the_default_window_is_28_days_ending_behind_the_lag():
+    """Deterministic because `today` is injected rather than read from a clock."""
+
+    start, end = default_date_range(today=date(2026, 8, 6))
+
+    assert end == date(2026, 8, 3)
+    assert start == date(2026, 7, 7)
+    assert (end - start).days == DEFAULT_LOOKBACK_DAYS - 1
+
+
+def test_the_default_window_never_reaches_the_days_google_is_still_revising():
+    """Ending at 'yesterday' would show numbers that change on reload."""
+
+    today = date(2026, 8, 6)
+    _, end = default_date_range(today=today)
+
+    assert (today - end).days == FINALIZED_DATA_LAG_DAYS
+
+
+def test_an_omitted_bound_falls_back_to_the_default_window():
+    today = date(2026, 8, 6)
+    default_start, default_end = default_date_range(today=today)
+
+    start, end = validate_date_range(None, None, today=today)
+    assert (start, end) == (default_start, default_end)
+
+    start, end = validate_date_range(date(2026, 7, 1), None, today=today)
+    assert start == date(2026, 7, 1)
+    assert end == default_end
+
+
+def test_a_backwards_window_is_refused():
+    with pytest.raises(InvalidDateRange):
+        validate_date_range(date(2026, 8, 1), date(2026, 7, 1), today=date(2026, 8, 6))
+
+
+def test_a_future_end_is_refused_rather_than_clamped():
+    """Silently narrowing the window makes two reports incomparable."""
+
+    with pytest.raises(InvalidDateRange):
+        validate_date_range(date(2026, 8, 1), date(2026, 9, 1), today=date(2026, 8, 6))
+
+
+def test_an_absurdly_wide_window_is_refused():
+    today = date(2026, 8, 6)
+
+    with pytest.raises(InvalidDateRange):
+        validate_date_range(today - timedelta(days=MAX_RANGE_DAYS), today, today=today)
+
+
+def test_the_widest_allowed_window_is_accepted():
+    today = date(2026, 8, 6)
+    start = today - timedelta(days=MAX_RANGE_DAYS - 1)
+
+    assert validate_date_range(start, today, today=today) == (start, today)
+
+
+def test_a_single_day_window_is_valid():
+    today = date(2026, 8, 6)
+
+    assert validate_date_range(today, today, today=today) == (today, today)
+
+
+# --------------------------------------------------------------------------
+# Row limits
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [(None, 25), (1, 1), (50, 50), (100, 100), (0, 1), (-5, 1), (1000, 100)],
+)
+def test_the_row_limit_is_clamped_into_range(requested, expected):
+    """Bounded here as well as in the schema, for callers that skip the schema."""
+
+    assert clamp_row_limit(requested) == expected
+
+
+# --------------------------------------------------------------------------
+# Offering properties
+# --------------------------------------------------------------------------
+
+
+def _property(site_url: str, permission_level: str = "siteOwner") -> GoogleProperty:
+    return GoogleProperty(site_url=site_url, permission_level=permission_level)
+
+
+def test_unverified_properties_are_dropped_and_unknown_levels_are_kept():
+    """Google adds permission levels; hiding one for being unfamiliar is worse.
+
+    ``ftp://`` is the unparseable case rather than a bare word: the project
+    normalizer accepts single-label hosts on purpose (``localhost``), so
+    "nonsense" is a valid host to it and dropping it here would be this module
+    disagreeing with the one it deliberately shares.
+    """
+
+    kept = usable_properties(
+        (
+            _property("https://a.test/", "siteUnverifiedUser"),
+            _property("https://b.test/", "siteRestrictedUser"),
+            _property("https://c.test/", "siteOwner"),
+            _property("ftp://d.test/", "siteOwner"),
+        )
+    )
+
+    assert [item.site_url for item in kept] == ["https://b.test/", "https://c.test/"]
+
+
+def test_offered_properties_put_the_match_first_then_the_selection():
+    offered = offer_properties(
+        (
+            _property("https://zzz.test/"),
+            _property("https://aaa.test/"),
+            _property("sc-domain:example.com"),
+        ),
+        project_domain_key="example.com",
+        selected_site_url="https://zzz.test/",
+    )
+
+    assert [item.site_url for item in offered] == [
+        "sc-domain:example.com",
+        "https://zzz.test/",
+        "https://aaa.test/",
+    ]
+    assert offered[0].matches_project_domain is True
+    assert offered[1].currently_selected is True
+
+
+def test_the_offer_ordering_is_total_so_it_cannot_shuffle():
+    """Same input, same order — a list that reorders makes a user doubt it."""
+
+    properties = (
+        _property("https://b.test/"),
+        _property("https://a.test/"),
+        _property("https://c.test/"),
+    )
+
+    first = offer_properties(properties, project_domain_key="x.test", selected_site_url=None)
+    second = offer_properties(properties, project_domain_key="x.test", selected_site_url=None)
+
+    assert [i.site_url for i in first] == [i.site_url for i in second]
+    assert [i.site_url for i in first] == [
+        "https://a.test/",
+        "https://b.test/",
+        "https://c.test/",
+    ]
+
+
+def test_nothing_is_ever_marked_selected_by_matching_alone():
+    """Suggesting is not choosing. Only a stored link sets currently_selected."""
+
+    offered = offer_properties(
+        (_property("sc-domain:example.com"),),
+        project_domain_key="example.com",
+        selected_site_url=None,
+    )
+
+    assert offered[0].matches_project_domain is True
+    assert offered[0].currently_selected is False

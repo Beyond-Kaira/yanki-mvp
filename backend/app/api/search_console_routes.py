@@ -29,21 +29,44 @@ neither the destination nor the message can be influenced by the request.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Annotated, Literal
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.org_dependencies import requires
-from app.api.search_console_schemas import SearchConsoleConnectStartOut
+from app.api.search_console_schemas import (
+    ProjectConnectionStatus,
+    SearchConsoleConnectionOut,
+    SearchConsoleConnectionsOut,
+    SearchConsoleConnectStartOut,
+    SearchConsoleMetricsOut,
+    SearchConsolePerformanceOut,
+    SearchConsolePropertiesOut,
+    SearchConsolePropertyLinkOut,
+    SearchConsolePropertyLinkRequest,
+    SearchConsolePropertyOut,
+    SearchConsoleRowOut,
+)
 from app.config import Settings, get_settings
+from app.db.models import GoogleConnection, SeoProject
 from app.db.session import get_session
-from app.gsc.base import GoogleIdentityError, GoogleOAuthError, GoogleOAuthProvider
+from app.gsc.base import (
+    GoogleAccessForbidden,
+    GoogleAuthorizationRevoked,
+    GoogleIdentityError,
+    GoogleOAuthError,
+    GoogleOAuthProvider,
+    GoogleProperty,
+    GoogleRateLimited,
+    GoogleResponseInvalid,
+)
 from app.gsc.registry import get_google_oauth_provider
 from app.services import audit, search_console
-from app.services.permissions import GSC_CONNECT
+from app.services.permissions import GSC_CONNECT, PROJECT_READ
 from app.services.seo_projects import get_org_project
 from app.services.tenancy import OrgContext
 
@@ -83,6 +106,98 @@ def get_provider(
     return provider
 
 
+def _project_or_404(session: Session, org: OrgContext, project_id: uuid.UUID) -> SeoProject:
+    """404 whether it does not exist or is not theirs — never tell them apart."""
+
+    project = get_org_project(session, org_id=org.require_org_id, project_id=project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SEO project not found")
+    return project
+
+
+def _connection_or_404(
+    session: Session, org: OrgContext, connection_id: uuid.UUID
+) -> GoogleConnection:
+    """Same rule one level down: another org's connection simply does not exist."""
+
+    connection = search_console.get_org_connection(
+        session, org_id=org.require_org_id, connection_id=connection_id
+    )
+    if connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="google connection not found"
+        )
+    return connection
+
+
+def _fetch_properties(
+    session: Session,
+    *,
+    settings: Settings,
+    provider: GoogleOAuthProvider,
+    connection: GoogleConnection,
+) -> tuple[GoogleProperty, ...]:
+    """Refresh a token and ask Google what this account can reach.
+
+    The one place provider failures become HTTP, so every route that talks to
+    Search Console reports the same thing for the same cause. Google's own
+    response body reaches none of these — the exception types carry the whole
+    distinction, and each maps to a different action:
+
+    * revoked grant → 409, reconnect
+    * lost property access → 409, choose a different property
+    * rate limited → 429, wait (with Retry-After when Google gave one)
+    * unreadable answer → 502, nothing the caller can do
+    * unreachable → 503, try later
+    """
+
+    try:
+        access_token = search_console.get_access_token(
+            session, settings=settings, provider=provider, connection=connection
+        )
+        properties = provider.list_properties(access_token=access_token)
+    except search_console.ReauthRequired as exc:
+        session.commit()  # persist reauth_required before answering
+        raise _conflict("reauth_required") from exc
+    except GoogleAuthorizationRevoked as exc:
+        session.commit()
+        raise _conflict("reauth_required") from exc
+    except GoogleAccessForbidden as exc:
+        raise _conflict("property_access_lost") from exc
+    except GoogleRateLimited as exc:
+        raise _rate_limited(exc) from exc
+    except GoogleResponseInvalid as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="malformed_provider_response"
+        ) from exc
+    except GoogleOAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="provider_unavailable"
+        ) from exc
+
+    session.commit()
+    return properties
+
+
+def _conflict(reason: str) -> HTTPException:
+    """409 with a fixed reason code. Never a provider string."""
+
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=reason)
+
+
+def _rate_limited(exc: GoogleRateLimited) -> HTTPException:
+    headers = (
+        {"Retry-After": str(exc.retry_after_seconds)}
+        if exc.retry_after_seconds is not None
+        else None
+    )
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="provider_rate_limited",
+        headers=headers,
+    )
+
+
 router = APIRouter(
     prefix="/api/v1/seo-projects/{project_id}/search-console",
     tags=["search-console"],
@@ -115,11 +230,7 @@ def start_search_console_connect(
     PKCE verifier stay server-side, and only the state's hash is stored.
     """
 
-    project = get_org_project(session, org_id=org.require_org_id, project_id=project_id)
-    if project is None:
-        # 404 whether it does not exist or is not theirs, matching the rest of
-        # the project surface: distinguishing the two enumerates other tenants.
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SEO project not found")
+    project = _project_or_404(session, org, project_id)
 
     started = search_console.start_authorization(
         session,
@@ -143,6 +254,326 @@ def start_search_console_connect(
     session.commit()
 
     return SearchConsoleConnectStartOut(authorization_url=started.authorization_url)
+
+
+@router.get("/connections", response_model=SearchConsoleConnectionsOut)
+def list_search_console_connections(
+    project_id: uuid.UUID,
+    org: Annotated[OrgContext, Depends(requires(PROJECT_READ))],
+    session: Annotated[Session, Depends(get_session)],
+) -> SearchConsoleConnectionsOut:
+    """The organization's Google accounts, and where this project stands.
+
+    A read, so ``project:read`` rather than ``gsc:connect`` — a Viewer may see
+    that a project is connected without being able to change it. Nothing here
+    calls Google: it is entirely local state, which is what makes it safe to
+    poll and cheap to render.
+    """
+
+    project = _project_or_404(session, org, project_id)
+    link = search_console.get_project_link(
+        session, org_id=org.require_org_id, seo_project_id=project.id
+    )
+    connections = search_console.list_org_connections(session, org_id=org.require_org_id)
+
+    selected_connection_id = link.google_connection_id if link is not None else None
+
+    rows = [
+        SearchConsoleConnectionOut(
+            id=connection.id,
+            google_account_email=connection.google_account_email,
+            status=connection.status,
+            # The column is one canonical space-delimited string; a client wants
+            # a list. This is the only reshaping the connection surface does.
+            scopes=connection.scopes.split(),
+            created_at=connection.created_at,
+            updated_at=connection.updated_at,
+            selected_for_project=connection.id == selected_connection_id,
+            selected_site_url=(
+                link.site_url
+                if link is not None and connection.id == selected_connection_id
+                else None
+            ),
+        )
+        for connection in connections
+    ]
+
+    selected = next((row for row in rows if row.selected_for_project), None)
+    project_status: ProjectConnectionStatus
+    if not rows:
+        project_status = "no_connection"
+    elif selected is None:
+        # Either nothing is linked, or the link pointed at a connection this
+        # organization cannot see. Both are reported as "choose a property",
+        # which is the honest instruction and leaks nothing about the other.
+        project_status = "no_property_selected"
+    elif selected.status == "reauth_required":
+        project_status = "reauth_required"
+    else:
+        project_status = "connected"
+
+    return SearchConsoleConnectionsOut(project_status=project_status, connections=rows)
+
+
+@router.get(
+    "/connections/{connection_id}/properties",
+    response_model=SearchConsolePropertiesOut,
+)
+def list_search_console_properties(
+    project_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    org: Annotated[OrgContext, Depends(requires(GSC_CONNECT))],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    provider: Annotated[GoogleOAuthProvider, Depends(get_provider)],
+) -> SearchConsolePropertiesOut:
+    """What this Google account can reach, ordered so the obvious choice is first.
+
+    ``gsc:connect`` rather than ``project:read``: this spends a token refresh
+    and a Search Console call on every request, and it is the list a user picks
+    from — both belong to the role that may change the connection.
+    """
+
+    project = _project_or_404(session, org, project_id)
+    connection = _connection_or_404(session, org, connection_id)
+    link = search_console.get_project_link(
+        session, org_id=org.require_org_id, seo_project_id=project.id
+    )
+
+    properties = _fetch_properties(
+        session, settings=settings, provider=provider, connection=connection
+    )
+
+    offered = search_console.offer_properties(
+        properties,
+        project_domain_key=project.domain_key,
+        selected_site_url=(
+            link.site_url
+            if link is not None and link.google_connection_id == connection.id
+            else None
+        ),
+    )
+
+    return SearchConsolePropertiesOut(
+        google_connection_id=connection.id,
+        google_account_email=connection.google_account_email,
+        properties=[
+            SearchConsolePropertyOut(
+                site_url=item.site_url,
+                permission_level=item.permission_level,
+                property_type=item.property_type,  # type: ignore[arg-type]
+                matches_project_domain=item.matches_project_domain,
+                currently_selected=item.currently_selected,
+            )
+            for item in offered
+        ],
+    )
+
+
+@router.put("/property", response_model=SearchConsolePropertyLinkOut)
+def link_search_console_property(
+    project_id: uuid.UUID,
+    payload: SearchConsolePropertyLinkRequest,
+    org: Annotated[OrgContext, Depends(requires(GSC_CONNECT))],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    provider: Annotated[GoogleOAuthProvider, Depends(get_provider)],
+) -> SearchConsolePropertyLinkOut:
+    """Point this project at one property, or move it to a different one.
+
+    The live property list is fetched again here rather than trusted from
+    whatever the client saw. Between rendering a picker and submitting it, access
+    can be removed in Search Console — and more to the point, the request is just
+    a string a caller can write. ``permission_level`` comes from the match, so
+    the stored row records what Google says rather than what was claimed.
+    """
+
+    project = _project_or_404(session, org, project_id)
+    connection = _connection_or_404(session, org, payload.google_connection_id)
+
+    properties = _fetch_properties(
+        session, settings=settings, provider=provider, connection=connection
+    )
+
+    try:
+        link = search_console.link_property(
+            session,
+            seo_project_id=project.id,
+            connection=connection,
+            site_url=payload.site_url,
+            available=properties,
+            user_id=org.user_id,
+        )
+    except search_console.PropertyNotAccessible as exc:
+        raise _conflict("property_not_accessible") from exc
+
+    audit.emit(
+        session,
+        action=GSC_CONNECT,
+        context=org,
+        actor_type="user",
+        outcome="success",
+        entity_type="seo_project",
+        entity_id=project.id,
+        detail={"step": "property_linked", "site_url": link.site_url},
+    )
+    session.commit()
+
+    return SearchConsolePropertyLinkOut(
+        google_connection_id=connection.id,
+        google_account_email=connection.google_account_email,
+        site_url=link.site_url,
+        property_type=link.property_type,  # type: ignore[arg-type]
+        permission_level=link.permission_level,
+        connected_at=link.created_at,
+        updated_at=link.updated_at,
+    )
+
+
+@router.delete("/property", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_search_console_property(
+    project_id: uuid.UUID,
+    org: Annotated[OrgContext, Depends(requires(GSC_CONNECT))],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Stop reporting Search Console for this project.
+
+    Idempotent: unlinking something already unlinked is a success, because the
+    caller's intent — "this project has no property" — is equally true either
+    way. The ``GoogleConnection`` is untouched; it is shared with the
+    organization's other projects, and signing them all out of Google is not
+    what was asked.
+    """
+
+    project = _project_or_404(session, org, project_id)
+    removed = search_console.unlink_property(session, seo_project_id=project.id)
+
+    if removed:
+        audit.emit(
+            session,
+            action=GSC_CONNECT,
+            context=org,
+            actor_type="user",
+            outcome="success",
+            entity_type="seo_project",
+            entity_id=project.id,
+            detail={"step": "property_unlinked"},
+        )
+    session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/performance", response_model=SearchConsolePerformanceOut)
+def get_search_console_performance(
+    project_id: uuid.UUID,
+    org: Annotated[OrgContext, Depends(requires(PROJECT_READ))],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    provider: Annotated[GoogleOAuthProvider, Depends(get_provider)],
+    start_date: date | None = None,
+    end_date: date | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> SearchConsolePerformanceOut:
+    """Live Search Console performance for the linked property.
+
+    Fetched synchronously on every request and cached nowhere. That is a
+    deliberate MVP decision, not an oversight: caching means choosing a staleness
+    policy and owning an invalidation bug, and there is no evidence yet about how
+    often this is read. It is bounded instead — three queries, a row cap, and a
+    timeout — so the worst case is knowable.
+    """
+
+    project = _project_or_404(session, org, project_id)
+    link = search_console.get_project_link(
+        session, org_id=org.require_org_id, seo_project_id=project.id
+    )
+    if link is None:
+        raise _conflict("no_property_selected")
+
+    connection = search_console.get_org_connection(
+        session, org_id=org.require_org_id, connection_id=link.google_connection_id
+    )
+    if connection is None:
+        # A link whose connection is not visible in this organization. Fail
+        # closed and describe it as an unselected property rather than
+        # confirming that some other tenant's row exists.
+        raise _conflict("no_property_selected")
+    if connection.status == "reauth_required":
+        raise _conflict("reauth_required")
+
+    try:
+        start, end = search_console.validate_date_range(start_date, end_date)
+    except search_console.InvalidDateRange as exc:
+        # Bare 422 to match backlink_routes.py; the named constant was renamed
+        # under us and the number is the stable thing.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        access_token = search_console.get_access_token(
+            session, settings=settings, provider=provider, connection=connection
+        )
+        report = search_console.build_performance_report(
+            provider=provider,
+            access_token=access_token,
+            site_url=link.site_url,
+            start=start,
+            end=end,
+            row_limit=search_console.clamp_row_limit(limit),
+        )
+    except search_console.ReauthRequired as exc:
+        session.commit()
+        raise _conflict("reauth_required") from exc
+    except GoogleAuthorizationRevoked as exc:
+        session.commit()
+        raise _conflict("reauth_required") from exc
+    except GoogleAccessForbidden as exc:
+        raise _conflict("property_access_lost") from exc
+    except GoogleRateLimited as exc:
+        raise _rate_limited(exc) from exc
+    except GoogleResponseInvalid as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="malformed_provider_response"
+        ) from exc
+    except GoogleOAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="provider_unavailable"
+        ) from exc
+
+    session.commit()
+
+    return SearchConsolePerformanceOut(
+        site_url=report.site_url,
+        start_date=report.start_date,
+        end_date=report.end_date,
+        data_state=report.data_state,  # type: ignore[arg-type]
+        summary=SearchConsoleMetricsOut(
+            clicks=report.summary.clicks,
+            impressions=report.summary.impressions,
+            ctr=report.summary.ctr,
+            position=report.summary.position,
+        ),
+        top_queries=[
+            SearchConsoleRowOut(
+                key=row.key,
+                clicks=row.clicks,
+                impressions=row.impressions,
+                ctr=row.ctr,
+                position=row.position,
+            )
+            for row in report.top_queries
+        ],
+        top_pages=[
+            SearchConsoleRowOut(
+                key=row.key,
+                clicks=row.clicks,
+                impressions=row.impressions,
+                ctr=row.ctr,
+                position=row.position,
+            )
+            for row in report.top_pages
+        ],
+    )
 
 
 @callback_router.get("/callback", include_in_schema=False)

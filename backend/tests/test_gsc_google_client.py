@@ -18,13 +18,30 @@ No network, no key, no credential.
 
 from __future__ import annotations
 
+import inspect
+import json as jsonlib
+from urllib.parse import quote
+
 import httpx
 import pytest
 import respx
 
+import app.gsc.google as google_module
 from app.config import GOOGLE_OAUTH_SCOPES, Settings
-from app.gsc.base import GoogleIdentityError, GoogleOAuthError
-from app.gsc.google import TOKEN_ENDPOINT, GoogleOAuthClient, _identity_from_claims
+from app.gsc.base import (
+    GoogleAccessForbidden,
+    GoogleAuthorizationRevoked,
+    GoogleIdentityError,
+    GoogleOAuthError,
+    GoogleRateLimited,
+    GoogleResponseInvalid,
+)
+from app.gsc.google import (
+    SEARCH_CONSOLE_BASE,
+    TOKEN_ENDPOINT,
+    GoogleOAuthClient,
+    _identity_from_claims,
+)
 from app.services.token_crypto import generate_encryption_key
 
 REDIRECT_URI = "http://localhost:8141/api/v1/integrations/google-search-console/callback"
@@ -228,3 +245,363 @@ def test_an_email_that_is_not_verifiably_verified_is_refused(value):
 
     with pytest.raises(GoogleIdentityError):
         _identity_from_claims(_claims(email_verified=value))
+
+
+# --------------------------------------------------------------------------
+# refresh_access_token
+# --------------------------------------------------------------------------
+
+
+@respx.mock
+def test_a_refresh_returns_an_access_token_and_sends_no_code(client):
+    route = respx.post(TOKEN_ENDPOINT).mock(
+        return_value=httpx.Response(200, json={"access_token": "fresh", "expires_in": 3599})
+    )
+
+    issued = client.refresh_access_token(refresh_token="stored-token")
+
+    assert issued.access_token == "fresh"
+    assert issued.expires_in == 3599
+    sent = dict(pair.split("=", 1) for pair in route.calls.last.request.content.decode().split("&"))
+    assert sent["grant_type"] == "refresh_token"
+    assert sent["refresh_token"] == "stored-token"
+    assert "code" not in sent
+
+
+@respx.mock
+@pytest.mark.parametrize("status_code", [400, 401])
+def test_a_refused_refresh_is_a_revocation_not_an_outage(client, status_code):
+    """invalid_grant has no retry that helps — only the user reconnecting does."""
+
+    respx.post(TOKEN_ENDPOINT).mock(
+        return_value=httpx.Response(status_code, json={"error": "invalid_grant"})
+    )
+
+    with pytest.raises(GoogleAuthorizationRevoked):
+        client.refresh_access_token(refresh_token="revoked")
+
+
+@respx.mock
+def test_a_refresh_response_without_a_token_is_invalid_not_empty(client):
+    respx.post(TOKEN_ENDPOINT).mock(return_value=httpx.Response(200, json={"expires_in": 10}))
+
+    with pytest.raises(GoogleResponseInvalid):
+        client.refresh_access_token(refresh_token="t")
+
+
+@respx.mock
+def test_a_refresh_never_quotes_googles_body(client):
+    respx.post(TOKEN_ENDPOINT).mock(
+        return_value=httpx.Response(400, json={"error_description": "token=SECRET-LEAKED"})
+    )
+
+    with pytest.raises(GoogleAuthorizationRevoked) as caught:
+        client.refresh_access_token(refresh_token="t")
+
+    assert "SECRET-LEAKED" not in str(caught.value)
+
+
+# --------------------------------------------------------------------------
+# list_properties
+# --------------------------------------------------------------------------
+
+
+@respx.mock
+def test_properties_are_returned_with_the_bearer_token_attached(client):
+    route = respx.get(f"{SEARCH_CONSOLE_BASE}/sites").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "siteEntry": [
+                    {"siteUrl": "sc-domain:example.com", "permissionLevel": "siteOwner"},
+                    {"siteUrl": "https://example.com/", "permissionLevel": "siteFullUser"},
+                ]
+            },
+        )
+    )
+
+    properties = client.list_properties(access_token="at-123")
+
+    assert [p.site_url for p in properties] == ["sc-domain:example.com", "https://example.com/"]
+    assert route.calls.last.request.headers["authorization"] == "Bearer at-123"
+
+
+@respx.mock
+def test_an_account_with_no_properties_is_empty_not_an_error(client):
+    """Google omits the key entirely. Reading that as a failure would be wrong."""
+
+    respx.get(f"{SEARCH_CONSOLE_BASE}/sites").mock(return_value=httpx.Response(200, json={}))
+
+    assert client.list_properties(access_token="at") == ()
+
+
+@respx.mock
+def test_entries_without_a_site_url_are_skipped_and_odd_levels_survive(client):
+    respx.get(f"{SEARCH_CONSOLE_BASE}/sites").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "siteEntry": [
+                    {"permissionLevel": "siteOwner"},
+                    "not-an-object",
+                    {"siteUrl": "https://ok.test/"},
+                    {"siteUrl": "https://odd.test/", "permissionLevel": 7},
+                ]
+            },
+        )
+    )
+
+    properties = client.list_properties(access_token="at")
+
+    assert [p.site_url for p in properties] == ["https://ok.test/", "https://odd.test/"]
+    # A non-string level becomes "", which is safely not siteOwner.
+    assert properties[1].permission_level == ""
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    [
+        (401, GoogleAuthorizationRevoked),
+        (403, GoogleAccessForbidden),
+        (429, GoogleRateLimited),
+        (500, GoogleOAuthError),
+        (503, GoogleOAuthError),
+    ],
+)
+def test_each_google_status_maps_to_its_own_domain_error(client, status_code, expected):
+    respx.get(f"{SEARCH_CONSOLE_BASE}/sites").mock(
+        return_value=httpx.Response(status_code, json={"error": {"message": "leaky detail"}})
+    )
+
+    with pytest.raises(expected) as caught:
+        client.list_properties(access_token="at")
+
+    assert "leaky detail" not in str(caught.value)
+
+
+@respx.mock
+def test_a_rate_limit_carries_retry_after_from_the_header_only(client):
+    respx.get(f"{SEARCH_CONSOLE_BASE}/sites").mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "42"}, json={})
+    )
+
+    with pytest.raises(GoogleRateLimited) as caught:
+        client.list_properties(access_token="at")
+
+    assert caught.value.retry_after_seconds == 42
+
+
+@respx.mock
+@pytest.mark.parametrize("header", ["not-a-number", "Wed, 21 Oct 2026 07:28:00 GMT", ""])
+def test_an_unparseable_retry_after_is_simply_absent(client, header):
+    respx.get(f"{SEARCH_CONSOLE_BASE}/sites").mock(
+        return_value=httpx.Response(429, headers={"Retry-After": header}, json={})
+    )
+
+    with pytest.raises(GoogleRateLimited) as caught:
+        client.list_properties(access_token="at")
+
+    assert caught.value.retry_after_seconds is None
+
+
+# --------------------------------------------------------------------------
+# query_search_analytics
+# --------------------------------------------------------------------------
+
+
+def _analytics_url(site_url: str) -> str:
+    return f"{SEARCH_CONSOLE_BASE}/sites/{quote(site_url, safe='')}/searchAnalytics/query"
+
+
+@respx.mock
+def test_the_site_url_is_fully_quoted_into_the_path(client):
+    """sc-domain: and https:// both die unquoted — safe='' or the call 404s."""
+
+    route = respx.post(_analytics_url("sc-domain:example.com")).mock(
+        return_value=httpx.Response(200, json={"rows": []})
+    )
+
+    client.query_search_analytics(
+        access_token="at",
+        site_url="sc-domain:example.com",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+    )
+
+    assert route.called
+    assert "sc-domain%3Aexample.com" in str(route.calls.last.request.url)
+
+
+@respx.mock
+def test_the_query_body_is_bounded_and_asks_for_finalized_data(client):
+    route = respx.post(_analytics_url("https://example.com/")).mock(
+        return_value=httpx.Response(200, json={"rows": []})
+    )
+
+    client.query_search_analytics(
+        access_token="at",
+        site_url="https://example.com/",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+        dimensions=("query",),
+        row_limit=10,
+    )
+
+    assert jsonlib.loads(route.calls.last.request.content) == {
+        "startDate": "2026-07-01",
+        "endDate": "2026-07-28",
+        "rowLimit": 10,
+        "dataState": "final",
+        "dimensions": ["query"],
+    }
+
+
+@respx.mock
+def test_a_query_with_no_dimensions_omits_the_key(client):
+    route = respx.post(_analytics_url("https://example.com/")).mock(
+        return_value=httpx.Response(200, json={"rows": []})
+    )
+
+    client.query_search_analytics(
+        access_token="at",
+        site_url="https://example.com/",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+    )
+
+    assert "dimensions" not in jsonlib.loads(route.calls.last.request.content)
+
+
+@respx.mock
+def test_rows_are_coerced_into_typed_metrics(client):
+    respx.post(_analytics_url("https://example.com/")).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "rows": [
+                    {
+                        "keys": ["shoes"],
+                        "clicks": 10,
+                        "impressions": 100,
+                        "ctr": 0.1,
+                        "position": 3.5,
+                    }
+                ]
+            },
+        )
+    )
+
+    rows = client.query_search_analytics(
+        access_token="at",
+        site_url="https://example.com/",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+        dimensions=("query",),
+    )
+
+    assert len(rows) == 1
+    assert rows[0].keys == ("shoes",)
+    assert rows[0].clicks == 10.0
+    assert isinstance(rows[0].clicks, float)
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "bad_row",
+    [
+        pytest.param({"keys": ["q"], "impressions": 1, "ctr": 0.1, "position": 1}, id="no-clicks"),
+        pytest.param(
+            {"keys": ["q"], "clicks": "10", "impressions": 1, "ctr": 0.1, "position": 1},
+            id="string-metric",
+        ),
+        pytest.param(
+            {"keys": ["q"], "clicks": True, "impressions": 1, "ctr": 0.1, "position": 1},
+            id="bool-metric",
+        ),
+        pytest.param(
+            {"keys": [], "clicks": 1, "impressions": 1, "ctr": 0.1, "position": 1},
+            id="missing-dimension-key",
+        ),
+        pytest.param(
+            {"keys": ["a", "b"], "clicks": 1, "impressions": 1, "ctr": 0.1, "position": 1},
+            id="too-many-keys",
+        ),
+        pytest.param("not-an-object", id="not-an-object"),
+    ],
+)
+def test_a_row_that_will_not_parse_is_dropped_not_zero_filled(client, bad_row):
+    """A zero is a claim about performance. A dropped row is not."""
+
+    good = {"keys": ["ok"], "clicks": 1, "impressions": 2, "ctr": 0.5, "position": 1.0}
+    respx.post(_analytics_url("https://example.com/")).mock(
+        return_value=httpx.Response(200, json={"rows": [bad_row, good]})
+    )
+
+    rows = client.query_search_analytics(
+        access_token="at",
+        site_url="https://example.com/",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+        dimensions=("query",),
+    )
+
+    assert [row.keys for row in rows] == [("ok",)]
+
+
+@respx.mock
+def test_an_answer_with_no_rows_is_empty_not_an_error(client):
+    respx.post(_analytics_url("https://example.com/")).mock(
+        return_value=httpx.Response(200, json={})
+    )
+
+    rows = client.query_search_analytics(
+        access_token="at",
+        site_url="https://example.com/",
+        start_date="2026-07-01",
+        end_date="2026-07-28",
+    )
+
+    assert rows == ()
+
+
+@respx.mock
+def test_an_unreadable_analytics_body_is_a_shape_error_not_an_outage(client):
+    respx.post(_analytics_url("https://example.com/")).mock(
+        return_value=httpx.Response(200, text="<html>nope</html>")
+    )
+
+    with pytest.raises(GoogleResponseInvalid):
+        client.query_search_analytics(
+            access_token="at",
+            site_url="https://example.com/",
+            start_date="2026-07-01",
+            end_date="2026-07-28",
+        )
+
+
+@respx.mock
+def test_a_timeout_is_an_availability_error_that_names_no_url(client):
+    respx.post(_analytics_url("https://example.com/")).mock(
+        side_effect=httpx.ReadTimeout("timed out talking to searchconsole.googleapis.com")
+    )
+
+    with pytest.raises(GoogleOAuthError) as caught:
+        client.query_search_analytics(
+            access_token="at",
+            site_url="https://example.com/",
+            start_date="2026-07-01",
+            end_date="2026-07-28",
+        )
+
+    assert "searchconsole.googleapis.com" not in str(caught.value)
+
+
+def test_this_adapter_can_reach_no_google_analytics_api():
+    """A structural check, because scope creep here would be silent."""
+
+    source = inspect.getsource(google_module)
+
+    assert "analytics.readonly" not in source
+    assert "analyticsdata" not in source
+    assert "analyticsadmin" not in source

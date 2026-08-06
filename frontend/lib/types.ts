@@ -784,6 +784,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/seo-projects/{project_id}/search-console/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Search Console Connections
+         * @description The organization's Google accounts, and where this project stands.
+         *
+         *     A read, so ``project:read`` rather than ``gsc:connect`` — a Viewer may see
+         *     that a project is connected without being able to change it. Nothing here
+         *     calls Google: it is entirely local state, which is what makes it safe to
+         *     poll and cheap to render.
+         */
+        get: operations["list_search_console_connections_api_v1_seo_projects__project_id__search_console_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/search-console/connections/{connection_id}/properties": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Search Console Properties
+         * @description What this Google account can reach, ordered so the obvious choice is first.
+         *
+         *     ``gsc:connect`` rather than ``project:read``: this spends a token refresh
+         *     and a Search Console call on every request, and it is the list a user picks
+         *     from — both belong to the role that may change the connection.
+         */
+        get: operations["list_search_console_properties_api_v1_seo_projects__project_id__search_console_connections__connection_id__properties_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/search-console/performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Search Console Performance
+         * @description Live Search Console performance for the linked property.
+         *
+         *     Fetched synchronously on every request and cached nowhere. That is a
+         *     deliberate MVP decision, not an oversight: caching means choosing a staleness
+         *     policy and owning an invalidation bug, and there is no evidence yet about how
+         *     often this is read. It is bounded instead — three queries, a row cap, and a
+         *     timeout — so the worst case is knowable.
+         */
+        get: operations["get_search_console_performance_api_v1_seo_projects__project_id__search_console_performance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seo-projects/{project_id}/search-console/property": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Link Search Console Property
+         * @description Point this project at one property, or move it to a different one.
+         *
+         *     The live property list is fetched again here rather than trusted from
+         *     whatever the client saw. Between rendering a picker and submitting it, access
+         *     can be removed in Search Console — and more to the point, the request is just
+         *     a string a caller can write. ``permission_level`` comes from the match, so
+         *     the stored row records what Google says rather than what was claimed.
+         */
+        put: operations["link_search_console_property_api_v1_seo_projects__project_id__search_console_property_put"];
+        post?: never;
+        /**
+         * Unlink Search Console Property
+         * @description Stop reporting Search Console for this project.
+         *
+         *     Idempotent: unlinking something already unlinked is a success, because the
+         *     caller's intent — "this project has no property" — is equally true either
+         *     way. The ``GoogleConnection`` is untouched; it is shared with the
+         *     organization's other projects, and signing them all out of Google is not
+         *     what was asked.
+         */
+        delete: operations["unlink_search_console_property_api_v1_seo_projects__project_id__search_console_property_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/waitlist": {
         parameters: {
             query?: never;
@@ -1850,6 +1961,221 @@ export interface components {
              * @description Absolute Google OAuth 2.0 authorization URL. The frontend performs a full-page navigation to it; it carries no client secret and is single-use, because the state inside it is.
              */
             authorization_url: string;
+        };
+        /**
+         * SearchConsoleConnectionOut
+         * @description One connected Google account, as it is safe to describe it.
+         */
+        SearchConsoleConnectionOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Google Account Email
+             * @description From the verified ID token. Shown so several accounts can be told apart.
+             */
+            google_account_email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Scopes
+             * @description Scopes Google actually granted, not the ones requested.
+             */
+            scopes: string[];
+            /**
+             * Selected For Project
+             * @description Whether this project's Search Console property comes from this account.
+             */
+            selected_for_project: boolean;
+            /**
+             * Selected Site Url
+             * @description The linked property, when this account is the selected one.
+             */
+            selected_site_url?: string | null;
+            /**
+             * Status
+             * @description 'active' or 'reauth_required'.
+             */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SearchConsoleConnectionsOut
+         * @description Every Google account in the organization, plus this project's standing.
+         */
+        SearchConsoleConnectionsOut: {
+            /** Connections */
+            connections: components["schemas"]["SearchConsoleConnectionOut"][];
+            /**
+             * Project Status
+             * @enum {string}
+             */
+            project_status: "no_connection" | "no_property_selected" | "connected" | "reauth_required";
+        };
+        /**
+         * SearchConsoleMetricsOut
+         * @description Property-wide totals for the window.
+         *
+         *     ``ctr`` and ``position`` are null rather than 0 when there were no
+         *     impressions: an average over nothing is not zero, and a position of 0 would
+         *     read as "ranked above the first result".
+         */
+        SearchConsoleMetricsOut: {
+            /** Clicks */
+            clicks: number;
+            /** Ctr */
+            ctr: number | null;
+            /** Impressions */
+            impressions: number;
+            /** Position */
+            position: number | null;
+        };
+        /**
+         * SearchConsolePerformanceOut
+         * @description Live Search Console performance. Nothing here is cached server-side.
+         */
+        SearchConsolePerformanceOut: {
+            /**
+             * Data State
+             * @enum {string}
+             */
+            data_state: "ok" | "no_data";
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Site Url */
+            site_url: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            summary: components["schemas"]["SearchConsoleMetricsOut"];
+            /** Top Pages */
+            top_pages: components["schemas"]["SearchConsoleRowOut"][];
+            /** Top Queries */
+            top_queries: components["schemas"]["SearchConsoleRowOut"][];
+        };
+        /**
+         * SearchConsolePropertiesOut
+         * @description The pick-list, ordered suggested-first then selected then alphabetical.
+         */
+        SearchConsolePropertiesOut: {
+            /** Google Account Email */
+            google_account_email: string;
+            /**
+             * Google Connection Id
+             * Format: uuid
+             */
+            google_connection_id: string;
+            /** Properties */
+            properties: components["schemas"]["SearchConsolePropertyOut"][];
+        };
+        /**
+         * SearchConsolePropertyLinkOut
+         * @description The link as it now stands.
+         */
+        SearchConsolePropertyLinkOut: {
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Google Account Email */
+            google_account_email: string;
+            /**
+             * Google Connection Id
+             * Format: uuid
+             */
+            google_connection_id: string;
+            /**
+             * Permission Level
+             * @description Taken from Google's list at link time, never from the request.
+             */
+            permission_level: string;
+            /**
+             * Property Type
+             * @enum {string}
+             */
+            property_type: "domain" | "url_prefix";
+            /** Site Url */
+            site_url: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SearchConsolePropertyLinkRequest
+         * @description Which property to point this project at.
+         *
+         *     ``site_url`` is checked against the live list from Google before anything is
+         *     stored — it names a choice, it does not assert one.
+         */
+        SearchConsolePropertyLinkRequest: {
+            /**
+             * Google Connection Id
+             * Format: uuid
+             */
+            google_connection_id: string;
+            /** Site Url */
+            site_url: string;
+        };
+        /**
+         * SearchConsolePropertyOut
+         * @description One property the connected account can reach.
+         */
+        SearchConsolePropertyOut: {
+            /** Currently Selected */
+            currently_selected: boolean;
+            /**
+             * Matches Project Domain
+             * @description Exact host match against the project's domain. A suggestion only: nothing is ever linked automatically, and a non-matching property may still be chosen.
+             */
+            matches_project_domain: boolean;
+            /**
+             * Permission Level
+             * @description Google's permission string, unmapped.
+             */
+            permission_level: string;
+            /**
+             * Property Type
+             * @enum {string}
+             */
+            property_type: "domain" | "url_prefix";
+            /**
+             * Site Url
+             * @description Google's own identifier, verbatim — 'sc-domain:example.com' or 'https://example.com/'. It is the argument every later API call needs.
+             */
+            site_url: string;
+        };
+        /**
+         * SearchConsoleRowOut
+         * @description One query or one page.
+         */
+        SearchConsoleRowOut: {
+            /** Clicks */
+            clicks: number;
+            /** Ctr */
+            ctr: number;
+            /** Impressions */
+            impressions: number;
+            /** Key */
+            key: string;
+            /** Position */
+            position: number;
         };
         /**
          * SeoAuditOut
@@ -3670,6 +3996,178 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SearchConsoleConnectStartOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_search_console_connections_api_v1_seo_projects__project_id__search_console_connections_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchConsoleConnectionsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_search_console_properties_api_v1_seo_projects__project_id__search_console_connections__connection_id__properties_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchConsolePropertiesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_search_console_performance_api_v1_seo_projects__project_id__search_console_performance_get: {
+        parameters: {
+            query?: {
+                start_date?: string | null;
+                end_date?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchConsolePerformanceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_search_console_property_api_v1_seo_projects__project_id__search_console_property_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchConsolePropertyLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchConsolePropertyLinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_search_console_property_api_v1_seo_projects__project_id__search_console_property_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

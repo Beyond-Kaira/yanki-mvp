@@ -35,28 +35,60 @@ import hmac
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 import sqlalchemy as sa
 from sqlalchemy import CursorResult
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.db.models import GoogleConnection, GoogleOAuthState
+from app.db.models import (
+    GoogleConnection,
+    GoogleOAuthState,
+    SiteAuditSearchConsoleLink,
+)
 from app.gsc.base import (
+    GoogleAuthorizationRevoked,
     GoogleIdentity,
     GoogleIdentityError,
     GoogleOAuthError,
     GoogleOAuthProvider,
+    GoogleProperty,
     GoogleTokens,
+    SearchAnalyticsRow,
 )
-from app.services.token_crypto import encrypt_secret
+from app.gsc.normalize import matches_project_domain, parse_property, property_type_of
+from app.services.token_crypto import decrypt_secret, encrypt_secret
 
 # 32 bytes of entropy each, url-safe. The state and nonce travel in a URL and
 # the verifier must be 43-128 characters per RFC 7636; token_urlsafe(32) yields
 # 43, the minimum that satisfies it.
 _ENTROPY_BYTES = 32
+
+# Search Console reports on Pacific days regardless of where the property or the
+# reader is, so "yesterday" has to be asked of that clock or the last day in a
+# range is sometimes empty and sometimes not.
+SEARCH_CONSOLE_TIMEZONE = ZoneInfo("America/Los_Angeles")
+
+# Google keeps revising the most recent days for roughly this long. Ending a
+# default range at "yesterday" would show numbers that quietly change on reload;
+# ending it here means the default report is stable once seen.
+FINALIZED_DATA_LAG_DAYS = 3
+DEFAULT_LOOKBACK_DAYS = 28
+
+# Google itself retains ~16 months. A wider request is not a bigger report, it
+# is a slower one that returns the same thing.
+MAX_RANGE_DAYS = 480
+
+MIN_ROW_LIMIT = 1
+MAX_ROW_LIMIT = 100
+DEFAULT_ROW_LIMIT = 25
+
+# A property nobody has verified cannot be queried, so offering it would be
+# offering a choice that fails on use.
+UNUSABLE_PERMISSION_LEVELS = frozenset({"siteUnverifiedUser"})
 
 
 class SearchConsoleError(RuntimeError):
@@ -73,6 +105,28 @@ class OAuthStateExpired(SearchConsoleError):
 
 class MissingRefreshToken(SearchConsoleError):
     """Google returned no refresh token and none is already stored."""
+
+
+class ReauthRequired(SearchConsoleError):
+    """The stored grant is dead. Only the user reconnecting fixes it."""
+
+
+class NoPropertySelected(SearchConsoleError):
+    """The project has no Search Console property linked yet."""
+
+
+class PropertyNotAccessible(SearchConsoleError):
+    """The requested property is not one this account can actually reach.
+
+    Raised when a caller names a ``site_url`` that is absent from the live list
+    Google just returned. The request is refused rather than trusted, because
+    the alternative is storing a link to a property the account cannot query and
+    discovering it later as an empty report.
+    """
+
+
+class InvalidDateRange(SearchConsoleError):
+    """The requested window is backwards, in the future, or absurdly wide."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,20 +400,502 @@ def upsert_google_connection(
     return connection
 
 
+# ---------------------------------------------------------------------------
+# Reading connections and links
+# ---------------------------------------------------------------------------
+
+
+def list_org_connections(session: Session, *, org_id: uuid.UUID) -> list[GoogleConnection]:
+    """Every Google account this organization has connected, oldest first."""
+
+    return list(
+        session.scalars(
+            sa.select(GoogleConnection)
+            .where(GoogleConnection.org_id == org_id)
+            .order_by(GoogleConnection.created_at, GoogleConnection.id)
+        )
+    )
+
+
+def get_org_connection(
+    session: Session, *, org_id: uuid.UUID, connection_id: uuid.UUID
+) -> GoogleConnection | None:
+    """One connection, scoped by organization.
+
+    The org predicate is on the query rather than checked afterwards, so there
+    is no shape of this call that reads another tenant's row first and decides
+    about it second.
+    """
+
+    return session.scalar(
+        sa.select(GoogleConnection).where(
+            GoogleConnection.id == connection_id,
+            GoogleConnection.org_id == org_id,
+        )
+    )
+
+
+def get_project_link(
+    session: Session, *, org_id: uuid.UUID, seo_project_id: uuid.UUID
+) -> SiteAuditSearchConsoleLink | None:
+    """The property linked to a project, or None.
+
+    Joined to ``google_connections`` on the organization, so a link whose
+    connection belongs to somebody else resolves to None rather than to a row.
+    A foreign-key cascade should make that impossible; this makes it impossible
+    to *read* even if it somehow is not, which is the difference between an
+    invariant and a defence.
+    """
+
+    return session.scalar(
+        sa.select(SiteAuditSearchConsoleLink)
+        .join(
+            GoogleConnection,
+            GoogleConnection.id == SiteAuditSearchConsoleLink.google_connection_id,
+        )
+        .where(
+            SiteAuditSearchConsoleLink.seo_project_id == seo_project_id,
+            GoogleConnection.org_id == org_id,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Access tokens
+# ---------------------------------------------------------------------------
+
+
+def get_access_token(
+    session: Session,
+    *,
+    settings: Settings,
+    provider: GoogleOAuthProvider,
+    connection: GoogleConnection,
+    now: datetime | None = None,
+) -> str:
+    """Exchange the stored refresh token for a short-lived access token.
+
+    The access token is returned, never stored: it lives for the rest of one
+    request and dies with it. Persisting it would buy an hour of latency and
+    inherit a permanent obligation to encrypt, rotate and expire it.
+
+    A refusal from Google is recorded on the connection as ``reauth_required``
+    and re-raised as :class:`ReauthRequired`. That write matters — it is what
+    lets the connections list tell a user *why* nothing works, instead of
+    showing a healthy-looking row that fails on every use.
+    """
+
+    moment = now or datetime.now(UTC)
+
+    refresh_token = decrypt_secret(
+        connection.refresh_token_ciphertext,
+        settings=settings,
+        key_version=connection.encryption_key_version,
+    )
+
+    try:
+        issued = provider.refresh_access_token(refresh_token=refresh_token)
+    except GoogleAuthorizationRevoked as exc:
+        connection.status = "reauth_required"
+        connection.updated_at = moment
+        session.flush()
+        raise ReauthRequired("this google connection needs to be reconnected") from exc
+
+    # A connection that was previously broken and now refreshes is working
+    # again, so the flag clears itself rather than needing a manual reset.
+    connection.status = "active"
+    connection.last_refreshed_at = moment
+    connection.updated_at = moment
+    session.flush()
+
+    return issued.access_token
+
+
+# ---------------------------------------------------------------------------
+# Properties
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class OfferedProperty:
+    """One property as the API offers it, already reduced and judged."""
+
+    site_url: str
+    permission_level: str
+    property_type: str
+    matches_project_domain: bool
+    currently_selected: bool
+
+
+def usable_properties(properties: tuple[GoogleProperty, ...]) -> list[GoogleProperty]:
+    """Drop the entries that cannot actually be queried.
+
+    Only unverified ownership is filtered. An unfamiliar permission string is
+    kept: Google adds levels over time, and hiding a property because its label
+    is new would be a worse failure than showing one that later errors.
+    """
+
+    return [
+        candidate
+        for candidate in properties
+        if parse_property(candidate.site_url) is not None
+        and candidate.permission_level not in UNUSABLE_PERMISSION_LEVELS
+    ]
+
+
+def offer_properties(
+    properties: tuple[GoogleProperty, ...],
+    *,
+    project_domain_key: str,
+    selected_site_url: str | None,
+) -> list[OfferedProperty]:
+    """Order and annotate the list a user picks from.
+
+    Suggested first, then whatever is already linked, then everything else
+    alphabetically. Sorting is total and deterministic — ``site_url`` breaks
+    every tie — because a list that reorders between two loads makes a user
+    doubt the one they picked last time.
+
+    Nothing is selected automatically. The flags exist to make the obvious
+    choice easy to find, not to make it for them.
+    """
+
+    offered = [
+        OfferedProperty(
+            site_url=candidate.site_url,
+            permission_level=candidate.permission_level,
+            property_type=property_type_of(candidate.site_url),
+            matches_project_domain=matches_project_domain(candidate.site_url, project_domain_key),
+            currently_selected=candidate.site_url == selected_site_url,
+        )
+        for candidate in usable_properties(properties)
+    ]
+
+    offered.sort(
+        key=lambda item: (
+            not item.matches_project_domain,
+            not item.currently_selected,
+            item.site_url.lower(),
+        )
+    )
+    return offered
+
+
+def link_property(
+    session: Session,
+    *,
+    seo_project_id: uuid.UUID,
+    connection: GoogleConnection,
+    site_url: str,
+    available: tuple[GoogleProperty, ...],
+    user_id: uuid.UUID | None,
+    now: datetime | None = None,
+) -> SiteAuditSearchConsoleLink:
+    """Point a project at one property, after checking the account can reach it.
+
+    ``available`` is the list Google returned moments ago, and the requested
+    ``site_url`` must appear in it. The client's value is matched against that
+    list rather than trusted, and ``permission_level`` is taken from the match
+    rather than from the request — otherwise a caller could describe their own
+    access, and the stored row would be a record of what they claimed.
+    """
+
+    moment = now or datetime.now(UTC)
+
+    match = next(
+        (candidate for candidate in usable_properties(available) if candidate.site_url == site_url),
+        None,
+    )
+    if match is None:
+        raise PropertyNotAccessible("this google account cannot reach that property")
+
+    link = session.scalar(
+        sa.select(SiteAuditSearchConsoleLink).where(
+            SiteAuditSearchConsoleLink.seo_project_id == seo_project_id
+        )
+    )
+
+    if link is None:
+        link = SiteAuditSearchConsoleLink(
+            seo_project_id=seo_project_id,
+            google_connection_id=connection.id,
+            site_url=match.site_url,
+            property_type=property_type_of(match.site_url),
+            permission_level=match.permission_level,
+            connected_by_user_id=user_id,
+            created_at=moment,
+            updated_at=moment,
+        )
+        session.add(link)
+    else:
+        # Updated in place rather than deleted and re-inserted: UNIQUE
+        # (seo_project_id) makes the delete-then-insert a window in which the
+        # project has no property, and an interrupted change would leave it
+        # there permanently.
+        link.google_connection_id = connection.id
+        link.site_url = match.site_url
+        link.property_type = property_type_of(match.site_url)
+        link.permission_level = match.permission_level
+        link.connected_by_user_id = user_id
+        link.updated_at = moment
+
+    session.flush()
+    return link
+
+
+def unlink_property(session: Session, *, seo_project_id: uuid.UUID) -> bool:
+    """Remove a project's property link. Returns whether there was one.
+
+    Only the link. The ``GoogleConnection`` survives, because it is shared: an
+    agency's other projects are pointed at the same account, and "stop reporting
+    on this project" must not mean "sign every project out of Google".
+    """
+
+    result = cast(
+        "CursorResult[Any]",
+        session.execute(
+            sa.delete(SiteAuditSearchConsoleLink).where(
+                SiteAuditSearchConsoleLink.seo_project_id == seo_project_id
+            )
+        ),
+    )
+    return bool(result.rowcount)
+
+
+# ---------------------------------------------------------------------------
+# Performance
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class PerformanceMetrics:
+    """Property-wide totals. ``ctr``/``position`` are None when there is no data.
+
+    Nullable rather than zero on purpose. A zero CTR is a measurement; "we have
+    no measurement" is not, and a chart that cannot tell them apart draws a
+    confident line through the middle of nothing.
+    """
+
+    clicks: float
+    impressions: float
+    ctr: float | None
+    position: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class PerformanceEntry:
+    """One query or one page, with its own metrics."""
+
+    key: str
+    clicks: float
+    impressions: float
+    ctr: float
+    position: float
+
+
+@dataclass(frozen=True, slots=True)
+class PerformanceReport:
+    site_url: str
+    start_date: date
+    end_date: date
+    data_state: str
+    summary: PerformanceMetrics
+    top_queries: list[PerformanceEntry]
+    top_pages: list[PerformanceEntry]
+
+
+def default_date_range(*, today: date | None = None) -> tuple[date, date]:
+    """The last 28 finalized Search Console days.
+
+    ``today`` is injectable so this is testable without freezing a clock, and it
+    defaults to the Pacific date because that is the calendar Search Console
+    reports on — deriving it from the server's local day would move the window
+    depending on where the container runs.
+    """
+
+    reference = today or datetime.now(SEARCH_CONSOLE_TIMEZONE).date()
+    end = reference - timedelta(days=FINALIZED_DATA_LAG_DAYS)
+    start = end - timedelta(days=DEFAULT_LOOKBACK_DAYS - 1)
+    return start, end
+
+
+def validate_date_range(
+    start: date | None,
+    end: date | None,
+    *,
+    today: date | None = None,
+) -> tuple[date, date]:
+    """Resolve and check a requested window, or raise :class:`InvalidDateRange`.
+
+    Either bound may be omitted and is filled from the default window. A future
+    date is refused rather than clamped: silently returning a different range
+    than the one asked for is how a caller ends up comparing two reports that do
+    not cover the same days.
+    """
+
+    reference = today or datetime.now(SEARCH_CONSOLE_TIMEZONE).date()
+    default_start, default_end = default_date_range(today=reference)
+
+    resolved_start = start or default_start
+    resolved_end = end or default_end
+
+    if resolved_start > resolved_end:
+        raise InvalidDateRange("start_date must not be after end_date")
+    if resolved_end > reference:
+        raise InvalidDateRange("end_date must not be in the future")
+    if (resolved_end - resolved_start).days + 1 > MAX_RANGE_DAYS:
+        raise InvalidDateRange(f"the requested range exceeds {MAX_RANGE_DAYS} days")
+
+    return resolved_start, resolved_end
+
+
+def clamp_row_limit(limit: int | None) -> int:
+    """Row limits are bounded here as well as in the schema.
+
+    The schema is the caller-facing guard; this is the one that still holds when
+    a future internal caller skips it.
+    """
+
+    if limit is None:
+        return DEFAULT_ROW_LIMIT
+    return max(MIN_ROW_LIMIT, min(MAX_ROW_LIMIT, limit))
+
+
+def _summary_from(rows: tuple[SearchAnalyticsRow, ...]) -> PerformanceMetrics:
+    """The property-wide row, or an explicit nothing.
+
+    Deliberately does not average the per-query rows when the summary is absent:
+    those rows are a truncated top-N, so a total computed from them would be a
+    plausible number that is simply wrong.
+    """
+
+    if not rows:
+        return PerformanceMetrics(clicks=0.0, impressions=0.0, ctr=None, position=None)
+
+    row = rows[0]
+    if row.impressions <= 0:
+        # No impressions means CTR and position are undefined rather than zero —
+        # position 0 would render as "ranked first".
+        return PerformanceMetrics(
+            clicks=row.clicks, impressions=row.impressions, ctr=None, position=None
+        )
+
+    return PerformanceMetrics(
+        clicks=row.clicks,
+        impressions=row.impressions,
+        ctr=row.ctr,
+        position=row.position,
+    )
+
+
+def _entries_from(rows: tuple[SearchAnalyticsRow, ...]) -> list[PerformanceEntry]:
+    return [
+        PerformanceEntry(
+            key=row.keys[0],
+            clicks=row.clicks,
+            impressions=row.impressions,
+            ctr=row.ctr,
+            position=row.position,
+        )
+        for row in rows
+        if row.keys
+    ]
+
+
+def build_performance_report(
+    *,
+    provider: GoogleOAuthProvider,
+    access_token: str,
+    site_url: str,
+    start: date,
+    end: date,
+    row_limit: int,
+) -> PerformanceReport:
+    """At most three bounded queries: the total, the top queries, the top pages.
+
+    Three calls, no pagination, no loop. The number is fixed in the code rather
+    than derived from the response, so a report cannot grow into an unbounded
+    walk of a large property — the cost of this endpoint is knowable before it
+    runs.
+    """
+
+    start_iso, end_iso = start.isoformat(), end.isoformat()
+
+    summary_rows = provider.query_search_analytics(
+        access_token=access_token,
+        site_url=site_url,
+        start_date=start_iso,
+        end_date=end_iso,
+        dimensions=(),
+        row_limit=1,
+    )
+    query_rows = provider.query_search_analytics(
+        access_token=access_token,
+        site_url=site_url,
+        start_date=start_iso,
+        end_date=end_iso,
+        dimensions=("query",),
+        row_limit=row_limit,
+    )
+    page_rows = provider.query_search_analytics(
+        access_token=access_token,
+        site_url=site_url,
+        start_date=start_iso,
+        end_date=end_iso,
+        dimensions=("page",),
+        row_limit=row_limit,
+    )
+
+    summary = _summary_from(summary_rows)
+    top_queries = _entries_from(query_rows)
+    top_pages = _entries_from(page_rows)
+
+    has_data = bool(summary_rows) and summary.impressions > 0
+    return PerformanceReport(
+        site_url=site_url,
+        start_date=start,
+        end_date=end,
+        data_state="ok" if has_data else "no_data",
+        summary=summary,
+        top_queries=top_queries,
+        top_pages=top_pages,
+    )
+
+
 __all__ = [
     "ClaimedState",
     "GoogleIdentityError",
     "GoogleOAuthError",
+    "InvalidDateRange",
     "MissingRefreshToken",
+    "NoPropertySelected",
     "OAuthStateExpired",
     "OAuthStateInvalid",
+    "OfferedProperty",
+    "PerformanceEntry",
+    "PerformanceMetrics",
+    "PerformanceReport",
+    "PropertyNotAccessible",
+    "ReauthRequired",
     "StartedAuthorization",
+    "build_performance_report",
     "canonical_scopes",
+    "clamp_row_limit",
     "code_challenge_for",
     "consume_oauth_state",
+    "default_date_range",
+    "get_access_token",
+    "get_org_connection",
+    "get_project_link",
     "hash_oauth_value",
+    "link_property",
+    "list_org_connections",
+    "offer_properties",
     "purge_expired_states",
     "start_authorization",
+    "unlink_property",
     "upsert_google_connection",
+    "usable_properties",
+    "validate_date_range",
     "verify_identity_for_state",
 ]

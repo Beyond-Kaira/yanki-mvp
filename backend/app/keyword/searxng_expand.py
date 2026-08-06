@@ -17,6 +17,7 @@ from app.keyword.normalize import (
     looks_like_keyword_idea,
     should_exclude_keyword_candidate,
 )
+from app.keyword.signals import build_estimated_keyword_idea_signals
 from app.keyword.variants import build_seed_query_variants
 from app.serp.base import SerpPage, SerpUnavailable
 from app.serp.searxng import SearxngSource
@@ -110,7 +111,17 @@ class SearxngKeywordSource:
             ):
                 return
             seen.add(key)
-            ideas.append(KeywordIdea(phrase=text, source=source))
+            ideas.append(
+                KeywordIdea(
+                    phrase=text,
+                    source=source,
+                    signals=build_estimated_keyword_idea_signals(
+                        phrase=text,
+                        discovery_source=source,
+                        seed_serp_page=page,
+                    ),
+                )
+            )
 
         _append_keyword_idea(cleaned, "seed")
         for variant in build_seed_query_variants(cleaned):

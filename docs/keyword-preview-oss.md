@@ -104,12 +104,12 @@ until its Semrush column is `[x]`.
 | Capability | Preview | Product | Semrush | Notes / transition |
 |------------|:-------:|:-------:|:-------:|--------------------|
 | Absolute monthly search volume | [ ] | [ ] | [ ] | Preview→Product: Google Ads / wholesale. Semrush: own calibrated volume DB + history. |
-| Volume labeled Estimated / proxy | [ ] | — | — | Faz 3 plan: Preview only. Drop when real volume ships (Product). |
+| Volume labeled Estimated / proxy | [x] | — | — | Faz 3: `volume_estimated` + `estimated_demand_score` in signals. Drop when real volume ships (Product). |
 | Trend (12-month) | [ ] | [ ] | [ ] | Needs time series / Planner monthly buckets. |
-| Keyword Difficulty (true KD%) | [ ] | [ ] | [ ] | Preview: difficulty_proxy only. Product: licensed KD or honest “competition”. Semrush: KD%. |
+| Keyword Difficulty (true KD%) | [ ] | [ ] | [ ] | Preview has `estimated_difficulty_score` (seed SERP), not KD%. Product: licensed KD or honest “competition”. Semrush: KD%. |
 | Personal KD (PKD) for a domain | [ ] | [ ] | [ ] | Needs domain + stronger model/vendor. |
 | CPC / paid competitive density | [ ] | [ ] | [ ] | Ads/Planner or vendor. |
-| Intent classification | [ ] | [ ] | [ ] | Preview: rules (Faz 3). Product: validated accuracy. Semrush: multi-intent labels at scale. |
+| Intent classification | [x] | [ ] | [ ] | Preview: rule markers in `intent.py`. Product: validated accuracy. Semrush: multi-intent labels at scale. |
 | SERP features per keyword | [ ] | [ ] | [ ] | Partial via SearXNG page shape later; Semrush = feature inventory. |
 | Global vs national vs local volume | [ ] | [ ] | [ ] | Locale pin ≠ local metrics today. |
 
@@ -181,23 +181,50 @@ the matching row here (or delete it) in the same PR.
 | **“Related” from SERP titles** | Title lines that contain the seed, stripped at `—` / `\|` | No related-keyword index exists in OSS | Drop titles that look like brands/URLs; require higher token overlap; or drop “related” until a better signal exists |
 | **PAA / answers** | Keep short lines; drop prose ending in `.` / long blobs | SearXNG `answers` shape is inconsistent across engines | Engine-aware parsing; question-only filter (`who/what/how…`) |
 | **Brand exclusion** | Optional `exclude_brands` + `leaks_brand` keys — caller must pass names | Expand is analysis-independent; no KYC on the request yet | Prefill from workspace domain / last analysis KYC when API exists |
-| **No volume / true KD** | Omitted; proxies planned in Faz 3 as **Estimated** only | No licensed DB yet | Google Ads Keyword Planner or wholesale API on the same `KeywordSource` seam |
+| **No absolute volume / true KD** | Omitted as ground truth; **Estimated** proxies live in `signals` (Faz 3) | No licensed DB yet | Google Ads Keyword Planner or wholesale API on the same `KeywordSource` seam; drop `volume_estimated` when real |
+| **`estimated_demand_score`** | Provenance heuristic (suggestion > variant…) — **not** monthly searches | OSS demand-test ranking | Real `avgMonthlySearches`; keep score field or replace with `volume` |
+| **`estimated_difficulty_score`** | Topic-level hint from **seed** SERP hard-host density (`difficulty_basis: seed_serp`) — **not** per-keyword KD% | One SearXNG round-trip budget | Per-keyword SERP or licensed KD; or keep forever as “competition hint” |
+| **Intent (rules)** | Marker lists (`how` / `best` / `buy`…) | No model/vendor yet | Model-assisted or vendor intent; keep rules as fallback |
 | **Mock under `DRY_RUN`** | Synthetic rows for CI | Same pattern as `MockSerpSource` | Keep forever for CI; never default in live preview |
 | **Locale ≈ SearXNG `language`** | `locale` string mapped onto language pin | Good enough for preview; not full geo (gl/hl/city) | Proper country/geo params when SearXNG/engines support them; document mismatch in UI |
 
-### Planned rough edges (Faz 3+ — not built yet, same honesty bar)
+### Planned rough edges (Faz 4+ — not built yet, same honesty bar)
 
 | Area | Planned intentional shortcut | Later fix (toward Product) |
 |------|------------------------------|----------------------------|
-| **`demand_proxy`** | Heuristic from how the idea was found (suggestion vs local variant, etc.) — **not** monthly searches | Real `avgMonthlySearches` via Google Ads / wholesale; keep field name stable, swap provider |
-| **`difficulty_proxy`** | Heuristic from SERP composition (big-brand density, etc.) — **not** Semrush KD% | Licensed KD or clearer label forever as “competition hint” |
-| **Intent** | Rule keywords (`how` → informational, `best`/`vs` → commercial, …) | Model-assisted or vendor intent; keep rules as fallback |
 | **Overview vs Magic** | Thin Overview cards wrapping the same expand | Richer SERP snapshot per keyword only when budget allows |
 | **Rank-check** | Reuse `detect` on a small selected set (budget 6–10) | Persistent rank tracking / history = separate M6 product, not this preview |
 | **UI lists / Strategy Builder** | Deferred or very light “save list” | Clustering only after demand proves keyword research retention |
+| **Estimated / Preview badges in UI** | Required once UI ships while proxies remain | Remove per-field when Product-true metrics land |
 
 ### Doc / process notes
 
 - Any new proxy metric ships with **Estimated** (or equivalent) in the UI copy and API (`volume_estimated: true` style flags where relevant).
 - Matrix ticks and this roughness table must stay in sync when quality jumps.
 - Primary decision after the preview window remains A / B / C under **Success criteria** — Semrush parity is optional, not the default north star.
+
+## Debt notes (topla sonra — şimdilik işaret)
+
+Parked for a cleanup pass after the preview path ships. Do not treat as done.
+
+### Intent classifier — hardcoded markers (**leak / i18n risk**)
+
+- **Where:** `backend/app/keyword/intent.py` — `_TRANSACTIONAL_MARKERS`, `_COMMERCIAL_MARKERS`, `_INFORMATIONAL_MARKERS`.
+- **Behavior:** `classify_keyword_search_intent` returns the first matching bucket; **fallback is always `informational`** (including empty input).
+- **Why it is debt:** English-only token lists; easy to reverse-engineer from UI labels (“our intent model”); wrong on TR/other locales; over-tags bland head terms as informational.
+- **Product bar:** do not claim Product-grade intent until markers are replaced or heavily gated (locale packs, vendor/model, or “unclassified” instead of silent informational fallback).
+- **Follow-up home:** [keyword-preview-to-product-engineering.md](keyword-preview-to-product-engineering.md) (engineering checklist Preview → Product).
+
+### Other parked items (same cleanup pass)
+
+- Seed template variants grammar (`build_seed_query_variants`).
+- `estimated_*` proxies vs real volume/KD field swap.
+- Canvas vs this markdown tick sync for Product/Business.
+
+## Related docs
+
+| Doc | Audience |
+|-----|----------|
+| This file | Product + eng: preview scope, quality bars, roughness |
+| [keyword-preview-to-product-engineering.md](keyword-preview-to-product-engineering.md) | Engineers: codebase steps to lift Preview → Product |
+| Cursor canvas `keyword-research-quality.canvas.tsx` | Product/Business progress board |

@@ -59,6 +59,10 @@ def test_expand_includes_seed_variants_suggestions_paa_and_related():
     assert "A long prose answer that ends." not in [
         p for rows in by_source.values() for p in rows
     ]
+    suggestion = next(i for i in result.ideas if i.phrase == "money transfer uk")
+    assert suggestion.signals["volume_estimated"] is True
+    assert suggestion.signals["intent"]
+    assert suggestion.signals["difficulty_basis"] == "seed_serp"
 
 
 def test_expand_drops_excluded_brands_and_respects_max_ideas():

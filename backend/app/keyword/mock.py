@@ -50,11 +50,7 @@ class MockKeywordSource:
                 return
             text = collapse_keyword_whitespace(phrase)
             key = keyword_dedupe_key(text)
-            if (
-                not key
-                or key in seen
-                or should_exclude_keyword_candidate(text, brand_keys)
-            ):
+            if not key or key in seen or should_exclude_keyword_candidate(text, brand_keys):
                 return
             seen.add(key)
             ideas.append(

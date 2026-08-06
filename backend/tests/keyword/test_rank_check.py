@@ -35,9 +35,7 @@ def test_check_keyword_ranks_against_mock_serp():
 def test_check_keyword_ranks_reports_miss_for_other_domain():
     page = SerpPage(
         query="widgets",
-        results=(
-            SerpResult(rank=1, url="https://other.example/a", title="a"),
-        ),
+        results=(SerpResult(rank=1, url="https://other.example/a", title="a"),),
     )
 
     class _Fixed:

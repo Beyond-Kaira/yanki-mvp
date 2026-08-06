@@ -51,9 +51,7 @@ def test_keywords_dark_when_flag_off(client: TestClient, authed_user: User) -> N
         app.dependency_overrides.pop(get_settings, None)
 
 
-def test_expand_requires_auth(
-    client: TestClient, enabled_dry_run_settings: Settings
-) -> None:
+def test_expand_requires_auth(client: TestClient, enabled_dry_run_settings: Settings) -> None:
     response = client.post(
         "/api/v1/keywords/expand",
         json={"seed": "money transfer", "locale": "en"},

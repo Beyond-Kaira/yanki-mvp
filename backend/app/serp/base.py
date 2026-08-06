@@ -79,5 +79,4 @@ class SerpPage:
 class SerpSource(Protocol):
     name: str
 
-    def search(self, query: str) -> SerpPage:
-        ...
+    def search(self, query: str) -> SerpPage: ...

@@ -53,9 +53,7 @@ def test_estimated_difficulty_rises_with_hard_serp_hosts():
 def test_build_estimated_keyword_idea_signals_marks_estimated():
     page = SerpPage(
         query="money transfer",
-        results=(
-            SerpResult(rank=1, url="https://en.wikipedia.org/wiki/MT", title="MT"),
-        ),
+        results=(SerpResult(rank=1, url="https://en.wikipedia.org/wiki/MT", title="MT"),),
     )
     signals = build_estimated_keyword_idea_signals(
         phrase="best money transfer",

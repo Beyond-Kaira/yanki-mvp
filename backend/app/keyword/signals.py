@@ -82,9 +82,7 @@ def build_estimated_keyword_idea_signals(
     difficulty = estimated_difficulty_score_from_seed_serp(seed_serp_page)
     signals: dict[str, Any] = {
         "intent": classify_keyword_search_intent(cleaned),
-        "estimated_demand_score": estimated_demand_score_for_discovery_source(
-            discovery_source
-        ),
+        "estimated_demand_score": estimated_demand_score_for_discovery_source(discovery_source),
         "volume_estimated": True,
         "difficulty_estimated": True,
     }

@@ -56,9 +56,7 @@ def test_expand_includes_seed_variants_suggestions_paa_and_related():
     assert "money transfer uk" in by_source["suggestion"]
     assert "is money transfer safe" in by_source["paa"]
     assert "Best money transfer apps" in by_source["related"]
-    assert "A long prose answer that ends." not in [
-        p for rows in by_source.values() for p in rows
-    ]
+    assert "A long prose answer that ends." not in [p for rows in by_source.values() for p in rows]
     suggestion = next(i for i in result.ideas if i.phrase == "money transfer uk")
     assert suggestion.signals["volume_estimated"] is True
     assert suggestion.signals["intent"]

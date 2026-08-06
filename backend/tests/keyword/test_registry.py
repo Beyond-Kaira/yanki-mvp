@@ -54,9 +54,7 @@ def test_enabled_live_builds_the_searxng_keyword_source():
 def test_enabled_but_unconfigured_yields_no_source():
     assert get_keyword_source(_settings(keyword_enabled=True, dry_run=False)) is None
     assert (
-        get_keyword_source(
-            _settings(keyword_enabled=True, dry_run=False, serp_base_url="  ")
-        )
+        get_keyword_source(_settings(keyword_enabled=True, dry_run=False, serp_base_url="  "))
         is None
     )
 

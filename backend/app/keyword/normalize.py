@@ -32,10 +32,7 @@ def keyword_dedupe_key(text: str) -> str:
 def is_usable_phrase(text: str) -> bool:
     """False for empties, URLs, or phrases outside the keyword length budget."""
     cleaned = collapse_keyword_whitespace(text)
-    if (
-        len(cleaned) < MIN_KEYWORD_PHRASE_CHARS
-        or len(cleaned) > MAX_KEYWORD_PHRASE_CHARS
-    ):
+    if len(cleaned) < MIN_KEYWORD_PHRASE_CHARS or len(cleaned) > MAX_KEYWORD_PHRASE_CHARS:
         return False
     lowered = cleaned.lower()
     if "://" in lowered or lowered.startswith("www."):
@@ -58,9 +55,7 @@ def brand_names_to_exclusion_keys(brand_names: Sequence[str] | None) -> list[str
     return keys
 
 
-def should_exclude_keyword_candidate(
-    phrase: str, brand_exclusion_keys: Sequence[str]
-) -> bool:
+def should_exclude_keyword_candidate(phrase: str, brand_exclusion_keys: Sequence[str]) -> bool:
     """True when a candidate is unusable or names an excluded brand."""
     if not is_usable_phrase(phrase):
         return True

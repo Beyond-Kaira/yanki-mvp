@@ -155,19 +155,16 @@ describe("visibility insights", () => {
       />,
     );
 
-    expect(screen.getAllByText("25%")).toHaveLength(2);
+    expect(screen.getByText("25%")).toBeInTheDocument();
     expect(
-      screen.getByText("1 of 4 tracked profile terms"),
+      screen.getByText("1 of 4 profile terms are covered"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("img", {
         name: /1 covered, 1 association opportunities, and 2 not observed/,
       }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Found in 3 of 12 scored answers, but none of them names Yanki Demo Co.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Cobot")).toBeInTheDocument();
+    expect(screen.getByText("3/12")).toBeInTheDocument();
   });
 });

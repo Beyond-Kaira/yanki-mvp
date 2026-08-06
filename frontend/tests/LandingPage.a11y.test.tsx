@@ -1,11 +1,23 @@
 import { render } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import LandingPage from '@/app/page'
 import { axeCheck } from './a11y'
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+}))
+
+vi.mock('@/components/AuthProvider', () => ({
+  useAuth: () => ({ status: 'anonymous' }),
+}))
+
+vi.mock('next/headers', () => ({
+  cookies: async () => ({ has: () => false }),
+}))
+
 describe('Landing page accessibility', () => {
   it('has no axe violations', async () => {
-    const { container } = render(<LandingPage />)
+    const { container } = render(await LandingPage())
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 })

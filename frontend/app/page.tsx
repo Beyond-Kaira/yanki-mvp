@@ -1,4 +1,7 @@
+import { cookies } from 'next/headers'
 import Link from 'next/link'
+import SignedInGate from '@/components/SignedInGate'
+import { SESSION_HINT_COOKIE } from '@/lib/session-hint'
 
 /**
  * The front door.
@@ -33,102 +36,106 @@ const STEPS = [
   { n: '3', title: 'You see the work', body: 'A score, the evidence under it, and what to change first.' },
 ]
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const hinted = (await cookies()).has(SESSION_HINT_COOKIE)
+
   return (
-    <div className="mx-auto w-full max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
-      <section className="max-w-3xl">
-        <p className="text-sm font-medium uppercase tracking-wide text-primary">
-          Generative engine optimization
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-5xl">
-          Find out what AI answers say about your brand
-        </h1>
-        <p className="mt-5 text-base leading-relaxed text-surface-subtle sm:text-lg">
-          When someone asks an AI assistant to recommend a product like yours, do you
-          come up? Yanki asks the engines directly, measures how often you appear, and
-          keeps every raw answer so you can check the working.
-        </p>
+    <SignedInGate hinted={hinted}>
+      <div className="mx-auto w-full max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
+        <section className="max-w-3xl">
+          <p className="text-sm font-medium uppercase tracking-wide text-primary">
+            Generative engine optimization
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-5xl">
+            Find out what AI answers say about your brand
+          </h1>
+          <p className="mt-5 text-base leading-relaxed text-surface-subtle sm:text-lg">
+            When someone asks an AI assistant to recommend a product like yours, do you
+            come up? Yanki asks the engines directly, measures how often you appear, and
+            keeps every raw answer so you can check the working.
+          </p>
 
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Link
-            href="/signup"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          >
-            Create an account
-          </Link>
-          <Link
-            href="/checker"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-surface-border px-5 text-sm font-medium transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            Try the free checker
-          </Link>
-        </div>
-        <p className="mt-3 text-sm text-surface-subtle">
-          Already have an account?{' '}
-          <Link href="/login" className="font-medium text-primary hover:underline">
-            Log in
-          </Link>
-          .
-        </p>
-      </section>
-
-      <section className="mt-14 grid gap-6 sm:mt-20 sm:grid-cols-3">
-        {PROOF.map((item) => (
-          <div
-            key={item.title}
-            className="rounded-lg border border-surface-border bg-surface p-5"
-          >
-            <h2 className="text-base font-semibold">{item.title}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-surface-subtle">{item.body}</p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Link
+              href="/signup"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
+              Create an account
+            </Link>
+            <Link
+              href="/checker"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-surface-border px-5 text-sm font-medium transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              Try the free checker
+            </Link>
           </div>
-        ))}
-      </section>
+          <p className="mt-3 text-sm text-surface-subtle">
+            Already have an account?{' '}
+            <Link href="/login" className="font-medium text-primary hover:underline">
+              Log in
+            </Link>
+            .
+          </p>
+        </section>
 
-      <section className="mt-14 sm:mt-20">
-        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">How it works</h2>
-        <ol className="mt-6 grid gap-6 sm:grid-cols-3">
-          {STEPS.map((step) => (
-            <li key={step.n} className="flex gap-4">
-              <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary"
-                aria-hidden
-              >
-                {step.n}
-              </span>
-              <div className="min-w-0">
-                <h3 className="text-base font-semibold">{step.title}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-surface-subtle">
-                  {step.body}
-                </p>
-              </div>
-            </li>
+        <section className="mt-14 grid gap-6 sm:mt-20 sm:grid-cols-3">
+          {PROOF.map((item) => (
+            <div
+              key={item.title}
+              className="rounded-lg border border-surface-border bg-surface p-5"
+            >
+              <h2 className="text-base font-semibold">{item.title}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-surface-subtle">{item.body}</p>
+            </div>
           ))}
-        </ol>
-      </section>
+        </section>
 
-      <section className="mt-14 rounded-lg border border-surface-border bg-surface p-6 sm:mt-20 sm:p-8">
-        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-          See your own numbers
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-surface-subtle">
-          Create an account to run a full analysis, track it over time, and invite your
-          team. Or try the free checker first — no account needed.
-        </p>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Link
-            href="/signup"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          >
-            Create an account
-          </Link>
-          <Link
-            href="/methodology"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-surface-border px-5 text-sm font-medium transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            Read the methodology
-          </Link>
-        </div>
-      </section>
-    </div>
+        <section className="mt-14 sm:mt-20">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">How it works</h2>
+          <ol className="mt-6 grid gap-6 sm:grid-cols-3">
+            {STEPS.map((step) => (
+              <li key={step.n} className="flex gap-4">
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary"
+                  aria-hidden
+                >
+                  {step.n}
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold">{step.title}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-surface-subtle">
+                    {step.body}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="mt-14 rounded-lg border border-surface-border bg-surface p-6 sm:mt-20 sm:p-8">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            See your own numbers
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-surface-subtle">
+            Create an account to run a full analysis, track it over time, and invite your
+            team. Or try the free checker first — no account needed.
+          </p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/signup"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
+              Create an account
+            </Link>
+            <Link
+              href="/methodology"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-surface-border px-5 text-sm font-medium transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              Read the methodology
+            </Link>
+          </div>
+        </section>
+      </div>
+    </SignedInGate>
   )
 }

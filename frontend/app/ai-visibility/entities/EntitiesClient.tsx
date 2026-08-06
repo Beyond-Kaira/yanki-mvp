@@ -1,14 +1,14 @@
-'use client'
+"use client";
 
-import AnalysisBoundSubpage from '@/components/ai-visibility/AnalysisBoundSubpage'
-import EntityCoverage from '@/components/insights/EntityCoverage'
-import EntityLandscape from '@/components/insights/EntityLandscape'
+import AnalysisBoundSubpage from "@/components/ai-visibility/AnalysisBoundSubpage";
+import EntityCoverage from "@/components/insights/EntityCoverage";
+import EntityLandscape from "@/components/insights/EntityLandscape";
 
 export default function EntitiesClient() {
   return (
     <AnalysisBoundSubpage title="Entities">
       {(analysis) => {
-        const insights = analysis.result.insights
+        const insights = analysis.result.insights;
 
         if (!insights) {
           return (
@@ -16,7 +16,7 @@ export default function EntitiesClient() {
               This run does not have enough scored answers to calculate entity
               coverage yet.
             </p>
-          )
+          );
         }
 
         return (
@@ -25,14 +25,18 @@ export default function EntitiesClient() {
               Entity coverage and the industry landscape calculated from the
               same scored answers as Overview.
             </p>
-            <EntityCoverage coverage={insights.entityCoverage} />
+            <EntityCoverage
+              coverage={insights.entityCoverage}
+              brand={insights.brand}
+              scoredAnswers={insights.scoredAnswers}
+            />
             <EntityLandscape
               landscape={insights.entityLandscape}
               scoredAnswers={insights.scoredAnswers}
             />
           </>
-        )
+        );
       }}
     </AnalysisBoundSubpage>
-  )
+  );
 }

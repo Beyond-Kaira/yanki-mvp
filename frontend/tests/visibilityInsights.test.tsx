@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import IntentHeatmap from "@/components/charts/IntentHeatmap";
+import EntityCoverage from "@/components/insights/EntityCoverage";
 import EntityLandscape from "@/components/insights/EntityLandscape";
 import MentionShare from "@/components/insights/MentionShare";
 import MultiLlmComparison from "@/components/insights/MultiLlmComparison";
@@ -110,5 +111,63 @@ describe("visibility insights", () => {
         name: "Warehouse automation: present in 3 of 12 scored answers",
       }),
     ).toHaveAttribute("aria-valuenow", "25");
+  });
+
+  it("shows coverage as tracked profile terms and explains each status", () => {
+    render(
+      <EntityCoverage
+        brand="Yanki Demo Co"
+        scoredAnswers={12}
+        coverage={{
+          present: 1,
+          total: 4,
+          entities: [
+            {
+              name: "Warehouse automation",
+              answers: 4,
+              ownership: "shared",
+              tier: "secondary",
+              presence: "present",
+            },
+            {
+              name: "Cobot",
+              answers: 3,
+              ownership: "competitor",
+              tier: "secondary",
+              presence: "high-impact-missing",
+            },
+            {
+              name: "Safety scanner",
+              answers: 0,
+              ownership: "unclaimed",
+              tier: "none",
+              presence: "missing",
+            },
+            {
+              name: "Predictive maintenance",
+              answers: 0,
+              ownership: "unclaimed",
+              tier: "none",
+              presence: "missing",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("25%")).toHaveLength(2);
+    expect(
+      screen.getByText("1 of 4 tracked profile terms"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: /1 covered, 1 association opportunities, and 2 not observed/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Found in 3 of 12 scored answers, but none of them names Yanki Demo Co.",
+      ),
+    ).toBeInTheDocument();
   });
 });

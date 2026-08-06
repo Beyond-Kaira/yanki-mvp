@@ -195,6 +195,7 @@ def test_an_oauth_state_records_who_started_the_flow(db_session, make_org):
 
     state = GoogleOAuthState(
         state_hash="sha256-of-the-raw-state",
+        nonce_hash="sha256-of-the-raw-nonce",
         code_verifier="pkce-verifier",
         org_id=org.id,
         user_id=user.id,
@@ -208,6 +209,27 @@ def test_an_oauth_state_records_who_started_the_flow(db_session, make_org):
     assert state.org_id == org.id
     assert state.user_id == user.id
     assert state.seo_project_id == project.id
+    assert state.nonce_hash == "sha256-of-the-raw-nonce"
+
+
+def test_a_state_cannot_be_written_without_a_nonce(db_session, make_org):
+    """NOT NULL, so an attempt that could never bind an ID token cannot exist."""
+
+    user, org, project = make_org()
+
+    db_session.add(
+        GoogleOAuthState(
+            state_hash="no-nonce",
+            code_verifier="pkce-verifier",
+            org_id=org.id,
+            user_id=user.id,
+            seo_project_id=project.id,
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
 
 
 def test_a_state_hash_cannot_repeat(db_session, make_org):
@@ -220,6 +242,7 @@ def test_a_state_hash_cannot_repeat(db_session, make_org):
         db_session.add(
             GoogleOAuthState(
                 state_hash="collision",
+                nonce_hash="sha256-of-the-raw-nonce",
                 code_verifier="pkce-verifier",
                 org_id=org.id,
                 user_id=user.id,
@@ -239,6 +262,7 @@ def test_deleting_the_project_takes_its_pending_states_with_it(db_session, make_
     db_session.add(
         GoogleOAuthState(
             state_hash="doomed",
+            nonce_hash="sha256-of-the-raw-nonce",
             code_verifier="pkce-verifier",
             org_id=org.id,
             user_id=user.id,

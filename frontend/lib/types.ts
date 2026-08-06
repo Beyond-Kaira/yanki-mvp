@@ -760,6 +760,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/seo-projects/{project_id}/search-console/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Search Console Connect
+         * @description Begin an authorization attempt and return where to send the browser.
+         *
+         *     201 rather than 200: this creates a short-lived, single-use attempt. The
+         *     response deliberately carries nothing but the URL — the state, nonce and
+         *     PKCE verifier stay server-side, and only the state's hash is stored.
+         */
+        post: operations["start_search_console_connect_api_v1_seo_projects__project_id__search_console_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/waitlist": {
         parameters: {
             query?: never;
@@ -1815,6 +1839,17 @@ export interface components {
             serp: components["schemas"]["SerpVisibilityOut"] | null;
             /** Total Responses */
             total_responses: number | null;
+        };
+        /**
+         * SearchConsoleConnectStartOut
+         * @description Where to send the browser to authorize Yanki against Google.
+         */
+        SearchConsoleConnectStartOut: {
+            /**
+             * Authorization Url
+             * @description Absolute Google OAuth 2.0 authorization URL. The frontend performs a full-page navigation to it; it carries no client secret and is single-use, because the state inside it is.
+             */
+            authorization_url: string;
         };
         /**
          * SeoAuditOut
@@ -3601,6 +3636,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BacklinkSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_search_console_connect_api_v1_seo_projects__project_id__search_console_connect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchConsoleConnectStartOut"];
                 };
             };
             /** @description Validation Error */

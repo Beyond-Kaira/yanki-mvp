@@ -996,6 +996,14 @@ class GoogleOAuthState(Base):
     in the URL Google echoes back, the same discipline as ``Invitation``.
     Single use is enforced by ``consumed_at``, which is what stops a replayed
     callback from being exchanged twice.
+
+    ``nonce_hash`` binds the *identity* to this attempt, which ``state_hash``
+    does not. State proves the callback answers a request we made; it says
+    nothing about the ID token that arrives with it. Without a nonce, an ID
+    token minted for the same client in some other exchange can be presented
+    here and believed. The nonce goes out in the authorization request, comes
+    back as a claim inside the signed ID token, and is compared here — so an
+    identity that was not issued for *this* attempt cannot be substituted.
     """
 
     __tablename__ = "google_oauth_states"
@@ -1014,6 +1022,12 @@ class GoogleOAuthState(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
     state_hash: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # SHA-256 of the OIDC nonce. Hashed rather than stored raw for the same
+    # reason as the state: the database is not where a live credential belongs,
+    # and a hash is all a comparison needs. Not unique — uniqueness on state is
+    # what makes an attempt addressable; the nonce is only ever read through the
+    # row the state already found.
+    nonce_hash: Mapped[str] = mapped_column(sa.Text, nullable=False)
     # The PKCE verifier, stored in the clear. It is single-use, useless without
     # the matching authorization code, and expires in minutes — encrypting it
     # would add a key dependency to the one table that must stay readable for

@@ -2636,6 +2636,21 @@
         "title": "ResultOut",
         "type": "object"
       },
+      "SearchConsoleConnectStartOut": {
+        "description": "Where to send the browser to authorize Yanki against Google.",
+        "properties": {
+          "authorization_url": {
+            "description": "Absolute Google OAuth 2.0 authorization URL. The frontend performs a full-page navigation to it; it carries no client secret and is single-use, because the state inside it is.",
+            "title": "Authorization Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_url"
+        ],
+        "title": "SearchConsoleConnectStartOut",
+        "type": "object"
+      },
       "SeoAuditOut": {
         "description": "The SEO audit for one analysis (ADR-31).\n\n``grade`` is the headline rather than ``score``, because a weighted average\ncan hide a fatal problem: the grade is capped by critical failures, so a site\nthat blocks AI crawlers cannot present as healthy. Null on runs that did not\naudit \u2014 a checker submission has no site to look at.",
         "properties": {
@@ -6685,6 +6700,71 @@
         "summary": "Read Summary",
         "tags": [
           "backlinks"
+        ]
+      }
+    },
+    "/api/v1/seo-projects/{project_id}/search-console/connect": {
+      "post": {
+        "description": "Begin an authorization attempt and return where to send the browser.\n\n201 rather than 200: this creates a short-lived, single-use attempt. The\nresponse deliberately carries nothing but the URL \u2014 the state, nonce and\nPKCE verifier stay server-side, and only the state's hash is stored.",
+        "operationId": "start_search_console_connect_api_v1_seo_projects__project_id__search_console_connect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConsoleConnectStartOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Search Console Connect",
+        "tags": [
+          "search-console"
         ]
       }
     },

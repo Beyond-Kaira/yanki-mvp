@@ -19,6 +19,12 @@ import type {
   LinkEventPage,
   LoginResponse,
   ReferringDomainPage,
+  SearchConsoleConnections,
+  SearchConsoleConnectStart,
+  SearchConsolePerformance,
+  SearchConsoleProperties,
+  SearchConsolePropertyLink,
+  SearchConsolePropertyLinkInput,
     SeoProject,
     SeoProjectDetail,
     SiteAuditDetail,
@@ -307,6 +313,204 @@ export async function getSiteAudit(
   }
 
   return (await res.json()) as SiteAuditDetail
+}
+
+// --- Google Search Console ------------------------------------------------
+//
+// Six thin clients over `/api/v1/seo-projects/{id}/search-console/*`. Two
+// conventions matter here more than elsewhere.
+//
+// **The 409 codes are a vocabulary, not prose.** The backend answers with a
+// fixed reason (`reauth_required`, `no_property_selected`,
+// `property_access_lost`, `property_not_accessible`) precisely so a client can
+// branch on it. These functions translate each into a sentence a user can act
+// on, and fall back to the server's message for anything unrecognised.
+//
+// **A 404 here means the module is off.** The router 404s the whole surface
+// while `GSC_ENABLED` is false, so an unfamiliar 404 is "not available" rather
+// than "not found" — saying "we couldn't find that" would be a lie about a
+// feature flag.
+
+function searchConsolePath(projectId: string, suffix = ''): string {
+  return `/api/v1/seo-projects/${encodeURIComponent(projectId)}/search-console${suffix}`
+}
+
+async function searchConsoleError(res: Response, fallback: string): Promise<ApiError> {
+  const detail = await readErrorMessage(res)
+
+  const message =
+    res.status === 401
+      ? 'Your session has expired. Sign in again to manage this connection.'
+      : res.status === 403
+        ? 'You do not have permission to change this connection.'
+        : res.status === 404
+          ? 'Search Console is not available for this project.'
+          : res.status === 409
+            ? SEARCH_CONSOLE_CONFLICTS[detail] ?? detail
+            : res.status === 429
+              ? 'Google is rate limiting these requests. Try again in a minute.'
+              : res.status === 502 || res.status === 503
+                ? 'Google Search Console could not be reached. Try again shortly.'
+                : detail || fallback
+
+  return new ApiError(message, res.status)
+}
+
+const SEARCH_CONSOLE_CONFLICTS: Record<string, string> = {
+  reauth_required:
+    'This Google connection has expired. Reconnect the account to continue.',
+  no_property_selected: 'Choose a Search Console property for this project first.',
+  property_access_lost:
+    'This Google account no longer has access to that property in Search Console.',
+  property_not_accessible:
+    'That property is not available to this Google account. Pick another one.',
+}
+
+function unreachable(): ApiError {
+  return new ApiError(
+    "We couldn't reach the server. Check your connection and try again.",
+    0,
+  )
+}
+
+/** Begin an OAuth attempt. Returns only the URL to send the browser to. */
+export async function startSearchConsoleConnect(
+  projectId: string,
+): Promise<SearchConsoleConnectStart> {
+  let res: Response
+  try {
+    res = await authorizedFetch(searchConsolePath(projectId, '/connect'), {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    })
+  } catch {
+    throw unreachable()
+  }
+
+  if (!res.ok) {
+    throw await searchConsoleError(res, 'The Google connection could not be started.')
+  }
+
+  return (await res.json()) as SearchConsoleConnectStart
+}
+
+/** The organization's connected Google accounts, and this project's standing. */
+export async function listSearchConsoleConnections(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<SearchConsoleConnections> {
+  let res: Response
+  try {
+    res = await authorizedFetch(searchConsolePath(projectId, '/connections'), {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw unreachable()
+  }
+
+  if (!res.ok) {
+    throw await searchConsoleError(res, 'Google connections could not be loaded.')
+  }
+
+  return (await res.json()) as SearchConsoleConnections
+}
+
+/** What one connected account can reach. Hits Google, so it is never polled. */
+export async function listSearchConsoleProperties(
+  projectId: string,
+  connectionId: string,
+  signal?: AbortSignal,
+): Promise<SearchConsoleProperties> {
+  let res: Response
+  try {
+    res = await authorizedFetch(
+      searchConsolePath(
+        projectId,
+        `/connections/${encodeURIComponent(connectionId)}/properties`,
+      ),
+      { headers: { Accept: 'application/json' }, cache: 'no-store', signal },
+    )
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw unreachable()
+  }
+
+  if (!res.ok) {
+    throw await searchConsoleError(res, 'Search Console properties could not be loaded.')
+  }
+
+  return (await res.json()) as SearchConsoleProperties
+}
+
+/** Point this project at a property, or move it to a different one. */
+export async function linkSearchConsoleProperty(
+  projectId: string,
+  input: SearchConsolePropertyLinkInput,
+): Promise<SearchConsolePropertyLink> {
+  let res: Response
+  try {
+    res = await authorizedFetch(searchConsolePath(projectId, '/property'), {
+      method: 'PUT',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+  } catch {
+    throw unreachable()
+  }
+
+  if (!res.ok) {
+    throw await searchConsoleError(res, 'That property could not be connected.')
+  }
+
+  return (await res.json()) as SearchConsolePropertyLink
+}
+
+/**
+ * Remove this project's property link. The Google account stays connected.
+ *
+ * The backend is idempotent, so this resolves for a project that had no link.
+ */
+export async function unlinkSearchConsoleProperty(projectId: string): Promise<void> {
+  let res: Response
+  try {
+    res = await authorizedFetch(searchConsolePath(projectId, '/property'), {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+    })
+  } catch {
+    throw unreachable()
+  }
+
+  if (!res.ok) {
+    throw await searchConsoleError(res, 'The property could not be disconnected.')
+  }
+}
+
+/** Live performance for the linked property, over the backend's default window. */
+export async function getSearchConsolePerformance(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<SearchConsolePerformance> {
+  let res: Response
+  try {
+    res = await authorizedFetch(searchConsolePath(projectId, '/performance'), {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw unreachable()
+  }
+
+  if (!res.ok) {
+    throw await searchConsoleError(res, 'Search Console performance could not be loaded.')
+  }
+
+  return (await res.json()) as SearchConsolePerformance
 }
 
 // --- Administration -------------------------------------------------------

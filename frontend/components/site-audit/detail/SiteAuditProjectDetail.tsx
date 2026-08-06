@@ -9,6 +9,7 @@ import SiteAuditIssuesPanel from '@/components/site-audit/issues/SiteAuditIssues
 import SiteAuditCrawledPagesPanel from '@/components/site-audit/pages/SiteAuditCrawledPagesPanel'
 import SiteAuditOverview from '@/components/site-audit/overview/SiteAuditOverview'
 import SiteAuditSchemaPanel from '@/components/site-audit/schema/SiteAuditSchemaPanel'
+import SearchConsoleConnectionCard from '@/components/site-audit/search-console/SearchConsoleConnectionCard'
 import { useSiteAuditProject } from '@/components/site-audit/hooks/useSiteAuditProject'
 import SiteAuditProjectHeader from './SiteAuditProjectHeader'
 import SiteAuditTabs from './SiteAuditTabs'
@@ -49,6 +50,14 @@ export default function SiteAuditProjectDetail() {
   return (
     <DetailShell>
       <SiteAuditProjectHeader project={project} audit={audit} />
+
+      {/* Above the audit result and outside its conditional: connecting Search
+          Console is worth doing before a first crawl has ever run, and burying
+          it inside the "no audit yet" branch would hide it exactly then. */}
+      <SearchConsoleConnectionCard
+        projectId={project.id}
+        enabled={status === 'authenticated'}
+      />
 
       {!audit ? (
         <section className="mt-8 rounded-xl border border-surface-border bg-surface p-8 shadow-sm">

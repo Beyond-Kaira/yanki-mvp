@@ -171,6 +171,20 @@ def _entity_terms(kyc: dict[str, Any] | None) -> list[str]:
     return unique
 
 
+def _known_competitor_keys(kyc: dict[str, Any] | None) -> set[str]:
+    """Competitors explicitly named by the profile, normalized for matching."""
+    if not kyc:
+        return set()
+    values = kyc.get("competitors")
+    if not isinstance(values, list):
+        return set()
+    return {
+        value.strip().casefold()
+        for value in values
+        if isinstance(value, str) and value.strip()
+    }
+
+
 def _contains(text: str, name: str) -> bool:
     return re.search(
         rf"(?<!\w){re.escape(name)}(?!\w)",
@@ -347,11 +361,19 @@ def summarize_insights(
         if entity.answers > 0
     )
     own_term_keys = {entity.name.casefold() for entity in own_entities}
+    known_competitor_keys = _known_competitor_keys(kyc)
     for key, count in sorted(competitor_counts.items(), key=lambda item: (-item[1], item[0])):
         # A KYC term can also look like a proper-name competitor (for example
         # a location such as "Turkey"). It already has an ownership-aware row
         # above, so do not append a second, contradictory competitor row.
         if key in own_term_keys:
+            continue
+        # The proper-name heuristic intentionally casts a wide net, but a
+        # single capitalized phrase can be a place, publication or sentence
+        # fragment rather than a meaningful market entity. Keep known KYC
+        # competitors even when they appear once; require every newly
+        # discovered external name to repeat in two distinct answers.
+        if count < 2 and key not in known_competitor_keys:
             continue
         landscape_entities.append(
             EntityStat(competitor_display[key], count, "competitor", _tier(count, core_threshold))

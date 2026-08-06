@@ -100,3 +100,28 @@ def test_landscape_does_not_repeat_own_term_as_a_competitor() -> None:
     assert len(turkey) == 1
     assert turkey[0].ownership == "shared"
     assert turkey[0].answers == 2
+
+
+def test_landscape_filters_one_off_external_names_but_keeps_known_competitors() -> None:
+    prompts = [
+        _prompt("p1", "recommendation"),
+        _prompt("p2", "comparison"),
+        _prompt("p3", "makers"),
+    ]
+    responses = [
+        _response("p1", "measured", "Globex and Paris are discussed.", False),
+        _response("p2", "measured", "Globex is frequently recommended.", False),
+        _response("p3", "measured", "Initech is another option.", False),
+    ]
+    kyc = {**_KYC, "competitors": ["Initech"]}
+
+    insights = summarize_insights(responses, prompts, kyc)
+
+    assert insights is not None
+    names = {
+        entity.name.casefold()
+        for entity in insights.entityLandscape.entities
+    }
+    assert "globex" in names
+    assert "initech" in names
+    assert "paris" not in names

@@ -157,6 +157,14 @@ class Settings(BaseSettings):
     serp_safesearch: int = 0
     serp_max_results: int = 20
 
+    # Keyword research preview (docs/keyword-preview-oss.md) — expand seeds via
+    # the same SearXNG instance as SERP visibility. Default OFF until the
+    # operator opts in. Under DRY_RUN an enabled run uses MockKeywordSource so
+    # CI needs no instance; live/default product path is SearXNG.
+    keyword_enabled: bool = False
+    # Cap on ideas returned from one expand call (politeness / payload size).
+    keyword_max_ideas: int = 50
+
     # Transactional email via the Resend REST API (P5.13). Fail-open + env-gated:
     # send_email is a NO-OP unless emails_enabled is True AND resend_api_key is
     # non-empty, and it never raises (see ADR-25). Default OFF so no environment

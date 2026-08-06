@@ -56,6 +56,9 @@ class SerpPage:
     query: str
     results: tuple[SerpResult, ...] = ()
     unresponsive_engines: tuple[str, ...] = ()
+    # Autocomplete-style strings SearXNG may attach to the JSON payload. Used by
+    # the keyword preview expander; empty when the instance/engines omit them.
+    suggestions: tuple[str, ...] = ()
 
     @property
     def measurable(self) -> bool:

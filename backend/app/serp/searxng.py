@@ -105,6 +105,23 @@ def _unresponsive(payload: dict[str, Any]) -> list[str]:
     return names
 
 
+def _suggestions(payload: dict[str, Any]) -> list[str]:
+    """Autocomplete-style suggestions from a SearXNG JSON payload."""
+    raw = payload.get("suggestions")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in raw:
+        text = _text(entry, MAX_TITLE_CHARS)
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
+
+
 class SearxngSource:
     """Reads one SERP per query from a SearXNG instance's JSON API."""
 
@@ -204,4 +221,5 @@ class SearxngSource:
             query=query,
             results=tuple(self._results(payload)),
             unresponsive_engines=tuple(_unresponsive(payload)),
+            suggestions=tuple(_suggestions(payload)),
         )

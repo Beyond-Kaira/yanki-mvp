@@ -73,3 +73,41 @@ class KeywordOverviewResponse(BaseModel):
     signals: dict[str, Any] = Field(default_factory=dict)
     sample_ideas: list[KeywordIdeaOut] = Field(default_factory=list)
     estimated: bool = True
+
+
+class KeywordRankCheckRequest(BaseModel):
+    domain: str = Field(..., min_length=1, max_length=255)
+    queries: list[str] = Field(..., min_length=1, max_length=20)
+    locale: str = Field(default="en", min_length=2, max_length=32)
+
+    @field_validator("domain")
+    @classmethod
+    def _domain_not_blank(cls, value: str) -> str:
+        cleaned = " ".join(value.split()).strip()
+        if not cleaned:
+            raise ValueError("domain must not be blank")
+        return cleaned
+
+    @field_validator("queries")
+    @classmethod
+    def _queries_non_empty_items(cls, value: list[str]) -> list[str]:
+        cleaned = [" ".join(q.split()).strip() for q in value]
+        cleaned = [q for q in cleaned if q]
+        if not cleaned:
+            raise ValueError("queries must include at least one non-blank phrase")
+        return cleaned
+
+
+class KeywordRankHitOut(BaseModel):
+    query: str
+    measurable: bool
+    appeared: bool | None = None
+    rank: int | None = None
+    matched_url: str | None = None
+    matched_via: str | None = None
+
+
+class KeywordRankCheckResponse(BaseModel):
+    domain: str
+    provider: str
+    results: list[KeywordRankHitOut]

@@ -20,6 +20,8 @@ import type {
   KeywordExpandResponse,
   KeywordOverviewRequest,
   KeywordOverviewResponse,
+  KeywordRankCheckRequest,
+  KeywordRankCheckResponse,
   LinkEventPage,
   LoginResponse,
   ReferringDomainPage,
@@ -741,6 +743,44 @@ export async function overviewKeyword(
   }
 
   return (await res.json()) as KeywordOverviewResponse
+}
+
+export async function checkKeywordRanks(
+  input: KeywordRankCheckRequest,
+  signal?: AbortSignal,
+): Promise<KeywordRankCheckResponse> {
+  let res: Response
+  try {
+    res = await authorizedFetch('/api/v1/keywords/rank-check', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to check ranks.'
+        : res.status === 404
+          ? 'Keyword research is not enabled on this deployment.'
+          : res.status === 502 || res.status === 503
+            ? 'The keyword search source is unavailable right now. Try again later.'
+            : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as KeywordRankCheckResponse
 }
 
 // Exports must be FETCHED, not linked.

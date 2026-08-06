@@ -95,3 +95,24 @@ def test_overview_returns_seed_signals(
     assert payload["estimated"] is True
     assert payload["signals"]["volume_estimated"] is True
     assert payload["sample_ideas"]
+
+
+def test_rank_check_dry_run(
+    client: TestClient,
+    enabled_dry_run_settings: Settings,
+    authed_user: User,
+) -> None:
+    response = client.post(
+        "/api/v1/keywords/rank-check",
+        json={
+            "domain": "yankidemo.co",
+            "queries": ["best crm software", "crm comparison"],
+            "locale": "en",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["domain"] == "yankidemo.co"
+    assert payload["provider"] == "mock"
+    assert len(payload["results"]) == 2
+    assert all("measurable" in row for row in payload["results"])

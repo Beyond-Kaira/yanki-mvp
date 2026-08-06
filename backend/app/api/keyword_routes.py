@@ -18,11 +18,15 @@ from app.api.keyword_schemas import (
     KeywordIdeaOut,
     KeywordOverviewRequest,
     KeywordOverviewResponse,
+    KeywordRankCheckRequest,
+    KeywordRankCheckResponse,
+    KeywordRankHitOut,
 )
 from app.config import Settings, get_settings
 from app.db.models import User
 from app.keyword.base import KeywordUnavailable
-from app.keyword.registry import get_keyword_source
+from app.keyword.rank_check import check_keyword_ranks
+from app.keyword.registry import get_keyword_serp_source, get_keyword_source
 
 
 def require_keywords_enabled(settings: Annotated[Settings, Depends(get_settings)]) -> None:
@@ -121,4 +125,49 @@ def overview_keyword(
         signals=seed_signals,
         sample_ideas=sample,
         estimated=True,
+    )
+
+
+@router.post("/rank-check", response_model=KeywordRankCheckResponse)
+def rank_check_keywords(
+    body: KeywordRankCheckRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    _user: Annotated[User, Depends(get_current_user)],
+) -> KeywordRankCheckResponse:
+    """Check whether ``domain`` appears for selected queries (own-site match)."""
+    source = get_keyword_serp_source(settings)
+    if source is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="keyword rank-check is enabled but no search source is configured",
+        )
+    budget = int(getattr(settings, "keyword_rank_max_queries", 10) or 10)
+    try:
+        domain, hits = check_keyword_ranks(
+            source,
+            domain=body.domain,
+            queries=body.queries,
+            locale=body.locale,
+            max_queries=budget,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return KeywordRankCheckResponse(
+        domain=domain,
+        provider=source.name,
+        results=[
+            KeywordRankHitOut(
+                query=hit.query,
+                measurable=hit.measurable,
+                appeared=hit.appeared,
+                rank=hit.rank,
+                matched_url=hit.matched_url,
+                matched_via=hit.matched_via,
+            )
+            for hit in hits
+        ],
     )

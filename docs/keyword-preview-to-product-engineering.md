@@ -46,8 +46,8 @@ repo* and *what to change*.
 
 ### D. Rank bridge
 
-- **Preview now:** analysis SERP visibility only
-- **Product next:** _(TBD — `rank-check` + `serp_visibility.detect`)_
+- **Preview now:** `POST /api/v1/keywords/rank-check` + Magic select/check; own-domain match only (`rank_check.py`); analysis SERP visibility still complementary
+- **Product next:** trusted geo/engine, org quotas, clearer miss vs unmeasurable UX; persistent history remains M6 (out of this preview)
 
 ## Open questions for the cleanup pass
 

@@ -127,7 +127,7 @@ until its Semrush column is `[x]`.
 
 | Capability | Preview | Product | Semrush | Notes / transition |
 |------------|:-------:|:-------:|:-------:|--------------------|
-| On-demand “do we rank?” for selected queries | [ ] | [ ] | [ ] | Faz 6 plan: SearXNG + `detect`. Product: trusted geo/engine. Semrush ≈ Position Tracking (different product). |
+| On-demand “do we rank?” for selected queries | [x] | [ ] | [ ] | Preview: `POST /rank-check` + Magic UI; own-domain/subdomain only (`KEYWORD_RANK_MAX_QUERIES`). Product: trusted geo/engine. Semrush ≈ Position Tracking (different product). |
 | Existing analysis SERP visibility (~6 topic queries) | [x] | [ ] | — | Already live on Search Visibility overview — complementary, not Magic. |
 | Persistent rank tracking + history | [ ] | [ ] | [ ] | Explicit non-goal for this preview; M6. Semrush Position Tracking parity. |
 
@@ -172,7 +172,7 @@ These are **conscious** shortcuts for the OSS demand-test — not forgotten TODO
 When a matrix row moves Preview → Product, update both the matrix tick **and**
 the matching row here (or delete it) in the same PR.
 
-### Already in code (Faz 0–2)
+### Already in code
 
 | Area | What we did on purpose | Why | Later fix (toward Product) |
 |------|------------------------|-----|----------------------------|
@@ -187,15 +187,15 @@ the matching row here (or delete it) in the same PR.
 | **Intent (rules)** | Marker lists (`how` / `best` / `buy`…) | No model/vendor yet | Model-assisted or vendor intent; keep rules as fallback |
 | **Mock under `DRY_RUN`** | Synthetic rows for CI | Same pattern as `MockSerpSource` | Keep forever for CI; never default in live preview |
 | **Locale ≈ SearXNG `language`** | `locale` string mapped onto language pin | Good enough for preview; not full geo (gl/hl/city) | Proper country/geo params when SearXNG/engines support them; document mismatch in UI |
+| **Overview vs Magic** | Thin Overview cards wrapping the same expand | Richer SERP snapshot per keyword only when budget allows |
+| **Rank-check** | Own-domain/subdomain only via `rank_check.py` + Magic UI (`KEYWORD_RANK_MAX_QUERIES`, default 10); no brand/snippet text hits | Persistent rank tracking / history = separate M6 product, not this preview |
+| **Estimated / Preview badges in UI** | Required while proxies remain | Remove per-field when Product-true metrics land |
 
-### Planned rough edges (Faz 4+ — not built yet, same honesty bar)
+### Still deferred (same honesty bar)
 
 | Area | Planned intentional shortcut | Later fix (toward Product) |
 |------|------------------------------|----------------------------|
-| **Overview vs Magic** | Thin Overview cards wrapping the same expand | Richer SERP snapshot per keyword only when budget allows |
-| **Rank-check** | Reuse `detect` on a small selected set (budget 6–10) | Persistent rank tracking / history = separate M6 product, not this preview |
 | **UI lists / Strategy Builder** | Deferred or very light “save list” | Clustering only after demand proves keyword research retention |
-| **Estimated / Preview badges in UI** | Required once UI ships while proxies remain | Remove per-field when Product-true metrics land |
 
 ### Doc / process notes
 

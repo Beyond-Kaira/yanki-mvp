@@ -164,6 +164,8 @@ class Settings(BaseSettings):
     keyword_enabled: bool = False
     # Cap on ideas returned from one expand call (politeness / payload size).
     keyword_max_ideas: int = 50
+    # Max SERP lookups per rank-check request (politeness budget).
+    keyword_rank_max_queries: int = 10
 
     # Transactional email via the Resend REST API (P5.13). Fail-open + env-gated:
     # send_email is a NO-OP unless emails_enabled is True AND resend_api_key is

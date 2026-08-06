@@ -2078,6 +2078,126 @@
         "title": "KeywordOverviewResponse",
         "type": "object"
       },
+      "KeywordRankCheckRequest": {
+        "properties": {
+          "domain": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Domain",
+            "type": "string"
+          },
+          "locale": {
+            "default": "en",
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Locale",
+            "type": "string"
+          },
+          "queries": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Queries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "domain",
+          "queries"
+        ],
+        "title": "KeywordRankCheckRequest",
+        "type": "object"
+      },
+      "KeywordRankCheckResponse": {
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/KeywordRankHitOut"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "domain",
+          "provider",
+          "results"
+        ],
+        "title": "KeywordRankCheckResponse",
+        "type": "object"
+      },
+      "KeywordRankHitOut": {
+        "properties": {
+          "appeared": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appeared"
+          },
+          "matched_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Url"
+          },
+          "matched_via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Via"
+          },
+          "measurable": {
+            "title": "Measurable",
+            "type": "boolean"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          }
+        },
+        "required": [
+          "query",
+          "measurable"
+        ],
+        "title": "KeywordRankHitOut",
+        "type": "object"
+      },
       "LinkEventOut": {
         "properties": {
           "authority_at_event": {
@@ -5543,6 +5663,53 @@
           }
         ],
         "summary": "Overview Keyword",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keywords/rank-check": {
+      "post": {
+        "description": "Check whether ``domain`` appears for selected queries (own-site match).",
+        "operationId": "rank_check_keywords_api_v1_keywords_rank_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordRankCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordRankCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rank Check Keywords",
         "tags": [
           "keywords"
         ]

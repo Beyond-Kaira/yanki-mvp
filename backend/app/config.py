@@ -8,9 +8,26 @@ deterministic mock provider and spends $0.
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# What Yanki asks Google for. A constant and not a setting, deliberately: a
+# scope list is the blast radius of a stolen refresh token, and an environment
+# variable is a place it can be widened without anyone reviewing the diff.
+#
+# ``openid`` + ``email`` are not conveniences. They make Google return an ID
+# token, whose verified ``sub`` and ``email`` claims are the only trustworthy
+# source of *which* Google account authorized a connection — the alternative is
+# believing a value the caller supplied. ``webmasters.readonly`` is the narrowest
+# Search Console scope: it can read properties and performance data and cannot
+# submit, delete or change anything.
+GOOGLE_OAUTH_SCOPES: tuple[str, ...] = (
+    "openid",
+    "email",
+    "https://www.googleapis.com/auth/webmasters.readonly",
+)
 
 
 class Settings(BaseSettings):
@@ -90,6 +107,32 @@ class Settings(BaseSettings):
     site_audit_max_sitemap_bytes: int = Field(default=5_000_000, ge=1_024)
     site_audit_max_html_chars: int = Field(default=2_000_000, ge=10_000)
     site_audit_max_queue_urls: int = Field(default=5_000, ge=10, le=50_000)
+
+    # Google Search Console (Phase 9 / M3). OFF by default and dark until the
+    # operator registers an OAuth client, the same kill-switch shape as
+    # BACKLINKS_ENABLED. Nothing calls Google yet: this slice is the schema and
+    # configuration foundation the OAuth routes will later read.
+    gsc_enabled: bool = False
+    google_oauth_client_id: str = ""
+    # SecretStr for the same reason as jwt_secret_key: it keeps the value out of
+    # logs, tracebacks and repr output.
+    google_oauth_client_secret: SecretStr = SecretStr("")
+    # Where Google returns the browser after consent. Configured rather than
+    # derived from public_base_url, because that is the *web* origin and Google
+    # comes back to the *api* — and because Google matches this string byte for
+    # byte against the value registered in Cloud Console, so a value this code
+    # assembled would be a value nobody registered. Blank here on purpose: the
+    # dev value lives in deploy/.env.example, production's only in deploy/.env.
+    google_oauth_redirect_uri: str = ""
+    # URL-safe base64 32-byte Fernet key, used to encrypt stored Google refresh
+    # tokens at rest. Deliberately NOT jwt_secret_key: signing and encryption
+    # have different blast radii, and reusing one key would mean rotating the
+    # JWT secret silently destroys every stored Google connection.
+    token_encryption_key: SecretStr = SecretStr("")
+    # How long one authorization attempt stays claimable. Long enough for a user
+    # to pick an account and read a consent screen, short enough that an
+    # abandoned attempt is not a standing grant.
+    gsc_oauth_state_ttl_seconds: int = Field(default=600, gt=0)
 
     # Rate limiting (P5.0) — the LIVE POST /api/v1/analyses is public with real
     # keys; these guard it before any row is created or money is spent.
@@ -181,6 +224,57 @@ class Settings(BaseSettings):
     # holiday, short enough that a forgotten invitation is not a permanent
     # standing grant sitting in an inbox.
     invitation_ttl_days: int = Field(default=14, ge=1, le=90)
+
+    @field_validator("google_oauth_redirect_uri")
+    @classmethod
+    def _redirect_uri_is_absolute(cls, value: str) -> str:
+        """Blank is allowed; anything else must be a URL Google will accept.
+
+        Checked whenever a value is present, not only when GSC is enabled, so a
+        typo is caught at boot rather than at the first click. Google rejects a
+        redirect URI carrying a fragment outright, which is worth catching here
+        instead of as an opaque error on its consent screen.
+        """
+
+        value = value.strip()
+        if not value:
+            return value
+
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.netloc or parts.fragment:
+            raise ValueError(
+                "GOOGLE_OAUTH_REDIRECT_URI must be an absolute http(s) URL without a fragment"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _google_config_is_complete_when_enabled(self) -> Settings:
+        """Turning GSC on without its credentials fails the boot, not the click.
+
+        The alternative — defaulting to a friendly 503 at use time, the shape
+        ``jwt_secret_key`` uses — hides an operator mistake behind a symptom a
+        user reports. GSC_ENABLED is an explicit opt-in, so an incomplete one is
+        a deploy that should be refused: on this repo's auto-deploy the container
+        fails its health check and rolls back, which is the loudest safe outcome.
+
+        Only names are reported. No value from this model reaches the message.
+        """
+
+        if not self.gsc_enabled:
+            return self
+
+        required = (
+            ("GOOGLE_OAUTH_CLIENT_ID", self.google_oauth_client_id),
+            ("GOOGLE_OAUTH_CLIENT_SECRET", self.google_oauth_client_secret.get_secret_value()),
+            ("GOOGLE_OAUTH_REDIRECT_URI", self.google_oauth_redirect_uri),
+            ("TOKEN_ENCRYPTION_KEY", self.token_encryption_key.get_secret_value()),
+        )
+        missing = [name for name, value in required if not value.strip()]
+        if missing:
+            raise ValueError(
+                "GSC_ENABLED is on but these are not configured: " + ", ".join(missing)
+            )
+        return self
 
 
 @lru_cache

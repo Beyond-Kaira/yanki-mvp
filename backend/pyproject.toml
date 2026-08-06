@@ -18,6 +18,10 @@ dependencies = [
     "pwdlib[argon2]>=0.3.0",
     "pyjwt>=2.13.0,<3",
     "playwright>=1.60,<2",
+    # Fernet, for encrypting stored Google refresh tokens at rest. The only new
+    # dependency the Search Console foundation needs: no Google client library
+    # is added until a slice actually calls Google.
+    "cryptography>=44,<47",
 ]
 
 [dependency-groups]

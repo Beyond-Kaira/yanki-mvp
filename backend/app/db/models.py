@@ -901,6 +901,197 @@ class SiteAuditPage(Base):
     audit: Mapped[SiteAudit] = relationship(back_populates="pages")
 
 
+class GoogleConnection(Base):
+    """One authorized Google account an organization can read data through.
+
+    Scoped to the organization rather than the user who authorized it: the
+    organization is this system's security and billing boundary, and a
+    connection that died when one employee left would make a shared workspace's
+    reporting depend on an individual's account lifecycle.
+
+    There is deliberately **no** unique constraint on ``org_id`` alone. An
+    agency legitimately holds several Google accounts — one per client estate —
+    and forcing them through a single connection would mean disconnecting one
+    client to look at another. Identity is instead ``(org_id,
+    google_account_id)``, so the same account cannot be attached twice while any
+    number of distinct accounts can.
+
+    ``google_account_id`` and ``google_account_email`` are only ever written
+    from claims in a **verified** Google ID token (``sub`` and ``email``). They
+    are never taken from a query parameter or a request body: those are values
+    the caller chooses, and trusting one would let a caller graft their
+    connection onto somebody else's account row.
+    """
+
+    __tablename__ = "google_connections"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "org_id",
+            "google_account_id",
+            name="uq_google_connections_org_account",
+        ),
+        sa.Index("ix_google_connections_org_id", "org_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    # CASCADE, unlike projects' RESTRICT: this row is a credential, not the
+    # customer's work. Nothing is lost by deleting it with the organization, and
+    # keeping a live grant to a third party alive after its tenant is gone is
+    # the outcome worth refusing.
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # Google's stable account identifier — the ID token `sub` claim.
+    google_account_id: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Display only, so a user can tell two connected accounts apart. An email is
+    # re-assignable at the Google Workspace level, which is exactly why it is not
+    # the identity column.
+    google_account_email: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Space-delimited, stored as Google returned them rather than as we asked:
+    # a user can withhold a scope on the consent screen, and the record of what
+    # was actually granted is what later decides whether a call may be made.
+    scopes: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # 'active' | 'reauth_required'. No CHECK constraint, matching Membership.role
+    # and BacklinkImport.status: the values are validated in the service layer so
+    # adding one later is not a migration.
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="active", server_default="active"
+    )
+    # Fernet ciphertext. The plaintext refresh token exists in memory for the
+    # length of one call and is never written anywhere — not to this column, not
+    # to a log, not to an audit detail.
+    refresh_token_ciphertext: Mapped[bytes] = mapped_column(sa.LargeBinary, nullable=False)
+    # Which key encrypted the column above; see services/token_crypto.py. Stored
+    # per row rather than assumed globally so a future rotation can re-encrypt
+    # rows in the background instead of in one migration.
+    encryption_key_version: Mapped[int] = mapped_column(
+        sa.SmallInteger, nullable=False, default=1, server_default="1"
+    )
+    connected_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class GoogleOAuthState(Base):
+    """One in-flight OAuth authorization attempt.
+
+    This table exists to answer a question the OAuth callback cannot otherwise
+    answer safely: **which Yanki user is this?** The browser arrives from Google
+    carrying no session — the access token lives in the frontend's memory and a
+    full-page redirect cannot present it — so identity has to have been recorded
+    when the flow started, by a request that *was* authenticated, and read back
+    here. Taking the org or project from the callback's query string instead
+    would let anyone attach their own Google account to somebody else's project.
+
+    Only the SHA-256 of the state travels to the database; the raw value exists
+    in the URL Google echoes back, the same discipline as ``Invitation``.
+    Single use is enforced by ``consumed_at``, which is what stops a replayed
+    callback from being exchanged twice.
+    """
+
+    __tablename__ = "google_oauth_states"
+    __table_args__ = (
+        sa.UniqueConstraint("state_hash", name="uq_google_oauth_states_state_hash"),
+        # Covers both reads this table gets: claiming a live state, and sweeping
+        # expired ones. Partial, because a consumed row is never looked up again
+        # and an index over the whole history would grow without ever being read.
+        sa.Index(
+            "ix_google_oauth_states_pending",
+            "expires_at",
+            postgresql_where=sa.text("consumed_at IS NULL"),
+            sqlite_where=sa.text("consumed_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    state_hash: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # The PKCE verifier, stored in the clear. It is single-use, useless without
+    # the matching authorization code, and expires in minutes — encrypting it
+    # would add a key dependency to the one table that must stay readable for
+    # the callback to work at all.
+    code_verifier: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    seo_project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("seo_projects.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+
+
+class SiteAuditSearchConsoleLink(Base):
+    """The Search Console property one Site Audit project reads from.
+
+    Two constraints carry the whole model. ``seo_project_id`` is unique, so a
+    project has at most one property and no screen ever has to decide which of
+    two conflicting numbers to show. ``google_connection_id`` is **not** unique,
+    so one authorized account can serve every project in the estate it covers —
+    which is the normal case, since a single Google account usually owns many
+    properties.
+
+    ``site_url`` is stored exactly as Search Console names it, including the
+    ``sc-domain:`` form. Normalizing it here would make it unusable as an API
+    argument later, and matching a project's domain to a property is a decision
+    the user confirms rather than one this row infers.
+    """
+
+    __tablename__ = "site_audit_search_console_links"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "seo_project_id",
+            name="uq_site_audit_search_console_links_project",
+        ),
+        sa.Index(
+            "ix_site_audit_search_console_links_connection",
+            "google_connection_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    seo_project_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("seo_projects.id", ondelete="CASCADE"), nullable=False
+    )
+    # CASCADE: removing the account that authorized the read must not leave a
+    # project pointing at a property nothing can be fetched for.
+    google_connection_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("google_connections.id", ondelete="CASCADE"), nullable=False
+    )
+    site_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # 'domain' (sc-domain:example.com) | 'url_prefix' (https://example.com/).
+    # Derived from site_url on write and stored so a reader does not have to
+    # re-parse a Google identifier to know which kind it is.
+    property_type: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Google's permission level at the moment of linking — 'siteOwner',
+    # 'siteFullUser', and so on. A snapshot, not a live authority: Google can
+    # revoke it without telling us, so it informs the UI and never gates a call.
+    permission_level: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    connected_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
 class AuthSession(Base):
     """One refresh-token generation within a device/session family.
 

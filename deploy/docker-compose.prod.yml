@@ -77,6 +77,40 @@ services:
       api:
         condition: service_started
 
+  audit-worker:
+    image: yanki-audit:${GIT_SHA:-latest}
+    build:
+      context: ../backend
+      target: audit-runtime
+    command: python -m app.site_audit.worker
+    init: true
+    environment:
+      DATABASE_URL: postgresql+psycopg://yanki:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@db:5432/yanki
+      SITE_AUDIT_WORKER_POLL_SECONDS: ${SITE_AUDIT_WORKER_POLL_SECONDS:-2}
+      SITE_AUDIT_STALE_CLAIM_SECONDS: ${SITE_AUDIT_STALE_CLAIM_SECONDS:-900}
+      SITE_AUDIT_PAGE_TIMEOUT_MS: ${SITE_AUDIT_PAGE_TIMEOUT_MS:-30000}
+      SITE_AUDIT_RENDER_WAIT_MS: ${SITE_AUDIT_RENDER_WAIT_MS:-1500}
+      SITE_AUDIT_CRAWL_DELAY_SECONDS: ${SITE_AUDIT_CRAWL_DELAY_SECONDS:-0.25}
+      SITE_AUDIT_MAX_ROBOTS_BYTES: ${SITE_AUDIT_MAX_ROBOTS_BYTES:-512000}
+      SITE_AUDIT_SITEMAP_URL_LIMIT: ${SITE_AUDIT_SITEMAP_URL_LIMIT:-1000}
+      SITE_AUDIT_MAX_SITEMAP_BYTES: ${SITE_AUDIT_MAX_SITEMAP_BYTES:-5000000}
+      SITE_AUDIT_MAX_HTML_CHARS: ${SITE_AUDIT_MAX_HTML_CHARS:-2000000}
+      SITE_AUDIT_MAX_QUEUE_URLS: ${SITE_AUDIT_MAX_QUEUE_URLS:-5000}
+    restart: unless-stopped
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+
   # The SERP source (ADR-29): an open-source SearXNG instance the worker reads to
   # see whether a brand also shows up in ordinary search results.
   #

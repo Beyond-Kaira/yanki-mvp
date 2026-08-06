@@ -1,5 +1,6 @@
-# One image runs both the api and the worker (different commands via compose).
-FROM python:3.12-slim
+# The default runtime serves the API and GEO worker. The opt-in audit-runtime
+# target adds Chromium for the separate, browser-heavy Site Audit worker.
+FROM python:3.12-slim AS dependencies
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -18,9 +19,17 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
+FROM dependencies AS audit-dependencies
+RUN playwright install --with-deps chromium
+
+FROM audit-dependencies AS audit-runtime
+COPY . .
+CMD ["python", "-m", "app.site_audit.worker"]
+
+FROM dependencies AS runtime
 COPY . .
 
 EXPOSE 8141
 
-# api command; the worker service overrides this with `python -m app.worker`.
+# API command; the GEO worker service overrides this with `python -m app.worker`.
 CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8141"]

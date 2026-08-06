@@ -11,13 +11,9 @@ vi.mock('@/components/AuthProvider', () => ({
   useAuth: () => ({ status: 'anonymous' }),
 }))
 
-vi.mock('next/headers', () => ({
-  cookies: async () => ({ has: () => false }),
-}))
-
 describe('Landing page accessibility', () => {
   it('has no axe violations', async () => {
-    const { container } = render(await LandingPage())
+    const { container } = render(<LandingPage />)
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 })

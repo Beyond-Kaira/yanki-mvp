@@ -12,7 +12,6 @@ import {
 import type { AuthUser } from '@/lib/auth'
 import { acceptInvitation } from '@/lib/api'
 import { refreshAccessToken, setAccessToken } from '@/lib/session'
-import { clearSessionHint, writeSessionHint } from '@/lib/session-hint'
 
 // 'loading' is its own state rather than "anonymous until proven otherwise": on
 // a cold load the app genuinely does not know yet, and rendering signed-out
@@ -79,11 +78,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [])
-
-  useEffect(() => {
-    if (status === 'authenticated') writeSessionHint()
-    else if (status === 'anonymous') clearSessionHint()
-  }, [status])
 
   const signIn = useCallback(async (email: string, password: string) => {
     const session = await login({ email, password })

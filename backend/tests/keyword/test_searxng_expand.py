@@ -1,10 +1,10 @@
-"""SearXNG keyword expander maps suggestions into KeywordIdea rows."""
+"""SearXNG keyword expander: variants + suggestions + PAA + related titles."""
 
 from __future__ import annotations
 
 from app.keyword.base import KeywordUnavailable
 from app.keyword.searxng_expand import SearxngKeywordSource
-from app.serp.base import SerpPage, SerpUnavailable
+from app.serp.base import SerpPage, SerpResult, SerpUnavailable
 
 
 class _FakeSerp:
@@ -24,32 +24,67 @@ class _FakeSerp:
         return self._page
 
 
-def test_expand_maps_suggestions_and_keeps_seed_first():
+def test_expand_includes_seed_variants_suggestions_paa_and_related():
     page = SerpPage(
         query="money transfer",
-        suggestions=("best money transfer", "money transfer uk", "money transfer"),
+        results=(
+            SerpResult(
+                rank=1,
+                url="https://example.com/a",
+                title="Best money transfer apps — Guide",
+            ),
+            SerpResult(
+                rank=2,
+                url="https://example.com/b",
+                title="Unrelated banking news",
+            ),
+        ),
+        suggestions=("money transfer uk", "international money transfer"),
+        answers=("is money transfer safe", "A long prose answer that ends."),
     )
     source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
-    result = source.expand("money transfer", locale="en-GB", max_ideas=10)
+    result = source.expand("money transfer", locale="en-GB", max_ideas=50)
+
     assert result.provider == "searxng"
     assert result.locale == "en-GB"
-    assert [i.phrase for i in result.ideas] == [
-        "money transfer",
-        "best money transfer",
-        "money transfer uk",
+    by_source: dict[str, list[str]] = {}
+    for idea in result.ideas:
+        by_source.setdefault(idea.source, []).append(idea.phrase)
+
+    assert by_source["seed"] == ["money transfer"]
+    assert "best money transfer" in by_source["variant"]
+    assert "money transfer uk" in by_source["suggestion"]
+    assert "is money transfer safe" in by_source["paa"]
+    assert "Best money transfer apps" in by_source["related"]
+    assert "A long prose answer that ends." not in [
+        p for rows in by_source.values() for p in rows
     ]
-    assert result.ideas[0].source == "seed"
-    assert result.ideas[1].source == "suggestion"
 
 
-def test_expand_respects_max_ideas():
+def test_expand_drops_excluded_brands_and_respects_max_ideas():
     page = SerpPage(
-        query="x",
-        suggestions=tuple(f"idea {i}" for i in range(20)),
+        query="transfer",
+        suggestions=("Wise transfer", "transfer comparison", "transfer reviews"),
     )
     source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
-    result = source.expand("x", max_ideas=3)
-    assert len(result.ideas) == 3
+    result = source.expand(
+        "transfer",
+        max_ideas=4,
+        exclude_brands=["Wise"],
+    )
+    assert len(result.ideas) == 4
+    assert all("wise" not in idea.phrase.lower() for idea in result.ideas)
+
+
+def test_expand_dedupes_case_and_whitespace():
+    page = SerpPage(
+        query="crm",
+        suggestions=("Best CRM", "best   crm", "BEST CRM"),
+    )
+    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    result = source.expand("crm", max_ideas=20)
+    keys = [idea.phrase.lower() for idea in result.ideas]
+    assert len(keys) == len(set(keys))
 
 
 def test_expand_wraps_serp_unavailable():

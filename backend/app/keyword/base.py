@@ -12,6 +12,7 @@ absent here — later licensed adapters plug into the same protocol.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -60,5 +61,6 @@ class KeywordSource(Protocol):
         *,
         locale: str = "en",
         max_ideas: int = 50,
+        exclude_brands: Sequence[str] | None = None,
     ) -> KeywordExpandResult:
         ...

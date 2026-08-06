@@ -7,7 +7,16 @@ without a search instance or outbound packets — same role as ``MockSerpSource`
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from app.keyword.base import KeywordExpandResult, KeywordIdea
+from app.keyword.normalize import (
+    brand_names_to_exclusion_keys,
+    collapse_keyword_whitespace,
+    keyword_dedupe_key,
+    should_exclude_keyword_candidate,
+)
+from app.keyword.variants import build_seed_query_variants
 
 
 class MockKeywordSource:
@@ -19,8 +28,9 @@ class MockKeywordSource:
         *,
         locale: str = "en",
         max_ideas: int = 50,
+        exclude_brands: Sequence[str] | None = None,
     ) -> KeywordExpandResult:
-        cleaned = " ".join((seed or "").split()).strip()
+        cleaned = collapse_keyword_whitespace(seed)
         if not cleaned:
             return KeywordExpandResult(
                 seed="",
@@ -28,26 +38,39 @@ class MockKeywordSource:
                 ideas=(),
                 provider=self.name,
             )
-        # Stable, obvious fakes so UI/tests can spot mock mode immediately.
-        templates = (
-            f"{cleaned}",
-            f"best {cleaned}",
-            f"{cleaned} comparison",
-            f"{cleaned} reviews",
-            f"{cleaned} alternatives",
+
+        brand_keys = brand_names_to_exclusion_keys(exclude_brands)
+        limit = max(0, max_ideas)
+        seen: set[str] = set()
+        ideas: list[KeywordIdea] = []
+
+        def _append_keyword_idea(phrase: str, source: str) -> None:
+            if len(ideas) >= limit:
+                return
+            text = collapse_keyword_whitespace(phrase)
+            key = keyword_dedupe_key(text)
+            if (
+                not key
+                or key in seen
+                or should_exclude_keyword_candidate(text, brand_keys)
+            ):
+                return
+            seen.add(key)
+            ideas.append(KeywordIdea(phrase=text, source=source))
+
+        _append_keyword_idea(cleaned, "seed")
+        for variant in build_seed_query_variants(cleaned):
+            _append_keyword_idea(variant, "variant")
+        # Extra mock-only rows so DRY_RUN tables are obviously synthetic.
+        for extra in (
             f"how to {cleaned}",
-            f"{cleaned} for business",
-            f"cheap {cleaned}",
             f"{cleaned} vs competitors",
-            f"top {cleaned} companies",
-        )
-        ideas = tuple(
-            KeywordIdea(phrase=phrase, source="mock")
-            for phrase in templates[: max(0, max_ideas)]
-        )
+        ):
+            _append_keyword_idea(extra, "mock")
+
         return KeywordExpandResult(
             seed=cleaned,
             locale=locale,
-            ideas=ideas,
+            ideas=tuple(ideas),
             provider=self.name,
         )

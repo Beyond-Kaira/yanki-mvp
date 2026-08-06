@@ -59,6 +59,8 @@ class SerpPage:
     # Autocomplete-style strings SearXNG may attach to the JSON payload. Used by
     # the keyword preview expander; empty when the instance/engines omit them.
     suggestions: tuple[str, ...] = ()
+    # Instant-answer / PAA-like strings when the instance provides them.
+    answers: tuple[str, ...] = ()
 
     @property
     def measurable(self) -> bool:

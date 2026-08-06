@@ -78,4 +78,5 @@ def test_mock_expand_is_deterministic_and_includes_seed_shaped_rows():
     assert result.seed == "money transfer"
     assert len(result.ideas) == 5
     assert result.ideas[0].phrase == "money transfer"
-    assert all(idea.source == "mock" for idea in result.ideas)
+    assert result.ideas[0].source == "seed"
+    assert any(idea.source == "variant" for idea in result.ideas)

@@ -41,8 +41,8 @@ repo* and *what to change*.
 
 ### C. HTTP + UI
 
-- **Preview now:** not shipped (Faz 4–5)
-- **Product next:** _(TBD — routes, Suspense pages, Estimated badges)_
+- **Preview now:** `POST /api/v1/keywords/expand` + `/overview` (`keyword_routes.py`); 404 when `KEYWORD_ENABLED=0`; auth required; `estimated: true` on responses
+- **Product next:** org quotas, stronger rate limits, OpenAPI-driven frontend types (`make gen-types`), Estimated badges in UI (Faz 5)
 
 ### D. Rank bridge
 

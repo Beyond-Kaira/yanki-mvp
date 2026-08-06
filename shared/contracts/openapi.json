@@ -1904,6 +1904,180 @@
         "title": "InvitationPreviewOut",
         "type": "object"
       },
+      "KeywordExpandRequest": {
+        "properties": {
+          "exclude_brands": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Exclude Brands",
+            "type": "array"
+          },
+          "locale": {
+            "default": "en",
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Locale",
+            "type": "string"
+          },
+          "max_ideas": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Omit to use server KEYWORD_MAX_IDEAS.",
+            "title": "Max Ideas"
+          },
+          "seed": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Seed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seed"
+        ],
+        "title": "KeywordExpandRequest",
+        "type": "object"
+      },
+      "KeywordExpandResponse": {
+        "properties": {
+          "estimated": {
+            "default": true,
+            "description": "True while demand/difficulty are proxies, not licensed metrics.",
+            "title": "Estimated",
+            "type": "boolean"
+          },
+          "ideas": {
+            "items": {
+              "$ref": "#/components/schemas/KeywordIdeaOut"
+            },
+            "title": "Ideas",
+            "type": "array"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seed",
+          "locale",
+          "provider",
+          "ideas"
+        ],
+        "title": "KeywordExpandResponse",
+        "type": "object"
+      },
+      "KeywordIdeaOut": {
+        "properties": {
+          "phrase": {
+            "title": "Phrase",
+            "type": "string"
+          },
+          "signals": {
+            "additionalProperties": true,
+            "title": "Signals",
+            "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phrase",
+          "source"
+        ],
+        "title": "KeywordIdeaOut",
+        "type": "object"
+      },
+      "KeywordOverviewRequest": {
+        "properties": {
+          "exclude_brands": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Exclude Brands",
+            "type": "array"
+          },
+          "keyword": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Keyword",
+            "type": "string"
+          },
+          "locale": {
+            "default": "en",
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword"
+        ],
+        "title": "KeywordOverviewRequest",
+        "type": "object"
+      },
+      "KeywordOverviewResponse": {
+        "properties": {
+          "estimated": {
+            "default": true,
+            "title": "Estimated",
+            "type": "boolean"
+          },
+          "keyword": {
+            "title": "Keyword",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "sample_ideas": {
+            "items": {
+              "$ref": "#/components/schemas/KeywordIdeaOut"
+            },
+            "title": "Sample Ideas",
+            "type": "array"
+          },
+          "signals": {
+            "additionalProperties": true,
+            "title": "Signals",
+            "type": "object"
+          }
+        },
+        "required": [
+          "keyword",
+          "locale",
+          "provider"
+        ],
+        "title": "KeywordOverviewResponse",
+        "type": "object"
+      },
       "LinkEventOut": {
         "properties": {
           "authority_at_event": {
@@ -5278,6 +5452,99 @@
         "summary": "Accept Invitation",
         "tags": [
           "invitations"
+        ]
+      }
+    },
+    "/api/v1/keywords/expand": {
+      "post": {
+        "operationId": "expand_keywords_api_v1_keywords_expand_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordExpandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordExpandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Expand Keywords",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keywords/overview": {
+      "post": {
+        "description": "Thin Overview: same expand, seed signals + a short sample of ideas.",
+        "operationId": "overview_keyword_api_v1_keywords_overview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordOverviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Overview Keyword",
+        "tags": [
+          "keywords"
         ]
       }
     },

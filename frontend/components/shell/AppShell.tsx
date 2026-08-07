@@ -155,20 +155,30 @@ export default function AppShell({ children }: AppShellProps) {
         }`}
         aria-label="Product navigation"
         aria-hidden={!navOpen && !isDesktop ? true : undefined}
-        onMouseEnter={() => {
-          if (isDesktop) setRailHovered(true)
-        }}
         onMouseLeave={() => {
           if (!isDesktop) return
           setRailHovered(false)
           setHoveredSection(null)
         }}
-        onFocusCapture={() => {
-          if (isDesktop) setRailFocused(true)
+        onFocusCapture={(event) => {
+          if (
+            isDesktop &&
+            event.target instanceof HTMLElement &&
+            event.target.matches(':focus-visible')
+          ) {
+            setRailFocused(true)
+          }
         }}
         onBlurCapture={onRailBlur}
       >
-        <div className="flex h-[68px] shrink-0 items-center overflow-hidden px-[19px]">
+        <div
+          className="flex h-[68px] shrink-0 items-center overflow-hidden px-[19px]"
+          onMouseEnter={() => {
+            if (!isDesktop) return
+            setRailHovered(false)
+            setHoveredSection(null)
+          }}
+        >
           <Link
             href="/"
             aria-label="Yanki"
@@ -190,6 +200,9 @@ export default function AppShell({ children }: AppShellProps) {
         <nav
           className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2 pt-3"
           aria-label="Toolkits"
+          onMouseEnter={() => {
+            if (isDesktop) setRailHovered(true)
+          }}
         >
           {SHELL_SECTIONS.map((section) => {
             const Icon = SECTION_ICONS[section.id]
@@ -320,7 +333,12 @@ export default function AppShell({ children }: AppShellProps) {
           })}
         </nav>
 
-        <div className="mt-auto overflow-hidden border-t border-white/10 px-[19px] py-4">
+        <div
+          className="mt-auto overflow-hidden border-t border-white/10 px-[19px] py-4"
+          onMouseEnter={() => {
+            if (isDesktop) setRailHovered(true)
+          }}
+        >
           {loadingAuth ? (
             railExpanded ? (
               <p className="whitespace-nowrap text-xs text-ink-foreground/60">

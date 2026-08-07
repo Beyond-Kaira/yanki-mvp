@@ -25,12 +25,13 @@ export default function SiteAuditDashboard() {
   const [pendingDomain, setPendingDomain] = useState<string | null>(null)
   const [creatingProject, setCreatingProject] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
-  // The enqueue routes 404 while no worker drains the site-audit queue
-  // (config.site_audit_enabled). Reads stay open, so the only honest signal the
-  // client gets is that 404 at the moment of starting an audit — mirroring how
-  // useBacklinkProfile learns "off" from the backlink route's 404. Once seen, we
-  // replace the start CTA with an honest notice instead of offering a button
-  // that only ever fails.
+  // Site Audit's crawl is gated off while no worker drains the queue
+  // (config.site_audit_enabled). Project creation stays open — the project is
+  // the shared entity Backlinks hangs off — so a create no longer 404s; instead
+  // it succeeds with `latest_audit: null`, meaning no crawl was queued. That
+  // absent audit is the honest signal the feature is dark. Once seen, we replace
+  // the start CTA with a notice rather than imply a crawl is running. (We still
+  // treat a 404 as the same signal for older deployments / the rerun route.)
   const [featureDisabled, setFeatureDisabled] = useState(false)
 
   useEffect(() => {
@@ -106,6 +107,7 @@ export default function SiteAuditDashboard() {
         name: null,
         ...settings,
       })
+      // The project exists either way — keep it listed and viewable.
       setProjectState((current) => ({
         kind: 'loaded',
         projects:
@@ -115,6 +117,12 @@ export default function SiteAuditDashboard() {
       }))
       setPendingDomain(null)
       setShowCreateForm(false)
+      if (!project.latest_audit) {
+        // Created, but no crawl was queued: Site Audit is off in this
+        // deployment. Say so honestly instead of showing a project that would
+        // otherwise look like it is about to be audited.
+        setFeatureDisabled(true)
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         // Feature is off in this deployment: stop offering the CTA and say so.
@@ -316,10 +324,10 @@ function SiteAuditUnavailable() {
         Site Audit isn&rsquo;t available yet
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-relaxed text-surface-subtle">
-        Starting a new crawl is turned off in this deployment, so we&rsquo;re not
-        offering a button that would only leave an audit stuck. Any projects you
-        already have stay fully viewable below. Please check back once Site Audit
-        is switched on.
+        Starting a crawl is turned off in this deployment. Your projects are
+        saved and stay fully viewable below, but no audit has been started for
+        them &mdash; we&rsquo;re not showing a button that would only leave one
+        stuck. Please check back once Site Audit is switched on.
       </p>
     </section>
   )

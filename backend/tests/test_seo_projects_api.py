@@ -167,8 +167,7 @@ def test_project_list_and_detail_never_cross_user_boundary(
     list_response = client.get(PROJECTS_URL)
     hidden_detail = client.get(f"{PROJECTS_URL}/{owned_project['id']}")
     hidden_audit = client.get(
-        f"{PROJECTS_URL}/{owned_project['id']}/audits/"
-        f"{owned_project['latest_audit']['id']}"
+        f"{PROJECTS_URL}/{owned_project['id']}/audits/{owned_project['latest_audit']['id']}"
     )
 
     assert list_response.status_code == 200
@@ -263,9 +262,7 @@ def test_audit_detail_returns_structured_page_findings(
     db_session.add(page)
     db_session.commit()
 
-    response = client.get(
-        f"{PROJECTS_URL}/{project_body['id']}/audits/{audit.id}"
-    )
+    response = client.get(f"{PROJECTS_URL}/{project_body['id']}/audits/{audit.id}")
 
     assert response.status_code == 200
     body = response.json()
@@ -288,15 +285,18 @@ def test_private_network_domain_is_rejected_without_persisting(
     assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
 
 
-# --- Enqueue kill-switch (site_audit_enabled) ---------------------------------
+# --- Crawl kill-switch (site_audit_enabled) -----------------------------------
 #
-# No deployed service drains the site-audit queue, so an enqueued audit sits
-# `queued` forever. Both routes that queue a crawl — creating a project (which
-# queues its first audit) and re-running an audit — are gated 404 while the flag
-# is off. The read routes are deliberately left open.
+# No deployed service drains the site-audit queue, so an enqueued audit would sit
+# `queued` forever. The gate falls on the *crawl*, not the project: an SEO
+# project is the shared entity Backlinks also hangs off, so creating one must
+# stay open even with Site Audit dark. Concretely — flag off: the project is
+# created but no audit is queued; starting a fresh crawl (`POST /{id}/audits`) is
+# refused 404. Flag on: creating a project queues its first crawl as before. The
+# read routes are open throughout.
 
 
-def test_creating_a_project_is_404_while_the_enqueue_flag_is_off(
+def test_creating_a_project_is_open_but_queues_no_crawl_while_the_flag_is_off(
     client: TestClient,
     db_session: Session,
     make_user: Callable[[str], User],
@@ -314,11 +314,65 @@ def test_creating_a_project_is_404_while_the_enqueue_flag_is_off(
         },
     )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Not Found"
-    # Nothing was queued — the whole point of the gate.
-    assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 0
+    # The project IS created — gating it would silently break Backlinks, which
+    # hangs off the same project entity.
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["domain"] == "https://example.test/"
+    # ...but no crawl was queued, because nothing would drain it.
+    assert body["latest_audit"] is None
+    assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 1
     assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
+
+
+def test_starting_a_crawl_is_404_on_a_flag_off_project(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    """`POST /{id}/audits` is refused even for a project born with the flag off."""
+
+    _authenticate_as(make_user("owner@example.com"))
+    _set_site_audit_enabled(False)
+
+    project = _create_project(client)
+    assert project["latest_audit"] is None
+
+    audits = client.post(
+        f"{PROJECTS_URL}/{project['id']}/audits",
+        json={"page_limit": 10, "profile_id": "site_audit_mobile", "js_rendering": True},
+    )
+
+    assert audits.status_code == 404
+    assert audits.json()["detail"] == "Not Found"
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
+
+
+def test_a_project_created_with_site_audit_off_is_reachable_at_backlinks_routes(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    """The regression that motivated the fix: Backlinks (M2) must ship even while
+    Site Audit stays dark. With ``site_audit_enabled=False`` an operator can turn
+    ``backlinks_enabled`` on; a customer must then be able to create a project and
+    reach its backlink profile. Gating project creation on the site-audit flag
+    would 404 this whole path."""
+
+    _authenticate_as(make_user("owner@example.com"))
+    # Site Audit off, Backlinks on — exactly the M2 shipping posture.
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        site_audit_enabled=False, backlinks_enabled=True
+    )
+
+    project = _create_project(client, domain="backlinks.test")
+    assert project["latest_audit"] is None
+
+    summary = client.get(f"{PROJECTS_URL}/{project['id']}/backlinks/summary")
+
+    # Reachable: the project resolves and its (empty) backlink profile is served,
+    # not a "SEO project not found" 404 and not a feature-dark 404.
+    assert summary.status_code == 200, summary.text
 
 
 def test_rerunning_an_audit_is_404_while_the_enqueue_flag_is_off(

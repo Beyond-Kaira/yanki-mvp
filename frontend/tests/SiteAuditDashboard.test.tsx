@@ -147,7 +147,78 @@ describe('SiteAuditDashboard', () => {
   it('withdraws the start call-to-action and explains when Site Audit is off', async () => {
     const user = userEvent.setup()
     mockedListSeoProjects.mockResolvedValue([])
-    // The enqueue route 404s while no worker drains the queue.
+    // Project creation stays open while the crawl is off: the project comes back
+    // created but with no queued audit (`latest_audit: null`).
+    mockedCreateSeoProject.mockResolvedValue({
+      ...PROJECT,
+      latest_audit: null,
+    })
+
+    render(<SiteAuditDashboard />)
+
+    await user.type(
+      await screen.findByRole('textbox', { name: /domain/i }),
+      'dreamgames.com',
+    )
+    await user.click(screen.getByRole('button', { name: /configure audit/i }))
+    await user.click(screen.getByRole('button', { name: /^start audit$/i }))
+
+    // The honest notice replaces the CTA, which is now gone...
+    expect(
+      await screen.findByRole('heading', { name: /isn.t available yet/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /configure audit/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // ...the created project is listed and honestly reads "Not audited", never
+    // stuck at "queued".
+    expect(screen.getByRole('link', { name: 'Dream Games' })).toBeInTheDocument()
+    expect(screen.getByText(/not audited/i)).toBeInTheDocument()
+    expect(screen.queryByText(/queued|auditing/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps existing projects viewable but drops the create button when off', async () => {
+    const user = userEvent.setup()
+    mockedListSeoProjects.mockResolvedValue([PROJECT])
+    // A second project is created (open), but with no crawl queued.
+    mockedCreateSeoProject.mockResolvedValue({
+      ...PROJECT,
+      id: 'a2f3d5c6-0000-4000-8000-000000000abc',
+      name: 'Second Site',
+      latest_audit: null,
+    })
+
+    render(<SiteAuditDashboard />)
+
+    // Open the compact create form and submit.
+    await user.click(await screen.findByRole('button', { name: /new seo project/i }))
+    await user.type(
+      screen.getByRole('textbox', { name: /domain/i }),
+      'secondsite.com',
+    )
+    await user.click(screen.getByRole('button', { name: /configure audit/i }))
+    await user.click(screen.getByRole('button', { name: /^start audit$/i }))
+
+    // Notice shown, both projects still listed, no create affordances left.
+    expect(
+      await screen.findByRole('heading', { name: /isn.t available yet/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Dream Games' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Second Site' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /new seo project/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /configure audit/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('still treats a 404 from create as "feature off" (older deployments)', async () => {
+    const user = userEvent.setup()
+    mockedListSeoProjects.mockResolvedValue([])
+    // A deployment that still gates project creation itself answers 404. The
+    // client must fall back to the same honest notice, not surface a raw error.
     mockedCreateSeoProject.mockRejectedValue(
       new ApiError('Site Audit is not available in this deployment yet.', 404),
     )
@@ -161,7 +232,6 @@ describe('SiteAuditDashboard', () => {
     await user.click(screen.getByRole('button', { name: /configure audit/i }))
     await user.click(screen.getByRole('button', { name: /^start audit$/i }))
 
-    // The honest notice replaces the CTA, which is now gone.
     expect(
       await screen.findByRole('heading', { name: /isn.t available yet/i }),
     ).toBeInTheDocument()
@@ -169,37 +239,6 @@ describe('SiteAuditDashboard', () => {
       screen.queryByRole('button', { name: /configure audit/i }),
     ).not.toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  })
-
-  it('keeps existing projects viewable but drops the create button when off', async () => {
-    const user = userEvent.setup()
-    mockedListSeoProjects.mockResolvedValue([PROJECT])
-    mockedCreateSeoProject.mockRejectedValue(
-      new ApiError('Site Audit is not available in this deployment yet.', 404),
-    )
-
-    render(<SiteAuditDashboard />)
-
-    // Open the compact create form, submit, and hit the 404.
-    await user.click(await screen.findByRole('button', { name: /new seo project/i }))
-    await user.type(
-      screen.getByRole('textbox', { name: /domain/i }),
-      'dreamgames.com',
-    )
-    await user.click(screen.getByRole('button', { name: /configure audit/i }))
-    await user.click(screen.getByRole('button', { name: /^start audit$/i }))
-
-    // Notice shown, existing project still listed, no create affordances left.
-    expect(
-      await screen.findByRole('heading', { name: /isn.t available yet/i }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Dream Games' })).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: /new seo project/i }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: /configure audit/i }),
-    ).not.toBeInTheDocument()
   })
 
   it('validates the domain before opening crawl settings', async () => {

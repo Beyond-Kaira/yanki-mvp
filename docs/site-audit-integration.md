@@ -7,19 +7,24 @@ part of this feature.
 
 ## Product and persistence flow
 
-> **Enqueue is gated off by default (`SITE_AUDIT_ENABLED`).** No deployed service
-> drains the site-audit queue — production runs `db/api/worker/searxng/web`, and
-> `worker` consumes the GEO `analyses` queue, not this one — so an enqueued audit
-> would sit `queued` forever. Until an audit worker ships, the two routes that
-> queue a crawl (`POST /api/v1/seo-projects` and
-> `POST /api/v1/seo-projects/{id}/audits`) are refused **404** while the flag is
-> off, the same way the backlink module goes dark. The reads below stay open, so
-> existing projects and audits remain viewable. Steps 2–3 describe the flow that
-> runs only once the operator flips the flag on **and** an audit worker is
-> deployed.
+> **The crawl is gated off by default (`SITE_AUDIT_ENABLED`).** No deployed
+> service drains the site-audit queue — production runs `db/api/worker/searxng/web`,
+> and `worker` consumes the GEO `analyses` queue, not this one — so an enqueued
+> audit would sit `queued` forever. The gate falls on the *crawl*, not the SEO
+> project, because that project is the shared entity Backlinks also hangs off
+> (`/seo-projects/{id}/backlinks`); gating project creation on this flag would
+> silently take Backlinks down with it. So while the flag is off: `POST
+> /api/v1/seo-projects` **still creates the project** (and its tenancy mirror)
+> but queues **no** first audit — its `latest_audit` comes back `null`; and
+> `POST /api/v1/seo-projects/{id}/audits`, whose only job is to start a fresh
+> crawl, is refused **404**, the same way the backlink module goes dark. The
+> reads below stay open, so existing projects and audits remain viewable. Steps
+> 2–3 describe the flow that runs only once the operator flips the flag on
+> **and** an audit worker is deployed.
 
 1. An authenticated user creates an SEO project for one root domain.
-2. Project creation queues the first Site Audit.
+2. Project creation queues the first Site Audit (only while `SITE_AUDIT_ENABLED`
+   is on; otherwise the project is created without an audit — see the note above).
 3. The dedicated audit worker crawls the site and persists each completed page.
 4. A project may have repeated audit runs, but only one queued or running audit.
 5. Project and audit reads are always scoped to the authenticated user.

@@ -104,14 +104,23 @@ def create_project_with_audit(
     profile_id: AuditProfileId,
     js_rendering: bool,
     context: OrgContext | None = None,
+    queue_audit: bool = True,
 ) -> SeoProject:
-    """Create a Site Audit project and queue its first crawl.
+    """Create an SEO project and, unless suppressed, queue its first crawl.
 
     ``context`` is optional only so this stays callable from tests and from the
     pre-tenancy call path; when present — which is every HTTP request after
     P7.1 — the row is stamped with the caller's org/workspace and mirrored into
     a tenancy-level ``projects`` row, so Phase 8's backlink profiles have
     something to hang from.
+
+    ``queue_audit`` defaults to True, so every existing caller and test keeps
+    its behaviour. When False, the project and its tenancy ``projects`` mirror
+    are still created — the shared project entity that Backlinks hangs off must
+    exist regardless — but **no** ``SiteAudit`` row is enqueued. The enqueue
+    routes pass ``settings.site_audit_enabled`` here so project creation stays
+    open while the site-audit queue has no worker to drain it; an audit is only
+    ever queued once the feature is switched on. See ``config.site_audit_enabled``.
     """
 
     existing_id = session.scalar(
@@ -140,13 +149,15 @@ def create_project_with_audit(
         project.org_id = context.org_id
         project.workspace_id = tracked.workspace_id
         project.project_id = tracked.id
-    audit = SiteAudit(
-        project=project,
-        page_limit=page_limit,
-        profile_id=profile_id,
-        js_rendering=js_rendering,
-    )
-    session.add_all([project, audit])
+    session.add(project)
+    if queue_audit:
+        audit = SiteAudit(
+            project=project,
+            page_limit=page_limit,
+            profile_id=profile_id,
+            js_rendering=js_rendering,
+        )
+        session.add(audit)
 
     audit_service.emit(
         session,

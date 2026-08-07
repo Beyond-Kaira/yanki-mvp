@@ -15,13 +15,24 @@ starting a crawl is ``site_audit:run`` — which Analyst and above hold and Gues
 and Viewer do not, because a crawl spends real resources against a third-party
 site.
 
-On top of the permission check, the two routes that *queue a crawl* carry a
-feature-flag gate (``require_site_audit_enabled``). No deployed service drains
-the site-audit queue today, so an enqueued audit would sit ``queued`` forever;
-until an audit worker ships, starting one is refused 404 rather than silently
-stranded. The gate is deliberately scoped to the enqueue routes only — reads
-stay open so existing projects and audits remain viewable. See
-``config.site_audit_enabled``.
+On top of the permission check, the *crawl* is gated by a feature flag
+(``config.site_audit_enabled``). No deployed service drains the site-audit
+queue today, so an enqueued audit would sit ``queued`` forever; until an audit
+worker ships, no crawl is started. But that gate must fall on the crawl alone,
+not on the SEO project, because the project is the *shared* entity Backlinks
+also hangs off (``backlink_routes`` mounts under it). So the two enqueue points
+are gated differently, on purpose:
+
+* ``POST /{project_id}/audits`` — starting a fresh crawl on an existing project
+  — carries ``require_site_audit_enabled`` and is refused **404** while the flag
+  is off. There is nothing else this route does.
+* ``POST ""`` (create project) stays **open**; it forwards the flag to
+  ``create_project_with_audit`` as ``queue_audit=``, which creates the project
+  (and its tenancy mirror) but skips the ``SiteAudit`` row while the flag is
+  off. Gating this route instead would let ``SITE_AUDIT_ENABLED=0`` silently
+  block Backlinks — a customer could not create a project to attach a profile to.
+
+Reads stay open throughout so existing projects and audits remain viewable.
 """
 
 import uuid
@@ -62,13 +73,15 @@ router = APIRouter(prefix="/api/v1/seo-projects", tags=["seo-projects"])
 
 
 def require_site_audit_enabled(settings: Annotated[Settings, Depends(get_settings)]) -> None:
-    """404 the enqueue routes while no worker drains the queue.
+    """404 the crawl-start route while no worker drains the queue.
 
     Mirrors ``backlink_routes.require_backlinks_enabled``: a kill switch that
     answers 404 (not 403) refuses even to confirm the surface is there. Applied
-    per-route — only to the two routes that queue a crawl — because the read
-    routes in this module must stay open so existing projects and audits remain
-    viewable while the feature is dark. See ``config.site_audit_enabled``.
+    only to ``POST /{project_id}/audits`` — the route whose sole job is to queue
+    a crawl. Project creation is *not* gated this way (it suppresses the crawl
+    via ``queue_audit`` instead), and the read routes stay open so existing
+    projects and audits remain viewable while the feature is dark. See
+    ``config.site_audit_enabled``.
     """
 
     if not settings.site_audit_enabled:
@@ -126,12 +139,12 @@ def _project_detail(project: SeoProject) -> SeoProjectDetailOut:
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=SeoProjectOut,
-    dependencies=[Depends(require_site_audit_enabled)],
 )
 def create_seo_project(
     payload: CreateSeoProjectRequest,
     org: OrgContext = Depends(requires(PROJECT_CREATE)),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> SeoProjectOut:
     try:
         domain = normalize_project_domain(payload.domain)
@@ -155,6 +168,7 @@ def create_seo_project(
             page_limit=payload.page_limit,
             profile_id=payload.profile_id,
             js_rendering=payload.js_rendering,
+            queue_audit=settings.site_audit_enabled,
         )
     except DuplicateSeoProject as exc:
         raise HTTPException(

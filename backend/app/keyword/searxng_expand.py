@@ -1,8 +1,11 @@
 """SearXNG-backed keyword expansion (open-source preview path).
 
-One live search for the seed pulls suggestions + answers; local variants and
-title-mined related phrases fill the rest — no Semrush DB, politeness budget
+One live search for the seed pulls suggestions + answers; title-mined related
+phrases and local variants fill the rest — no Semrush DB, politeness budget
 of a single SearXNG round-trip per expand (plus the seed itself).
+
+Merge order (after dedupe): seed → suggestion → paa → related → variant.
+Variants are last so ``max_ideas`` is not consumed by template filler first.
 """
 
 from __future__ import annotations
@@ -120,8 +123,6 @@ class SearxngKeywordSource:
             )
 
         _append_keyword_idea(cleaned, "seed")
-        for variant in build_seed_query_variants(cleaned):
-            _append_keyword_idea(variant, "variant")
         for suggestion in page.suggestions:
             _append_keyword_idea(suggestion, "suggestion")
         for answer in page.answers:
@@ -130,6 +131,9 @@ class SearxngKeywordSource:
         for related in _related_keyword_phrases_from_serp_titles(cleaned, page):
             if looks_like_keyword_idea(related):
                 _append_keyword_idea(related, "related")
+        # Local templates last so max_ideas is not spent on filler first.
+        for variant in build_seed_query_variants(cleaned):
+            _append_keyword_idea(variant, "variant")
 
         return KeywordExpandResult(
             seed=cleaned,

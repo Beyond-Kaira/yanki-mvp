@@ -256,7 +256,7 @@ the matching row here (or delete it) in the same PR.
 
 | Area | What we did on purpose | Why | Later fix (toward Product) |
 |------|------------------------|-----|----------------------------|
-| **Seed → template variants** (`build_seed_query_variants`) | Fixed English shapes; currently merged **before** suggestions (fills `max_ideas` with filler) | Zero-cost list filler; mirrors `serp_visibility` shapes | **Accepted cleanup:** suggestions-first order → smart-skip → `KEYWORD_VARIANT_MAX` (see **Discovery cleanup policy**). Never market as related. |
+| **Seed → template variants** (`build_seed_query_variants`) | Fixed English shapes; merge order fixed in Faz 1 (`suggestion`/`paa`/`related` before `variant`) | Zero-cost list filler; mirrors `serp_visibility` shapes | **Cleanup next:** smart-skip (Faz 2) + `KEYWORD_VARIANT_MAX` (Faz 3). Never market as related. |
 | **Single SearXNG round-trip per expand** | One `search(seed)` only — no fan-out over every variant | Politeness + latency on operator-hosted SearXNG | Optional budgeted second pass on top N suggestions; cache by `(seed, locale)` |
 | **“Related” from SERP titles** | Title lines that contain the seed, stripped at `—` / `\|` | No related-keyword index exists in OSS | Drop titles that look like brands/URLs; require higher token overlap; or drop “related” until a better signal exists |
 | **PAA / answers** | Keep short lines; drop prose ending in `.` / long blobs | SearXNG `answers` shape is inconsistent across engines | Engine-aware parsing; question-only filter (`who/what/how…`) |

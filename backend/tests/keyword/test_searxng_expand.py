@@ -63,6 +63,56 @@ def test_expand_includes_seed_variants_suggestions_paa_and_related():
     assert suggestion.signals["difficulty_basis"] == "seed_serp"
 
 
+def test_expand_merge_order_is_suggestions_before_variants():
+    """Live sources must win the max_ideas budget over template filler."""
+    page = SerpPage(
+        query="seo apps",
+        results=(
+            SerpResult(
+                rank=1,
+                url="https://example.com/a",
+                title="seo apps for agencies — 2024",
+            ),
+        ),
+        suggestions=("seo apps ranking", "free seo apps"),
+        answers=("what are seo apps",),
+    )
+    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    result = source.expand("seo apps", max_ideas=6)
+    sources = [idea.source for idea in result.ideas]
+    assert sources[0] == "seed"
+    assert "suggestion" in sources
+    assert "paa" in sources
+    assert "related" in sources
+    # With a tight budget, every live row is kept before any variant.
+    live = [s for s in sources if s != "variant"]
+    assert sources[: len(live)] == live
+    assert sources == [
+        "seed",
+        "suggestion",
+        "suggestion",
+        "paa",
+        "related",
+        "variant",
+    ]
+
+
+def test_expand_prefers_suggestions_when_max_ideas_is_tight():
+    page = SerpPage(
+        query="crm",
+        suggestions=("crm software", "crm tools", "crm platforms"),
+    )
+    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    result = source.expand("crm", max_ideas=4)
+    assert [idea.source for idea in result.ideas] == [
+        "seed",
+        "suggestion",
+        "suggestion",
+        "suggestion",
+    ]
+    assert all(idea.source != "variant" for idea in result.ideas)
+
+
 def test_expand_drops_excluded_brands_and_respects_max_ideas():
     page = SerpPage(
         query="transfer",

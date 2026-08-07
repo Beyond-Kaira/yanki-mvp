@@ -66,13 +66,14 @@ class MockKeywordSource:
             )
 
         _append_keyword_idea(cleaned, "seed")
-        for variant in build_seed_query_variants(cleaned):
-            _append_keyword_idea(variant, "variant")
+        # Live-like rows before template filler (mirrors SearXNG merge order).
         for extra in (
             f"how to {cleaned}",
             f"{cleaned} vs competitors",
         ):
             _append_keyword_idea(extra, "mock")
+        for variant in build_seed_query_variants(cleaned):
+            _append_keyword_idea(variant, "variant")
 
         return KeywordExpandResult(
             seed=cleaned,

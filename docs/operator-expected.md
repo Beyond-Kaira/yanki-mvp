@@ -4,14 +4,27 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-05, **session 22 close**.
+Last updated: 2026-08-08, **session 24 close**.
 
-> **Read this first: session 22's work is NOT merged and NOT live.** The Admin
-> Panel, invitations and the audit trail sit on `feat/admin-panel-invitations-audit`
-> — three commits, local-only, never pushed, no PR. Production still runs
-> `f4c33e8` at alembic `0017`. **B12** is the decision that changes that, and it
-> gates B10 and B11. Everything described below the divider was true at session
-> 21 close and remains true; nothing has been un-deployed.
+> **Read this first — and note that the previous version of this file was
+> wrong.** It opened by telling you session 22's Admin Panel work was "NOT
+> merged and NOT live." It has been merged and live since 2026-08-06: session 23
+> shipped without refreshing this file (tech-debt #72), so it kept warning you
+> about a decision you had already made, through two further merges. Verified
+> against production on 2026-08-08: `main` and production both run **`e87c575`**,
+> the database is at alembic **`0018_invitations_audit_integrity`**, the
+> `invitations` table exists, and `PUBLIC_BASE_URL` is set. **B12 and B10 are
+> therefore done** and are struck through below.
+>
+> **The one thing that matters most now is B13: there are no database backups.**
+> Everything remaining in Phase 7 (A5–A8) adds a migration to the live database,
+> and rollback restores the *image*, never the *data*. Session 24 deliberately
+> shipped only work that needs no migration, and it cannot keep doing that —
+> password reset and MFA both need one. B13 is the gate on the rest of the
+> milestone.
+>
+> Session 24's own work sits on **`feat/session-24`**, unmerged and unpushed:
+> see **B14** for what it contains and why merging it is a release decision.
 
 ---
 
@@ -269,10 +282,130 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   sized against real COGS. ToS review is part of the same decision.
   → Answer: ______
 
+  *Status note (2026-08-08): still the only thing standing between M2 and a
+  customer. P8.3 shipped the screens on 2026-08-06, so the whole module now
+  works end to end against the mock — `BACKLINKS_ENABLED` stays off because
+  every number in it is fixture data, and shipping fixture data as a customer's
+  backlink profile is the one mistake this module cannot recover from.*
+
+- [ ] **A5. Stripe account + terms-of-service text (added 2026-08-08, session
+  24; needed for the second half of A6, not the first).** Session 24's audit
+  found the billing foundation is **already built** — the `plans`,
+  `subscriptions`, `credit_ledger` and `usage_counters` tables exist, a
+  five-tier catalog is seeded, and the quota/credit service is complete. What is
+  missing splits cleanly in two:
+
+  - **Not blocked by you:** nothing enforces those quotas. The analysis,
+    checker and site-audit submission paths carry no quota check, so **every
+    plan tier is decorative today** and every org silently falls back to Free.
+    Engineering can and should fix that without waiting — it is the next card.
+  - **Blocked by you:** actually *selling* a plan. That needs a Stripe account
+    (test mode is enough to build the subscription lifecycle) and
+    terms-of-service text, which is a legal document and has been on the
+    critical path since it was recorded as tech-debt #50.
+
+  So the question is only about the second half: is a Stripe test-mode account
+  available, and who is writing the terms? → Answer: ______
+
 ## B. Actions only you can do (in priority order)
 
-- [ ] **B12. Decide what happens to `feat/admin-panel-invitations-audit`
-  (added 2026-08-05, session 22 — this gates everything else in this section).**
+- [ ] **B13. Stand up database backups — this now gates the rest of Phase 7**
+  (added 2026-08-08, session 24). The `yanki_pgdata` volume is the **only copy**
+  of every analysis, user, session, organization, audit event and billing row.
+  There is no backup, no off-box copy, and no tested restore. Meanwhile each
+  remaining Admin Platform stage (A5 auth completion, A6 billing, A7 back
+  office, A8 system pages) adds a migration that runs against that database on
+  merge. `deploy/rollback.sh` restores the previous **image**; it cannot restore
+  a row a bad backfill mangled.
+
+  This is why session 24 built only the migration-free half of A5 (sessions +
+  org switcher) and deferred password reset and MFA. That deferral cannot
+  continue — the rest of the milestone needs schema changes.
+
+  What is needed: a scheduled `pg_dump` of `yanki-prod-db-1`, a copy stored
+  **off this box**, and one rehearsed restore into a scratch database so we know
+  the dump is not empty. A rough shape to start from:
+
+  ```bash
+  # on the VPS — verify a dump succeeds and is non-trivial before scheduling it
+  docker exec yanki-prod-db-1 pg_dump -U yanki -d yanki --format=custom \
+    > ~/yanki-backup-$(date +%F).dump
+  ls -lh ~/yanki-backup-*.dump      # a few hundred KB+, not 0
+  ```
+
+  Decide: how often, where the off-box copy lives, and how long copies are kept.
+  Retention interacts with a promise we have not made yet — see `pii-retention-
+  and-erasure` in the backlog — so a short window is the safer default. Note the
+  co-tenant `pulse-prod-backup-1` container already does something similar for
+  another tenant and may be a pattern to copy; it is **not** backing up Yanki.
+
+- [ ] **B14. Decide whether to merge `feat/session-24` (added 2026-08-08,
+  session 24).** Four lanes plus review fixes, **unpushed, no PR**. Nothing in
+  it is live. Merging auto-deploys, so this is a release decision, and there is
+  a specific reason to want it: two of the four lanes are safety work that
+  should land *before* the migrations B13 unblocks.
+
+  - `infra/prod-compose-limits` — memory/CPU ceilings and log caps on `db`,
+    `api`, `worker`, `web` (only `searxng` had them), plus CI validation that
+    every prod service stays capped. **Takes effect on the next deploy, not
+    retroactively.**
+  - `infra/deploy-preflight-rollback` — the preflight was checking retired
+    provider keys, so a deploy missing `OPEN_ROUTER_KEY` would pass green then
+    fail at runtime; and the rollback's pruned-image path could resurrect the
+    fused migrate-on-boot compose and crash-loop. Both fixed (ADR-42).
+  - `feat/p7.5-sessions-and-org-switcher` — devices/sessions management and the
+    org switcher. **This closes a live defect**: since invitations shipped, a
+    user accepting an invitation to a second org could not reach it.
+  - `fix/gate-site-audit-enqueue` — `SITE_AUDIT_ENABLED`, default off (ADR-44).
+
+  **It contains no migration**, by design, so the deploy is image-only and
+  `rollback.sh` genuinely covers it.
+
+  ```bash
+  cd ~/repo/yanki-mvp
+  git log --oneline main..feat/session-24
+  git push -u origin feat/session-24     # needs the SSH remote
+  gh pr create --fill
+  ```
+
+  Note the ruleset needs one approving review and GitHub will not let the author
+  approve their own PR — the same situation as B8, which was resolved with your
+  admin bypass. Worth deciding whether that stays the habit.
+
+- [ ] **B15. Clean up three Site Audits stranded in production** (added
+  2026-08-08, session 24; tech-debt #64). `31eba473…`, `410c31d7…`,
+  `35e06651…` — created 2026-08-05/06, status `queued`, zero pages. They were
+  enqueued through a UI that shipped while no site-audit worker was ever
+  deployed, so nothing has ever drained them. Session 24 closed the door (B14's
+  `SITE_AUDIT_ENABLED` gate) but **deliberately did not touch the rows**:
+  mutating production data is yours, and doing it without backups (B13) is how a
+  cleanup becomes an incident. Decide whether to mark them failed with a reason
+  or delete them — and do B13 first.
+
+  ```bash
+  docker exec yanki-prod-db-1 psql -U yanki -d yanki \
+    -c "select id, status, created_at from site_audits order by created_at;"
+  ```
+
+- [ ] **B16. Settle whether Support can impersonate** (added 2026-08-08,
+  session 24). `admin-panel-plan.md` §7 says the **Support** role gets
+  "read-only platform access + impersonation with consent-and-log."
+  `app/services/permissions.py` grants `platform:impersonate` to **super_admin
+  only**, with Support read-only. One of the two is wrong and nobody has
+  decided which. It does not matter today — no impersonation code exists — but
+  it must be settled **before A7 builds it**, because A7 will implement
+  whichever one it reads first. The question is whether a support engineer
+  should be able to enter a customer's account, or whether that is reserved to
+  you. → Answer: ______
+
+- [x] ~~**B12. Decide what happens to `feat/admin-panel-invitations-audit`.**~~
+  **DONE** — merged as PR #32 on 2026-08-05 and deployed; superseded by the
+  merges that followed (#33, #34). Production is at `e87c575`, alembic
+  `0018_invitations_audit_integrity`, and the `invitations` table exists. Kept
+  here only because the previous version of this file went on asserting the
+  opposite for two sessions. Original text follows.
+
+  <details><summary>Original B12 (2026-08-05, session 22)</summary>
   Session 22's work is **three commits on a local-only branch that has never
   been pushed**. There is no PR. `main` and `origin/main` are both still
   `f4c33e8`, production runs `yanki-api:f4c33e8` at alembic `0017_user_status`,
@@ -296,7 +429,16 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   **Do B10 before the merge reaches production**, or the first invitation
   anybody sends will contain a link to `localhost`.
 
-- [ ] **B10. Set `PUBLIC_BASE_URL` in the prod `deploy/.env` before anyone
+  </details>
+
+- [x] ~~**B10. Set `PUBLIC_BASE_URL` in the prod `deploy/.env`.**~~ **DONE** —
+  verified set in the production `deploy/.env` on 2026-08-08 (session 24).
+  `invitations` currently holds zero rows, so no invitation was ever sent with a
+  `localhost` link. Original text follows.
+
+  <details><summary>Original B10 (2026-08-05, session 22)</summary>
+
+  **B10. Set `PUBLIC_BASE_URL` in the prod `deploy/.env` before anyone
   sends an invitation (added 2026-08-05, session 22; one line, do it before the
   Admin Panel is used).** The Admin Panel can now invite people, and an
   invitation is a link. That link is the one value the API **cannot** work out
@@ -314,6 +456,8 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   `INVITATION_TTL_DAYS` — default 14, range 1–90. Nothing else breaks without
   it; only invitation links do, and they break silently from the sender's point
   of view, which is why this is B-priority rather than a note.
+
+  </details>
 
 - [ ] **B11. (Optional) turn invitation email on (added 2026-08-05, session
   22).** `EMAILS_ENABLED` defaults to `0`, so today the panel creates the

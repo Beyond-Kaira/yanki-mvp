@@ -58,14 +58,20 @@ def required_when_live(values: dict[str, str]) -> list[tuple[str, str]]:
             "JWT_SECRET_KEY",
             "a live deploy (DRY_RUN=0) — auth cannot issue or validate tokens without it",
         ),
-        ("OPEN_ROUTER_KEY", "a live deploy (DRY_RUN=0) — every GEO audit calls the OpenRouter LLM"),
+        (
+            "OPEN_ROUTER_KEY",
+            "a live deploy (DRY_RUN=0) — every GEO audit calls the OpenRouter LLM",
+        ),
     ]
     # Mirror execute_measured._geo_mode: anything that is not exactly "simulated"
     # runs the measured (Tavily) path, so only "simulated" is exempt from Tavily.
     mode = (values.get("GEO_MODE", "measured") or "measured").strip().lower()
     if mode != "simulated":
         reqs.append(
-            ("TAVILY_API_KEY", "GEO_MODE=measured (DRY_RUN=0) — each audit runs a Tavily search")
+            (
+                "TAVILY_API_KEY",
+                "GEO_MODE=measured (DRY_RUN=0) — each audit runs a Tavily search",
+            )
         )
     return reqs
 
@@ -79,9 +85,16 @@ def main() -> int:
         print("check_env: DRY_RUN is on — no API keys required. OK.")
         return 0
 
-    missing = [(key, reason) for key, reason in required_when_live(values) if not values.get(key)]
+    missing = [
+        (key, reason)
+        for key, reason in required_when_live(values)
+        if not values.get(key)
+    ]
     if missing:
-        print("check_env: DRY_RUN is off but required variables are empty:", file=sys.stderr)
+        print(
+            "check_env: DRY_RUN is off but required variables are empty:",
+            file=sys.stderr,
+        )
         for key, reason in missing:
             print(f"  - {key} is required for {reason}", file=sys.stderr)
         return 1

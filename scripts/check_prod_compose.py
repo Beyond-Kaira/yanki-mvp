@@ -42,7 +42,10 @@ def main() -> int:
     try:
         config = json.load(sys.stdin)
     except json.JSONDecodeError as exc:
-        print(f"could not parse the rendered compose config as JSON: {exc}", file=sys.stderr)
+        print(
+            f"could not parse the rendered compose config as JSON: {exc}",
+            file=sys.stderr,
+        )
         return 2
 
     services = config.get("services") or {}
@@ -56,7 +59,9 @@ def main() -> int:
         service = services[name] or {}
 
         # The swarm-only form. If it carries limits, they are being dropped.
-        deploy_limits = ((service.get("deploy") or {}).get("resources") or {}).get("limits")
+        deploy_limits = ((service.get("deploy") or {}).get("resources") or {}).get(
+            "limits"
+        )
         if deploy_limits:
             problems.append(
                 f"{name}: uses the swarm-only `deploy.resources.limits` form "
@@ -85,7 +90,10 @@ def main() -> int:
             )
 
     if problems:
-        print("deploy/docker-compose.prod.yml is not safe for the shared VPS:", file=sys.stderr)
+        print(
+            "deploy/docker-compose.prod.yml is not safe for the shared VPS:",
+            file=sys.stderr,
+        )
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
         return 1

@@ -328,3 +328,60 @@ call is the operator's. Two operator items gate its usefulness there: **B10**
 (`PUBLIC_BASE_URL`) and **B11** (`EMAILS_ENABLED`).
 
 **The next brief lives at the end of `sessions/2026-08-05-03.md` §8.**
+
+---
+
+## Session 23 (2026-08-06) — P8.3: the backlink API, then the screens
+
+**Prompt executed:** *not recoverable.* Session 23 shipped without any of its
+eight close deliverables, so no record of its brief survives (tech-debt #72).
+Reconstructed retroactively in session 24 from the commit range
+`4294fd4..e87c575` — see [sessions/2026-08-06-01.md](sessions/2026-08-06-01.md),
+which is explicit about being a reconstruction and about what it cannot recover.
+
+**Outcome:** P8.3 complete in two PRs. #33 gave the backlink engine an API —
+`app/services/backlinks.py`, twelve route handlers, a dedicated CI step
+defending a module that ships dark. #34 gave it screens: `/backlinks` and
+`/backlinks/[projectId]` with five tabs, and the nav entry graduated from
+`soon` to `live`. Merged and deployed as `e87c575`. `BACKLINKS_ENABLED` stays
+off in production — the surface is live, the data is fixture data, and the
+vendor decision (operator **A4**) is what stands between M2 and a customer.
+
+---
+
+## Session 24 (2026-08-08) — the guardrails before the migrations, and P7.5's migration-free half
+
+**Prompt executed:** "using workflows, @docs/resume-prompt.md" — the
+founder-orchestrator brief, to be worked through multi-agent workflows.
+
+**Outcome:** four lanes on `feat/session-24`, none of them carrying a migration,
+each adversarially reviewed — see
+[sessions/2026-08-08-01.md](sessions/2026-08-08-01.md). Resource ceilings and
+log bounds on every prod service plus a CI gate that checks the caps rather than
+the syntax (ADR-41); a deploy preflight that validates the keys the live path
+actually reads and a rollback that refuses to resurrect the fused
+migrate-on-boot compose (ADR-42, repaying most of tech-debt #17); P7.5's
+migration-free half — self-service session/device management and the org
+switcher, which closes a live defect invitations opened, where an accepted
+invitation to a second organization was unreachable (ADR-43); and a Site Audit
+kill-switch that gates the crawl rather than the project, after review caught
+the first version silently disabling Backlinks (ADR-44).
+
+**The start ritual was the session's most valuable hour.** It found that A6 was
+`todo` in the docs and *substantially built* in the code — with the consequence
+that every plan tier is decorative because nothing enforces the quotas that
+exist — and that `tenancy.scoped()` / `readable_analysis()`, described by three
+documents as the fail-closed seam enforcing tenant isolation, **have zero call
+sites** (tech-debt #63). It also found session 23's missing paper trail and
+reconstructed it.
+
+**Integration earned its keep too:** four green lanes went red together on a
+cross-tenant leakage test, and the neighbouring leakage test was found to be
+passing for the wrong reason.
+
+**Not merged.** `feat/session-24` is unpushed with no PR; a merge to `main`
+auto-deploys and that call is the operator's (**B14**). The session's headline
+operator item is **B13 — database backups**, which now gates every remaining
+Phase 7 migration.
+
+**The next brief lives at the end of `sessions/2026-08-08-01.md` §9.**

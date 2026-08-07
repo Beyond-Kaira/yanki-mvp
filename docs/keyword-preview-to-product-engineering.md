@@ -33,7 +33,9 @@ repo* and *what to change*.
 ### A. Discovery expand
 
 - **Preview now:** `keyword/searxng_expand.py`, `normalize.py`, `variants.py`
-- **Product next:** caching by `(seed, locale)`; brand prefill from workspace/KYC; stronger junk filters; org rate limits
+- **Accepted policy:** merge order `seed → suggestion → paa → related → variant`; variant capped (`KEYWORD_VARIANT_MAX`, default target 3); smart-skip; never sell variant as related. See companion **Discovery cleanup policy**.
+- **Cleanup next (Faz 1–4):** reorder append in `searxng_expand` (variants currently first — bug); smart-skip in `variants.py`; config cap; tighter related/PAA filters
+- **Product next:** caching by `(seed, locale)`; brand prefill from workspace/KYC; stronger junk filters; org rate limits; optional 2nd SearXNG pass only with budget approval
 
 ### B. Metrics
 

@@ -39,7 +39,8 @@ Later volume vendors plug into the same `KeywordSource` seam; UI stays stable.
 
 ## Discovery cleanup policy (accepted)
 
-**Status:** accepted — ordering, smart-skip, variant cap, related/PAA filters shipped  
+**Status:** core cleanup **complete** (order, smart-skip, variant cap, related/PAA filters).  
+Optional 2nd SearXNG pass remains **off / not built** until explicit approval.  
 **Canvas:** `keyword-discovery-cleanup.canvas.tsx` (implementation checklist)  
 **Out of scope here:** Google Ads volume / CPC (`keyword-ads-volume-roadmap.canvas.tsx`).
 
@@ -107,7 +108,8 @@ Run once locally (or on the target deploy) with **live SearXNG**, not mock:
 4. Kill-switch: set `KEYWORD_ENABLED=0`, reload — Keywords routes/API return unavailable (404), shell entry should not look “live” if gated the same way.
 5. Optional: `DRY_RUN=1` still expands via mock for CI only — do not use that path to judge idea quality.
 
-Config knobs: `KEYWORD_MAX_IDEAS`, `KEYWORD_RANK_MAX_QUERIES` (see `deploy/.env.example`).
+Config knobs: `KEYWORD_MAX_IDEAS`, `KEYWORD_VARIANT_MAX` (default 3; `0` = no
+templates), `KEYWORD_RANK_MAX_QUERIES` (see `deploy/.env.example`).
 
 ### What to watch (lightweight — no analytics product required)
 
@@ -259,12 +261,13 @@ the matching row here (or delete it) in the same PR.
 | **Seed → template variants** (`build_seed_query_variants`) | Fixed English shapes; suggestions-first merge; smart-skip; capped by `KEYWORD_VARIANT_MAX` (default 3) | Zero-cost list filler | Locale template packs; or keep `0` forever. Never market as related. |
 | **Single SearXNG round-trip per expand** | One `search(seed)` only — no fan-out over every variant | Politeness + latency on operator-hosted SearXNG | Optional budgeted second pass on top N suggestions; cache by `(seed, locale)` |
 | **“Related” from SERP titles** | Title lines with whole-token seed coverage; drop prose/URL/long headlines | No related-keyword index in OSS | Higher NLP / drop “related” until a better signal exists |
-| **PAA / answers** | Question-shaped short lines only (`looks_like_paa_idea`) | SearXNG `answers` inconsistent across engines | Engine-aware parsing; locale question packs |
+| **PAA / answers** | Question-shaped short lines only (`looks_like_paa_idea` + EN `_QUESTION_PREFIXES`) | SearXNG `answers` inconsistent; EN markers = intentional Preview debt | Locale question packs; or soften to `?`/length-only |
 | **Brand exclusion** | Optional `exclude_brands` + `leaks_brand` keys — caller must pass names | Expand is analysis-independent; no KYC on the request yet | Prefill from workspace domain / last analysis KYC when API exists |
 | **No absolute volume / true KD** | Omitted as ground truth; **Estimated** proxies live in `signals` | No licensed DB yet | Google Ads Keyword Planner or wholesale API on the same `KeywordSource` seam; drop `volume_estimated` when real |
 | **`estimated_demand_score`** | Provenance heuristic (suggestion > variant…) — **not** monthly searches | OSS demand-test ranking | Real `avgMonthlySearches`; keep score field or replace with `volume` |
 | **`estimated_difficulty_score`** | Topic-level hint from **seed** SERP hard-host density (`difficulty_basis: seed_serp`) — **not** per-keyword KD% | One SearXNG round-trip budget | Per-keyword SERP or licensed KD; or keep forever as “competition hint” |
 | **Intent (rules)** | Marker lists (`how` / `best` / `buy`…) | No model/vendor yet | Model-assisted or vendor intent; keep rules as fallback |
+| **PAA question prefixes (EN)** | Hardcoded `_QUESTION_PREFIXES` in `normalize.py` | Same leak/i18n class as intent markers | Locale packs or drop question-word gate |
 | **Mock under `DRY_RUN`** | Synthetic rows for CI | Same pattern as `MockSerpSource` | Keep forever for CI; never default in live preview |
 | **Locale ≈ SearXNG `language`** | `locale` string mapped onto language pin | Good enough for preview; not full geo (gl/hl/city) | Proper country/geo params when SearXNG/engines support them; document mismatch in UI |
 | **Overview vs Magic** | Thin Overview cards wrapping the same expand | Richer SERP snapshot per keyword only when budget allows |
@@ -295,10 +298,18 @@ Parked for a cleanup pass after the preview path ships. Do not treat as done.
 - **Product bar:** do not claim Product-grade intent until markers are replaced or heavily gated (locale packs, vendor/model, or “unclassified” instead of silent informational fallback).
 - **Follow-up home:** [keyword-preview-to-product-engineering.md](keyword-preview-to-product-engineering.md) (engineering checklist Preview → Product).
 
+### PAA question prefixes — hardcoded markers (**same class**)
+
+- **Where:** `backend/app/keyword/normalize.py` — `_QUESTION_PREFIXES` used by `looks_like_paa_idea`.
+- **Behavior:** answer must start with an EN question word (or end with `?`) to become a `paa` row.
+- **Why it is debt:** English-only; TR/other locales under-keep real questions; list is reverse-engineerable.
+- **Product bar:** locale packs, soften to length/`?` only, or stop claiming question quality.
+
 ### Other parked items (same cleanup pass)
 
-- Seed template variants — order + smart-skip + `KEYWORD_VARIANT_MAX` shipped; further i18n packs later.
+- Seed template EN shapes — controlled (order + smart-skip + max); i18n packs still later.
 - `estimated_*` proxies vs real volume/KD field swap (Ads roadmap).
+- Optional 2nd SearXNG suggestion pass — not built; needs explicit approval + budget.
 - Canvas vs this markdown tick sync for Product/Business.
 
 ## Related docs

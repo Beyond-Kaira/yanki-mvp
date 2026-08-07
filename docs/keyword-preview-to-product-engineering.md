@@ -24,7 +24,7 @@ repo* and *what to change*.
 | Debt | Location | Risk | Product direction |
 |------|----------|------|-------------------|
 | Hardcoded EN intent markers | `backend/app/keyword/intent.py` | **Leak / reverse-engineering**; i18n wrong; silent `informational` fallback over-tags | Locale packs, vendor/model intent, or return `unclassified` instead of defaulting to informational |
-| Seed template variants | `backend/app/keyword/variants.py` | Bad grammar (`best best…`) | Smart-skip / disable / suggestions-first UI |
+| Hardcoded EN PAA question prefixes | `backend/app/keyword/normalize.py` (`_QUESTION_PREFIXES`) | Same leak / i18n class as intent markers; TR questions miss | Locale packs, `?`-only soften, or drop question gate |
 | Demand ≠ volume | `backend/app/keyword/signals.py` | Users read score as volume | Ads/wholesale `volume` field; drop `volume_estimated` when real — **or** hide scores in Product-lite |
 | Difficulty = seed SERP only | `signals.py` + one SearXNG page | Not per-keyword KD | Per-query SERP budget or licensed KD; keep label “competition hint” if not |
 
@@ -34,7 +34,7 @@ repo* and *what to change*.
 
 - **Preview now:** `keyword/searxng_expand.py`, `normalize.py`, `variants.py`
 - **Accepted policy:** merge order `seed → suggestion → paa → related → variant`; variant capped (`KEYWORD_VARIANT_MAX`, default target 3); smart-skip; never sell variant as related. See companion **Discovery cleanup policy**.
-- **Cleanup next:** (optional) budgeted 2nd SearXNG pass — only with explicit approval
+- **Cleanup:** **core complete.** Optional budgeted 2nd SearXNG pass — only with explicit approval (not built).
 - **Shipped in cleanup:** suggestions-first merge; smart-skip; `KEYWORD_VARIANT_MAX` (default 3); tighter related/PAA filters
 - **Product next:** caching by `(seed, locale)`; brand prefill from workspace/KYC; stronger junk filters; org rate limits; optional 2nd SearXNG pass only with budget approval
 

@@ -253,7 +253,12 @@ export async function createSeoProject(
         ? 'Your session has expired. Sign in again to start a Site Audit.'
         : res.status === 409
           ? 'A Site Audit project for this domain already exists.'
-          : await readErrorMessage(res)
+          : res.status === 404
+            ? // The enqueue routes 404 while the site-audit worker is not
+              // deployed (config.site_audit_enabled). Give the caller an honest
+              // reason instead of a bare "Not Found".
+              'Site Audit is not available in this deployment yet.'
+            : await readErrorMessage(res)
     throw new ApiError(message, res.status)
   }
 

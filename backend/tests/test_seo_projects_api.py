@@ -12,10 +12,29 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_dependencies import get_current_user
 from app.api.main import app
+from app.config import Settings, get_settings
 from app.db.models import SeoProject, SiteAudit, SiteAuditPage, User
 from app.services.auth import hash_password
 
 PROJECTS_URL = "/api/v1/seo-projects"
+
+
+def _set_site_audit_enabled(enabled: bool) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(site_audit_enabled=enabled)
+
+
+@pytest.fixture(autouse=True)
+def enable_site_audit_by_default():
+    """Keep the enqueue kill-switch ON for the existing behavioural tests.
+
+    The flag defaults to False in production; the "flag off" tests below flip it
+    back within their own body. Without this the pre-gate create/rerun tests
+    would all 404, which is exactly the guard the gate is supposed to add.
+    """
+
+    _set_site_audit_enabled(True)
+    yield
+    app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.fixture(autouse=True)
@@ -267,3 +286,103 @@ def test_private_network_domain_is_rejected_without_persisting(
     assert response.status_code == 422
     assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 0
     assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
+
+
+# --- Enqueue kill-switch (site_audit_enabled) ---------------------------------
+#
+# No deployed service drains the site-audit queue, so an enqueued audit sits
+# `queued` forever. Both routes that queue a crawl — creating a project (which
+# queues its first audit) and re-running an audit — are gated 404 while the flag
+# is off. The read routes are deliberately left open.
+
+
+def test_creating_a_project_is_404_while_the_enqueue_flag_is_off(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    _authenticate_as(make_user("owner@example.com"))
+    _set_site_audit_enabled(False)
+
+    response = client.post(
+        PROJECTS_URL,
+        json={
+            "domain": "example.test",
+            "page_limit": 10,
+            "profile_id": "site_audit_mobile",
+            "js_rendering": True,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Not Found"
+    # Nothing was queued — the whole point of the gate.
+    assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 0
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
+
+
+def test_rerunning_an_audit_is_404_while_the_enqueue_flag_is_off(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    _authenticate_as(make_user("owner@example.com"))
+    # Create a project + finished audit with the flag on, then flip it off.
+    project = _create_project(client)
+    first_audit = db_session.scalar(select(SiteAudit))
+    assert first_audit is not None
+    first_audit.status = "done"
+    first_audit.progress = 100
+    db_session.commit()
+
+    _set_site_audit_enabled(False)
+
+    rerun = client.post(
+        f"{PROJECTS_URL}/{project['id']}/audits",
+        json={"page_limit": 25, "profile_id": "site_audit_desktop", "js_rendering": False},
+    )
+
+    assert rerun.status_code == 404
+    assert rerun.json()["detail"] == "Not Found"
+    # Still exactly one audit — no second row was queued.
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 1
+
+
+def test_reads_stay_open_while_the_enqueue_flag_is_off(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    _authenticate_as(make_user("owner@example.com"))
+    project = _create_project(client)
+    audit = db_session.scalar(select(SiteAudit))
+    assert audit is not None
+
+    _set_site_audit_enabled(False)
+
+    list_response = client.get(PROJECTS_URL)
+    detail_response = client.get(f"{PROJECTS_URL}/{project['id']}")
+    audit_response = client.get(f"{PROJECTS_URL}/{project['id']}/audits/{audit.id}")
+
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()] == [project["id"]]
+    assert detail_response.status_code == 200
+    assert detail_response.json()["id"] == project["id"]
+    assert audit_response.status_code == 200
+    assert audit_response.json()["id"] == str(audit.id)
+
+
+def test_the_enqueue_flag_on_queues_a_crawl_exactly_as_before(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    # The autouse fixture already enables the flag; assert the on-path is
+    # unchanged so the gate is proven additive.
+    _authenticate_as(make_user("owner@example.com"))
+
+    body = _create_project(client, domain="on-flag.test", page_limit=15)
+
+    assert body["latest_audit"]["status"] == "queued"
+    assert body["latest_audit"]["page_limit"] == 15
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 1

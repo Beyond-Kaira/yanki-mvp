@@ -7,7 +7,7 @@ import SeoProjectList from './SeoProjectList'
 import SiteAuditProjectStart from './SiteAuditProjectStart'
 import SiteAuditSettingsDialog from './SiteAuditSettingsDialog'
 import type { SiteAuditSettings } from './SiteAuditSettingsDialog'
-import { createSeoProject, listSeoProjects } from '@/lib/api'
+import { ApiError, createSeoProject, listSeoProjects } from '@/lib/api'
 import type { SeoProject } from '@/lib/contracts'
 
 type ProjectState =
@@ -25,6 +25,13 @@ export default function SiteAuditDashboard() {
   const [pendingDomain, setPendingDomain] = useState<string | null>(null)
   const [creatingProject, setCreatingProject] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  // The enqueue routes 404 while no worker drains the site-audit queue
+  // (config.site_audit_enabled). Reads stay open, so the only honest signal the
+  // client gets is that 404 at the moment of starting an audit — mirroring how
+  // useBacklinkProfile learns "off" from the backlink route's 404. Once seen, we
+  // replace the start CTA with an honest notice instead of offering a button
+  // that only ever fails.
+  const [featureDisabled, setFeatureDisabled] = useState(false)
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -109,6 +116,14 @@ export default function SiteAuditDashboard() {
       setPendingDomain(null)
       setShowCreateForm(false)
     } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        // Feature is off in this deployment: stop offering the CTA and say so.
+        setFeatureDisabled(true)
+        setPendingDomain(null)
+        setShowCreateForm(false)
+        setCreateError(null)
+        return
+      }
       setCreateError(
         error instanceof Error ? error.message : 'The Site Audit could not be started.',
       )
@@ -137,6 +152,7 @@ export default function SiteAuditDashboard() {
       {status === 'authenticated' ? (
         <ProjectContent
           state={projectState}
+          featureDisabled={featureDisabled}
           onRetry={() => setRequestVersion((version) => version + 1)}
           showCreateForm={showCreateForm}
           onShowCreateForm={() => setShowCreateForm(true)}
@@ -147,7 +163,7 @@ export default function SiteAuditDashboard() {
         />
       ) : null}
 
-      {pendingDomain ? (
+      {pendingDomain && !featureDisabled ? (
         <SiteAuditSettingsDialog
           domain={pendingDomain}
           submitting={creatingProject}
@@ -203,12 +219,14 @@ function SignedOutState() {
 
 function ProjectContent({
   state,
+  featureDisabled,
   onRetry,
   showCreateForm,
   onShowCreateForm,
   onConfigure,
 }: {
   state: ProjectState
+  featureDisabled: boolean
   onRetry: () => void
   showCreateForm: boolean
   onShowCreateForm: () => void
@@ -254,6 +272,21 @@ function ProjectContent({
     )
   }
 
+  // Feature off in this deployment. Existing projects stay fully viewable (their
+  // reads are not gated); only the enqueue call-to-action is withdrawn, with an
+  // honest explanation in its place.
+  if (featureDisabled) {
+    if (state.projects.length === 0) {
+      return <SiteAuditUnavailable />
+    }
+    return (
+      <div className="space-y-6">
+        <SiteAuditUnavailable />
+        <SeoProjectList projects={state.projects} />
+      </div>
+    )
+  }
+
   if (state.projects.length === 0) {
     return <SiteAuditProjectStart onContinue={onConfigure} />
   }
@@ -270,6 +303,25 @@ function ProjectContent({
       </p>
       <SeoProjectList projects={state.projects} onCreateProject={onShowCreateForm} />
     </div>
+  )
+}
+
+function SiteAuditUnavailable() {
+  return (
+    <section
+      role="status"
+      className="rounded-xl border border-surface-border bg-surface p-8 shadow-sm"
+    >
+      <h2 className="text-xl font-semibold text-surface-foreground">
+        Site Audit isn&rsquo;t available yet
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-surface-subtle">
+        Starting a new crawl is turned off in this deployment, so we&rsquo;re not
+        offering a button that would only leave an audit stuck. Any projects you
+        already have stay fully viewable below. Please check back once Site Audit
+        is switched on.
+      </p>
+    </section>
   )
 }
 

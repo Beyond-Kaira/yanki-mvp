@@ -7,6 +7,17 @@ part of this feature.
 
 ## Product and persistence flow
 
+> **Enqueue is gated off by default (`SITE_AUDIT_ENABLED`).** No deployed service
+> drains the site-audit queue — production runs `db/api/worker/searxng/web`, and
+> `worker` consumes the GEO `analyses` queue, not this one — so an enqueued audit
+> would sit `queued` forever. Until an audit worker ships, the two routes that
+> queue a crawl (`POST /api/v1/seo-projects` and
+> `POST /api/v1/seo-projects/{id}/audits`) are refused **404** while the flag is
+> off, the same way the backlink module goes dark. The reads below stay open, so
+> existing projects and audits remain viewable. Steps 2–3 describe the flow that
+> runs only once the operator flips the flag on **and** an audit worker is
+> deployed.
+
 1. An authenticated user creates an SEO project for one root domain.
 2. Project creation queues the first Site Audit.
 3. The dedicated audit worker crawls the site and persists each completed page.
@@ -44,14 +55,22 @@ hostname at different times. Production still requires an approved egress
 design that resolves and pins destinations while rejecting private, loopback,
 link-local, and metadata networks.
 
-The audit worker receives only its database URL and explicit `SITE_AUDIT_*`
-settings. It does not inherit the general deployment `.env` containing auth or
-provider secrets. Chromium is *intended* to be isolated to an `audit-runtime` image target —
-**which is not built.** `backend/Dockerfile` is a single stage and installs no
-browser, so today the isolation described here is a design, not a boundary that
-exists. Tracked as backlog item `site-audit-chromium-image-missing`; nothing
-runs the audit worker in production either, so no unisolated Chromium is
-actually executing.
+Settings isolation for the audit worker is a *design goal, not a boundary that
+exists.* `backend/app/site_audit/worker.py` calls the shared `get_settings()`
+and holds the **entire** `Settings` object — the same one carrying `jwt_secret_key`,
+every provider API key, and the Resend key. It does **not** receive only its
+database URL and `SITE_AUDIT_*` values; a worker that crawls arbitrary
+third-party pages would today have the full secret set in process memory. The
+intended split — the audit worker receiving only its database URL and explicit
+`SITE_AUDIT_*` settings, in an `audit-runtime` image target isolated from the
+general deployment `.env` — is **not built**: `backend/Dockerfile` is a single
+stage and installs no browser, so both the settings isolation and the Chromium
+isolation described here are design, not reality. Tracked as backlog item
+`site-audit-chromium-image-missing`. Nothing runs the audit worker in production
+today, so no unisolated Chromium is executing — but this is also why the enqueue
+route is gated off (`SITE_AUDIT_ENABLED`, see above): turning it on without that
+isolation would strand audits *and*, once a worker existed, hand a page-crawling
+container every secret in the deployment.
 
 ## Unresolved production decisions
 

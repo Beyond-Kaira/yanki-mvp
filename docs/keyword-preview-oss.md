@@ -39,8 +39,8 @@ Later volume vendors plug into the same `KeywordSource` seam; UI stays stable.
 
 ## Discovery cleanup policy (accepted)
 
-**Status:** accepted (docs only — implementation starts at cleanup Faz 1)  
-**Canvas:** `keyword-discovery-cleanup.canvas.tsx`  
+**Status:** accepted — ordering + smart-skip shipped; variant cap next  
+**Canvas:** `keyword-discovery-cleanup.canvas.tsx` (implementation checklist)  
 **Out of scope here:** Google Ads volume / CPC (`keyword-ads-volume-roadmap.canvas.tsx`).
 
 Goal: Magic lists should read like **real search ideas**, not template spam.
@@ -57,18 +57,18 @@ When assembling `KeywordExpandResult.ideas` (after dedupe / brand exclude):
 4. `related` — weak phrases mined from SERP titles
 5. `variant` — local English templates (`best {seed}`, …) last, if enabled
 
-**Bug today:** `searxng_expand.py` appends variants **before** suggestions, so a
-`max_ideas` budget fills with filler first. Faz 1 fixes order.
+**Shipped:** `searxng_expand.py` / mock merge in this order so `max_ideas` is not
+spent on filler first.
 
 ### Variant policy
 
 | Rule | Decision |
 |------|----------|
 | Keep `source=variant` label | Yes — UI/API honesty |
-| Smart-skip bad grammar (`best best…`, seed already contains shape tokens) | Yes — Faz 2 |
-| Cap / kill via config (e.g. `KEYWORD_VARIANT_MAX`, `0` = off) | Yes — Faz 3; **default target: 3** (not unlimited); product may set `0` after smoke |
-| Locale-specific EN shapes for TR/non-Latin | Skip or reduce EN shapes — Faz 2; full i18n packs later |
-| Second SearXNG round-trip over top suggestions | Optional, default **off** — Faz 5 only with explicit approval |
+| Smart-skip bad grammar (`best best…`, seed already contains shape tokens) | **Shipped** in `variants.py` |
+| Cap / kill via config (e.g. `KEYWORD_VARIANT_MAX`, `0` = off) | **Next**; **default target: 3** (not unlimited); product may set `0` after smoke |
+| Locale-specific EN shapes for TR/non-Latin | **Shipped** skip when seed has non-basic-Latin letters; full i18n packs later |
+| Second SearXNG round-trip over top suggestions | Optional, default **off** — only with explicit approval |
 
 ### Related workstreams (do not conflate)
 
@@ -170,12 +170,12 @@ until its Semrush column is `[x]`.
 | Capability | Preview | Product | Semrush | Notes / transition |
 |------------|:-------:|:-------:|:-------:|--------------------|
 | Seed + locale expand entry point | [x] | [ ] | [ ] | Product: stable API + auth + rate limits + empty/error UX. Semrush: instant DB lookup, no live scrape dependency. |
-| Related / long-tail idea volume (breadth) | [x] | [ ] | [ ] | Preview: SearXNG suggestions + thin related. **Cleanup:** suggestions-first merge order (Faz 1). Product: larger, stable lists (licensed or cached). Semrush: billions-scale index, match types (broad/phrase/exact/related). |
-| Local template variants (`best {seed}` …) | [x] | [ ] | — | Preview filler only (`source=variant`). **Policy:** last in merge order; smart-skip + `KEYWORD_VARIANT_MAX` (default target 3). Not a Semrush feature to copy. |
-| Questions / PAA-style ideas | [x] | [ ] | [ ] | Preview: SearXNG answers heuristic. **Cleanup Faz 4:** stronger question filter. Product: reliable question filter. Semrush: Questions report + filters. |
+| Related / long-tail idea volume (breadth) | [x] | [ ] | [ ] | Preview: SearXNG suggestions + thin related. **Cleanup:** suggestions-first merge order (shipped). Product: larger, stable lists (licensed or cached). Semrush: billions-scale index, match types (broad/phrase/exact/related). |
+| Local template variants (`best {seed}` …) | [x] | [ ] | — | Preview filler only (`source=variant`). **Policy:** last in merge order; smart-skip shipped; `KEYWORD_VARIANT_MAX` next (default target 3). Not a Semrush feature to copy. |
+| Questions / PAA-style ideas | [x] | [ ] | [ ] | Preview: SearXNG answers heuristic. **Cleanup next:** stronger question filter. Product: reliable question filter. Semrush: Questions report + filters. |
 | Topic / subgroup sidebar | [ ] | [ ] | [ ] | Not started. Product: light clustering. Semrush: Magic left-rail groups. |
 | Match-type controls | [ ] | [ ] | [ ] | Semrush Magic. Preview skip. |
-| Deduped, filtered junk (URL/prose/brand) | [x] | [ ] | [ ] | Preview: basic normalize. **Cleanup Faz 4:** tighter related/PAA. Product: stronger NLP/locale rules + workspace brand prefill. |
+| Deduped, filtered junk (URL/prose/brand) | [x] | [ ] | [ ] | Preview: basic normalize. **Cleanup next:** tighter related/PAA. Product: stronger NLP/locale rules + workspace brand prefill. |
 | Exclude / include filters (volume, KD, intent, …) | [ ] | [ ] | [ ] | Needs real metrics first for Product; Semrush = full filter bar. |
 | Send to list / Strategy Builder | [ ] | [ ] | [ ] | Preview: optional light save later. Product: persisted lists. Semrush: Strategy Builder + SERP clustering. |
 
@@ -184,7 +184,7 @@ until its Semrush column is `[x]`.
 | Capability | Preview | Product | Semrush | Notes / transition |
 |------------|:-------:|:-------:|:-------:|--------------------|
 | Absolute monthly search volume | [ ] | [ ] | [ ] | Preview→Product: Google Ads / wholesale. Semrush: own calibrated volume DB + history. |
-| Volume labeled Estimated / proxy | [x] | — | — | Faz 3: `volume_estimated` + `estimated_demand_score` in signals. Drop when real volume ships (Product). |
+| Volume labeled Estimated / proxy | [x] | — | — | `volume_estimated` + `estimated_demand_score` in signals. Drop when real volume ships (Product). |
 | Trend (12-month) | [ ] | [ ] | [ ] | Needs time series / Planner monthly buckets. |
 | Keyword Difficulty (true KD%) | [ ] | [ ] | [ ] | Preview has `estimated_difficulty_score` (seed SERP), not KD%. Product: licensed KD or honest “competition”. Semrush: KD%. |
 | Personal KD (PKD) for a domain | [ ] | [ ] | [ ] | Needs domain + stronger model/vendor. |
@@ -256,12 +256,12 @@ the matching row here (or delete it) in the same PR.
 
 | Area | What we did on purpose | Why | Later fix (toward Product) |
 |------|------------------------|-----|----------------------------|
-| **Seed → template variants** (`build_seed_query_variants`) | Fixed English shapes; merge order fixed in Faz 1 (`suggestion`/`paa`/`related` before `variant`) | Zero-cost list filler; mirrors `serp_visibility` shapes | **Cleanup next:** smart-skip (Faz 2) + `KEYWORD_VARIANT_MAX` (Faz 3). Never market as related. |
+| **Seed → template variants** (`build_seed_query_variants`) | Fixed English shapes; suggestions-first merge; smart-skip (edge-token conflict, tiny seed, non-Latin) | Zero-cost list filler | **Next:** `KEYWORD_VARIANT_MAX`. Never market as related. |
 | **Single SearXNG round-trip per expand** | One `search(seed)` only — no fan-out over every variant | Politeness + latency on operator-hosted SearXNG | Optional budgeted second pass on top N suggestions; cache by `(seed, locale)` |
 | **“Related” from SERP titles** | Title lines that contain the seed, stripped at `—` / `\|` | No related-keyword index exists in OSS | Drop titles that look like brands/URLs; require higher token overlap; or drop “related” until a better signal exists |
 | **PAA / answers** | Keep short lines; drop prose ending in `.` / long blobs | SearXNG `answers` shape is inconsistent across engines | Engine-aware parsing; question-only filter (`who/what/how…`) |
 | **Brand exclusion** | Optional `exclude_brands` + `leaks_brand` keys — caller must pass names | Expand is analysis-independent; no KYC on the request yet | Prefill from workspace domain / last analysis KYC when API exists |
-| **No absolute volume / true KD** | Omitted as ground truth; **Estimated** proxies live in `signals` (Faz 3) | No licensed DB yet | Google Ads Keyword Planner or wholesale API on the same `KeywordSource` seam; drop `volume_estimated` when real |
+| **No absolute volume / true KD** | Omitted as ground truth; **Estimated** proxies live in `signals` | No licensed DB yet | Google Ads Keyword Planner or wholesale API on the same `KeywordSource` seam; drop `volume_estimated` when real |
 | **`estimated_demand_score`** | Provenance heuristic (suggestion > variant…) — **not** monthly searches | OSS demand-test ranking | Real `avgMonthlySearches`; keep score field or replace with `volume` |
 | **`estimated_difficulty_score`** | Topic-level hint from **seed** SERP hard-host density (`difficulty_basis: seed_serp`) — **not** per-keyword KD% | One SearXNG round-trip budget | Per-keyword SERP or licensed KD; or keep forever as “competition hint” |
 | **Intent (rules)** | Marker lists (`how` / `best` / `buy`…) | No model/vendor yet | Model-assisted or vendor intent; keep rules as fallback |
@@ -297,7 +297,7 @@ Parked for a cleanup pass after the preview path ships. Do not treat as done.
 
 ### Other parked items (same cleanup pass)
 
-- Seed template variants — **in progress via discovery cleanup Faz 1–3** (order, smart-skip, max); not “forgotten.”
+- Seed template variants — **in progress** (order + smart-skip shipped; cap next); not “forgotten.”
 - `estimated_*` proxies vs real volume/KD field swap (Ads roadmap).
 - Canvas vs this markdown tick sync for Product/Business.
 

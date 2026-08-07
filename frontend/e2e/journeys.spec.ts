@@ -80,6 +80,7 @@ scenario('an organization account shows its name and role in the shell', async (
   const email = unique('org')
   await signUp(page, email, { organization: 'Acme Industries' })
 
+  await page.locator('#product-nav').hover()
   // Not the email local part — the organization and the role.
   await expect(page.getByText('Acme Industries').first()).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText(/Owner/).first()).toBeVisible()
@@ -156,6 +157,7 @@ scenario('inviting a colleague seats them with the invited role', async ({ page 
   await acceptTab.getByLabel('Confirm password').fill(PASSWORD)
   await acceptTab.getByRole('button', { name: /create account and join/i }).click()
   await expect(acceptTab).toHaveURL(/\/dashboard/, { timeout: 30_000 })
+  await acceptTab.locator('#product-nav').hover()
   // Seated with the invited role, in the inviter's organization.
   await expect(acceptTab.getByText('Invite Co').first()).toBeVisible({ timeout: 15_000 })
   await expect(acceptTab.getByText(/Editor/).first()).toBeVisible()

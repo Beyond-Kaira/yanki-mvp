@@ -1,23 +1,31 @@
 """HTTP routes for email/password authentication."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth_cookies import clear_refresh_cookie, set_refresh_cookie
 from app.api.auth_dependencies import get_current_user
 from app.api.schemas import (
+    AuthSessionListOut,
+    AuthSessionOut,
     CurrentUserOut,
     LoginRequest,
     LoginResponse,
+    OrganizationMembershipOut,
     OrganizationOut,
     RefreshResponse,
+    SessionRevokeAllOut,
     SignupRequest,
     UserOut,
 )
 from app.config import Settings, get_settings
-from app.db.models import Organization, User
+from app.db.models import AuthSession, Organization, User
 from app.db.session import get_session
 from app.services import audit
 from app.services.auth import (
@@ -29,17 +37,26 @@ from app.services.auth import (
 from app.services.auth_sessions import (
     InvalidRefreshSessionError,
     RefreshTokenReuseDetectedError,
+    list_active_sessions_for_user,
+    revoke_other_sessions_for_user,
     revoke_refresh_session_family,
+    revoke_session_family_for_user,
     rotate_refresh_session,
     start_refresh_session,
 )
 from app.services.permissions import permissions_for
-from app.services.tenancy import OrgScopeRequired, resolve_org_context
+from app.services.tenancy import (
+    OrgContext,
+    OrgScopeRequired,
+    memberships_for_user,
+    resolve_org_context,
+)
 from app.services.tokens import (
     TokenConfigurationError,
     TokenType,
     TokenValidationError,
     decode_token,
+    hash_refresh_jti,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -243,6 +260,7 @@ def logout(
 def me(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
+    x_org_id: Annotated[str | None, Header(alias="X-Org-Id")] = None,
 ) -> CurrentUserOut:
     """Who you are, which organization you are acting in, and what you may do.
 
@@ -250,17 +268,26 @@ def me(
     caller cannot use, instead of showing it and failing on click. They are for
     RENDERING ONLY — every endpoint enforces its own permission independently,
     so a client that lies about this list gets a 403 exactly as before.
+
+    ``X-Org-Id`` selects which org the singular ``organization``/``role``/
+    ``permissions`` describe, so a multi-org user who has switched sees the org
+    they switched to rather than always their first. Membership is verified, not
+    trusted — the same seam ``get_org_context`` uses — and honouring the header
+    is additive: omitting it reproduces the old behaviour exactly. ``organizations``
+    always carries the caller's full list, which is what makes a switch offerable.
     """
+
+    requested_org_id: uuid.UUID | None = None
+    if x_org_id:
+        try:
+            requested_org_id = uuid.UUID(x_org_id)
+        except ValueError:
+            requested_org_id = None
 
     organization = None
     role = None
     permissions: list[str] = []
-    try:
-        context = resolve_org_context(session, user=current_user)
-    except OrgScopeRequired:
-        # A user with no organization can still see who they are. Failing the
-        # whole call would make an edge case look like a broken session.
-        context = None
+    context = _resolve_me_context(session, current_user, requested_org_id)
     if context is not None and context.org_id is not None:
         org = session.get(Organization, context.org_id)
         if org is not None:
@@ -276,7 +303,123 @@ def me(
         organization=organization,
         role=role,
         permissions=permissions,
+        organizations=_organization_memberships(session, current_user),
     )
+
+
+@router.get(
+    "/sessions",
+    response_model=AuthSessionListOut,
+)
+def list_sessions(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AuthSessionListOut:
+    """The caller's own active sessions, one per device/login.
+
+    A read, so it emits no audit event. The one from the current device is
+    flagged ``current`` by matching the refresh cookie riding along on this
+    request (the cookie's path covers ``/api/v1/auth``) to its session family.
+    """
+
+    current_family = _current_family_id(session, request, settings)
+    summaries = list_active_sessions_for_user(
+        session,
+        user_id=current_user.id,
+        current_family_id=current_family,
+    )
+    return AuthSessionListOut(
+        sessions=[AuthSessionOut.model_validate(summary) for summary in summaries],
+    )
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def revoke_session(
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    """Revoke one of the caller's own sessions (a whole family).
+
+    Strictly self-scoped. A session id that is not the caller's — whether it
+    belongs to another user or does not exist — is a 404 with the same body in
+    both cases, so this cannot be used to probe whether a given session id
+    exists. The revocation is audited only when something was actually revoked.
+    """
+
+    revoked = revoke_session_family_for_user(
+        session,
+        user_id=current_user.id,
+        family_id=session_id,
+    )
+    if not revoked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session not found",
+        )
+
+    audit.emit(
+        session,
+        action="auth:session_revoke",
+        context=audit_context(session, current_user),
+        actor_type="user",
+        actor_id=current_user.id,
+        actor_label=current_user.email,
+        entity_type="auth_session",
+        entity_id=session_id,
+    )
+    session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/sessions/revoke-all",
+    response_model=SessionRevokeAllOut,
+)
+def revoke_all_sessions(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> SessionRevokeAllOut:
+    """Sign out everywhere else, keeping the current session alive.
+
+    See ``revoke_other_sessions_for_user`` for why the current device is spared.
+    Always audited — a lock-out of every other device is exactly the event worth
+    recording — even when there was nothing else to revoke.
+    """
+
+    current_family = _current_family_id(session, request, settings)
+    revoked = revoke_other_sessions_for_user(
+        session,
+        user_id=current_user.id,
+        keep_family_id=current_family,
+    )
+
+    audit.emit(
+        session,
+        action="auth:session_revoke_all",
+        context=audit_context(session, current_user),
+        actor_type="user",
+        actor_id=current_user.id,
+        actor_label=current_user.email,
+        entity_type="user",
+        entity_id=current_user.id,
+        # Not "sessions_revoked": the audit redactor matches the substring
+        # "session" and would replace the count with "[redacted]" — the
+        # redactor being over-eager exactly as designed. The fix is the key
+        # name here, the same move admin_routes makes for the same reason.
+        detail={"devices_signed_out": revoked, "kept_current": current_family is not None},
+    )
+    session.commit()
+
+    return SessionRevokeAllOut(revoked=revoked, kept_current=current_family is not None)
 
 
 def _user_from_refresh_token(
@@ -303,6 +446,92 @@ def _user_from_refresh_token(
     except TokenValidationError:
         return None
     return session.get(User, claims.user_id)
+
+
+def _resolve_me_context(
+    session: Session,
+    user: User,
+    org_id: uuid.UUID | None,
+) -> OrgContext | None:
+    """The org ``/me`` should describe, tolerating a stale or unknown ``org_id``.
+
+    A user with no organization can still see who they are, so an empty result is
+    ``None`` rather than a failed call. A *named* org that is not theirs (a stale
+    or forged ``X-Org-Id``) falls back to their default org instead of 403-ing —
+    ``/me`` is render-only, and losing access to the org you last switched to
+    should degrade to "your first org", not break the whole session.
+    """
+
+    try:
+        return resolve_org_context(session, user=user, org_id=org_id)
+    except OrgScopeRequired:
+        if org_id is None:
+            return None
+        try:
+            return resolve_org_context(session, user=user)
+        except OrgScopeRequired:
+            return None
+
+
+def _organization_memberships(
+    session: Session,
+    user: User,
+) -> list[OrganizationMembershipOut]:
+    """The caller's full org list for the switcher — each with their role in it."""
+
+    memberships = []
+    for membership in memberships_for_user(session, user.id):
+        org = session.get(Organization, membership.org_id)
+        if org is None:  # pragma: no cover - a membership implies its org exists
+            continue
+        memberships.append(
+            OrganizationMembershipOut(
+                id=org.id,
+                name=org.name,
+                slug=org.slug,
+                kind=org.kind,
+                status=org.status,
+                role=membership.role,
+            )
+        )
+    return memberships
+
+
+def _current_family_id(
+    session: Session,
+    request: Request,
+    settings: Settings,
+) -> uuid.UUID | None:
+    """The session family the request's refresh cookie belongs to, or ``None``.
+
+    Used to flag the caller's current session and to spare it from
+    "sign out everywhere else". A missing, malformed, unknown, or wrong-user
+    cookie simply yields ``None`` — the endpoints treat "cannot identify the
+    current session" as "there is no current session to protect", which is the
+    safe direction.
+    """
+
+    refresh_token = request.cookies.get(settings.auth_refresh_cookie_name)
+    if refresh_token is None:
+        return None
+
+    try:
+        claims = decode_token(
+            refresh_token,
+            expected_type=TokenType.REFRESH,
+            settings=settings,
+        )
+    except (TokenValidationError, TokenConfigurationError):
+        return None
+
+    row = session.scalar(
+        select(AuthSession).where(
+            AuthSession.refresh_jti_hash == hash_refresh_jti(claims.jti, settings=settings),
+        )
+    )
+    if row is None or row.user_id != claims.user_id:
+        return None
+    return row.family_id
 
 
 def _invalid_refresh_response(

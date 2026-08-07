@@ -108,6 +108,23 @@ export type AuthUser = Schemas['UserOut'] &
 
 export type Organization = Schemas['OrganizationOut']
 
+// One organization the signed-in user belongs to, with their role in it. The
+// multi-org list on `/auth/me`; the singular `organization` on AuthUser is the
+// one currently being acted in, this is the full set the switcher offers.
+export type OrganizationMembership = Schemas['OrganizationMembershipOut']
+
+// --- Sessions / devices ----------------------------------------------------
+//
+// `AuthSession` is one active sign-in (a device/login) as its owner sees it. It
+// carries NO token and no replayable material — `id` is a family id that names a
+// session for revocation only. See backend/app/api/auth_routes.py.
+
+export type AuthSession = Schemas['AuthSessionOut']
+
+export type AuthSessionList = Schemas['AuthSessionListOut']
+
+export type SessionRevokeAllResult = Schemas['SessionRevokeAllOut']
+
 export type Credentials = Schemas['LoginRequest']
 
 // Sign-up carries its own schema even though it is {email, password} today, so

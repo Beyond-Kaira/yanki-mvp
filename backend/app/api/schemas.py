@@ -166,6 +166,27 @@ class OrganizationOut(BaseModel):
     status: str
 
 
+class OrganizationMembershipOut(BaseModel):
+    """One organization the caller belongs to, and their role in it.
+
+    The entries of the multi-org list on ``/auth/me``. Same identity fields as
+    ``OrganizationOut`` plus the caller's ``role`` in *this specific* org — which
+    is what the switcher needs to label each choice and what the singular
+    ``organization`` cannot carry, since a person is an owner of one org and a
+    viewer in another. Purely additive: the singular field is untouched, so a
+    client that only reads it keeps working.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    kind: str
+    status: str
+    role: str
+
+
 class CurrentUserOut(UserOut):
     """``/auth/me`` — who you are AND what you can do.
 
@@ -173,12 +194,20 @@ class CurrentUserOut(UserOut):
     without a second round trip. They are for RENDERING only: the API enforces
     every one of them independently, and a client that lies about its
     permissions gets a 403 exactly as before.
+
+    ``organization``/``role``/``permissions`` describe the ONE org the request is
+    acting in (the caller's first, or the one named by ``X-Org-Id``).
+    ``organizations`` is the full list the caller belongs to — added so a
+    multi-org user can be offered a switch. The singular fields are kept exactly
+    as they were, because the frontend and the locked contract already depend on
+    them; the list is strictly additive.
     """
 
     status: str
     organization: OrganizationOut | None = None
     role: str | None = None
     permissions: list[str] = Field(default_factory=list)
+    organizations: list[OrganizationMembershipOut] = Field(default_factory=list)
 
 
 class LoginResponse(BaseModel):
@@ -194,6 +223,46 @@ class RefreshResponse(BaseModel):
 
     access_token: str
     token_type: Literal["bearer"] = "bearer"
+
+
+# --- Sessions / devices ----------------------------------------------------
+
+
+class AuthSessionOut(BaseModel):
+    """One active sign-in (a refresh-token family) as its owner sees it.
+
+    Enough for a human to recognise a device — when the session began, when it
+    was last used, when it expires — and a ``current`` flag on the one the
+    request itself is coming from. What is deliberately ABSENT is anything
+    replayable: no ``refresh_jti_hash``, no token. ``id`` is the family id, which
+    names a session for revocation but is useless as a credential.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_at: datetime
+    last_active_at: datetime
+    expires_at: datetime
+    current: bool
+
+
+class AuthSessionListOut(BaseModel):
+    """Every active session the caller holds, most-recently-used first."""
+
+    sessions: list[AuthSessionOut]
+
+
+class SessionRevokeAllOut(BaseModel):
+    """The result of "sign out everywhere else".
+
+    ``revoked`` is how many OTHER sessions were ended. ``kept_current`` records
+    that the session issuing the request was left alive on purpose, so the caller
+    is not signed out of the device they clicked from.
+    """
+
+    revoked: int
+    kept_current: bool
 
 
 class PromptOut(BaseModel):

@@ -332,6 +332,13 @@ export interface paths {
          *     caller cannot use, instead of showing it and failing on click. They are for
          *     RENDERING ONLY — every endpoint enforces its own permission independently,
          *     so a client that lies about this list gets a 403 exactly as before.
+         *
+         *     ``X-Org-Id`` selects which org the singular ``organization``/``role``/
+         *     ``permissions`` describe, so a multi-org user who has switched sees the org
+         *     they switched to rather than always their first. Membership is verified, not
+         *     trusted — the same seam ``get_org_context`` uses — and honouring the header
+         *     is additive: omitting it reproduces the old behaviour exactly. ``organizations``
+         *     always carries the caller's full list, which is what makes a switch offerable.
          */
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
@@ -357,6 +364,79 @@ export interface paths {
          */
         post: operations["refresh_api_v1_auth_refresh_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description The caller's own active sessions, one per device/login.
+         *
+         *     A read, so it emits no audit event. The one from the current device is
+         *     flagged ``current`` by matching the refresh cookie riding along on this
+         *     request (the cookie's path covers ``/api/v1/auth``) to its session family.
+         */
+        get: operations["list_sessions_api_v1_auth_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sessions/revoke-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke All Sessions
+         * @description Sign out everywhere else, keeping the current session alive.
+         *
+         *     See ``revoke_other_sessions_for_user`` for why the current device is spared.
+         *     Always audited — a lock-out of every other device is exactly the event worth
+         *     recording — even when there was nothing else to revoke.
+         */
+        post: operations["revoke_all_sessions_api_v1_auth_sessions_revoke_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Session
+         * @description Revoke one of the caller's own sessions (a whole family).
+         *
+         *     Strictly self-scoped. A session id that is not the caller's — whether it
+         *     belongs to another user or does not exist — is a 404 with the same body in
+         *     both cases, so this cannot be used to probe whether a given session id
+         *     exists. The revocation is audited only when something was actually revoked.
+         */
+        delete: operations["revoke_session_api_v1_auth_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1123,6 +1203,48 @@ export interface components {
             /** Unverifiable */
             unverifiable: number;
         };
+        /**
+         * AuthSessionListOut
+         * @description Every active session the caller holds, most-recently-used first.
+         */
+        AuthSessionListOut: {
+            /** Sessions */
+            sessions: components["schemas"]["AuthSessionOut"][];
+        };
+        /**
+         * AuthSessionOut
+         * @description One active sign-in (a refresh-token family) as its owner sees it.
+         *
+         *     Enough for a human to recognise a device — when the session began, when it
+         *     was last used, when it expires — and a ``current`` flag on the one the
+         *     request itself is coming from. What is deliberately ABSENT is anything
+         *     replayable: no ``refresh_jti_hash``, no token. ``id`` is the family id, which
+         *     names a session for revocation but is useless as a credential.
+         */
+        AuthSessionOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current */
+            current: boolean;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Active At
+             * Format: date-time
+             */
+            last_active_at: string;
+        };
         /** BacklinkImportOut */
         BacklinkImportOut: {
             /** Completed At */
@@ -1373,6 +1495,13 @@ export interface components {
          *     without a second round trip. They are for RENDERING only: the API enforces
          *     every one of them independently, and a client that lies about its
          *     permissions gets a 403 exactly as before.
+         *
+         *     ``organization``/``role``/``permissions`` describe the ONE org the request is
+         *     acting in (the caller's first, or the one named by ``X-Org-Id``).
+         *     ``organizations`` is the full list the caller belongs to — added so a
+         *     multi-org user can be offered a switch. The singular fields are kept exactly
+         *     as they were, because the frontend and the locked contract already depend on
+         *     them; the list is strictly additive.
          */
         CurrentUserOut: {
             /**
@@ -1388,6 +1517,8 @@ export interface components {
              */
             id: string;
             organization?: components["schemas"]["OrganizationOut"] | null;
+            /** Organizations */
+            organizations?: components["schemas"]["OrganizationMembershipOut"][];
             /** Permissions */
             permissions?: string[];
             /** Role */
@@ -1629,6 +1760,34 @@ export interface components {
             };
             /** Unlinked Mentions */
             unlinked_mentions: components["schemas"]["UnlinkedMentionOut"][];
+        };
+        /**
+         * OrganizationMembershipOut
+         * @description One organization the caller belongs to, and their role in it.
+         *
+         *     The entries of the multi-org list on ``/auth/me``. Same identity fields as
+         *     ``OrganizationOut`` plus the caller's ``role`` in *this specific* org — which
+         *     is what the switcher needs to label each choice and what the singular
+         *     ``organization`` cannot carry, since a person is an owner of one org and a
+         *     viewer in another. Purely additive: the singular field is untouched, so a
+         *     client that only reads it keeps working.
+         */
+        OrganizationMembershipOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
         };
         /**
          * OrganizationOut
@@ -1967,6 +2126,20 @@ export interface components {
             source: string | null;
             /** Status */
             status: string;
+        };
+        /**
+         * SessionRevokeAllOut
+         * @description The result of "sign out everywhere else".
+         *
+         *     ``revoked`` is how many OTHER sessions were ended. ``kept_current`` records
+         *     that the session issuing the request was left alive on purpose, so the caller
+         *     is not signed out of the device they clicked from.
+         */
+        SessionRevokeAllOut: {
+            /** Kept Current */
+            kept_current: boolean;
+            /** Revoked */
+            revoked: number;
         };
         /**
          * SignupRequest
@@ -2816,7 +2989,9 @@ export interface operations {
     me_api_v1_auth_me_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2829,6 +3004,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2849,6 +3033,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RefreshResponse"];
+                };
+            };
+        };
+    };
+    list_sessions_api_v1_auth_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionListOut"];
+                };
+            };
+        };
+    };
+    revoke_all_sessions_api_v1_auth_sessions_revoke_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRevokeAllOut"];
+                };
+            };
+        };
+    };
+    revoke_session_api_v1_auth_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

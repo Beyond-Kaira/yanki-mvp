@@ -33,6 +33,26 @@ class SessionTokens:
     family_id: uuid.UUID
 
 
+@dataclass(frozen=True, slots=True)
+class SessionSummary:
+    """One active sign-in, as its owner sees it in "your devices".
+
+    A *session* here is a whole refresh-token family — one login on one device —
+    not a single rotation generation. Rotation replaces the live row many times
+    over the life of a session, so exposing rows would show a person dozens of
+    entries for one browser. The family is collapsed to a single line.
+
+    ``id`` is the family id. It names a session for revocation and nothing more:
+    it is not the ``refresh_jti_hash`` and cannot be replayed to authenticate.
+    """
+
+    id: uuid.UUID
+    created_at: datetime
+    last_active_at: datetime
+    expires_at: datetime
+    current: bool
+
+
 class RefreshSessionError(ValueError):
     """Base error for an unusable refresh session."""
 
@@ -338,6 +358,136 @@ def revoke_all_sessions_for_user(
         update(AuthSession)
         .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
         .values(revoked_at=revoked_at),
+        execution_options={"synchronize_session": "fetch"},
+    )
+    return len(live)
+
+
+def list_active_sessions_for_user(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    current_family_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> list[SessionSummary]:
+    """Every live session this user holds, most-recently-used first.
+
+    One entry per family (per device/login), collapsed from its rotation rows.
+    A family is *live* when its tip — the one unconsumed row — is neither revoked
+    nor expired; a family whose tip is revoked (logout, another device's
+    "sign out everywhere", or reuse detection) or past its expiry is dropped, so
+    the list mirrors what could actually be used to obtain a new access token.
+
+    Never reads or returns ``refresh_jti_hash``. The only identifier that leaves
+    here is the family id, which cannot be replayed as a credential.
+    """
+
+    moment = _resolve_now(now)
+
+    rows = session.scalars(
+        select(AuthSession)
+        .where(AuthSession.user_id == user_id)
+        .order_by(AuthSession.family_id, AuthSession.created_at)
+    ).all()
+
+    families: dict[uuid.UUID, list[AuthSession]] = {}
+    for row in rows:
+        families.setdefault(row.family_id, []).append(row)
+
+    summaries: list[SessionSummary] = []
+    for family_id, family_rows in families.items():
+        # The tip is the single row that has not been consumed by a rotation.
+        # Revocation sets ``revoked_at`` on every row but leaves the tip
+        # unconsumed, so the tip is still where liveness is decided.
+        tip = next((row for row in family_rows if row.consumed_at is None), None)
+        if tip is None:
+            continue
+        if tip.revoked_at is not None:
+            continue
+        if _database_datetime_as_utc(tip.expires_at) <= moment:
+            continue
+
+        created_at = min(_database_datetime_as_utc(row.created_at) for row in family_rows)
+        last_active_at = max(_database_datetime_as_utc(row.created_at) for row in family_rows)
+        summaries.append(
+            SessionSummary(
+                id=family_id,
+                created_at=created_at,
+                last_active_at=last_active_at,
+                expires_at=_database_datetime_as_utc(tip.expires_at),
+                current=current_family_id is not None and family_id == current_family_id,
+            )
+        )
+
+    summaries.sort(key=lambda summary: summary.last_active_at, reverse=True)
+    return summaries
+
+
+def revoke_session_family_for_user(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    family_id: uuid.UUID,
+    now: datetime | None = None,
+) -> bool:
+    """Revoke one session (family), but only if it belongs to this user.
+
+    Returns ``False`` — not raising, and not distinguishing the cases — when the
+    family is not the caller's, whether because it is someone else's or does not
+    exist. The route turns that single answer into a 404, so a caller cannot
+    probe for the existence of another user's session ids.
+
+    Does **not** commit: the caller owns the transaction so the revocation and
+    its audit event land together, the same contract
+    :func:`revoke_all_sessions_for_user` keeps.
+    """
+
+    revoked_at = _resolve_now(now)
+
+    owned = session.scalar(
+        select(AuthSession.id)
+        .where(AuthSession.family_id == family_id, AuthSession.user_id == user_id)
+        .limit(1)
+    )
+    if owned is None:
+        return False
+
+    _revoke_family(session, family_id=family_id, revoked_at=revoked_at)
+    return True
+
+
+def revoke_other_sessions_for_user(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    keep_family_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> int:
+    """Revoke every live session this user holds except ``keep_family_id``.
+
+    This is "sign out everywhere else". Keeping the current family alive is a
+    deliberate choice: the action is reached from a signed-in device, and ending
+    that device's own session as a side effect would sign the person out of the
+    click they just made, with no chance to see it worked. "Log out" already
+    exists for ending the current session on purpose.
+
+    With ``keep_family_id=None`` it spares nothing and becomes a true
+    everywhere-including-here revoke. Does not commit; returns the number of rows
+    revoked so the caller can record it.
+    """
+
+    revoked_at = _resolve_now(now)
+
+    conditions = [AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None)]
+    if keep_family_id is not None:
+        conditions.append(AuthSession.family_id != keep_family_id)
+
+    live = session.scalars(select(AuthSession.id).where(*conditions)).all()
+    if not live:
+        return 0
+
+    session.execute(
+        update(AuthSession).where(*conditions).values(revoked_at=revoked_at),
         execution_options={"synchronize_session": "fetch"},
     )
     return len(live)

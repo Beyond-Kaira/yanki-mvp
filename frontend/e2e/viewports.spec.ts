@@ -80,6 +80,25 @@ scenario('the nav rail is hidden on mobile and present on desktop', async ({ pag
   await expect(page.getByRole('button', { name: /open navigation/i })).toBeVisible()
 })
 
+scenario('desktop nav expands over the page without shifting its content', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await signUp(page)
+  await page.goto('/dashboard')
+
+  const rail = page.locator('#product-nav')
+  const content = page.locator('main').first()
+  await expect(rail).toHaveCSS('width', '74px')
+  const contentBefore = await content.boundingBox()
+
+  await rail.getByRole('button', { name: 'AI Visibility' }).hover()
+  await expect(rail).toHaveCSS('width', '240px')
+  await expect(rail.getByRole('link', { name: 'Prompts & Answers' })).toBeVisible()
+
+  const contentAfter = await content.boundingBox()
+  expect(contentAfter!.x).toBe(contentBefore!.x)
+  expect(contentAfter!.width).toBe(contentBefore!.width)
+})
+
 scenario('primary controls meet the 44px touch target', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await signUp(page)

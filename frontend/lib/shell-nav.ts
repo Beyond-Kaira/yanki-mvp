@@ -67,6 +67,18 @@ export const SHELL_SECTIONS: ShellSection[] = [
       // Site Audit is fully built (crawler, worker, dashboard) and was badged
       // "N/A" — the single most misleading entry in the file.
       { id: 'site-audit', label: 'Site Audit', href: '/site-audit', badge: 'live' },
+      {
+        id: 'keyword-overview',
+        label: 'Keyword Overview',
+        href: '/search-visibility/keywords',
+        badge: 'live',
+      },
+      {
+        id: 'keyword-magic',
+        label: 'Keyword Magic',
+        href: '/search-visibility/keywords/magic',
+        badge: 'live',
+      },
     ],
   },
   {
@@ -189,7 +201,13 @@ export function sectionFromPath(pathname: string): ShellSectionId {
  * the audit log. These match exactly instead — the same reason the two
  * visibility overviews are here.
  */
-const EXACT_MATCH_HREFS = new Set(['/', '/admin', '/ai-visibility', '/search-visibility'])
+const EXACT_MATCH_HREFS = new Set([
+  '/',
+  '/admin',
+  '/ai-visibility',
+  '/search-visibility',
+  '/search-visibility/keywords',
+])
 
 export function flyoutItemActive(pathname: string, item: ShellFlyoutItem): boolean {
   if (!item.href) return false

@@ -475,6 +475,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/keywords/expand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Expand Keywords */
+        post: operations["expand_keywords_api_v1_keywords_expand_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/keywords/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Overview Keyword
+         * @description Thin Overview: same expand, seed signals + a short sample of ideas.
+         */
+        post: operations["overview_keyword_api_v1_keywords_overview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/keywords/rank-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rank Check Keywords
+         * @description Check whether ``domain`` appears for selected queries (own-site match).
+         */
+        post: operations["rank_check_keywords_api_v1_keywords_rank_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/seo-projects": {
         parameters: {
             query?: never;
@@ -1549,6 +1606,119 @@ export interface components {
             organization_name: string;
             /** Role */
             role: string;
+        };
+        /** KeywordExpandRequest */
+        KeywordExpandRequest: {
+            /** Exclude Brands */
+            exclude_brands?: string[];
+            /**
+             * Locale
+             * @default en
+             */
+            locale: string;
+            /**
+             * Max Ideas
+             * @description Omit to use server KEYWORD_MAX_IDEAS.
+             */
+            max_ideas?: number | null;
+            /** Seed */
+            seed: string;
+        };
+        /** KeywordExpandResponse */
+        KeywordExpandResponse: {
+            /**
+             * Estimated
+             * @description True while demand/difficulty are proxies, not licensed metrics.
+             * @default true
+             */
+            estimated: boolean;
+            /** Ideas */
+            ideas: components["schemas"]["KeywordIdeaOut"][];
+            /** Locale */
+            locale: string;
+            /** Provider */
+            provider: string;
+            /** Seed */
+            seed: string;
+        };
+        /** KeywordIdeaOut */
+        KeywordIdeaOut: {
+            /** Phrase */
+            phrase: string;
+            /** Signals */
+            signals?: {
+                [key: string]: unknown;
+            };
+            /** Source */
+            source: string;
+        };
+        /** KeywordOverviewRequest */
+        KeywordOverviewRequest: {
+            /** Exclude Brands */
+            exclude_brands?: string[];
+            /** Keyword */
+            keyword: string;
+            /**
+             * Locale
+             * @default en
+             */
+            locale: string;
+        };
+        /** KeywordOverviewResponse */
+        KeywordOverviewResponse: {
+            /**
+             * Estimated
+             * @default true
+             */
+            estimated: boolean;
+            /** Keyword */
+            keyword: string;
+            /** Locale */
+            locale: string;
+            /** Provider */
+            provider: string;
+            /** Sample Ideas */
+            sample_ideas?: components["schemas"]["KeywordIdeaOut"][];
+            /** Signals */
+            signals?: {
+                [key: string]: unknown;
+            };
+        };
+        /** KeywordRankCheckRequest */
+        KeywordRankCheckRequest: {
+            /** Domain */
+            domain: string;
+            /**
+             * Locale
+             * @default en
+             */
+            locale: string;
+            /** Queries */
+            queries: string[];
+        };
+        /** KeywordRankCheckResponse */
+        KeywordRankCheckResponse: {
+            /** Domain */
+            domain: string;
+            /** Provider */
+            provider: string;
+            /** Results */
+            results: components["schemas"]["KeywordRankHitOut"][];
+        };
+        /** KeywordRankHitOut */
+        KeywordRankHitOut: {
+            /** Appeared */
+            appeared?: boolean | null;
+            /** Matched Url */
+            matched_url?: string | null;
+            /** Matched Via */
+            matched_via?: string | null;
+            /** Measurable */
+            measurable: boolean;
+            /** Query */
+            query: string;
+            /** Rank */
+            rank?: number | null;
         };
         /** LinkEventOut */
         LinkEventOut: {
@@ -3007,6 +3177,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    expand_keywords_api_v1_keywords_expand_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeywordExpandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeywordExpandResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_keyword_api_v1_keywords_overview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeywordOverviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeywordOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rank_check_keywords_api_v1_keywords_rank_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeywordRankCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeywordRankCheckResponse"];
                 };
             };
             /** @description Validation Error */

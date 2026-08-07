@@ -39,7 +39,7 @@ Later volume vendors plug into the same `KeywordSource` seam; UI stays stable.
 
 ## Discovery cleanup policy (accepted)
 
-**Status:** accepted — ordering + smart-skip shipped; variant cap next  
+**Status:** accepted — ordering, smart-skip, and variant cap shipped  
 **Canvas:** `keyword-discovery-cleanup.canvas.tsx` (implementation checklist)  
 **Out of scope here:** Google Ads volume / CPC (`keyword-ads-volume-roadmap.canvas.tsx`).
 
@@ -66,7 +66,7 @@ spent on filler first.
 |------|----------|
 | Keep `source=variant` label | Yes — UI/API honesty |
 | Smart-skip bad grammar (`best best…`, seed already contains shape tokens) | **Shipped** in `variants.py` |
-| Cap / kill via config (e.g. `KEYWORD_VARIANT_MAX`, `0` = off) | **Next**; **default target: 3** (not unlimited); product may set `0` after smoke |
+| Cap / kill via config (e.g. `KEYWORD_VARIANT_MAX`, `0` = off) | **Shipped** (default **3**) |
 | Locale-specific EN shapes for TR/non-Latin | **Shipped** skip when seed has non-basic-Latin letters; full i18n packs later |
 | Second SearXNG round-trip over top suggestions | Optional, default **off** — only with explicit approval |
 
@@ -171,7 +171,7 @@ until its Semrush column is `[x]`.
 |------------|:-------:|:-------:|:-------:|--------------------|
 | Seed + locale expand entry point | [x] | [ ] | [ ] | Product: stable API + auth + rate limits + empty/error UX. Semrush: instant DB lookup, no live scrape dependency. |
 | Related / long-tail idea volume (breadth) | [x] | [ ] | [ ] | Preview: SearXNG suggestions + thin related. **Cleanup:** suggestions-first merge order (shipped). Product: larger, stable lists (licensed or cached). Semrush: billions-scale index, match types (broad/phrase/exact/related). |
-| Local template variants (`best {seed}` …) | [x] | [ ] | — | Preview filler only (`source=variant`). **Policy:** last in merge order; smart-skip shipped; `KEYWORD_VARIANT_MAX` next (default target 3). Not a Semrush feature to copy. |
+| Local template variants (`best {seed}` …) | [x] | [ ] | — | Preview filler only (`source=variant`). Last in merge order; smart-skip; `KEYWORD_VARIANT_MAX` default 3 (`0` = off). Not a Semrush feature to copy. |
 | Questions / PAA-style ideas | [x] | [ ] | [ ] | Preview: SearXNG answers heuristic. **Cleanup next:** stronger question filter. Product: reliable question filter. Semrush: Questions report + filters. |
 | Topic / subgroup sidebar | [ ] | [ ] | [ ] | Not started. Product: light clustering. Semrush: Magic left-rail groups. |
 | Match-type controls | [ ] | [ ] | [ ] | Semrush Magic. Preview skip. |
@@ -256,7 +256,7 @@ the matching row here (or delete it) in the same PR.
 
 | Area | What we did on purpose | Why | Later fix (toward Product) |
 |------|------------------------|-----|----------------------------|
-| **Seed → template variants** (`build_seed_query_variants`) | Fixed English shapes; suggestions-first merge; smart-skip (edge-token conflict, tiny seed, non-Latin) | Zero-cost list filler | **Next:** `KEYWORD_VARIANT_MAX`. Never market as related. |
+| **Seed → template variants** (`build_seed_query_variants`) | Fixed English shapes; suggestions-first merge; smart-skip; capped by `KEYWORD_VARIANT_MAX` (default 3) | Zero-cost list filler | Locale template packs; or keep `0` forever. Never market as related. |
 | **Single SearXNG round-trip per expand** | One `search(seed)` only — no fan-out over every variant | Politeness + latency on operator-hosted SearXNG | Optional budgeted second pass on top N suggestions; cache by `(seed, locale)` |
 | **“Related” from SERP titles** | Title lines that contain the seed, stripped at `—` / `\|` | No related-keyword index exists in OSS | Drop titles that look like brands/URLs; require higher token overlap; or drop “related” until a better signal exists |
 | **PAA / answers** | Keep short lines; drop prose ending in `.` / long blobs | SearXNG `answers` shape is inconsistent across engines | Engine-aware parsing; question-only filter (`who/what/how…`) |
@@ -297,7 +297,7 @@ Parked for a cleanup pass after the preview path ships. Do not treat as done.
 
 ### Other parked items (same cleanup pass)
 
-- Seed template variants — **in progress** (order + smart-skip shipped; cap next); not “forgotten.”
+- Seed template variants — order + smart-skip + `KEYWORD_VARIANT_MAX` shipped; further i18n packs later.
 - `estimated_*` proxies vs real volume/KD field swap (Ads roadmap).
 - Canvas vs this markdown tick sync for Product/Business.
 

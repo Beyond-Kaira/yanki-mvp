@@ -164,6 +164,8 @@ class Settings(BaseSettings):
     keyword_enabled: bool = False
     # Cap on ideas returned from one expand call (politeness / payload size).
     keyword_max_ideas: int = 50
+    # Cap on local template filler rows (source=variant). 0 disables templates.
+    keyword_variant_max: int = 3
     # Max SERP lookups per rank-check request (politeness budget).
     keyword_rank_max_queries: int = 10
 

@@ -29,6 +29,7 @@ class MockKeywordSource:
         *,
         locale: str = "en",
         max_ideas: int = 50,
+        max_variants: int = 3,
         exclude_brands: Sequence[str] | None = None,
     ) -> KeywordExpandResult:
         cleaned = collapse_keyword_whitespace(seed)
@@ -42,6 +43,7 @@ class MockKeywordSource:
 
         brand_keys = brand_names_to_exclusion_keys(exclude_brands)
         limit = max(0, max_ideas)
+        variant_limit = max(0, max_variants)
         seen: set[str] = set()
         ideas: list[KeywordIdea] = []
 
@@ -72,7 +74,7 @@ class MockKeywordSource:
             f"{cleaned} vs competitors",
         ):
             _append_keyword_idea(extra, "mock")
-        for variant in build_seed_query_variants(cleaned):
+        for variant in build_seed_query_variants(cleaned, limit=variant_limit):
             _append_keyword_idea(variant, "variant")
 
         return KeywordExpandResult(

@@ -113,6 +113,22 @@ def test_expand_prefers_suggestions_when_max_ideas_is_tight():
     assert all(idea.source != "variant" for idea in result.ideas)
 
 
+def test_expand_respects_max_variants_zero():
+    page = SerpPage(query="seo apps", suggestions=("seo apps ranking",))
+    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    result = source.expand("seo apps", max_ideas=50, max_variants=0)
+    assert all(idea.source != "variant" for idea in result.ideas)
+    assert any(idea.source == "suggestion" for idea in result.ideas)
+
+
+def test_expand_caps_variants_at_max_variants():
+    page = SerpPage(query="seo apps")
+    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    result = source.expand("seo apps", max_ideas=50, max_variants=2)
+    variants = [idea for idea in result.ideas if idea.source == "variant"]
+    assert len(variants) == 2
+
+
 def test_expand_drops_excluded_brands_and_respects_max_ideas():
     page = SerpPage(
         query="transfer",

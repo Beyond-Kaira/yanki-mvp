@@ -65,11 +65,13 @@ def expand_keywords(
     max_ideas = body.max_ideas
     if max_ideas is None:
         max_ideas = int(getattr(settings, "keyword_max_ideas", 50) or 50)
+    max_variants = int(getattr(settings, "keyword_variant_max", 3) or 0)
     try:
         result = source.expand(
             body.seed,
             locale=body.locale,
             max_ideas=max_ideas,
+            max_variants=max_variants,
             exclude_brands=body.exclude_brands or None,
         )
     except KeywordUnavailable as exc:
@@ -104,6 +106,7 @@ def overview_keyword(
             body.keyword,
             locale=body.locale,
             max_ideas=min(12, int(getattr(settings, "keyword_max_ideas", 50) or 50)),
+            max_variants=int(getattr(settings, "keyword_variant_max", 3) or 0),
             exclude_brands=body.exclude_brands or None,
         )
     except KeywordUnavailable as exc:

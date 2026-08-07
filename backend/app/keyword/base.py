@@ -61,5 +61,6 @@ class KeywordSource(Protocol):
         *,
         locale: str = "en",
         max_ideas: int = 50,
+        max_variants: int = 3,
         exclude_brands: Sequence[str] | None = None,
     ) -> KeywordExpandResult: ...

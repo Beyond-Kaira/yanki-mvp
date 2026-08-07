@@ -1,74 +1,71 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { ApiError, expandKeywords, checkKeywordRanks } from '@/lib/api'
-import type { KeywordExpandResponse, KeywordRankHit } from '@/lib/contracts'
+import type { KeywordRankHit } from '@/lib/contracts'
 import {
   KeywordLocaleOptions,
-  KeywordsShell,
   signalNumber,
   signalText,
 } from '@/components/keywords/KeywordsChrome'
+import { useKeywordsSession } from '@/components/keywords/KeywordsSessionProvider'
 
 type RankByQuery = Record<string, KeywordRankHit>
 
 export default function KeywordsMagicClient() {
-  const [seed, setSeed] = useState('')
-  const [locale, setLocale] = useState('en')
-  const [domain, setDomain] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [rankLoading, setRankLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<KeywordExpandResponse | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [ranks, setRanks] = useState<RankByQuery>({})
+  const {
+    magicQuery,
+    setMagicQuery,
+    locale,
+    setLocale,
+    domain,
+    setDomain,
+    magicLoading,
+    setMagicLoading,
+    rankLoading,
+    setRankLoading,
+    magicError,
+    setMagicError,
+    magicResult,
+    setMagicResult,
+    selected,
+    togglePhrase,
+    toggleAllPhrases,
+    ranks,
+    mergeRanks,
+    clearMagicSelection,
+  } = useKeywordsSession()
 
   const ideaKeys = useMemo(
-    () => (result?.ideas ?? []).map((idea) => idea.phrase),
-    [result],
+    () => (magicResult?.ideas ?? []).map((idea) => idea.phrase),
+    [magicResult],
   )
 
-  function togglePhrase(phrase: string) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(phrase)) next.delete(phrase)
-      else next.add(phrase)
-      return next
-    })
-  }
-
-  function toggleAll() {
-    if (!result) return
-    setSelected((prev) => {
-      if (prev.size === ideaKeys.length) return new Set()
-      return new Set(ideaKeys)
-    })
-  }
-
   async function runExpand() {
-    setLoading(true)
-    setError(null)
-    setRanks({})
-    setSelected(new Set())
+    setMagicLoading(true)
+    setMagicError(null)
+    clearMagicSelection()
     try {
       const data = await expandKeywords({
-        seed: seed.trim(),
+        seed: magicQuery.trim(),
         locale,
         max_ideas: 50,
       })
-      setResult(data)
+      setMagicResult(data)
     } catch (err) {
-      setResult(null)
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      setMagicResult(null)
+      setMagicError(
+        err instanceof ApiError ? err.message : 'Something went wrong.',
+      )
     } finally {
-      setLoading(false)
+      setMagicLoading(false)
     }
   }
 
   async function runRankCheck() {
     if (!domain.trim() || selected.size === 0) return
     setRankLoading(true)
-    setError(null)
+    setMagicError(null)
     try {
       const data = await checkKeywordRanks({
         domain: domain.trim(),
@@ -79,9 +76,11 @@ export default function KeywordsMagicClient() {
       for (const row of data.results) {
         next[row.query] = row
       }
-      setRanks((prev) => ({ ...prev, ...next }))
+      mergeRanks(next)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      setMagicError(
+        err instanceof ApiError ? err.message : 'Something went wrong.',
+      )
     } finally {
       setRankLoading(false)
     }
@@ -96,7 +95,7 @@ export default function KeywordsMagicClient() {
   }
 
   return (
-    <KeywordsShell title="Keyword Magic">
+    <>
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -107,8 +106,8 @@ export default function KeywordsMagicClient() {
         <label className="min-w-0 flex-1 text-sm">
           <span className="mb-1 block text-surface-subtle">Seed</span>
           <input
-            value={seed}
-            onChange={(e) => setSeed(e.target.value)}
+            value={magicQuery}
+            onChange={(e) => setMagicQuery(e.target.value)}
             required
             maxLength={120}
             placeholder="e.g. money transfer"
@@ -127,20 +126,20 @@ export default function KeywordsMagicClient() {
         </label>
         <button
           type="submit"
-          disabled={loading || !seed.trim()}
+          disabled={magicLoading || !magicQuery.trim()}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-50"
         >
-          {loading ? 'Expanding…' : 'Expand'}
+          {magicLoading ? 'Expanding…' : 'Expand'}
         </button>
       </form>
 
-      {error ? (
+      {magicError ? (
         <p className="mt-4 text-sm text-warning-strong" role="alert">
-          {error}
+          {magicError}
         </p>
       ) : null}
 
-      {result ? (
+      {magicResult ? (
         <div className="mt-6 space-y-4">
           <div className="flex flex-col gap-3 rounded-2xl border border-surface-border bg-surface p-4 sm:flex-row sm:items-end">
             <label className="min-w-0 flex-1 text-sm">
@@ -168,8 +167,8 @@ export default function KeywordsMagicClient() {
 
           <div className="overflow-x-auto rounded-xl border border-surface-border bg-surface">
             <p className="border-b border-surface-border px-4 py-2 text-xs text-surface-subtle">
-              Provider: {result.provider} · {result.ideas.length} ideas · select
-              rows then check own-domain rank (max ~10 queries)
+              Provider: {magicResult.provider} · {magicResult.ideas.length}{' '}
+              ideas · select rows then check own-domain rank (max ~10 queries)
             </p>
             <table className="min-w-full text-left text-sm">
               <thead className="bg-surface-elevated text-xs uppercase tracking-wide text-surface-subtle">
@@ -181,7 +180,7 @@ export default function KeywordsMagicClient() {
                       checked={
                         ideaKeys.length > 0 && selected.size === ideaKeys.length
                       }
-                      onChange={toggleAll}
+                      onChange={() => toggleAllPhrases(ideaKeys)}
                     />
                   </th>
                   <th className="px-4 py-2 font-medium">Keyword</th>
@@ -193,7 +192,7 @@ export default function KeywordsMagicClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
-                {result.ideas.map((idea) => (
+                {magicResult.ideas.map((idea) => (
                   <tr key={`${idea.source}:${idea.phrase}`}>
                     <td className="px-4 py-2">
                       <input
@@ -226,6 +225,6 @@ export default function KeywordsMagicClient() {
           </div>
         </div>
       ) : null}
-    </KeywordsShell>
+    </>
   )
 }

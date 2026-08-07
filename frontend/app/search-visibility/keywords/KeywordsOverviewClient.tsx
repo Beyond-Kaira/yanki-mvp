@@ -1,38 +1,48 @@
 'use client'
 
-import { useState } from 'react'
 import { ApiError, overviewKeyword } from '@/lib/api'
-import type { KeywordOverviewResponse } from '@/lib/contracts'
 import {
   KeywordLocaleOptions,
-  KeywordsShell,
   signalNumber,
   signalText,
 } from '@/components/keywords/KeywordsChrome'
+import { useKeywordsSession } from '@/components/keywords/KeywordsSessionProvider'
 
 export default function KeywordsOverviewClient() {
-  const [keyword, setKeyword] = useState('')
-  const [locale, setLocale] = useState('en')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<KeywordOverviewResponse | null>(null)
+  const {
+    overviewQuery,
+    setOverviewQuery,
+    locale,
+    setLocale,
+    overviewLoading,
+    setOverviewLoading,
+    overviewError,
+    setOverviewError,
+    overviewResult,
+    setOverviewResult,
+  } = useKeywordsSession()
 
   async function runOverview() {
-    setLoading(true)
-    setError(null)
+    setOverviewLoading(true)
+    setOverviewError(null)
     try {
-      const data = await overviewKeyword({ keyword: keyword.trim(), locale })
-      setResult(data)
+      const data = await overviewKeyword({
+        keyword: overviewQuery.trim(),
+        locale,
+      })
+      setOverviewResult(data)
     } catch (err) {
-      setResult(null)
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      setOverviewResult(null)
+      setOverviewError(
+        err instanceof ApiError ? err.message : 'Something went wrong.',
+      )
     } finally {
-      setLoading(false)
+      setOverviewLoading(false)
     }
   }
 
   return (
-    <KeywordsShell title="Keyword Overview">
+    <>
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -43,8 +53,8 @@ export default function KeywordsOverviewClient() {
         <label className="min-w-0 flex-1 text-sm">
           <span className="mb-1 block text-surface-subtle">Keyword</span>
           <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            value={overviewQuery}
+            onChange={(e) => setOverviewQuery(e.target.value)}
             required
             maxLength={120}
             placeholder="e.g. money transfer"
@@ -63,20 +73,20 @@ export default function KeywordsOverviewClient() {
         </label>
         <button
           type="submit"
-          disabled={loading || !keyword.trim()}
+          disabled={overviewLoading || !overviewQuery.trim()}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-50"
         >
-          {loading ? 'Analyzing…' : 'Analyze'}
+          {overviewLoading ? 'Analyzing…' : 'Analyze'}
         </button>
       </form>
 
-      {error ? (
+      {overviewError ? (
         <p className="mt-4 text-sm text-warning-strong" role="alert">
-          {error}
+          {overviewError}
         </p>
       ) : null}
 
-      {result ? (
+      {overviewResult ? (
         <div className="mt-8 space-y-6">
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-xl border border-surface-border bg-surface p-4">
@@ -84,7 +94,7 @@ export default function KeywordsOverviewClient() {
                 Intent
               </p>
               <p className="mt-1 text-lg font-semibold capitalize">
-                {signalText(result.signals, 'intent')}
+                {signalText(overviewResult.signals, 'intent')}
               </p>
             </div>
             <div className="rounded-xl border border-surface-border bg-surface p-4">
@@ -92,7 +102,7 @@ export default function KeywordsOverviewClient() {
                 Est. demand
               </p>
               <p className="mt-1 text-lg font-semibold">
-                {signalNumber(result.signals, 'estimated_demand_score')}
+                {signalNumber(overviewResult.signals, 'estimated_demand_score')}
               </p>
             </div>
             <div className="rounded-xl border border-surface-border bg-surface p-4">
@@ -100,10 +110,13 @@ export default function KeywordsOverviewClient() {
                 Est. difficulty
               </p>
               <p className="mt-1 text-lg font-semibold">
-                {signalNumber(result.signals, 'estimated_difficulty_score')}
+                {signalNumber(
+                  overviewResult.signals,
+                  'estimated_difficulty_score',
+                )}
               </p>
               <p className="mt-1 text-xs text-surface-subtle">
-                Basis: {signalText(result.signals, 'difficulty_basis')}
+                Basis: {signalText(overviewResult.signals, 'difficulty_basis')}
               </p>
             </div>
           </div>
@@ -113,7 +126,7 @@ export default function KeywordsOverviewClient() {
               Sample ideas
             </h2>
             <ul className="mt-3 divide-y divide-surface-border rounded-xl border border-surface-border bg-surface">
-              {(result.sample_ideas ?? []).map((idea) => (
+              {(overviewResult.sample_ideas ?? []).map((idea) => (
                 <li
                   key={`${idea.source}:${idea.phrase}`}
                   className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3 text-sm"
@@ -128,6 +141,6 @@ export default function KeywordsOverviewClient() {
           </section>
         </div>
       ) : null}
-    </KeywordsShell>
+    </>
   )
 }

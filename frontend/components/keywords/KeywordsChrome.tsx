@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import AppShell from '@/components/shell/AppShell'
 
 const LOCALES = [
@@ -11,6 +12,15 @@ const LOCALES = [
   { value: 'de', label: 'German (de)' },
   { value: 'fr', label: 'French (fr)' },
 ] as const
+
+const TABS = [
+  { href: '/search-visibility/keywords', label: 'Overview', match: 'exact' as const },
+  {
+    href: '/search-visibility/keywords/magic',
+    label: 'Magic',
+    match: 'prefix' as const,
+  },
+]
 
 export function KeywordLocaleOptions() {
   return (
@@ -32,13 +42,39 @@ export function EstimatedBadge() {
   )
 }
 
-export function KeywordsShell({
-  title,
-  children,
-}: {
-  title: string
-  children: ReactNode
-}) {
+function KeywordsTabs() {
+  const pathname = usePathname()
+
+  return (
+    <nav className="mt-6 border-b border-surface-border" aria-label="Keyword tools">
+      <div className="flex gap-6">
+        {TABS.map((tab) => {
+          const active =
+            tab.match === 'exact'
+              ? pathname === tab.href
+              : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              aria-current={active ? 'page' : undefined}
+              className={
+                active
+                  ? '-mb-px border-b-2 border-primary pb-2.5 text-sm font-medium text-surface-foreground'
+                  : '-mb-px border-b-2 border-transparent pb-2.5 text-sm text-surface-subtle hover:text-surface-foreground'
+              }
+            >
+              {tab.label}
+            </Link>
+          )
+        })}
+      </div>
+    </nav>
+  )
+}
+
+/** Shared chrome for Overview + Magic. Tab state lives in the keywords layout. */
+export function KeywordsShell({ children }: { children: ReactNode }) {
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl px-6 py-8 sm:px-8">
@@ -50,18 +86,11 @@ export function KeywordsShell({
             Search Visibility
           </Link>
           <span className="mx-1.5">/</span>
-          <Link
-            href="/search-visibility/keywords"
-            className="text-primary hover:text-primary-hover"
-          >
-            Keywords
-          </Link>
-          <span className="mx-1.5">/</span>
-          {title}
+          <span className="text-surface-foreground">Keywords</span>
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
-            {title}
+            Keyword Research
           </h1>
           <EstimatedBadge />
         </div>
@@ -70,20 +99,7 @@ export function KeywordsShell({
           estimated proxies — not Semrush volume or KD%. Enable{' '}
           <code className="font-mono text-xs">KEYWORD_ENABLED</code> on the API.
         </p>
-        <nav className="mt-4 flex gap-4 text-sm" aria-label="Keyword tools">
-          <Link
-            href="/search-visibility/keywords"
-            className="font-medium text-primary hover:text-primary-hover"
-          >
-            Overview
-          </Link>
-          <Link
-            href="/search-visibility/keywords/magic"
-            className="font-medium text-primary hover:text-primary-hover"
-          >
-            Magic
-          </Link>
-        </nav>
+        <KeywordsTabs />
         <div className="mt-6">{children}</div>
       </div>
     </AppShell>

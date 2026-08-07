@@ -61,12 +61,19 @@ export default function SessionsSection() {
     try {
       const result = await revokeAllSessions()
       setConfirmingAll(false)
+      // `kept_current` is false when the server could not identify which family
+      // this request came from — so it revoked every one, including ours. The
+      // count alone would read as "your other sessions ended", which is the one
+      // thing that is not true here: this device is signed out too, and saying
+      // so is the difference between a confusing logout and an expected one.
       setNotice(
-        result.revoked === 0
-          ? 'There were no other sessions to sign out.'
-          : `Signed out ${result.revoked} other ${
-              result.revoked === 1 ? 'session' : 'sessions'
-            }.`,
+        result.kept_current === false
+          ? 'Signed out of every session, including this device. You will need to sign in again.'
+          : result.revoked === 0
+            ? 'There were no other sessions to sign out.'
+            : `Signed out ${result.revoked} other ${
+                result.revoked === 1 ? 'session' : 'sessions'
+              }.`,
       )
       await load()
     } catch (err) {

@@ -91,6 +91,28 @@ describe('SessionsSection', () => {
     expect(await screen.findByText(/signed out 2 other sessions/i)).toBeVisible()
   })
 
+  it('says so when the server could not spare the current device', async () => {
+    // kept_current: false means the request arrived without an identifiable
+    // refresh family, so every session went — this one included. Reporting the
+    // count alone would tell the user their OTHER sessions ended, and then sign
+    // them out anyway.
+    fetchSessions
+      .mockResolvedValueOnce({
+        sessions: [session({ id: 'cur', current: true }), session({ id: 'o1' })],
+      })
+      .mockResolvedValue({ sessions: [] })
+    revokeAllSessions.mockResolvedValue({ revoked: 2, kept_current: false })
+
+    render(<SessionsSection />)
+    await screen.findByText('This device')
+
+    await userEvent.click(screen.getByRole('button', { name: /sign out other sessions/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    expect(await screen.findByText(/including this device/i)).toBeVisible()
+    expect(screen.queryByText(/signed out 2 other sessions/i)).not.toBeInTheDocument()
+  })
+
   it('does not offer a sign-out-others control when the current session is the only one', async () => {
     fetchSessions.mockResolvedValue({
       sessions: [session({ id: 'cur', current: true })],

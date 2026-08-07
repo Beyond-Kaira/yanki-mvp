@@ -14,9 +14,18 @@ reading is ``project:read``, creating a project is ``project:create``, and
 starting a crawl is ``site_audit:run`` — which Analyst and above hold and Guest
 and Viewer do not, because a crawl spends real resources against a third-party
 site.
+
+On top of the permission check, the two routes that *queue a crawl* carry a
+feature-flag gate (``require_site_audit_enabled``). No deployed service drains
+the site-audit queue today, so an enqueued audit would sit ``queued`` forever;
+until an audit worker ships, starting one is refused 404 rather than silently
+stranded. The gate is deliberately scoped to the enqueue routes only — reads
+stay open so existing projects and audits remain viewable. See
+``config.site_audit_enabled``.
 """
 
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -31,6 +40,7 @@ from app.api.site_audit_schemas import (
     SiteAuditSettingsRequest,
     SiteAuditSummaryOut,
 )
+from app.config import Settings, get_settings
 from app.db.models import SeoProject, SiteAudit
 from app.db.session import get_session
 from app.net_guard import is_public_url
@@ -49,6 +59,20 @@ from app.services.seo_projects import (
 from app.services.tenancy import OrgContext
 
 router = APIRouter(prefix="/api/v1/seo-projects", tags=["seo-projects"])
+
+
+def require_site_audit_enabled(settings: Annotated[Settings, Depends(get_settings)]) -> None:
+    """404 the enqueue routes while no worker drains the queue.
+
+    Mirrors ``backlink_routes.require_backlinks_enabled``: a kill switch that
+    answers 404 (not 403) refuses even to confirm the surface is there. Applied
+    per-route — only to the two routes that queue a crawl — because the read
+    routes in this module must stay open so existing projects and audits remain
+    viewable while the feature is dark. See ``config.site_audit_enabled``.
+    """
+
+    if not settings.site_audit_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
 
 
 def _audit_summary(audit: SiteAudit) -> SiteAuditSummaryOut:
@@ -98,7 +122,12 @@ def _project_detail(project: SeoProject) -> SeoProjectDetailOut:
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=SeoProjectOut)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SeoProjectOut,
+    dependencies=[Depends(require_site_audit_enabled)],
+)
 def create_seo_project(
     payload: CreateSeoProjectRequest,
     org: OrgContext = Depends(requires(PROJECT_CREATE)),
@@ -160,6 +189,7 @@ def read_seo_project(
     "/{project_id}/audits",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=SiteAuditSummaryOut,
+    dependencies=[Depends(require_site_audit_enabled)],
 )
 def create_site_audit(
     project_id: uuid.UUID,

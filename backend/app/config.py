@@ -77,6 +77,17 @@ class Settings(BaseSettings):
     worker_poll_seconds: int = 2
     stale_claim_seconds: int = 300
 
+    # Site Audit enqueue kill-switch (S24). OFF by default, same shape as
+    # backlinks_enabled above. Production runs exactly db/api/worker/searxng/web
+    # and NONE of them drains the site-audit queue — the GEO worker consumes the
+    # analyses queue, not this one — so a queued crawl sits `queued` forever. While
+    # False, the two routes that queue a crawl are refused 404 the same way the
+    # backlink module goes dark; reads of existing projects and audits stay open,
+    # so nobody loses access to data they already have. The operator flips this
+    # True only once a Chromium audit worker ships with egress and settings
+    # isolation (M3) — see docs/site-audit-integration.md.
+    site_audit_enabled: bool = False
+
     # Site Audit runs in a separate worker and queue. Browser crawls heartbeat
     # after every persisted page, so a longer stale window tolerates one slow
     # navigation without letting a crashed job remain running forever.

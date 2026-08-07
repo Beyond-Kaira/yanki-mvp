@@ -12,11 +12,23 @@ vi.mock('@/components/AuthProvider', () => ({
 }))
 
 vi.mock('@/lib/api', () => ({
+  // A faithful stand-in for the real ApiError so the component's
+  // `error instanceof ApiError` branch resolves against the same class the test
+  // throws with.
+  ApiError: class ApiError extends Error {
+    status: number
+    constructor(message: string, status: number) {
+      super(message)
+      this.name = 'ApiError'
+      this.status = status
+    }
+  },
   createSeoProject: mockedCreateSeoProject,
   listSeoProjects: mockedListSeoProjects,
 }))
 
 import SiteAuditDashboard from '@/components/site-audit/dashboard/SiteAuditDashboard'
+import { ApiError } from '@/lib/api'
 
 const PROJECT: SeoProject = {
   id: '4bb0f6e1-d873-47ce-b15a-d166c43f91f8',
@@ -117,6 +129,77 @@ describe('SiteAuditDashboard', () => {
       `/site-audit/${PROJECT.id}`,
     )
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('offers the start call-to-action when Site Audit is switched on', async () => {
+    mockedListSeoProjects.mockResolvedValue([])
+
+    render(<SiteAuditDashboard />)
+
+    expect(
+      await screen.findByRole('button', { name: /configure audit/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: /isn.t available yet/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('withdraws the start call-to-action and explains when Site Audit is off', async () => {
+    const user = userEvent.setup()
+    mockedListSeoProjects.mockResolvedValue([])
+    // The enqueue route 404s while no worker drains the queue.
+    mockedCreateSeoProject.mockRejectedValue(
+      new ApiError('Site Audit is not available in this deployment yet.', 404),
+    )
+
+    render(<SiteAuditDashboard />)
+
+    await user.type(
+      await screen.findByRole('textbox', { name: /domain/i }),
+      'dreamgames.com',
+    )
+    await user.click(screen.getByRole('button', { name: /configure audit/i }))
+    await user.click(screen.getByRole('button', { name: /^start audit$/i }))
+
+    // The honest notice replaces the CTA, which is now gone.
+    expect(
+      await screen.findByRole('heading', { name: /isn.t available yet/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /configure audit/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps existing projects viewable but drops the create button when off', async () => {
+    const user = userEvent.setup()
+    mockedListSeoProjects.mockResolvedValue([PROJECT])
+    mockedCreateSeoProject.mockRejectedValue(
+      new ApiError('Site Audit is not available in this deployment yet.', 404),
+    )
+
+    render(<SiteAuditDashboard />)
+
+    // Open the compact create form, submit, and hit the 404.
+    await user.click(await screen.findByRole('button', { name: /new seo project/i }))
+    await user.type(
+      screen.getByRole('textbox', { name: /domain/i }),
+      'dreamgames.com',
+    )
+    await user.click(screen.getByRole('button', { name: /configure audit/i }))
+    await user.click(screen.getByRole('button', { name: /^start audit$/i }))
+
+    // Notice shown, existing project still listed, no create affordances left.
+    expect(
+      await screen.findByRole('heading', { name: /isn.t available yet/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Dream Games' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /new seo project/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /configure audit/i }),
+    ).not.toBeInTheDocument()
   })
 
   it('validates the domain before opening crawl settings', async () => {

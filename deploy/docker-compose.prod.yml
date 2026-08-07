@@ -24,6 +24,19 @@ services:
     volumes:
       - yanki_pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+    # Ceiling, not a reservation. Postgres idles ~60 MiB here (measured
+    # 2026-08-08), but connections, shared_buffers and work_mem grow it; 1g
+    # leaves ~17x headroom and still stops a runaway from taking the shared box.
+    # Host swap is 0, so memswap_limit == mem_limit (matching searxng) grants no
+    # swap allowance.
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U yanki -d yanki"]
       interval: 5s
@@ -56,6 +69,17 @@ services:
       - path: .env
         required: false
     restart: unless-stopped
+    # Measured ~80 MiB steady (2026-08-08); 1g is a deliberately generous
+    # ceiling — a too-tight mem_limit OOM-kills the API under real load, a worse
+    # outage than the one this cap prevents.
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -71,6 +95,19 @@ services:
       - path: .env
         required: false
     restart: unless-stopped
+    # The crawl/analysis worker is the service most likely to "grow into whatever
+    # is available" (the same warning that justifies searxng's cap), so a hard
+    # ceiling here is the whole point of this file. Measured ~115 MiB
+    # (2026-08-08); 1.5g leaves ~13x for a heavy crawl before the OOM killer
+    # steps in, which protects the four co-tenants sharing this box.
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -134,6 +171,15 @@ services:
       - path: .env
         required: false
     restart: unless-stopped
+    # `next start` measured ~95 MiB (2026-08-08); 768m is a generous ceiling.
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       - api
 

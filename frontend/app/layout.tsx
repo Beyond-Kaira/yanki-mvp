@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Sora, IBM_Plex_Mono } from 'next/font/google'
 import AuthProvider from '@/components/AuthProvider'
 import AnalysisSessionProvider from '@/components/AnalysisSessionProvider'
+import ShellStateProvider from '@/components/shell/ShellStateProvider'
 import SiteHeader from '@/components/SiteHeader'
 import './globals.css'
 
@@ -43,8 +44,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             provider wraps everything below it. */}
         <AuthProvider>
           <AnalysisSessionProvider>
-            <SiteHeader />
-            {children}
+            <ShellStateProvider>
+              <SiteHeader />
+              {children}
+            </ShellStateProvider>
           </AnalysisSessionProvider>
         </AuthProvider>
       </body>

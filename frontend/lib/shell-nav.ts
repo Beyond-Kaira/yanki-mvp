@@ -173,6 +173,7 @@ export function sectionFromPath(pathname: string): ShellSectionId {
   if (pathname.startsWith('/checker')) return 'free-checker'
   if (pathname.startsWith('/methodology')) return 'methodology'
   if (pathname.startsWith('/search-visibility')) return 'search-visibility'
+  if (pathname.startsWith('/site-audit')) return 'search-visibility'
   if (pathname.startsWith('/admin')) return 'admin'
   if (pathname.startsWith('/settings')) return 'settings'
   if (pathname.startsWith('/ai-visibility')) return 'ai-visibility'

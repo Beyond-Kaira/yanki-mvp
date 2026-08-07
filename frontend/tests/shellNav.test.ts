@@ -54,6 +54,11 @@ describe('shell navigation', () => {
     expect(isShellPath('/admin/audit')).toBe(true)
   })
 
+  it('keeps Site Audit under Search Visibility', () => {
+    expect(sectionFromPath('/site-audit')).toBe('search-visibility')
+    expect(sectionFromPath('/site-audit/project-id')).toBe('search-visibility')
+  })
+
   it('does not put the public invitation-accept page in the shell', () => {
     // Whoever opens it usually has no account, so the signed-in chrome — and
     // the auth gate that comes with it — would be exactly wrong.

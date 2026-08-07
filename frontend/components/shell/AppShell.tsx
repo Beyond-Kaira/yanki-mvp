@@ -3,11 +3,19 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState, type FocusEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react'
 import { useAuth } from '@/components/AuthProvider'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { SECTION_ICONS } from '@/components/shell/icons'
 import ShellAuthBar from '@/components/shell/ShellAuthBar'
+import { useShellState } from '@/components/shell/ShellStateProvider'
 import {
   SHELL_SECTIONS,
   flyoutItemActive,
@@ -55,6 +63,26 @@ function sectionOverviewHref(section: ShellSection): string | null {
   return firstLive?.href ?? null
 }
 
+/** Pointer dwell before the rail widens, and grace before it closes again.
+ *
+ * The open delay is what makes an icon clickable: reaching for one and clicking
+ * it takes well under this, so the panel never opens over the gesture. The close
+ * grace forgives a pointer that clips the rail's edge on its way down a menu. */
+const EXPAND_DELAY_MS = 150
+const COLLAPSE_DELAY_MS = 120
+
+/** Dwell before an open panel is handed to a different section. */
+const SWAP_DELAY_MS = 120
+
+/** The same dwell, for a pointer that is on its way into the open panel.
+ *
+ * The panel sits to the right of the rail, so reaching an item near its bottom
+ * means cutting diagonally across the rows underneath your own. At any human
+ * speed that spends longer than SWAP_DELAY_MS on each row crossed, and every one
+ * of them would take the panel away mid-reach. So a section only claims the
+ * panel quickly when the pointer is not travelling toward it. */
+const AIMING_DELAY_MS = 500
+
 function withRememberedAnalysis(
   href: string,
   analysisId: string | null,
@@ -75,12 +103,10 @@ export default function AppShell({ children }: AppShellProps) {
   const router = useRouter()
   const { status, user } = useAuth()
   const { analysisId: rememberedAnalysisId } = useAnalysisSession()
+  const { railHovered, setRailHovered, hoveredSection, setHoveredSection } =
+    useShellState()
   const pathSection = sectionFromPath(pathname)
-  const [hoveredSection, setHoveredSection] = useState<ShellSectionId | null>(
-    null,
-  )
   const [navOpen, setNavOpen] = useState(false)
-  const [railHovered, setRailHovered] = useState(false)
   const [railFocused, setRailFocused] = useState(false)
   const [isDesktop, setIsDesktop] = useState(true)
 
@@ -92,11 +118,70 @@ export default function AppShell({ children }: AppShellProps) {
     return () => query.removeEventListener('change', sync)
   }, [])
 
-  // Navigating closes the drawer. Without this, tapping a destination leaves
-  // the overlay covering the page you just asked for.
+  const expandTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const swapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Last pointer x inside the rail. Crossing into a row reports the new
+   *  position before the next mousemove does, so this still holds the old one —
+   *  which is exactly what tells us which way the pointer is going. */
+  const pointer = useRef(0)
+
+  useEffect(
+    () => () => {
+      if (expandTimer.current) clearTimeout(expandTimer.current)
+      if (collapseTimer.current) clearTimeout(collapseTimer.current)
+      if (swapTimer.current) clearTimeout(swapTimer.current)
+    },
+    [],
+  )
+
+  function cancelExpand() {
+    if (expandTimer.current) clearTimeout(expandTimer.current)
+    expandTimer.current = null
+  }
+
+  function cancelCollapse() {
+    if (collapseTimer.current) clearTimeout(collapseTimer.current)
+    collapseTimer.current = null
+  }
+
+  function cancelSwap() {
+    if (swapTimer.current) clearTimeout(swapTimer.current)
+    swapTimer.current = null
+  }
+
+  function scheduleExpand() {
+    if (!isDesktop) return
+    cancelCollapse()
+    if (expandTimer.current) return
+    expandTimer.current = setTimeout(() => {
+      expandTimer.current = null
+      setRailHovered(true)
+    }, EXPAND_DELAY_MS)
+  }
+
+  function scheduleCollapse() {
+    if (!isDesktop) return
+    cancelExpand()
+    cancelSwap()
+    if (collapseTimer.current) return
+    collapseTimer.current = setTimeout(() => {
+      collapseTimer.current = null
+      setRailHovered(false)
+      setHoveredSection(null)
+    }, COLLAPSE_DELAY_MS)
+  }
+
+  // Mobile navigation closes after a route change. On desktop an open rail and
+  // its section survive the AppShell remount until the pointer actually leaves.
   useEffect(() => {
     setNavOpen(false)
-    setHoveredSection(null)
+    setRailFocused(false)
+    cancelExpand()
+    cancelCollapse()
+    if (!isDesktop || !railHovered) setHoveredSection(null)
+    if (!isDesktop) setRailHovered(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
   // Escape closes it, which is the one keyboard affordance a drawer must have.
@@ -111,15 +196,42 @@ export default function AppShell({ children }: AppShellProps) {
   const signedIn = status === 'authenticated' && Boolean(user?.email)
   const loadingAuth = status === 'loading'
   const railExpanded = !isDesktop || railHovered || railFocused
-  const inlineSection = hoveredSection ?? pathSection
+  const panelOpen =
+    railExpanded &&
+    SHELL_SECTIONS.some(
+      (section) => section.id === hoveredSection && section.items.length > 0,
+    )
+
+  /** Point at a section. Instant, unless it would steal an open panel. */
+  function hoverSection(id: ShellSectionId, event: MouseEvent<HTMLElement>) {
+    if (!isDesktop) return
+    cancelSwap()
+    if (hoveredSection === id) return
+    if (!panelOpen) {
+      setHoveredSection(id)
+      return
+    }
+    // Rightward means heading for the panel, which is the one direction a row
+    // must not read as "I want you instead".
+    const aiming = event.clientX > pointer.current
+    swapTimer.current = setTimeout(
+      () => {
+        swapTimer.current = null
+        setHoveredSection(id)
+      },
+      aiming ? AIMING_DELAY_MS : SWAP_DELAY_MS,
+    )
+  }
 
   function onRailClick(section: ShellSection) {
     const href = sectionOverviewHref(section)
-    if (href) {
-      setHoveredSection(null)
-      setRailFocused(false)
-      router.push(withRememberedAnalysis(href, rememberedAnalysisId))
-    }
+    if (!href) return
+    // Reaching an icon and clicking it is a complete gesture on its own, so
+    // drop the expansion the pointer had queued up on its way in.
+    cancelExpand()
+    cancelSwap()
+    setRailFocused(false)
+    router.push(withRememberedAnalysis(href, rememberedAnalysisId))
   }
 
   function onRailBlur(event: FocusEvent<HTMLElement>) {
@@ -155,10 +267,10 @@ export default function AppShell({ children }: AppShellProps) {
         }`}
         aria-label="Product navigation"
         aria-hidden={!navOpen && !isDesktop ? true : undefined}
-        onMouseLeave={() => {
-          if (!isDesktop) return
-          setRailHovered(false)
-          setHoveredSection(null)
+        onMouseEnter={cancelCollapse}
+        onMouseLeave={scheduleCollapse}
+        onMouseMove={(event) => {
+          pointer.current = event.clientX
         }}
         onFocusCapture={(event) => {
           if (
@@ -171,14 +283,10 @@ export default function AppShell({ children }: AppShellProps) {
         }}
         onBlurCapture={onRailBlur}
       >
-        <div
-          className="flex h-[68px] shrink-0 items-center overflow-hidden px-[19px]"
-          onMouseEnter={() => {
-            if (!isDesktop) return
-            setRailHovered(false)
-            setHoveredSection(null)
-          }}
-        >
+        {/* The wordmark row is deliberately inert: it neither opens the rail
+            (hovering the logo is not a request for the menu) nor closes it
+            (which would drop the rail to 74px under a pointer on its way up). */}
+        <div className="flex h-[68px] shrink-0 items-center overflow-hidden px-[19px]">
           <Link
             href="/"
             aria-label="Yanki"
@@ -197,12 +305,13 @@ export default function AppShell({ children }: AppShellProps) {
           </Link>
         </div>
 
+        {/* `lg:overflow-visible` is what lets the desktop panel escape the
+            column. The scroll is still needed below `lg`, where the drawer
+            lists every section's children inline. */}
         <nav
-          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2 pt-3"
+          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2 pt-3 lg:overflow-visible"
           aria-label="Toolkits"
-          onMouseEnter={() => {
-            if (isDesktop) setRailHovered(true)
-          }}
+          onMouseEnter={scheduleExpand}
         >
           {SHELL_SECTIONS.map((section) => {
             const Icon = SECTION_ICONS[section.id]
@@ -210,20 +319,22 @@ export default function AppShell({ children }: AppShellProps) {
             const hasMenu = section.items.length > 0
             const menuOpen =
               hasMenu &&
-              (!isDesktop || (railExpanded && inlineSection === section.id))
+              (!isDesktop || (railExpanded && hoveredSection === section.id))
 
             return (
               <div
                 key={section.id}
-                onMouseEnter={() => {
-                  if (isDesktop) setHoveredSection(section.id)
-                }}
+                className="relative"
+                onMouseEnter={(event) => hoverSection(section.id, event)}
               >
                 <button
                   type="button"
                   onClick={() => onRailClick(section)}
                   onFocus={() => {
-                    if (isDesktop) setHoveredSection(section.id)
+                    // Keyboard arrives one row at a time, so no dwell here.
+                    if (!isDesktop) return
+                    cancelSwap()
+                    setHoveredSection(section.id)
                   }}
                   aria-label={section.label}
                   aria-expanded={hasMenu ? menuOpen : undefined}
@@ -282,10 +393,22 @@ export default function AppShell({ children }: AppShellProps) {
                   </div>
                 ) : null}
 
+                {/* Anchored to the row and out of the column's flow. Inline, it
+                    pushed every icon below it down by the height of the open
+                    menu — so the icon you were reaching for moved as you
+                    reached, and swapping between sections made the whole
+                    column jump. `ml-2` lands the panel flush against the
+                    expanded rail, leaving no gap for the pointer to fall
+                    through on its way over. */}
                 {isDesktop && menuOpen ? (
                   <div
                     id={`shell-subnav-desktop-${section.id}`}
-                    className="mb-1 ml-[27px] hidden flex-col gap-0.5 border-l border-white/10 py-1 pl-3 lg:flex"
+                    // Arriving here settles it. The rows crossed on the way in
+                    // each queued a swap, and one of them would otherwise come
+                    // due seconds later and pull the panel out from under a
+                    // pointer that is already inside it.
+                    onMouseEnter={cancelSwap}
+                    className="absolute left-full top-0 ml-2 hidden w-[216px] flex-col gap-0.5 rounded-xl border border-white/10 bg-ink p-1.5 shadow-[12px_0_28px_rgba(5,20,16,0.24)] lg:flex"
                   >
                     {section.items.map((item) => {
                       const active = flyoutItemActive(pathname, item)
@@ -296,10 +419,6 @@ export default function AppShell({ children }: AppShellProps) {
                             item.href,
                             rememberedAnalysisId,
                           )}
-                          onClick={() => {
-                            setHoveredSection(null)
-                            setRailFocused(false)
-                          }}
                           className={`flex min-h-[36px] items-center justify-between rounded-md px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal ${
                             active
                               ? 'bg-white/10 font-medium text-signal'
@@ -335,9 +454,7 @@ export default function AppShell({ children }: AppShellProps) {
 
         <div
           className="mt-auto overflow-hidden border-t border-white/10 px-[19px] py-4"
-          onMouseEnter={() => {
-            if (isDesktop) setRailHovered(true)
-          }}
+          onMouseEnter={scheduleExpand}
         >
           {loadingAuth ? (
             railExpanded ? (
@@ -351,7 +468,12 @@ export default function AppShell({ children }: AppShellProps) {
               />
             )
           ) : signedIn ? (
-            <div className="flex items-center gap-3">
+            <Link
+              href="/settings"
+              aria-label="Open profile settings"
+              title={!railExpanded ? 'Profile' : undefined}
+              className="-mx-2 flex min-h-[44px] items-center gap-3 rounded-lg px-2 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
+            >
               <div
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white"
                 aria-hidden
@@ -374,7 +496,7 @@ export default function AppShell({ children }: AppShellProps) {
                   </p>
                 </div>
               ) : null}
-            </div>
+            </Link>
           ) : (
             <div className="flex items-center gap-3">
               <div

@@ -8,6 +8,7 @@ import type {
   Analysis,
   AuditEventList,
   AuditIntegrity,
+  AuthSessionList,
   BacklinkOpportunities,
   BacklinkPage,
   BacklinkRefreshResult,
@@ -21,9 +22,11 @@ import type {
   ReferringDomainPage,
     SeoProject,
     SeoProjectDetail,
+  SessionRevokeAllResult,
     SiteAuditDetail,
   WaitlistSignupResponse,
 } from './contracts'
+import { getActiveOrgId } from './active-org'
 import { getAccessToken, refreshAccessToken } from './session'
 
 // Thin fetch wrapper. All paths are relative — Next rewrites proxy them to the
@@ -61,6 +64,19 @@ function withBearer(init: RequestInit, token: string): RequestInit {
   return { ...init, headers, credentials: 'same-origin' }
 }
 
+// Fold in the active organization as `X-Org-Id`, the header the backend already
+// honours for org scoping. Applied once here — the single seam every authorized
+// request passes through — rather than at each call site, so the switcher only
+// has to set the stored org and every request follows. A caller that set the
+// header itself wins, and a single-org user (no stored org) adds nothing.
+function withActiveOrg(init: RequestInit): RequestInit {
+  const orgId = getActiveOrgId()
+  if (!orgId) return init
+  const headers = new Headers(init.headers)
+  if (!headers.has('X-Org-Id')) headers.set('X-Org-Id', orgId)
+  return { ...init, headers }
+}
+
 // A request that needs the signed-in user. Access tokens are short-lived by
 // design, so a 401 is the expected way to learn one has expired rather than an
 // error to surface: rotate the refresh cookie once and replay the request.
@@ -71,17 +87,20 @@ export async function authorizedFetch(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
+  // Scope is resolved before the bearer so the retry after a refresh carries the
+  // same X-Org-Id as the first attempt.
+  const scoped = withActiveOrg(init)
   const token = getAccessToken()
   const res = token
-    ? await fetch(path, withBearer(init, token))
-    : await fetch(path, { ...init, credentials: 'same-origin' })
+    ? await fetch(path, withBearer(scoped, token))
+    : await fetch(path, { ...scoped, credentials: 'same-origin' })
 
   if (res.status !== 401) return res
 
   const refreshed = await refreshAccessToken()
   if (!refreshed) return res
 
-  return fetch(path, withBearer(init, refreshed))
+  return fetch(path, withBearer(scoped, refreshed))
 }
 
 export async function createAnalysis(url: string): Promise<CreateAnalysisResponse> {
@@ -445,6 +464,39 @@ export async function acceptInvitation(
   )
   if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
   return (await res.json()) as LoginResponse
+}
+
+// --- Sessions / devices ----------------------------------------------------
+//
+// Self-service session management. All three are self-scoped server-side: the
+// list and the revocations only ever touch the caller's own sessions, and a
+// session id that is not theirs answers 404 without confirming it exists.
+
+export async function fetchSessions(): Promise<AuthSessionList> {
+  const res = await authorizedFetch('/api/v1/auth/sessions')
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AuthSessionList
+}
+
+export async function revokeSession(sessionId: string): Promise<void> {
+  const res = await authorizedFetch(
+    `/api/v1/auth/sessions/${encodeURIComponent(sessionId)}`,
+    { method: 'DELETE' },
+  )
+  // 404 is the answer for a session that is not the caller's — surface it as a
+  // gone-already rather than a raw failure, since the goal (it is not active)
+  // is met either way.
+  if (!res.ok && res.status !== 404) {
+    throw new ApiError(await readErrorMessage(res), res.status)
+  }
+}
+
+export async function revokeAllSessions(): Promise<SessionRevokeAllResult> {
+  const res = await authorizedFetch('/api/v1/auth/sessions/revoke-all', {
+    method: 'POST',
+  })
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as SessionRevokeAllResult
 }
 
 // --- Audit log ------------------------------------------------------------

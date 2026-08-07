@@ -720,6 +720,61 @@
         "title": "AuditIntegrityOut",
         "type": "object"
       },
+      "AuthSessionListOut": {
+        "description": "Every active session the caller holds, most-recently-used first.",
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/AuthSessionOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "AuthSessionListOut",
+        "type": "object"
+      },
+      "AuthSessionOut": {
+        "description": "One active sign-in (a refresh-token family) as its owner sees it.\n\nEnough for a human to recognise a device \u2014 when the session began, when it\nwas last used, when it expires \u2014 and a ``current`` flag on the one the\nrequest itself is coming from. What is deliberately ABSENT is anything\nreplayable: no ``refresh_jti_hash``, no token. ``id`` is the family id, which\nnames a session for revocation but is useless as a credential.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_active_at": {
+            "format": "date-time",
+            "title": "Last Active At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "last_active_at",
+          "expires_at",
+          "current"
+        ],
+        "title": "AuthSessionOut",
+        "type": "object"
+      },
       "BacklinkImportOut": {
         "properties": {
           "completed_at": {
@@ -1354,7 +1409,7 @@
         "type": "object"
       },
       "CurrentUserOut": {
-        "description": "``/auth/me`` \u2014 who you are AND what you can do.\n\nThe role and permission list ride along so the UI can reflect authority\nwithout a second round trip. They are for RENDERING only: the API enforces\nevery one of them independently, and a client that lies about its\npermissions gets a 403 exactly as before.",
+        "description": "``/auth/me`` \u2014 who you are AND what you can do.\n\nThe role and permission list ride along so the UI can reflect authority\nwithout a second round trip. They are for RENDERING only: the API enforces\nevery one of them independently, and a client that lies about its\npermissions gets a 403 exactly as before.\n\n``organization``/``role``/``permissions`` describe the ONE org the request is\nacting in (the caller's first, or the one named by ``X-Org-Id``).\n``organizations`` is the full list the caller belongs to \u2014 added so a\nmulti-org user can be offered a switch. The singular fields are kept exactly\nas they were, because the frontend and the locked contract already depend on\nthem; the list is strictly additive.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -1379,6 +1434,13 @@
                 "type": "null"
               }
             ]
+          },
+          "organizations": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizationMembershipOut"
+            },
+            "title": "Organizations",
+            "type": "array"
           },
           "permissions": {
             "items": {
@@ -2094,6 +2156,46 @@
           "provenance"
         ],
         "title": "OpportunitiesOut",
+        "type": "object"
+      },
+      "OrganizationMembershipOut": {
+        "description": "One organization the caller belongs to, and their role in it.\n\nThe entries of the multi-org list on ``/auth/me``. Same identity fields as\n``OrganizationOut`` plus the caller's ``role`` in *this specific* org \u2014 which\nis what the switcher needs to label each choice and what the singular\n``organization`` cannot carry, since a person is an owner of one org and a\nviewer in another. Purely additive: the singular field is untouched, so a\nclient that only reads it keeps working.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "kind",
+          "status",
+          "role"
+        ],
+        "title": "OrganizationMembershipOut",
         "type": "object"
       },
       "OrganizationOut": {
@@ -2999,6 +3101,25 @@
           "checks"
         ],
         "title": "SerpVisibilityOut",
+        "type": "object"
+      },
+      "SessionRevokeAllOut": {
+        "description": "The result of \"sign out everywhere else\".\n\n``revoked`` is how many OTHER sessions were ended. ``kept_current`` records\nthat the session issuing the request was left alive on purpose, so the caller\nis not signed out of the device they clicked from.",
+        "properties": {
+          "kept_current": {
+            "title": "Kept Current",
+            "type": "boolean"
+          },
+          "revoked": {
+            "title": "Revoked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revoked",
+          "kept_current"
+        ],
+        "title": "SessionRevokeAllOut",
         "type": "object"
       },
       "SignupRequest": {
@@ -5001,8 +5122,26 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "Who you are, which organization you are acting in, and what you may do.\n\nThe role and permission list ride along so the UI can hide a control the\ncaller cannot use, instead of showing it and failing on click. They are for\nRENDERING ONLY \u2014 every endpoint enforces its own permission independently,\nso a client that lies about this list gets a 403 exactly as before.",
+        "description": "Who you are, which organization you are acting in, and what you may do.\n\nThe role and permission list ride along so the UI can hide a control the\ncaller cannot use, instead of showing it and failing on click. They are for\nRENDERING ONLY \u2014 every endpoint enforces its own permission independently,\nso a client that lies about this list gets a 403 exactly as before.\n\n``X-Org-Id`` selects which org the singular ``organization``/``role``/\n``permissions`` describe, so a multi-org user who has switched sees the org\nthey switched to rather than always their first. Membership is verified, not\ntrusted \u2014 the same seam ``get_org_context`` uses \u2014 and honouring the header\nis additive: omitting it reproduces the old behaviour exactly. ``organizations``\nalways carries the caller's full list, which is what makes a switch offerable.",
         "operationId": "me_api_v1_auth_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5013,6 +5152,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -5043,6 +5192,102 @@
           }
         },
         "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "description": "The caller's own active sessions, one per device/login.\n\nA read, so it emits no audit event. The one from the current device is\nflagged ``current`` by matching the refresh cookie riding along on this\nrequest (the cookie's path covers ``/api/v1/auth``) to its session family.",
+        "operationId": "list_sessions_api_v1_auth_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/revoke-all": {
+      "post": {
+        "description": "Sign out everywhere else, keeping the current session alive.\n\nSee ``revoke_other_sessions_for_user`` for why the current device is spared.\nAlways audited \u2014 a lock-out of every other device is exactly the event worth\nrecording \u2014 even when there was nothing else to revoke.",
+        "operationId": "revoke_all_sessions_api_v1_auth_sessions_revoke_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRevokeAllOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke All Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{session_id}": {
+      "delete": {
+        "description": "Revoke one of the caller's own sessions (a whole family).\n\nStrictly self-scoped. A session id that is not the caller's \u2014 whether it\nbelongs to another user or does not exist \u2014 is a 404 with the same body in\nboth cases, so this cannot be used to probe whether a given session id\nexists. The revocation is audited only when something was actually revoked.",
+        "operationId": "revoke_session_api_v1_auth_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Session",
         "tags": [
           "auth"
         ]

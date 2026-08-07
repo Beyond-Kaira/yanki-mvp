@@ -170,3 +170,31 @@ def test_expand_empty_seed_returns_no_ideas():
     source = SearxngKeywordSource(_FakeSerp(SerpPage(query="")))  # type: ignore[arg-type]
     result = source.expand("   ")
     assert result.ideas == ()
+
+
+def test_expand_drops_non_question_answers_and_weak_related_titles():
+    page = SerpPage(
+        query="money transfer",
+        results=(
+            SerpResult(
+                rank=1,
+                url="https://example.com/a",
+                title="Money tips for travelers — Blog",
+            ),
+            SerpResult(
+                rank=2,
+                url="https://example.com/b",
+                title="Best money transfer apps — Guide",
+            ),
+        ),
+        answers=("money transfer tips", "is money transfer safe"),
+    )
+    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    result = source.expand("money transfer", max_ideas=50, max_variants=0)
+    by_source: dict[str, list[str]] = {}
+    for idea in result.ideas:
+        by_source.setdefault(idea.source, []).append(idea.phrase)
+    assert by_source.get("paa") == ["is money transfer safe"]
+    assert "money transfer tips" not in by_source.get("paa", [])
+    assert "Best money transfer apps" in by_source.get("related", [])
+    assert "Money tips for travelers" not in by_source.get("related", [])

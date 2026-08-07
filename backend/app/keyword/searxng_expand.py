@@ -17,7 +17,8 @@ from app.keyword.normalize import (
     brand_names_to_exclusion_keys,
     collapse_keyword_whitespace,
     keyword_dedupe_key,
-    looks_like_keyword_idea,
+    looks_like_paa_idea,
+    looks_like_related_keyword_idea,
     should_exclude_keyword_candidate,
 )
 from app.keyword.signals import build_estimated_keyword_idea_signals
@@ -33,7 +34,8 @@ def _related_keyword_phrases_from_serp_titles(seed: str, page: SerpPage) -> list
     """Pull short, seed-relevant SERP titles as weak ``related`` ideas.
 
     Not a Semrush related-keywords index — title lines that still look like
-    something a person might type.
+    something a person might type. Requires whole-token seed coverage (not a
+    bare substring hit) so headline junk stays out.
     """
     seed_key = keyword_dedupe_key(seed)
     if not seed_key:
@@ -48,10 +50,7 @@ def _related_keyword_phrases_from_serp_titles(seed: str, page: SerpPage) -> list
             if sep in title:
                 title = collapse_keyword_whitespace(title.split(sep, 1)[0])
                 break
-        title_key = keyword_dedupe_key(title)
-        if not title_key or seed_key not in title_key:
-            continue
-        if title_key == seed_key:
+        if not looks_like_related_keyword_idea(seed, title):
             continue
         out.append(title)
     return out
@@ -128,11 +127,10 @@ class SearxngKeywordSource:
         for suggestion in page.suggestions:
             _append_keyword_idea(suggestion, "suggestion")
         for answer in page.answers:
-            if looks_like_keyword_idea(answer):
+            if looks_like_paa_idea(answer):
                 _append_keyword_idea(answer, "paa")
         for related in _related_keyword_phrases_from_serp_titles(cleaned, page):
-            if looks_like_keyword_idea(related):
-                _append_keyword_idea(related, "related")
+            _append_keyword_idea(related, "related")
         # Local templates last so max_ideas is not spent on filler first.
         for variant in build_seed_query_variants(cleaned, limit=variant_limit):
             _append_keyword_idea(variant, "variant")

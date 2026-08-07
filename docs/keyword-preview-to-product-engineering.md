@@ -34,8 +34,8 @@ repo* and *what to change*.
 
 - **Preview now:** `keyword/searxng_expand.py`, `normalize.py`, `variants.py`
 - **Accepted policy:** merge order `seed → suggestion → paa → related → variant`; variant capped (`KEYWORD_VARIANT_MAX`, default target 3); smart-skip; never sell variant as related. See companion **Discovery cleanup policy**.
-- **Cleanup next:** tighter related/PAA filters (`normalize` / expand)
-- **Shipped in cleanup:** suggestions-first merge; smart-skip; `KEYWORD_VARIANT_MAX` (default 3)
+- **Cleanup next:** (optional) budgeted 2nd SearXNG pass — only with explicit approval
+- **Shipped in cleanup:** suggestions-first merge; smart-skip; `KEYWORD_VARIANT_MAX` (default 3); tighter related/PAA filters
 - **Product next:** caching by `(seed, locale)`; brand prefill from workspace/KYC; stronger junk filters; org rate limits; optional 2nd SearXNG pass only with budget approval
 
 ### B. Metrics

@@ -39,7 +39,7 @@ Later volume vendors plug into the same `KeywordSource` seam; UI stays stable.
 
 ## Discovery cleanup policy (accepted)
 
-**Status:** accepted — ordering, smart-skip, and variant cap shipped  
+**Status:** accepted — ordering, smart-skip, variant cap, related/PAA filters shipped  
 **Canvas:** `keyword-discovery-cleanup.canvas.tsx` (implementation checklist)  
 **Out of scope here:** Google Ads volume / CPC (`keyword-ads-volume-roadmap.canvas.tsx`).
 
@@ -172,10 +172,10 @@ until its Semrush column is `[x]`.
 | Seed + locale expand entry point | [x] | [ ] | [ ] | Product: stable API + auth + rate limits + empty/error UX. Semrush: instant DB lookup, no live scrape dependency. |
 | Related / long-tail idea volume (breadth) | [x] | [ ] | [ ] | Preview: SearXNG suggestions + thin related. **Cleanup:** suggestions-first merge order (shipped). Product: larger, stable lists (licensed or cached). Semrush: billions-scale index, match types (broad/phrase/exact/related). |
 | Local template variants (`best {seed}` …) | [x] | [ ] | — | Preview filler only (`source=variant`). Last in merge order; smart-skip; `KEYWORD_VARIANT_MAX` default 3 (`0` = off). Not a Semrush feature to copy. |
-| Questions / PAA-style ideas | [x] | [ ] | [ ] | Preview: SearXNG answers heuristic. **Cleanup next:** stronger question filter. Product: reliable question filter. Semrush: Questions report + filters. |
+| Questions / PAA-style ideas | [x] | [ ] | [ ] | Preview: question-shaped SearXNG answers (`looks_like_paa_idea`). Product: reliable question filter. Semrush: Questions report + filters. |
 | Topic / subgroup sidebar | [ ] | [ ] | [ ] | Not started. Product: light clustering. Semrush: Magic left-rail groups. |
 | Match-type controls | [ ] | [ ] | [ ] | Semrush Magic. Preview skip. |
-| Deduped, filtered junk (URL/prose/brand) | [x] | [ ] | [ ] | Preview: basic normalize. **Cleanup next:** tighter related/PAA. Product: stronger NLP/locale rules + workspace brand prefill. |
+| Deduped, filtered junk (URL/prose/brand) | [x] | [ ] | [ ] | Preview: normalize + related seed-token coverage + domain/prose drops. Product: stronger NLP/locale + brand prefill. |
 | Exclude / include filters (volume, KD, intent, …) | [ ] | [ ] | [ ] | Needs real metrics first for Product; Semrush = full filter bar. |
 | Send to list / Strategy Builder | [ ] | [ ] | [ ] | Preview: optional light save later. Product: persisted lists. Semrush: Strategy Builder + SERP clustering. |
 
@@ -258,8 +258,8 @@ the matching row here (or delete it) in the same PR.
 |------|------------------------|-----|----------------------------|
 | **Seed → template variants** (`build_seed_query_variants`) | Fixed English shapes; suggestions-first merge; smart-skip; capped by `KEYWORD_VARIANT_MAX` (default 3) | Zero-cost list filler | Locale template packs; or keep `0` forever. Never market as related. |
 | **Single SearXNG round-trip per expand** | One `search(seed)` only — no fan-out over every variant | Politeness + latency on operator-hosted SearXNG | Optional budgeted second pass on top N suggestions; cache by `(seed, locale)` |
-| **“Related” from SERP titles** | Title lines that contain the seed, stripped at `—` / `\|` | No related-keyword index exists in OSS | Drop titles that look like brands/URLs; require higher token overlap; or drop “related” until a better signal exists |
-| **PAA / answers** | Keep short lines; drop prose ending in `.` / long blobs | SearXNG `answers` shape is inconsistent across engines | Engine-aware parsing; question-only filter (`who/what/how…`) |
+| **“Related” from SERP titles** | Title lines with whole-token seed coverage; drop prose/URL/long headlines | No related-keyword index in OSS | Higher NLP / drop “related” until a better signal exists |
+| **PAA / answers** | Question-shaped short lines only (`looks_like_paa_idea`) | SearXNG `answers` inconsistent across engines | Engine-aware parsing; locale question packs |
 | **Brand exclusion** | Optional `exclude_brands` + `leaks_brand` keys — caller must pass names | Expand is analysis-independent; no KYC on the request yet | Prefill from workspace domain / last analysis KYC when API exists |
 | **No absolute volume / true KD** | Omitted as ground truth; **Estimated** proxies live in `signals` | No licensed DB yet | Google Ads Keyword Planner or wholesale API on the same `KeywordSource` seam; drop `volume_estimated` when real |
 | **`estimated_demand_score`** | Provenance heuristic (suggestion > variant…) — **not** monthly searches | OSS demand-test ranking | Real `avgMonthlySearches`; keep score field or replace with `volume` |

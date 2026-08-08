@@ -321,30 +321,42 @@ def test_ledgers_do_not_bleed_between_orgs(db_session, org):
 # --------------------------------------------------------------------------
 
 
-def test_an_empty_catalog_refuses_everything(db_session):
-    """Why migration 0016 exists.
+def test_an_empty_catalog_refuses_everything_and_says_which_kind_of_refusal(db_session):
+    """Why migration 0016 exists — and why this is not a QuotaExceeded.
 
     `limit_for` falls back to Free rather than to unlimited, on purpose — an
     unknown plan defaulting to unlimited would make every misconfiguration a
-    free-spend bug. But with no Free row to fall back TO, the fallback returns
-    0, which reads as "you may do none of this". Fail-closed is the right
-    direction and a total refusal is still an outage, which is why the catalog
-    is seeded by a migration rather than left to a startup hook that nothing
-    calls. Production ran with `plans` empty until this was caught.
+    free-spend bug. But with no Free row to fall back TO there is no allowance
+    to read at all, and until P7.6 that arrived as "limit 0", indistinguishable
+    from a customer who had used their month. Production ran with `plans` empty
+    until this was caught; had quotas been enforced then, every organization
+    would have been told simultaneously that it was out of quota, and the true
+    cause — an unseeded table — would have been the last thing anyone checked.
+
+    So the fail-closed direction is kept and the *reason* is now typed:
+    `PlanCatalogMissing` becomes a 503 that names a deployment fault, while
+    `QuotaExceeded` stays the 429 a customer can act on.
     """
 
     from app.db.models import Organization
 
     org = Organization(name="Empty", slug="empty-catalog", kind="company")
     db_session.add(org)
+    # The suite seeds the catalog because production's is seeded; this one test
+    # is about the deployment where it is not.
+    db_session.execute(sa.delete(Plan))
     db_session.commit()
 
-    # No plans seeded at all.
     assert db_session.scalar(sa.select(sa.func.count()).select_from(Plan)) == 0
-    assert billing.limit_for(db_session, org.id, METRIC_ANALYSES) == 0
 
-    with pytest.raises(QuotaExceeded):
+    with pytest.raises(billing.PlanCatalogMissing):
+        billing.limit_for(db_session, org.id, METRIC_ANALYSES)
+
+    with pytest.raises(billing.PlanCatalogMissing):
         billing.consume_quota(db_session, org.id, METRIC_ANALYSES)
+
+    # And it is emphatically not the customer-facing refusal.
+    assert not issubclass(billing.PlanCatalogMissing, QuotaExceeded)
 
 
 def test_the_seeded_catalog_covers_every_metric_the_code_meters(db_session):

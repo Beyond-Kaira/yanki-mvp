@@ -252,7 +252,19 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit Analysis */
+        /**
+         * Submit Analysis
+         * @description Queue one GEO analysis for the caller's organization.
+         *
+         *     The guards run cheapest-and-most-certain first, and each one refuses before
+         *     the next has any effect:
+         *
+         *     1. **SSRF** — 422, and no row, so a rejected target never counts anywhere.
+         *     2. **Per-credential burst** — the P5.0 IP limit, unchanged. A monthly plan
+         *        quota does not bound a burst; five hundred runs on the first of the month
+         *        is inside a Business allowance and still a stampede at the vendor.
+         *     3. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+         */
         post: operations["submit_analysis_api_v1_analyses_post"];
         delete?: never;
         options?: never;
@@ -267,7 +279,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read Analysis */
+        /**
+         * Read Analysis
+         * @description One analysis, if this caller may see it.
+         *
+         *     404 covers both "no such analysis" and "not yours" on purpose. Splitting
+         *     them would turn this route into an oracle for which analysis ids exist,
+         *     which is the whole value of an unguessable id.
+         */
         get: operations["read_analysis_api_v1_analyses__analysis_id__get"];
         put?: never;
         post?: never;
@@ -2874,7 +2893,9 @@ export interface operations {
     submit_analysis_api_v1_analyses_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2907,7 +2928,9 @@ export interface operations {
     read_analysis_api_v1_analyses__analysis_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path: {
                 analysis_id: string;
             };

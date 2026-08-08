@@ -102,8 +102,22 @@ class Settings(BaseSettings):
     site_audit_max_html_chars: int = Field(default=2_000_000, ge=10_000)
     site_audit_max_queue_urls: int = Field(default=5_000, ge=10, le=50_000)
 
-    # Rate limiting (P5.0) — the LIVE POST /api/v1/analyses is public with real
-    # keys; these guard it before any row is created or money is spent.
+    # Plan quota enforcement (P7.6). ON by default: a plan tier that nothing
+    # enforces is decorative, which is what this flag exists to stop being true.
+    #
+    # It is a kill switch, not a feature gate — the difference matters. The
+    # other flags in this file (checker/backlinks/site_audit) default OFF and
+    # hide unfinished work; this one defaults ON and exists so the operator can
+    # turn enforcement OFF from `deploy/.env` without a code change, on a box
+    # that auto-deploys on merge and has no staging. Off means the quota is
+    # counted nowhere and never refuses; every other guard (per-IP rate limits,
+    # the checker's daily USD cap, RBAC) is untouched by it.
+    quota_enforcement_enabled: bool = True
+
+    # Rate limiting (P5.0) — POST /api/v1/analyses now requires authentication
+    # (ADR-45), but these stay as defence in depth: they bound one credential's
+    # burst before a row is created or money is spent, which a monthly plan
+    # quota does not.
     analyses_rate_limit_per_ip_hour: int = 5
     analyses_daily_cap: int = 100
     ip_hash_salt: str = ""

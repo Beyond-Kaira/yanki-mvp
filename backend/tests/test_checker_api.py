@@ -205,7 +205,11 @@ def test_lead_invalid_email_returns_422(client, db_session):
 # --- MVP unchanged -------------------------------------------------------------
 
 
-def test_mvp_submit_defaults_kind_to_mvp(client, db_session):
+def test_mvp_submit_defaults_kind_to_mvp(client, db_session, signed_in):
+    # The MVP submit route needs a credential from P7.6 on (ADR-45); the checker
+    # route above deliberately still does not, which is the distinction this
+    # section exists to keep visible.
+    signed_in(email="mvp-kind@example.test")
 
     resp = client.post("/api/v1/analyses", json={"url": "https://example.com"})
     assert resp.status_code == 202

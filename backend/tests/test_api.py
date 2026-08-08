@@ -6,7 +6,20 @@ from decimal import Decimal
 from app.db.models import Analysis, Prompt, Response
 
 
-def test_submit_valid_url_returns_202_and_queued_row(client, db_session):
+def test_submitting_an_analysis_requires_a_credential(client, db_session):
+    """The route was open until P7.6 and no page had used it that way since
+    session 21 moved the URL form behind sign-in (ADR-45). An endpoint that
+    spends money at a paid vendor cannot be metered while anyone can call it."""
+
+    resp = client.post("/api/v1/analyses", json={"url": "https://example.com"})
+
+    assert resp.status_code == 401
+    assert resp.headers["www-authenticate"] == "Bearer"
+    assert db_session.query(Analysis).count() == 0
+
+
+def test_submit_valid_url_returns_202_and_queued_row(client, db_session, signed_in):
+    _, org = signed_in()
     resp = client.post("/api/v1/analyses", json={"url": "https://example.com"})
 
     assert resp.status_code == 202
@@ -17,16 +30,21 @@ def test_submit_valid_url_returns_202_and_queued_row(client, db_session):
     assert analysis is not None
     assert analysis.status == "queued"
     assert analysis.progress == 0
+    # The run belongs to the organization that started it — the attribution that
+    # makes metering, and later a per-org history, possible at all.
+    assert analysis.org_id == org.id
 
 
-def test_submit_invalid_url_returns_422(client):
+def test_submit_invalid_url_returns_422(client, signed_in):
+    signed_in()
     resp = client.post("/api/v1/analyses", json={"url": "not-a-url"})
     assert resp.status_code == 422
 
 
-def test_submit_ssrf_target_is_rejected(client, db_session):
+def test_submit_ssrf_target_is_rejected(client, db_session, signed_in):
     # Loopback / link-local (cloud metadata) hosts must not be accepted for the
     # worker to fetch — reject them at the boundary.
+    signed_in()
     for url in (
         "http://127.0.0.1:8000/",
         "http://169.254.169.254/latest/meta-data/",
@@ -38,7 +56,8 @@ def test_submit_ssrf_target_is_rejected(client, db_session):
     assert db_session.query(Analysis).count() == 0
 
 
-def test_submit_missing_url_returns_422(client):
+def test_submit_missing_url_returns_422(client, signed_in):
+    signed_in()
     resp = client.post("/api/v1/analyses", json={})
     assert resp.status_code == 422
 

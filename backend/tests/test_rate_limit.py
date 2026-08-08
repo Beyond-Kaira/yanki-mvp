@@ -1,9 +1,19 @@
 """Rate-limit tests for the LIVE POST /api/v1/analyses (P5.0).
 
-The endpoint is public with real keys in prod, so a throttled client must be
-rejected with a 429 BEFORE any analyses row is created. These run against the
-in-memory SQLite fixture like the rest of the API suite.
+The endpoint runs with real keys in prod, so a throttled client must be rejected
+with a 429 BEFORE any analyses row is created. These run against the in-memory
+SQLite fixture like the rest of the API suite.
+
+Since P7.6 the route also requires a credential and consumes a plan quota
+(ADR-45), which is why every test here signs in on an **unlimited** tier. That
+is not a convenience: both guards answer 429, so a test whose org could run out
+of allowance would no longer be able to tell which limit refused it. Pinning the
+plan to unlimited leaves exactly one thing in this file that can produce a 429.
+The reverse case — the plan refusing while the rate limit is untouched — is
+``test_quota_enforcement.py``'s.
 """
+
+import pytest
 
 from app.api.main import app
 from app.config import Settings, get_settings
@@ -11,6 +21,11 @@ from app.db.models import Analysis
 from app.services.rate_limit import hash_ip
 
 VALID_URL = "https://example.com"
+
+
+@pytest.fixture(autouse=True)
+def unlimited_submitter(signed_in):
+    signed_in(email="rate-limit@example.test", plan_key="enterprise")
 
 
 def _submit(client, ip: str | None = None):

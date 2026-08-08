@@ -4,7 +4,34 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-05 (**session 22** — the Admin Panel session).
+Last updated: 2026-08-08 (**session 24** — the deploy-safety and P7.5 session).
+
+**Session 24 changes to this list, up front:** **#17 MOSTLY REPAID** (the
+rollback pruned-image branch no longer resurrects the fused migrate-on-boot
+compose, and no longer leaves detached HEAD — ADR-42; residual is that it is
+still unproven against a live rollback). **Ten new items, #63–#72.** The one to
+read first is **#63**: `tenancy.scoped()` and `readable_analysis()` — the
+fail-closed tenancy seam that ADR-35, `architecture-target.md` and the P7.1 card
+all described as shipped — **have zero call sites**. Isolation is real but it is
+per-route discipline, so a route that forgets to filter compiles and leaks. All
+three documents are corrected; the guardrail itself is A9 work. Also new:
+**#64** (three Site Audits stranded `queued` in production, needing operator
+cleanup), **#65** (the site-audit worker would hold every secret — its
+documented isolation was never built), **#66** (feature flags are discovered by
+catching a 404), **#67–#69** (P7.5 residuals: no device fingerprint without a
+migration, no live 403→clear-active-org, an `/auth/me` N+1), **#70** (the
+rollback guard's hardcoded boundary SHA), **#71** (mutating paths still emitting
+no audit event — including refresh-token **reuse detection**, which revokes a
+whole family and records nothing), and **#72** (session 23 shipped without any
+of its eight close deliverables; the log is reconstructed, the reasoning is
+gone). Measured suite at session 24 close: **897 backend passed / 7 skipped**
+with Postgres, **319 frontend across 56 files**, `make test` exit 0.
+*(The counts recorded below for session 22 — 835/281 — were correct then;
+session 23 added tests without updating them. Measured at this session's start,
+before any of its work: **873 backend passed / 7 skipped**, **305 frontend
+across 54 files**.)*
+
+Earlier — 2026-08-05 (**session 22** — the Admin Panel session).
 
 **Session 22 changes to this list, up front:** **#52 REPAID** (an account now
 grants something — the Admin Panel is a real signed-in destination that invites,
@@ -292,6 +319,21 @@ devDependencies).)
     checking that out restores a serve-only compose. The clean fix keeps the
     compose file out of the checkout: pin it, or roll the image tag back without
     moving the tree at all.
+
+    **MOSTLY REPAID (2026-08-08, session 24, ADR-42).** The crash-loop hazard
+    and the detached-HEAD mutation are both closed: the pruned-image branch now
+    **refuses** a last-good SHA at or behind `56c1fac` (the migrate-on-boot
+    split) with an actionable hand-recovery message rather than resurrecting the
+    fused command, and it restores the branch it started on instead of leaving
+    the operator's checkout moved. It was repaired *before* Phase 7's A5–A8
+    migrations land, which is the window this item warned about. Residual, and
+    the reason this is not struck through: the fix was proven in a scratch repo
+    with stubbed `docker`/`curl` and a truth table against the real `56c1fac`,
+    **not** by a live rollback — the images-present path remains the only one
+    ever exercised against production. The boundary constant is its own item
+    (**#70**). The originally-suggested clean fix (keep the compose file out of
+    the checkout entirely) was not taken: refusing is a smaller, more auditable
+    change to code that runs when production is already broken.
 18. **The prod web image ships devDependencies.** Session 7's fix for the
     build failure (`npm ci --include=dev`, needed because NODE_ENV=production
     otherwise omits the typescript devDep that `next build` requires) means
@@ -871,3 +913,123 @@ devDependencies).)
     PR, and letting the gate switch on. Until then eslint at `--max-warnings 0`
     is the frontend's only automated style gate, which is what it has always
     been.
+
+63. **The fail-closed tenancy seam ADR-35 describes is not wired — isolation is
+    per-route discipline** (2026-08-08, session 24, found by a code-vs-docs
+    audit). `app/services/tenancy.py` defines `scoped()` (raises without an org
+    context rather than returning an unfiltered statement) and
+    `readable_analysis()` (the single home of the NULL-is-public rule). **Both
+    have zero call sites.** No route and no service calls either; `GET
+    /analyses/{id}` uses bare `get_analysis()`. Tenant isolation is real today
+    — the `requires(...)` / `OrgContext` dependency in
+    `app/api/org_dependencies.py` resolves and membership-verifies the org on
+    every request, and each route filters by `org.require_org_id` itself — but
+    that is discipline, not a seam: **a route that forgets to filter compiles,
+    passes review, and leaks.** This is the highest-risk item on this list
+    because three documents asserted the opposite (ADR-35,
+    `architecture-target.md`, the P7.1 card), so a reader had every reason to
+    believe the guardrail was there. All three are corrected as of this session.
+    Repay in P7.9/A9: the cross-tenant leakage suite is the exit gate that
+    would have caught this, and it should be written to fail if a tenant-owned
+    query is reachable without an org filter — not merely to spot-check a few
+    routes. Until then, treat every new tenant-scoped query as needing its own
+    explicit `org_id` filter, because nothing does it for you.
+
+64. **Three Site Audits are stranded `queued` in production and need operator
+    cleanup** (2026-08-08, session 24). `31eba473…`, `410c31d7…`, `35e06651…`,
+    created 2026-08-05/06, zero pages each. They were enqueued through a UI
+    that shipped in PRs #24/#25 while no site-audit worker was ever added to
+    `deploy/docker-compose.prod.yml`, so nothing has ever drained them and
+    nothing ever will in their current state. Session 24 gated the enqueue so
+    no more accumulate, but **it deliberately did not touch the rows**:
+    mutating production data is an operator action, and there are no database
+    backups. Repay by deciding their fate (mark failed with a reason, or
+    delete) — see [operator-expected.md](operator-expected.md). Note the
+    backlog's premise that both tables held **zero** rows was stale by the time
+    it was acted on; measure before trusting it again.
+
+65. **The site-audit worker holds every secret — its isolation is design, not
+    boundary** (2026-08-08, session 24). `docs/site-audit-integration.md`
+    claimed the audit worker receives only its database URL and `SITE_AUDIT_*`
+    settings. It calls the shared `get_settings()`, so it would hold
+    `jwt_secret_key` and every provider key. That claim is corrected in the doc
+    now, but the gap it described is unbuilt. This matters because the audit
+    worker is the one component whose whole job is to point a browser at
+    arbitrary third-party URLs — the highest-exposure process in the system
+    holding the widest secret set, on a box shared with four other tenants.
+    Repay before `SITE_AUDIT_ENABLED` is ever turned on: an `audit-runtime`
+    image with a split settings object. Tracked in M3 alongside
+    `deploy-site-audit-worker`, `site-audit-chromium-image-missing` and
+    `site-audit-egress-isolation` — none of which should land without this one.
+
+66. **Site Audit's off-state is discovered reactively, by catching a 404**
+    (2026-08-08, session 24). There is no runtime feature-flag endpoint, so the
+    frontend cannot know `SITE_AUDIT_ENABLED` (or `BACKLINKS_ENABLED`) at first
+    paint; it learns by attempting the action and handling the refusal. That is
+    honest but late. The proper repair is the `feature-flags-system` backlog
+    item (DB-backed flags, global + per-org, audited flips) with a small read
+    endpoint the shell can consume — which also retires the env-boolean
+    kill-switches that currently need a redeploy to flip.
+
+67. **The sessions list cannot tell you which device a session is** (2026-08-08,
+    session 24, P7.5). `auth_sessions` stores no IP, user-agent or device name,
+    so "Devices & sessions" shows started / last-active / expires and nothing a
+    human recognises. Adding columns needs a migration, which this session
+    deliberately deferred (no DB backups). Repay with the migration-bearing half
+    of A5, alongside password reset and MFA — a session list you cannot identify
+    a device in is a weak security control, because the user cannot tell their
+    own laptop from an intruder's.
+
+68. **A revoked membership is only noticed on the next `/auth/me`**
+    (2026-08-08, session 24, P7.5). The org switcher stores the active org
+    client-side and reconciles it against `/auth/me` on cold load, sign-in and
+    switch. If a user's membership in the *currently selected* org is revoked
+    mid-session, other org-scoped endpoints 403 until the next `/me` refresh.
+    Not a leakage risk — the server verifies membership on every request, which
+    is why the failure mode is a 403 and not a read — but it is a confusing
+    dead-end for the user. Repay with a global 403 interceptor that clears the
+    active org and re-fetches `/me`.
+
+69. **`/auth/me` does an N+1 over memberships** (2026-08-08, session 24, P7.5).
+    One `session.get(Organization)` per membership to build the organizations
+    list. N is the number of orgs a user belongs to, so this is nothing today
+    and would become something for a contractor in dozens of orgs. One
+    `IN`-query join when it matters.
+
+70. **The rollback guard hardcodes a boundary SHA** (2026-08-08, session 24,
+    ADR-42). `deploy/rollback.sh` refuses to rebuild a last-good SHA at or
+    behind `56c1fac` (the migrate-on-boot split). The constant is documented
+    and re-derivable —
+    `git log -S 'sh -c "alembic upgrade head' -- deploy/docker-compose.prod.yml`
+    — and a history rewrite would make the guard fail closed (refuse
+    everything) until it is updated. Acceptable because `main` is
+    ruleset-protected against rewrites and refusing is the safe direction, but
+    it is a constant that encodes a fact about history and should be revisited
+    if the deploy driver is ever rewritten.
+
+71. **Mutating paths that still emit no audit event** (2026-08-08, session 24,
+    found by audit-coverage review). M1 promises "every mutating action emits an
+    audit event." These do not: `track_competitor` / `untrack_competitor` in the
+    backlink routes, and `POST /auth/refresh` — including, notably, the
+    **refresh-token reuse detection** path, which revokes an entire session
+    family because it believes a token was stolen and writes no record that it
+    happened. That last one is the sharp edge: it is precisely the event a
+    security review would come looking for. Folded into the backlog's
+    `audit-coverage-public-writes` item (which already names analyses, checker,
+    waitlist and billing) and repaid at A9's audit-completeness review.
+
+72. **Session 23 shipped without any of its eight close deliverables**
+    (recorded 2026-08-08, session 24; **partially repaid on record**). P8.3's
+    API and screens merged as PRs #33 and #34 with no session log, no ADR, no
+    tech-debt entry, no operator refresh, and no next-session prompt — so
+    `operator-expected.md` still told the operator that session 22's work was
+    unmerged, two merges after it had shipped and deployed. Session 24
+    reconstructed the log from the commit range
+    ([`sessions/2026-08-06-01.md`](sessions/2026-08-06-01.md)) and repaired the
+    downstream docs. **What cannot be recovered is the reasoning**: an ADR
+    written by someone who was not in the room is a fabricated rationale, so
+    two decisions worth recording (the single-front-door rule for projects, and
+    `live`-while-dark as a nav badge) remain unwritten. This is process debt
+    rather than code debt, and it is listed because it is the second time it has
+    happened (PRs #11 and #23 before it, items #54/#55) and because the cost is
+    silent: the code is fine, the *why* is gone.

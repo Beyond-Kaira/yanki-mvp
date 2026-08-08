@@ -192,6 +192,40 @@ jobs:
         # job on any finding. --redact keeps a matched secret out of the logs.
         run: ./gitleaks git . --no-banner --redact --exit-code 1 -v
 
+  compose:
+    name: prod compose validates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # A malformed prod compose file (a syntax error, a bad ${VAR}
+      # interpolation) is otherwise discovered mid-deploy, in production. This
+      # renders and validates it in CI instead. `config -q` resolves every
+      # interpolation and exits non-zero on any error without printing the
+      # rendered file. The env values below are DUMMY — the file only requires
+      # POSTGRES_PASSWORD to be set (`:?` guard); nothing real is needed to prove
+      # the file parses. COMPOSE_PROFILES=serp includes the profile-gated searxng
+      # service so its shape is validated too.
+      - name: Validate deploy/docker-compose.prod.yml
+        env:
+          POSTGRES_PASSWORD: ci-dummy-not-a-real-secret
+          COMPOSE_PROFILES: serp
+        run: docker compose -f deploy/docker-compose.prod.yml config -q
+
+      # `config -q` above proves the file PARSES; it says nothing about whether
+      # the services are capped, because uncapped is perfectly legal YAML. On a
+      # box shared with four other production tenants it is not legal for us, so
+      # this asserts the caps separately — against the RENDERED config, since a
+      # cap written in the swarm-only `deploy.resources.limits` form survives
+      # `config -q` and is then silently ignored by the `docker compose up` that
+      # deploy.sh actually runs.
+      - name: Every prod service is capped and log-bounded
+        env:
+          POSTGRES_PASSWORD: ci-dummy-not-a-real-secret
+          COMPOSE_PROFILES: serp
+        run: |
+          docker compose -f deploy/docker-compose.prod.yml config --format json \
+            | python3 scripts/check_prod_compose.py
+
   e2e:
     name: e2e (playwright happy path, DRY_RUN stack)
     runs-on: ubuntu-latest

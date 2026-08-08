@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { useAuth } from '@/components/AuthProvider'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { SECTION_ICONS } from '@/components/shell/icons'
+import OrgSwitcher from '@/components/shell/OrgSwitcher'
 import ShellAuthBar from '@/components/shell/ShellAuthBar'
 import {
   SHELL_SECTIONS,
@@ -357,24 +358,29 @@ export default function AppShell({ children }: AppShellProps) {
           {loadingAuth ? (
             <p className="px-1 text-xs text-ink-foreground/60">Checking session…</p>
           ) : signedIn ? (
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white"
-                aria-hidden
-              >
-                {initialsFor(user!)}
-              </div>
-              <div className="min-w-0 flex-1">
-                {/* The organization and role, not a guess at a name derived
-                    from the email local part — which read as "aytek" for an
-                    account belonging to a company. */}
-                <p className="truncate text-sm font-medium text-white">
-                  {user!.organization?.name ?? user!.email}
-                </p>
-                <p className="truncate text-xs text-ink-foreground/70">
-                  {user!.role ? `${ROLE_LABELS[user!.role] ?? user!.role} · ` : ''}
-                  {user!.email}
-                </p>
+            <div className="space-y-2">
+              {/* Only rendered for a user with more than one organization; a
+                  solo account gets no extra chrome here. */}
+              <OrgSwitcher />
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white"
+                  aria-hidden
+                >
+                  {initialsFor(user!)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  {/* The organization and role, not a guess at a name derived
+                      from the email local part — which read as "aytek" for an
+                      account belonging to a company. */}
+                  <p className="truncate text-sm font-medium text-white">
+                    {user!.organization?.name ?? user!.email}
+                  </p>
+                  <p className="truncate text-xs text-ink-foreground/70">
+                    {user!.role ? `${ROLE_LABELS[user!.role] ?? user!.role} · ` : ''}
+                    {user!.email}
+                  </p>
+                </div>
               </div>
             </div>
           ) : (

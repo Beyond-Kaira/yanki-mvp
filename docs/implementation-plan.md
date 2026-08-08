@@ -2271,9 +2271,14 @@ paragraph, as the record.*
   `RESTRICT` (a `SET NULL` would republish a deleted org's private analyses);
   (c) child tables (`site_audits`, `responses`, `geo_records`, …) get **no**
   denormalized `org_id` — they are reachable only through org-scoped parents,
-  so the join is the isolation. Postgres RLS deferred; scoping is a
-  fail-closed service-layer seam. Verified up/down/up on Postgres with seeded
-  colliding-slug data.
+  so the join is the isolation. Postgres RLS deferred. Verified up/down/up on
+  Postgres with seeded colliding-slug data.
+  **Corrected 2026-08-08 (session 24):** this card originally read "scoping is
+  a fail-closed service-layer seam." It is not. `scoped()` and
+  `readable_analysis()` were written but are called by nothing; isolation is
+  enforced per-route via the `requires(...)`/`OrgContext` dependency, which
+  works but does not fail closed when a route forgets to filter. See the
+  correction on ADR-35 in [design.md](design.md) and tech-debt **#63**.
 - **Acceptance:** additive migrations up+down clean; every pre-existing row
   reachable through exactly one org; zero behaviour change for anonymous
   flows; cross-org read attempts fail in tests.
@@ -2338,14 +2343,52 @@ paragraph, as the record.*
   enumeration-safe), TOTP MFA with backup codes, device/session list with
   remote revoke, org-level require-MFA policy.
 - **Dependencies:** P7.2 (policy), P7.3 (events). · **Complexity:** M ·
-  **Status:** todo
+  **Status:** **partial — the migration-free half shipped 2026-08-08 (session
+  24)**, on `feat/session-24`.
+
+  **Done (no schema change — reuses the `AuthSession` family model from
+  migration 0006):** `GET /auth/sessions`, `DELETE /auth/sessions/{id}`,
+  `POST /auth/sessions/revoke-all`, all three self-scoped and audited; a
+  "Devices & sessions" section in `/settings`; the caller's full organization
+  list added **additively** to `/auth/me`; and an org switcher in the app shell
+  that sends `X-Org-Id`. That last piece closes a real defect invitations
+  opened in session 22: a user could hold two memberships while
+  `resolve_org_context` silently picked `memberships[0]`, so an accepted
+  invitation to a second org was **unreachable**. Note the frontend had never
+  sent `X-Org-Id` at all — the seam was honoured server-side and no client code
+  carried it. See ADR-43.
+
+  **Deferred, deliberately — every remaining piece needs a migration:**
+  password reset (#49), TOTP MFA with backup codes, and the org require-MFA
+  policy. They wait on **database backups** (operator item), because A5–A8 each
+  add a live migration to a database with no backup and rollback restores the
+  image, never the data. The dead `requestPasswordReset()` stub in
+  `frontend/lib/auth.ts` was left in place as the contract the endpoint must
+  meet. Residual debt: #67 (no device fingerprint without a migration), #68
+  (stale active-org self-heals only on `/auth/me`), #69 (`/auth/me` N+1).
 
 ### P7.6 — Plans, subscriptions, quotas, credit ledger (stage A6)
 - **Goal:** plan catalog as data; Stripe subscription lifecycle; quota
   service enforced on submission paths; credit ledger seeded from existing
   `cost_usd`; terms text is a hard dependency (tech-debt #50 — operator/legal).
 - **Dependencies:** P7.1–P7.3; Stripe account (operator). · **Complexity:** L
-  · **Status:** todo
+  · **Status:** **partial** — corrected 2026-08-08 (session 24) after reading
+  the code. `todo` was wrong and wrong in the expensive direction: **the
+  foundation is built.** Migration `0015_billing` created `plans`,
+  `subscriptions`, `credit_ledger` and `usage_counters`; `0016_seed_plans`
+  seeds a five-tier catalog (free/starter/pro/business/enterprise) as data, in
+  a migration rather than a startup hook; and the quota + credit service
+  (`check_quota` / `consume_quota` / `reserve` / `settle` / `record_charge`)
+  is complete. **What is missing is enforcement, not machinery.** The three
+  live spend paths — analysis submit, checker, site-audit submit — carry no
+  quota check at all, and the only metered caller is the backlink refresh path,
+  which is dark behind `BACKLINKS_ENABLED`. No `Subscription` row is ever
+  created, so every org silently falls back to Free and **every plan tier is
+  decorative today**. Remaining: wire the gate onto the three spend paths
+  (`enforce-quota-on-spend-paths`), the Stripe lifecycle, and a billing
+  visibility API. The Stripe half stays blocked on the operator (account +
+  terms text, tech-debt #50); **the enforcement half is not blocked by
+  anything** and is the highest-value unblocked card in Phase 7.
 
 ### P7.7 — Platform back office (stage A7)
 - **Goal:** Super Admin/Support surface: org directory, plan overrides,
@@ -2373,7 +2416,10 @@ paragraph, as the record.*
 (scope authority) · stages B1–B8 → cards P8.1–P8.8, decomposed at build
 time. Gated on Phase 7's quota/credit foundation (P7.6) and the operator's
 vendor + budget decision (**A4**). Engine done and now reachable over HTTP
-(P8.1/P8.3-API/P8.4-delta/P8.5/P8.6/P8.7); no screens yet, as of 2026-08-05.*
+(P8.1/P8.3-API/P8.4-delta/P8.5/P8.6/P8.7), and **the screens shipped
+2026-08-06** (P8.3 complete). What M2 still lacks is a licensed index, not
+code: `BACKLINKS_ENABLED` stays off in production, so every route answers 404
+to a customer until P8.2's vendor adapter lands behind operator gate A4.*
 
 - **P8.1 — `BacklinkSource` seam + mock + schema v1** (S/M): protocol,
   deterministic mock, `backlink_profiles`/`backlinks`/`link_events`; $0
@@ -2408,10 +2454,10 @@ vendor + budget decision (**A4**). Engine done and now reachable over HTTP
   bearer-only and held in memory, so an `<a href>` would 401 as a page
   navigation. **Residual:** XLSX (CSV ships), and competitor management still
   has no screen — the API has it. Frontend suite 281 → **305**.
-  The earlier partial status, for the record — the **API half**: eleven routes
-  under
+  The earlier partial status, for the record — the **API half**: **twelve**
+  route handlers under
   `/api/v1/seo-projects/{id}/backlinks` (summary, inventory,
-  referring-domains, anchors, events, opportunities, competitors CRUD,
+  referring-domains, anchors, events, opportunities, competitors CRUD = 3,
   refresh, CSV + disavow export), registered in `app/api/main.py` and dark
   behind `BACKLINKS_ENABLED` as a router-level 404 rather than a 403.
   `app/services/backlinks.py` is the seam: it owns the one subject-key

@@ -36,6 +36,13 @@ engine).
   layer (query helpers that *require* an org context), with Postgres RLS
   policies as defense-in-depth once the access layer is proven — not
   UI-level hiding, ever.
+  *(Target, not as-built. As of 2026-08-08 the query helpers exist
+  (`tenancy.scoped`) but nothing calls them; enforcement is the per-route
+  `requires(...)`/`OrgContext` dependency. Also note `site_audits` and
+  `site_audit_pages` carry no `org_id` — they are scoped through the parent
+  join by design, so "`org_id` on every tenant-owned row" is a target
+  statement, not a description of the schema. See ADR-35's correction and
+  tech-debt #63.)*
 - Existing tables (`analyses`, `seo_projects`, `checker_submissions`,
   `geo_records`, …) gain org/workspace/project FKs via additive backfill
   migrations; ADR-30's migrate-before-serve discipline already covers the
@@ -52,6 +59,17 @@ internal-lane or billing resources at the data layer. Platform roles
 (Super Admin / Support) live above org scoping with mandatory audit +
 logged impersonation. API keys and MCP sessions flow through the same
 `can()` path — one enforcement seam for humans, keys, and agents.
+
+*(Target, not as-built. As of 2026-08-08 there is **no impersonation code and
+no platform-scoped route** — the Super Admin / Support roles and the
+`platform:read` / `platform:manage` / `platform:impersonate` permission
+constants exist in `app/services/permissions.py` and nothing exercises them.
+Org API keys and MCP sessions are likewise unbuilt. This is P7.7/A7 work.
+Note also an unresolved conflict this document inherits: `admin-panel-plan.md`
+§7 says the **Support** role can impersonate; the code grants
+`platform:impersonate` to **super_admin only**. That is an operator decision
+recorded in [operator-expected.md](operator-expected.md), not a bug to be
+silently resolved by whoever builds A7.)*
 
 ## 4. Audit & event spine (M1, consumed by everything)
 

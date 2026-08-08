@@ -63,6 +63,18 @@ def auth_settings(client: TestClient) -> Iterator[None]:
         jwt_issuer="test-yanki-api",
         jwt_audience="test-yanki-web",
         auth_refresh_cookie_secure=False,
+        # This suite is about TENANCY, not about the Site Audit kill-switch, so
+        # it runs with the feature on. The distinction is not cosmetic: with the
+        # flag off (its production default) no first crawl is queued, so
+        # `latest_audit` is null and the cross-tenant audit-read test has no
+        # audit to read — and, worse,
+        # `test_queueing_an_audit_on_another_tenants_project_is_refused` would
+        # still pass while asserting nothing about tenancy, because the 404 it
+        # sees would be the flag refusing everyone rather than the org check
+        # refusing Bob. A leakage test that passes for the wrong reason is worse
+        # than one that fails. The kill-switch itself is covered in
+        # tests/test_seo_projects_api.py, which is where it belongs.
+        site_audit_enabled=True,
     )
     app.dependency_overrides[get_settings] = lambda: settings
     yield

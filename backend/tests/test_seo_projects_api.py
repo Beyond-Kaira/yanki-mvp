@@ -12,10 +12,29 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_dependencies import get_current_user
 from app.api.main import app
+from app.config import Settings, get_settings
 from app.db.models import SeoProject, SiteAudit, SiteAuditPage, User
 from app.services.auth import hash_password
 
 PROJECTS_URL = "/api/v1/seo-projects"
+
+
+def _set_site_audit_enabled(enabled: bool) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(site_audit_enabled=enabled)
+
+
+@pytest.fixture(autouse=True)
+def enable_site_audit_by_default():
+    """Keep the enqueue kill-switch ON for the existing behavioural tests.
+
+    The flag defaults to False in production; the "flag off" tests below flip it
+    back within their own body. Without this the pre-gate create/rerun tests
+    would all 404, which is exactly the guard the gate is supposed to add.
+    """
+
+    _set_site_audit_enabled(True)
+    yield
+    app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.fixture(autouse=True)
@@ -148,8 +167,7 @@ def test_project_list_and_detail_never_cross_user_boundary(
     list_response = client.get(PROJECTS_URL)
     hidden_detail = client.get(f"{PROJECTS_URL}/{owned_project['id']}")
     hidden_audit = client.get(
-        f"{PROJECTS_URL}/{owned_project['id']}/audits/"
-        f"{owned_project['latest_audit']['id']}"
+        f"{PROJECTS_URL}/{owned_project['id']}/audits/{owned_project['latest_audit']['id']}"
     )
 
     assert list_response.status_code == 200
@@ -244,9 +262,7 @@ def test_audit_detail_returns_structured_page_findings(
     db_session.add(page)
     db_session.commit()
 
-    response = client.get(
-        f"{PROJECTS_URL}/{project_body['id']}/audits/{audit.id}"
-    )
+    response = client.get(f"{PROJECTS_URL}/{project_body['id']}/audits/{audit.id}")
 
     assert response.status_code == 200
     body = response.json()
@@ -267,3 +283,160 @@ def test_private_network_domain_is_rejected_without_persisting(
     assert response.status_code == 422
     assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 0
     assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
+
+
+# --- Crawl kill-switch (site_audit_enabled) -----------------------------------
+#
+# No deployed service drains the site-audit queue, so an enqueued audit would sit
+# `queued` forever. The gate falls on the *crawl*, not the project: an SEO
+# project is the shared entity Backlinks also hangs off, so creating one must
+# stay open even with Site Audit dark. Concretely — flag off: the project is
+# created but no audit is queued; starting a fresh crawl (`POST /{id}/audits`) is
+# refused 404. Flag on: creating a project queues its first crawl as before. The
+# read routes are open throughout.
+
+
+def test_creating_a_project_is_open_but_queues_no_crawl_while_the_flag_is_off(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    _authenticate_as(make_user("owner@example.com"))
+    _set_site_audit_enabled(False)
+
+    response = client.post(
+        PROJECTS_URL,
+        json={
+            "domain": "example.test",
+            "page_limit": 10,
+            "profile_id": "site_audit_mobile",
+            "js_rendering": True,
+        },
+    )
+
+    # The project IS created — gating it would silently break Backlinks, which
+    # hangs off the same project entity.
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["domain"] == "https://example.test/"
+    # ...but no crawl was queued, because nothing would drain it.
+    assert body["latest_audit"] is None
+    assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 1
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
+
+
+def test_starting_a_crawl_is_404_on_a_flag_off_project(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    """`POST /{id}/audits` is refused even for a project born with the flag off."""
+
+    _authenticate_as(make_user("owner@example.com"))
+    _set_site_audit_enabled(False)
+
+    project = _create_project(client)
+    assert project["latest_audit"] is None
+
+    audits = client.post(
+        f"{PROJECTS_URL}/{project['id']}/audits",
+        json={"page_limit": 10, "profile_id": "site_audit_mobile", "js_rendering": True},
+    )
+
+    assert audits.status_code == 404
+    assert audits.json()["detail"] == "Not Found"
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
+
+
+def test_a_project_created_with_site_audit_off_is_reachable_at_backlinks_routes(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    """The regression that motivated the fix: Backlinks (M2) must ship even while
+    Site Audit stays dark. With ``site_audit_enabled=False`` an operator can turn
+    ``backlinks_enabled`` on; a customer must then be able to create a project and
+    reach its backlink profile. Gating project creation on the site-audit flag
+    would 404 this whole path."""
+
+    _authenticate_as(make_user("owner@example.com"))
+    # Site Audit off, Backlinks on — exactly the M2 shipping posture.
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        site_audit_enabled=False, backlinks_enabled=True
+    )
+
+    project = _create_project(client, domain="backlinks.test")
+    assert project["latest_audit"] is None
+
+    summary = client.get(f"{PROJECTS_URL}/{project['id']}/backlinks/summary")
+
+    # Reachable: the project resolves and its (empty) backlink profile is served,
+    # not a "SEO project not found" 404 and not a feature-dark 404.
+    assert summary.status_code == 200, summary.text
+
+
+def test_rerunning_an_audit_is_404_while_the_enqueue_flag_is_off(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    _authenticate_as(make_user("owner@example.com"))
+    # Create a project + finished audit with the flag on, then flip it off.
+    project = _create_project(client)
+    first_audit = db_session.scalar(select(SiteAudit))
+    assert first_audit is not None
+    first_audit.status = "done"
+    first_audit.progress = 100
+    db_session.commit()
+
+    _set_site_audit_enabled(False)
+
+    rerun = client.post(
+        f"{PROJECTS_URL}/{project['id']}/audits",
+        json={"page_limit": 25, "profile_id": "site_audit_desktop", "js_rendering": False},
+    )
+
+    assert rerun.status_code == 404
+    assert rerun.json()["detail"] == "Not Found"
+    # Still exactly one audit — no second row was queued.
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 1
+
+
+def test_reads_stay_open_while_the_enqueue_flag_is_off(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    _authenticate_as(make_user("owner@example.com"))
+    project = _create_project(client)
+    audit = db_session.scalar(select(SiteAudit))
+    assert audit is not None
+
+    _set_site_audit_enabled(False)
+
+    list_response = client.get(PROJECTS_URL)
+    detail_response = client.get(f"{PROJECTS_URL}/{project['id']}")
+    audit_response = client.get(f"{PROJECTS_URL}/{project['id']}/audits/{audit.id}")
+
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()] == [project["id"]]
+    assert detail_response.status_code == 200
+    assert detail_response.json()["id"] == project["id"]
+    assert audit_response.status_code == 200
+    assert audit_response.json()["id"] == str(audit.id)
+
+
+def test_the_enqueue_flag_on_queues_a_crawl_exactly_as_before(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    # The autouse fixture already enables the flag; assert the on-path is
+    # unchanged so the gate is proven additive.
+    _authenticate_as(make_user("owner@example.com"))
+
+    body = _create_project(client, domain="on-flag.test", page_limit=15)
+
+    assert body["latest_audit"]["status"] == "queued"
+    assert body["latest_audit"]["page_limit"] == 15
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 1

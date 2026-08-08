@@ -63,7 +63,7 @@ lanes; no credit/billing/internal visibility — baseline §11.3).
 
 | Capability | Detail |
 |---|---|
-| Organizations | CRUD; org = billing + security boundary. Fields: name, slug, logo, region (residency-ready), status (`active/trial/suspended/closed`), created/owner refs. Every tenant-owned row carries `org_id` (RLS-style scoping at the data layer). |
+| Organizations | CRUD; org = billing + security boundary. Fields: name, slug, logo, region (residency-ready), status (`active/trial/suspended/closed`), created/owner refs. Every tenant-owned row carries `org_id` (RLS-style scoping at the data layer). ⚠️ **Aspirational, not as-built** (checked 2026-08-08): `site_audits` and `site_audit_pages` carry no `org_id` — they are scoped through the parent join by design (ADR-35) — and there is **no RLS**. Enforcement is the per-route `requires(...)`/`OrgContext` dependency; the `tenancy.scoped()` helper this line describes exists but is called by nothing. See ADR-35's correction and tech-debt #63. |
 | Workspaces | Org → workspaces (client for agencies; brand/region for multi-location). Branding fields (logo, colors — used by M6 white-label), membership grants. |
 | Projects | Workspace → projects (a tracked business: URL/domain, locale, competitor set, prompt panel refs). Existing `analyses` and `seo_projects` rows get org/workspace/project foreign keys via backfill migration (personal-org scaffolding for existing users — baseline §10.4). |
 | Subscriptions & plans | Plan catalog as data (Free/Starter/Pro/Business/Enterprise per baseline §12 — tiers configurable, not hardcoded); Stripe subscription lifecycle (trial, active, past_due, canceled); proration; dunning state visible. |
@@ -94,7 +94,7 @@ Roles (fixed set now; custom roles = clone-and-edit at M8 Enterprise):
 | Role | Layer | Summary |
 |---|---|---|
 | **Super Admin** | Platform | Yanki staff; everything, everywhere; every action audit-logged; cannot be held by customers |
-| **Support** | Platform | Read-only platform access + impersonation with consent-and-log |
+| **Support** | Platform | Read-only platform access + impersonation with consent-and-log — ⚠️ **conflicts with the code**: `app/services/permissions.py` grants `platform:impersonate` to **super_admin only**, and Support read-only. Unresolved as of 2026-08-08 (session 24); it is an operator decision, listed in [operator-expected.md](operator-expected.md), and must be settled *before* A7 builds impersonation — whichever way it goes, one of this row and the code is wrong today. |
 | **Organization Owner** | Org | Everything in the org incl. delete-org, billing, owner transfer (exactly one) |
 | **Admin** | Org | Org management minus delete-org and billing purchase |
 | **Billing Admin** | Org | Billing/plan/credits only — finance never needs data access |

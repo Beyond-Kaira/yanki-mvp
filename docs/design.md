@@ -1487,6 +1487,27 @@ things the PR did not intend.*
     the NULL-is-public rule lives in exactly one function
     (`readable_analysis`). Postgres RLS is deferred — the workers open raw
     sessions and would have to be exempted anyway.
+
+    > **CORRECTION (2026-08-08, session 24).** The paragraph above describes a
+    > design, and this ADR presented it as the shipped mechanism. It is not
+    > wired. `scoped()` and `readable_analysis()` are defined in
+    > `app/services/tenancy.py` and **have zero call sites** — no route and no
+    > service calls either one; `GET /analyses/{id}` uses bare `get_analysis()`.
+    > Tenant isolation *is* enforced today, but by a different mechanism: the
+    > `requires(...)` / `OrgContext` dependency in `app/api/org_dependencies.py`
+    > resolves and membership-verifies the org on every request, and each route
+    > filters by `org.require_org_id` itself. That is per-route discipline, not
+    > a seam that fails closed — the difference is that a route which simply
+    > forgets to filter compiles, passes review, and leaks.
+    >
+    > This is recorded as a correction rather than an edit because the decision
+    > was real and the code was written; only the claim that it is *load-bearing*
+    > was false. The same overclaim was propagated to
+    > `architecture-target.md` and to the P7.1 card in `implementation-plan.md`.
+    > Closing it is P7.9/A9 work (the cross-tenant leakage suite is the exit
+    > gate that would have caught this), tracked as tech-debt **#63**. Until
+    > then, treat every new tenant-scoped query as needing its own explicit
+    > `org_id` filter, because nothing will do it for you.
   - The **backfill lives outside the migration** (`app/db/org_backfill.py`) so
     the SQLite suite can run it against adversarial fixtures.
 - **Consequences:**
@@ -1748,3 +1769,165 @@ things the PR did not intend.*
   *adopting a Prettier config as a side effect of this card* — a formatting
   standard is a team decision, and inventing one inside a feature branch is how
   it becomes nobody's decision.
+
+### ADR-41 — Resource ceilings on a shared box, and a gate that checks the caps rather than the syntax (2026-08-08, S24-1)
+
+- **Context:** this VPS runs Yanki's production stack beside four other
+  companies' production stacks (`pulse-prod`, `brier`, `antmedia`,
+  `evrak-app`) on ~11.7 GiB of shared RAM and one shared disk, and merging
+  `main` auto-deploys onto it. Only `searxng` had a memory cap and a bounded
+  log driver; `db`, `api`, `worker` and `web` had neither. So a leak in the
+  analysis worker — which fetches arbitrary third-party pages — or a traceback
+  loop filling a `json-file` log was not a Yanki incident but a four-tenant
+  incident, and nothing in CI would have said a word.
+- **Decision:** cap every Yanki service with **top-level** `mem_limit` /
+  `memswap_limit` / `cpus` plus a bounded `json-file` driver (10 MiB × 3), with
+  ceilings derived from measured RSS (8–17× headroom: db 1g, api 1g, web 768m,
+  worker 1.5g), and gate the file in CI with **two** steps — `docker compose
+  config -q` for syntax and interpolation, and `scripts/check_prod_compose.py`
+  for the caps themselves.
+- **Consequences:** the caps are ceilings, not reservations, so a co-tenant can
+  still be squeezed momentarily under simultaneous peak; total ceilings are
+  4.75 GiB of 11.68 and 5.0 of 6 cores. Adding a new prod service now fails CI
+  until it is capped, which is the regression this is really guarding against.
+  `memswap_limit == mem_limit` because host swap is 0.
+- **Why the form matters, and why it needed its own check:** the `deploy:
+  resources: limits:` form is what most documentation reaches for and it is
+  **swarm-only** — a plain `docker compose up`, which is exactly what
+  `deploy/deploy.sh` runs, silently ignores it. `config -q` exits 0 on that
+  form. A gate that only parses the file would therefore bless a compose file
+  whose caps enforce nothing, which is worse than no gate: it makes a reviewer
+  stop looking. So the check reads the **rendered** config and asserts
+  `mem_limit` is present and above a sane floor, that a log bound exists, and
+  that no service uses the dropped form. A cap that does not survive rendering
+  was never a cap.
+- **Rejected:** *a worker healthcheck in the same change* — a wedged
+  `while True` worker does need liveness, but that needs a heartbeat that does
+  not exist yet, and `/healthz` is the deploy's go/no-go gate: changing it here
+  risks rollback loops in production for an unrelated benefit. Kept as its own
+  backlog item. *Tighter ceilings* — a too-tight cap OOM-kills the app under
+  real load, which is a worse outage than the one being prevented, and the
+  measurement available was a single spot reading rather than a load peak.
+
+### ADR-42 — A rollback that refuses is better than a rollback that improvises (2026-08-08, S24-2)
+
+- **Context:** Phase 7 stages A5–A8 each add a live-database migration and this
+  project has **no database backups**, so the rollback path was about to become
+  load-bearing. Two things were wrong with it. `scripts/check_env.py` validated
+  the *retired* four-engine provider keys, so the preflight passed green and
+  then every job died at runtime wanting `OPEN_ROUTER_KEY` / `TAVILY_API_KEY` /
+  `JWT_SECRET_KEY` — a gate that reported success for a broken deploy. And
+  `deploy/rollback.sh`'s pruned-image branch git-checks-out the last-good SHA
+  and rebuilds; if that SHA predates `56c1fac` the rebuilt stack carries the
+  fused `alembic upgrade head && uvicorn` command and **migrates-on-boot into a
+  crash loop under `restart: unless-stopped`** — during a rollback, the moment
+  with the least room to recover — because the old image cannot resolve the
+  revision the live database is now stamped at. It also left the checkout in
+  detached HEAD.
+- **Decision:** `check_env.py` now validates what the live path actually reads,
+  traced from `config.py` and `execute_measured.py` rather than guessed
+  (`JWT_SECRET_KEY` + `OPEN_ROUTER_KEY` whenever `DRY_RUN` is off;
+  `TAVILY_API_KEY` unless the mode is exactly `simulated`), and requires
+  nothing under `DRY_RUN` so `make dev` / `make test` stay key-free and $0. The
+  rollback's pruned-image branch **refuses** a last-good SHA at or behind
+  `56c1fac`, failing loudly with a hand-recovery message, and restores the
+  original branch instead of leaving detached HEAD.
+- **Consequences:** a rollback to a pre-`56c1fac` release is now a manual
+  operation with an explicit message, not an automatic crash loop. The boundary
+  is a hardcoded SHA, which is debt: it is documented and re-derivable
+  (`git log -S 'sh -c "alembic upgrade head' -- deploy/docker-compose.prod.yml`),
+  and a history rewrite would make the guard fail closed — acceptable because
+  `main` is ruleset-protected against rewrites, and failing closed is the safe
+  direction.
+- **Rejected:** *auto-repairing the old compose file during rollback* (e.g.
+  `git checkout 56c1fac -- deploy/docker-compose.prod.yml` before building) —
+  it would usually work, and "usually" is the wrong standard for the code that
+  runs when production is already broken; a wrong repair here is unrecoverable
+  where a refusal is merely inconvenient. *Blocking on real DB backups first* —
+  correct, and it is an operator action this session cannot perform; these two
+  fixes are the part that could be done without one.
+
+### ADR-43 — Sign out everywhere keeps the device you clicked from (2026-08-08, P7.5)
+
+- **Context:** the `AuthSession` refresh-family model (migration 0006) has
+  supported rotation, reuse detection and family revocation since before the
+  Admin Panel shipped, and `revoke_all_sessions_for_user` had exactly one
+  caller: an admin disabling a member. The person the sessions belong to could
+  not see or end any of them. Separately, invitations (session 22) made
+  multi-org membership reachable, while `/auth/me` returned one org and
+  `resolve_org_context` silently picked `memberships[0]` — so a user who
+  accepted an invitation to a second org **could not get to it**, a defect
+  invitations opened and nothing closed.
+- **Decision:** expose the existing machinery — `GET /auth/sessions`,
+  `DELETE /auth/sessions/{id}`, `POST /auth/sessions/revoke-all` — with no
+  schema change, and add the caller's full organization list to `/auth/me`
+  **additively**, alongside the existing singular `organization` field rather
+  than replacing it. "Sign out everywhere" deliberately **keeps the current
+  session alive** and revokes only the others.
+- **Consequences:** the sessions list carries no device fingerprint (IP,
+  user-agent, device name) because `auth_sessions` stores none and adding
+  columns needs a migration this session forbade; "started / last active /
+  expires" is the only recognisability signal. `/auth/me` does a small N+1 over
+  memberships. When the server cannot identify the caller's own family the
+  revoke-all revokes everything including this device — the response says so
+  via `kept_current: false`, and the UI now tells the user, because a count
+  alone would report the one thing that is not true.
+- **Why keep the current session:** the action is always reached from a
+  signed-in device. Ending that device's own session as a side effect signs the
+  user out of the click they just made, with no chance to see that it worked —
+  and "Log out" already ends the current session on purpose, so the
+  all-inclusive behaviour would leave the product with two controls that do the
+  same thing and no way to say "everywhere *but here*". The service still takes
+  `keep_family_id=None` if a future security posture wants the stricter form.
+- **Rejected:** *replacing `organization` with `organizations[]` on `/auth/me`*
+  — cleaner, and non-additive on a contract the frontend and the committed
+  OpenAPI artifact already depend on, which the auto-deploy constraint forbids;
+  *building password reset and MFA in the same card* — both need migrations,
+  and migrations wait for backups.
+
+### ADR-44 — The Site Audit kill-switch gates the crawl, not the project (2026-08-08, S24-4)
+
+- **Context:** the Site Audit UI shipped in PRs #24/#25 and its enqueue path is
+  mounted, but `deploy/docker-compose.prod.yml` runs five services and none of
+  them drains the site-audit queue. So a user could start an audit that nothing
+  would ever process. The backlog described this as a trap "not yet sprung,"
+  citing zero rows in `seo_projects` and `site_audits`. **That was stale by the
+  time it was acted on:** production held three projects and three audits, all
+  `queued` with zero pages since 2026-08-05/06 (tech-debt #64). The trap had
+  been sprung; nobody had noticed because a queued row looks like progress.
+- **Decision:** a `site_audit_enabled` flag, default off, mirroring
+  `backlinks_enabled`. `POST /{project_id}/audits` carries a
+  `require_site_audit_enabled` dependency and answers **404** while off. But
+  `POST /seo-projects` — which also queues a first crawl — is **not** gated;
+  it passes `queue_audit=settings.site_audit_enabled` into
+  `create_project_with_audit`, which creates the project and its tenancy
+  `projects` mirror while creating no `SiteAudit` row. Read routes stay open in
+  both states.
+- **Why not simply gate both enqueue routes:** because `SeoProject` is not a
+  Site Audit concept — it is the shared project entity **Backlinks hangs off**
+  (`backlink_routes.py` imports `get_org_project` from `app.services.seo_projects`;
+  the backlink API lives at `/api/v1/seo-projects/{id}/backlinks`; and
+  `create_project_with_audit`'s own docstring says the tenancy row exists "so
+  Phase 8's backlink profiles have something to hang from"). Gating project
+  creation would mean that the moment the operator turns **Backlinks** on — M2,
+  the nearer-term revenue path — while Site Audit correctly stays off, **no
+  customer could create a project to attach a backlink profile to.** One
+  feature's kill-switch would silently disable another. The first version of
+  this card did gate both routes and an adversarial review caught it; the
+  correct seam is not the route, it is the *crawl*.
+- **Consequences:** with the flag off a project is created and reads
+  `latest_audit: null`, which the dashboard renders as "Not audited" — never a
+  `queued` that will not move. The frontend still learns the flag reactively
+  rather than from a capability endpoint (tech-debt #66). The flag alone does
+  **not** deliver the feature: turning it on still requires the M3 worker with
+  a Chromium image, egress isolation, and the settings isolation that
+  `site-audit-integration.md` claimed but never had (tech-debt #65). The three
+  stranded rows are untouched — mutating production data is an operator action,
+  especially with no backups (#64).
+- **Rejected:** *deploying the site-audit worker now instead of gating* — it is
+  the real fix and it is M3-sized, and shipping it today would put a container
+  whose whole job is fetching arbitrary third-party pages on a box shared with
+  four other tenants, holding the full `get_settings()` secret set. Gating is
+  additive, reversible, and buys the time to do that properly. *Hiding the UI
+  only* — the route would stay open to anything holding a token, which is a
+  gate in the one layer this project says a gate must never live in.

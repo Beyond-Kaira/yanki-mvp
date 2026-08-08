@@ -34,7 +34,7 @@ API/integration tests, and a single thin end-to-end happy path at the top.
 
 ```
         ┌───────────────────────────┐
-        │   e2e (Playwright) ×1      │   happy path, gated on E2E_BASE_URL
+        │  e2e (Playwright) ×22     │   3 specs, gated on E2E_BASE_URL
         ├───────────────────────────┤
         │  API tests (TestClient)   │   FastAPI routes, in-process
         │  component tests (vitest) │   React components, jsdom
@@ -52,7 +52,7 @@ API/integration tests, and a single thin end-to-end happy path at the top.
 | Backend queue (real PG) | pytest + `TEST_DATABASE_URL` | real Postgres (skips if unset/unreachable) | medium | `test_queue_postgres.py` |
 | Frontend component | vitest + testing-library | React in jsdom | fast | per component |
 | Backend integration (real SearXNG) | pytest + a live instance | a self-hosted SearXNG (skips unless `SERP_TEST_BASE_URL` set) | slow | `tests/integration/` |
-| End-to-end | Playwright | a running `DRY_RUN=1` stack | slow | one spec |
+| End-to-end | Playwright | a running `DRY_RUN=1` stack | slow | 3 specs, 22 scenarios |
 
 **Why the base is so wide:** the whole GEO engine is built from pure, sync
 functions (`scoring`, `footprint`, `prompts`, plus KYC JSON parsing). Pure
@@ -391,7 +391,18 @@ run — the same reason the e2e (§5) is browser-based.
 
 ## 5. End-to-end (Playwright)
 
-One spec — `e2e/happy-path.spec.ts` — proves the whole loop renders:
+Three specs, **22 scenarios** (corrected 2026-08-08, session 24 — this section
+described only the first, which was accurate until PR #30 added the other two).
+Every scenario is gated on `E2E_BASE_URL` and skipped without it.
+
+- **`e2e/happy-path.spec.ts`** (1) — the original: proves the whole loop renders.
+- **`e2e/journeys.spec.ts`** (16) — signed-in browser journeys: sign-up as an
+  individual and as an organization, sign-in, route guards, the admin panel.
+- **`e2e/viewports.spec.ts`** (5) — the viewport matrix down to 375px, which
+  exists because the shell shipped a fixed 220px sidebar that left ~123px of
+  content on a phone.
+
+The happy path proves the whole loop renders:
 
 1. open the landing page, fill the URL field with `https://example.com`, click
    **Run analysis**;

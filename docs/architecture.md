@@ -52,6 +52,9 @@ table *is* the queue (see §4).
                         │               /api/v1/auth/*  (session)  │
                         │               /api/v1/admin/* (panel)    │
                         │               /api/v1/invitations/*      │
+                        │               /api/v1/seo-projects/*     │
+                        │                 └─ …/audits    (dark)    │
+                        │                 └─ …/backlinks (dark)    │
                         │               GET  /healthz              │
                         └───────────────────┬─────────────────────┘
                                             │  INSERT row status='queued'
@@ -443,6 +446,42 @@ Migration 0018 installs a Postgres trigger that raises on UPDATE or DELETE, and
 each row carries a SHA-256 of its own content so an edit is detectable if the
 trigger is ever bypassed. What that does *not* survive is a superuser who drops
 the trigger first; the limit is stated rather than papered over (ADR-38).
+
+### Sessions, devices, and the org switcher (P7.5, milestone M1)
+
+The refresh-token machinery predates this surface by several sessions.
+`auth_sessions` (migration 0006) stores one row per refresh token in a **family**
+— rotation writes a new row pointing back at the one it replaced, so a family is
+a device's login lineage, and presenting an already-consumed token revokes the
+whole family as presumed theft. All of that existed and **only an administrator
+could reach it**: `revoke_all_sessions_for_user` had one caller, the
+member-disable path. These routes hand it to the person the sessions belong to.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/auth/sessions` | The caller's own active sessions, collapsed to one entry per family, with the current one flagged. Never returns `refresh_jti_hash` or anything replayable. |
+| DELETE | `/api/v1/auth/sessions/{session_id}` | Revokes one family. Strictly self-scoped: another user's session id is a 404 with the same body as a missing one, so it cannot be used to probe which ids exist. |
+| POST | `/api/v1/auth/sessions/revoke-all` | Sign out everywhere **else** — the current device is spared on purpose (ADR-43). Returns `kept_current`, which is `false` when the caller's own family could not be identified and everything went, this device included. |
+
+All three emit audit events; the two revokes are exactly the kind of action the
+trail exists for. What the list cannot yet show is *which device* a session is —
+`auth_sessions` stores no IP, user-agent or device name, and adding them needs a
+migration (tech-debt #67).
+
+**`GET /api/v1/auth/me` is now multi-org.** It gained an `organizations[]` array
+carrying every org the caller belongs to with their role in each, **alongside**
+the existing singular `organization` field rather than replacing it — the
+frontend and the committed OpenAPI artifact both depend on the old shape, and
+auto-deploy-on-merge makes non-additive contract changes a poor trade.
+
+This closed a defect invitations opened. `resolve_org_context` picks
+`memberships[0]` when no org is named, so once a user could hold two memberships
+— which invitations made possible in session 22 — **an accepted invitation to a
+second organization was unreachable**. The `X-Org-Id` header had been honoured
+and membership-verified server-side since P7.1 (`app/api/org_dependencies.py`),
+but no client code had ever sent it. The switcher in the app shell sends it, and
+it is a *request* for a scope, never a grant of one: an org the caller does not
+belong to is a 403, never a read.
 
 ---
 

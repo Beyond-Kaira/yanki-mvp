@@ -2390,6 +2390,46 @@ paragraph, as the record.*
   terms text, tech-debt #50); **the enforcement half is not blocked by
   anything** and is the highest-value unblocked card in Phase 7.
 
+  **Enforcement half DONE 2026-08-09 (session 25, ADR-45).** Plan tiers are no
+  longer decorative. What shipped:
+
+  - **`POST /api/v1/analyses` now requires authentication** and `analysis:run`,
+    and stamps `org_id` on the row. It had been open since the MVP; session 21
+    moved the URL form behind sign-in and nobody closed the route, so **every
+    analysis a customer ran was attributed to no tenant**. That, not the missing
+    `consume_quota` call, was the real blocker — a quota needs a tenant.
+  - **`GET /api/v1/analyses/{id}` is scoped through `tenancy.readable_analysis`**,
+    which had zero call sites (tech-debt #63, partially repaid). Org-less rows
+    stay world-readable on their id; an org's rows are that org's alone.
+  - **Three allowances enforced**: `analyses` and `site_audits` as monthly flows,
+    `projects` as a **stock** (rows held, not rows created — a monthly counter
+    would let Free hold twelve projects by December). New
+    `billing.check_stock_quota`.
+  - **`PlanCatalogMissing`** separates "this deployment has no plan catalog"
+    (503) from "you are out of quota" (429). `limit_for` used to answer both
+    with `0`.
+  - **App-level exception handlers** in `api/main.py` map `QuotaExceeded` → 429
+    with `metric`/`used`/`limit`, `InsufficientCredit` → 402,
+    `PlanCatalogMissing` → 503, so no future metered route can forget.
+  - **The worker settles each run's real cost** into the credit ledger, on
+    success and on failure, idempotently. Per-org spend is visible for the first
+    time — the input P7.8's rollups need.
+  - **`QUOTA_ENFORCEMENT_ENABLED`** (default **on**) and
+    **`scripts/set_org_plan.py`**, because enforcement without a way to change a
+    tier is a cage with no key. There is no Stripe lifecycle and no back office.
+
+  **The checker is deliberately capped rather than metered** — it is anonymous,
+  so there is no org to charge, and billing a signed-in caller for the free
+  public tool would be wrong. Its bound stays global: `CHECKER_ENABLED`, the
+  IP/brand rate limits, and `CHECKER_DAILY_USD_CAP`. Recorded in ADR-45 rather
+  than left as an unexplained gap.
+
+  **Still open in A6:** the Stripe subscription lifecycle and the billing
+  visibility API (invoices, ledger, spend-by-workspace), both still blocked on
+  the operator's Stripe account + terms text; and granting each plan's
+  `monthly_credit_usd`, without which `reserve()`'s credit gate can never pass
+  and so is used nowhere but the dark backlink path.
+
 ### P7.7 — Platform back office (stage A7)
 - **Goal:** Super Admin/Support surface: org directory, plan overrides,
   feature flags (global + per-org), audit-log viewer, logged impersonation.

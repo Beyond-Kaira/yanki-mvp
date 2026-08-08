@@ -4,7 +4,29 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-08 (**session 24** — the deploy-safety and P7.5 session).
+Last updated: 2026-08-09 (**session 25** — the quota-enforcement session).
+
+**Session 25 changes to this list, up front:** **#63 PARTIALLY REPAID** —
+`readable_analysis()` now has a call site. `GET /api/v1/analyses/{id}` routes
+through it, which is the first time the NULL-is-public rule is applied by the
+function that owns it rather than by nothing at all. `scoped()` still has zero
+call sites and the underlying complaint stands: isolation is per-route
+discipline, and the A9 leakage suite is still what would catch a route that
+forgets. **Five new items, #73–#77.** The two worth reading are **#74** (plan
+credit is never granted, so `reserve()`'s credit gate would refuse every request
+and is structurally unusable — this is why enforcement meters counts and merely
+*records* money) and **#75** (two concurrent submits from one org can both pass
+a quota check; worst case is one extra unit, and the fix waits until a metered
+unit is expensive). Also **#73** (there is no anonymous analysis surface any
+more — a product decision now living in a route signature), **#76** (nothing
+asserts the plan catalog exists before a customer needs it) and **#77** (runs
+are attributed to an org and there is still no screen that lists them).
+Measured suite at session 25 close: **921 backend passed / 7 skipped** with
+Postgres, **327 frontend across 57 files**, `make test` exit 0. *(Measured at
+this session's start, before any of its work: **897 backend passed / 7
+skipped**, **319 frontend across 56 files**.)*
+
+Earlier — 2026-08-08 (**session 24** — the deploy-safety and P7.5 session).
 
 **Session 24 changes to this list, up front:** **#17 MOSTLY REPAID** (the
 rollback pruned-image branch no longer resurrects the fused migrate-on-boot
@@ -1033,3 +1055,61 @@ devDependencies).)
     rather than code debt, and it is listed because it is the second time it has
     happened (PRs #11 and #23 before it, items #54/#55) and because the cost is
     silent: the code is fine, the *why* is gone.
+
+73. **A signed-out caller can still run analyses on the anonymous funnel — no,
+    they cannot, and that is the item** (2026-08-09, session 25, ADR-45).
+    Recording the shape of what changed, because it is easy to misread later.
+    `POST /api/v1/analyses` now requires authentication, so there is **no
+    anonymous GEO analysis surface at all**. That is deliberate — the public
+    funnel is `/api/v1/checker` — but it means a product decision has been made
+    in code: if the operator ever wants a "try one analysis without an account"
+    funnel back, it is not a config flip, it is a route change plus a decision
+    about what bounds it. Nothing is broken; the debt is that the decision lives
+    in a route signature and an ADR rather than in a product doc.
+
+74. **Plan credit is never granted, so the credit half of the billing engine is
+    unreachable** (2026-08-09, session 25). Every plan declares a
+    `monthly_credit_usd` and nothing ever writes a `grant` ledger row, so every
+    organization's balance is exactly 0. `billing.reserve()` refuses when the
+    balance cannot cover an estimate — which means using it on any path with a
+    non-zero estimate would refuse **every** request. That is why P7.6's
+    enforcement uses `consume_quota` (counts) and `record_charge` (recording),
+    and why `reserve()` is still called only from the flag-off backlink path
+    whose mock estimate is $0. The credit gate is built, tested and structurally
+    unusable until grants exist. Backlog: `grant-monthly-plan-credit`, which
+    belongs with the Stripe lifecycle because "start of billing period" is a
+    subscription concept.
+
+75. **Usage counters have no per-org concurrency guarantee** (2026-08-09,
+    session 25). `consume_quota` reads the `UsageCounter` row, adds to it, and
+    flushes inside the request transaction. Two simultaneous submits from one
+    organization can both read `used=4` against a limit of 5 and both commit —
+    the unique constraint is on `(org_id, metric, window_start)`, which prevents
+    a duplicate row but not a lost update. Worst case is one extra unit of a
+    monthly allowance, which is why it is here rather than fixed today; the fix
+    is `SELECT … FOR UPDATE` on the counter (Postgres-only, so the SQLite test
+    path needs the usual dialect branch, as `jobs/queue.py` already does for
+    `SKIP LOCKED`). Do it when quotas gate something whose unit cost is large —
+    the backlink vendor adapter is the first candidate.
+
+76. **Nothing checks the plan catalog at runtime — only in CI** (2026-08-09,
+    session 25). An unseeded `plans` table now answers 503 with an honest
+    message instead of pretending everyone is out of quota (ADR-45), and
+    `test_migrations.py` asserts that a migrated database leaves a usable
+    catalog with Free present and every metered key declared. Between those two
+    there is still no *running-system* check: `scripts/check_env.py` runs at
+    deploy preflight and never touches the database, and `/healthz` is a
+    hardcoded literal (P7.8's `deep-health-endpoint`). Since seeding is a
+    migration, the realistic failure is a restored or hand-built database rather
+    than a missed deploy — which is exactly the path a **backup restore**
+    (operator B13) would take. Fold the check into the deep health endpoint when
+    A8 builds it.
+
+77. **The analyses a customer runs are attributed but not listable**
+    (2026-08-09, session 25). Runs carry `org_id` from this session on, and the
+    only way to reach one is still the URL you were redirected to. There is no
+    per-org history, so a customer who closes the tab has lost the result —
+    which was also true before, but was then at least *consistent* with the runs
+    belonging to nobody. Now the data exists and the screen does not. Backlog:
+    `analysis-history-per-org`. Cheap, and it is the first thing that makes the
+    attribution visible to the person paying for it.

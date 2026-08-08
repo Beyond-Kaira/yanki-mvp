@@ -4,10 +4,56 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-08, **session 24 close**.
+Last updated: 2026-08-09, **session 25 close**.
 
-> **Read this first — and note that the previous version of this file was
-> wrong.** It opened by telling you session 22's Admin Panel work was "NOT
+> **Read this first. One new thing is yours, and it changes what your users can
+> do: B17.**
+>
+> Session 25 made **plan limits real**. They existed — five tiers, seeded as
+> data since session 21 — and nothing enforced them, so every organization was
+> silently unlimited. Now the three paths that spend money check the plan before
+> they spend. **Every organization in production has no subscription row, so
+> every one of them falls back to Free: 5 analyses a month, 1 site audit, 1
+> project.** Including yours.
+>
+> That is the intended effect of the milestone and it is also a visible change
+> for whoever is using the product, so it does **not** merge without you. Two
+> escape hatches ship with it — a kill switch in `deploy/.env`, and a script
+> that puts an organization on any tier — and **B17** below is the decision plus
+> the two commands.
+>
+> **A second change worth knowing before you merge:** `POST /api/v1/analyses`
+> now requires sign-in. It never did, which nobody had noticed because every
+> page that submits an analysis has been behind sign-in since session 21 — the
+> route it posts to simply stayed open. That is why a quota was impossible: an
+> anonymous caller has no organization to charge. Nothing in the product breaks
+> (every caller was already authenticated); what goes away is the ability to
+> `curl` an analysis out of the API with no account. The public free tool is
+> still `/checker`, unchanged.
+>
+> **B13 is still open and still the biggest thing on this list.** There are no
+> database backups. Session 25 checked: no crontab, no dump on the box, no
+> backup script in `deploy/`. This session was chosen *because* it needs no
+> migration — that is now two sessions in a row steering around the same gap,
+> and the remaining Phase 7 work (password reset, MFA, org MFA policy, the back
+> office) cannot.
+>
+> **A5 changed shape.** Its first half — "nothing enforces the quotas" — is
+> closed by this session's work, so what is left of A5 is only the part that was
+> always yours: a Stripe test-mode account and terms-of-service text, without
+> which a plan cannot be *sold*. It also gained one small new question: are
+> Free's numbers the ones you want to sell? They were seeded as plausible
+> defaults and nobody has ratified them as pricing.
+>
+> Nothing else changed for you: **B15** (three stranded Site Audits) and
+> **B16** (can Support impersonate?) are unchanged, as are **A1–A4** and
+> **B2–B5**, **B9**, **B11**.
+
+---
+
+Previously — 2026-08-08, **session 24 close.**
+
+> **Note that the version of this file before session 24 was wrong.** It opened by telling you session 22's Admin Panel work was "NOT
 > merged and NOT live." It has been merged and live since 2026-08-06: session 23
 > shipped without refreshing this file (tech-debt #72), so it kept warning you
 > about a decision you had already made, through two further merges. Verified
@@ -307,10 +353,17 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   five-tier catalog is seeded, and the quota/credit service is complete. What is
   missing splits cleanly in two:
 
-  - **Not blocked by you:** nothing enforces those quotas. The analysis,
-    checker and site-audit submission paths carry no quota check, so **every
-    plan tier is decorative today** and every org silently falls back to Free.
-    Engineering can and should fix that without waiting — it is the next card.
+  - **Not blocked by you — and DONE 2026-08-09 (session 25, ADR-45).** The
+    analysis, project and site-audit paths now check the plan before they spend.
+    Every org still falls back to Free, but Free now *means* something, which is
+    the whole point and also why **B17** asks you before it merges. The checker
+    is deliberately excluded: it is anonymous, so there is no organization to
+    charge, and it stays bounded by its existing global caps instead.
+  - **Newly yours, and small:** are Free's numbers — 5 analyses/month, 1 site
+    audit, 1 project — the ones you want to sell? They were seeded in session 21
+    as plausible defaults and nobody has ratified them as pricing. Changing them
+    is one edit to `DEFAULT_PLANS` plus a migration, or a hand-edit of the
+    `plans.limits` JSON on the live row. *Default: keep.* → Answer: ______
   - **Blocked by you:** actually *selling* a plan. That needs a Stripe account
     (test mode is enough to build the subscription lifecycle) and
     terms-of-service text, which is a legal document and has been on the
@@ -320,6 +373,72 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   available, and who is writing the terms? → Answer: ______
 
 ## B. Actions only you can do (in priority order)
+
+- [ ] **B17. Decide whether to merge session 25, and pick who gets which plan**
+  (added 2026-08-09, session 25; ADR-45). The work is on
+  `feat/session-25-quota-enforcement`, **not merged**. Merging auto-deploys, and
+  this one changes what your users can do, so it is a release decision with a
+  product question inside it.
+
+  **What becomes true on merge.** Every organization falls back to **Free** —
+  5 analyses/month, 1 site audit, 1 project — because no organization has ever
+  had a subscription row. The sixth analysis in a calendar month answers `429`
+  with a message naming the limit. `POST /api/v1/analyses` also starts requiring
+  sign-in (see the head of this file).
+
+  **Three ways to shape that, in the order I would try them:**
+
+  1. **Merge, then give yourself room.** The intended path. Look at who exists,
+     then lift whoever should not be capped:
+
+     ```bash
+     # after the deploy completes
+     docker exec yanki-prod-api-1 python /app/scripts/set_org_plan.py --list
+     docker exec yanki-prod-api-1 python /app/scripts/set_org_plan.py \
+         --org <slug-or-uuid> --set enterprise
+     ```
+
+     `--list` writes nothing; it prints every organization and its current tier.
+     `enterprise` is unlimited on every metric. The script supersedes the old
+     subscription rather than deleting it, so the change is legible afterwards.
+
+  2. **Merge with enforcement off.** Ship the code, keep today's behaviour, turn
+     it on when you choose. One line in `deploy/.env`, then redeploy:
+
+     ```
+     QUOTA_ENFORCEMENT_ENABLED=0
+     ```
+
+     Everything else in the branch (the authentication fix, per-org attribution
+     of analyses, the credit ledger recording real spend) still takes effect —
+     only refusal is switched off. This is the cautious choice and it costs
+     nothing but the delay.
+
+  3. **Don't merge yet.** Nothing here is urgent enough to override you. It does
+     block `stripe-subscription-lifecycle`, the system pages' spend rollups, and
+     the A9 leakage suite, all of which name it as a dependency.
+
+  **Two things I could not decide for you.** Whether Free's numbers are the ones
+  you want to sell (they were seeded in session 21 and nobody has ratified them
+  as pricing — see **A5**), and whether the tiers should apply to your own
+  organizations at all. Option 1's second command answers the second question in
+  one line per org.
+
+  **It contains no migration**, deliberately — same reasoning as session 24 —
+  so the deploy is image-only and `rollback.sh` genuinely covers it.
+
+  ```bash
+  cd ~/repo/yanki-mvp
+  git log --oneline main..feat/session-25-quota-enforcement
+  git push -u origin feat/session-25-quota-enforcement   # needs the SSH remote
+  gh pr create --fill
+  ```
+
+  Same review situation as PRs #8 and #40: the ruleset wants one approving
+  review, GitHub will not let the author approve their own PR, and with no
+  second reviewer a merge needs your admin bypass. That is now three times. It
+  is worth either lining up a second reviewer or changing the ruleset to match
+  what actually happens.
 
 - [ ] **B13. Stand up database backups — this now gates the rest of Phase 7**
   (added 2026-08-08, session 24). The `yanki_pgdata` volume is the **only copy**

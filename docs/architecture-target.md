@@ -79,7 +79,17 @@ Three consumers from the baseline's "one truth, three consumers" rule:
 **audit log** (append-only, before/after diffs, secret-redacted),
 **usage metering** (credit ledger, quota counters, per-request provider
 cost tags — extending today's `cost_usd`), and **notifications/analytics**
-(M4 alerts, product funnels). Alert rules, playbook triggers (M7), and
+(M4 alerts, product funnels).
+
+> **As built, 2026-08-09 (P7.6, ADR-45).** Usage metering exists and is
+> enforced, but it is **not** driven by an event bus — there is no bus. Routes
+> call `services/quota.py` directly before they spend, and the worker calls
+> `services/analyses.settle_cost` when a run terminates. That is the smaller
+> thing that works today; the seam this section describes is still unbuilt, and
+> the metering call sites are what would subscribe to it if it ever is. Two
+> concrete gaps against the target: quota counters have no per-org locking
+> (tech-debt #75), and plan credit is never granted, so the ledger records spend
+> without the credit half of the model ever engaging (tech-debt #74). Alert rules, playbook triggers (M7), and
 webhooks all subscribe to the same events — built once.
 
 ## 5. Modules, not a monolith rewrite

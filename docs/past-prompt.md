@@ -388,3 +388,29 @@ The session's headline operator item remains **B13 — database backups**, which
 still gates every remaining Phase 7 migration.
 
 **The next brief lives at the end of `sessions/2026-08-08-01.md` §9.**
+
+---
+
+## Session 25 — 2026-08-09
+
+**Prompt executed:** the Loop Engineering brief — "operate the project as a
+continuous autonomous loop: inspect, decide, implement, verify, document, check
+operator dependencies, continue; do not stop at session boundaries" — entered
+through `resume-prompt.md` and the session-24 handoff at
+`sessions/2026-08-08-01.md` §9.
+
+**Which branch of the handoff was taken, and why.** Session 24 left a
+conditional: build P7.5's migration-bearing half **if database backups exist**,
+otherwise build `enforce-quota-on-spend-paths`. Backups were checked and do not
+exist — no crontab, no dump anywhere on the box, `deploy/` carries no backup
+script — so **B13 is still open and the second branch was taken.**
+
+**Outcome:** P7.6's enforcement half shipped (ADR-45). Plan tiers stopped being
+decorative. The card turned out to be blocked by something no document
+mentioned: `POST /api/v1/analyses` — the product's central money-spending action
+— took **no authentication at all**, so every analysis a paying customer ran was
+attributed to no tenant and could be metered against nothing. Closing that came
+first; the quota followed. See
+[sessions/2026-08-09-01.md](sessions/2026-08-09-01.md).
+
+**The next brief lives at the end of `sessions/2026-08-09-01.md` §9.**

@@ -1931,3 +1931,121 @@ things the PR did not intend.*
   additive, reversible, and buys the time to do that properly. *Hiding the UI
   only* — the route would stay open to anything holding a token, which is a
   gate in the one layer this project says a gate must never live in.
+
+### ADR-45 — Submitting an analysis requires a credential, and a plan tier that refuses nothing is not a plan (2026-08-09, P7.6)
+
+- **Context:** `services/billing` shipped whole in session 21 — the plan
+  catalog, usage counters, the append-only credit ledger, `check_quota` /
+  `consume_quota` / `reserve` / `settle` — and for three sessions nothing on any
+  path a customer touches called any of it. Migration `0016_seed_plans` seeds
+  five tiers with real numbers; `limit_for` falls back to Free for an org with
+  no subscription, and no subscription has ever been created. So **every
+  organization was on Free and Free meant nothing**: the tiers were decorative,
+  which `implementation-plan.md` P7.6 records in exactly those words.
+
+  Wiring the gate turned out to be blocked by something the plan did not
+  mention. `POST /api/v1/analyses` — the product's central money-spending action
+  — **took no authentication at all**. Session 21 moved the URL form behind
+  sign-in and made `/` a landing page; nobody closed the route it posts to. So
+  every analysis a paying customer ran carried `org_id = NULL`, was attributable
+  to no tenant, appeared in no organization's history, and could not be metered
+  against anything. A quota cannot be applied to a caller who does not exist.
+
+- **Decision:** four things, in the order they depend on each other.
+
+  1. **`POST /api/v1/analyses` requires authentication** and the
+     `analysis:run` permission (Analyst and above), and stamps the caller's
+     `org_id` on the row.
+  2. **`GET /api/v1/analyses/{id}` is scoped through `tenancy.readable_analysis`**
+     — which until now had *zero call sites* (tech-debt #63). A row with no
+     organization stays world-readable on its unguessable id; a row that carries
+     one is served to that organization alone, and to nobody else including the
+     anonymous public. A cross-tenant id gets the same 404 as a missing one.
+  3. **The three spend paths consume a plan allowance**: analyses and site-audit
+     runs against monthly counters, projects against the rows that exist. All of
+     it behind one kill switch, `QUOTA_ENFORCEMENT_ENABLED`, default **on**.
+  4. **The worker settles each finished run's real cost** into the org's credit
+     ledger, on success *and* on failure.
+
+- **Why requiring auth is part of this card and not a separate hardening:** a
+  per-tenant quota on a route anyone may call unauthenticated is a control that
+  works on paper only — sign out and the limit is gone. The two changes are one
+  change. Evidence that closing it breaks no product surface: every caller of
+  `createAnalysis` sits inside `RequireAuth` (`/dashboard`,
+  `/ai-visibility`, `/search-visibility`, and the analysis-bound subpages), the
+  landing page links to `/signup` and `/checker`, and the Playwright happy path
+  already signs up before it submits. The public anonymous funnel is
+  `/api/v1/checker`, which is unchanged.
+
+- **Why the checker is deliberately NOT org-metered.** The card names three
+  spend paths and this is the third; it is answered rather than skipped. The
+  checker is the anonymous lead-capture tool — it has no organization, so a
+  per-org quota has nothing to charge, and metering a *signed-in* caller for
+  using the free public tool would bill customers for marketing. Its spend is
+  bounded globally instead, by machinery that already exists and is live:
+  `CHECKER_ENABLED`, 10 submits/IP/hour, 20 fresh runs/brand/day, and
+  `CHECKER_DAILY_USD_CAP` summed over `responses.cost_usd`. The honest statement
+  is that the checker is capped, not metered, and the two are different words.
+
+- **Why counts gate and money only records.** `reserve()` refuses when the
+  credit balance cannot cover an estimate. No org has ever been granted credit,
+  so every balance is zero — using `reserve()` on the analysis path would have
+  refused **every analysis in production** with a 402. Credit gating stays where
+  it already is (the dark backlink path, whose mock estimate is $0), and the
+  ledger records spend without refusing it. Refusal is by count; visibility is
+  by ledger. Granting each plan's `monthly_credit_usd` is the Stripe card's job.
+
+- **Why projects are counted differently from analyses.** `UsageCounter` is a
+  monthly window, which is right for events and wrong for possessions. Free's
+  `projects: 1` read through a monthly counter would mean *one new project per
+  month* — twelve by December — and deleting a project would free nothing back.
+  So `check_stock_quota` compares the limit against the rows that exist.
+  "Analyses: 5" is a flow; "projects: 1" is a stock; the plan JSON does not
+  distinguish them, so the call site must.
+
+- **Why an unseeded catalog is a 503 and not a 429.** `limit_for` used to return
+  `0` when the `plans` table was empty, which is fail-closed and correct in
+  direction but indistinguishable from an exhausted customer. Production ran
+  with an empty catalog until session 21 caught it; with enforcement live, that
+  state would have told every organization simultaneously that it was out of
+  quota, and the real cause — an unseeded table — would have been the last thing
+  anyone checked. `PlanCatalogMissing` is now its own exception and its own
+  status code.
+
+- **Why an app-level exception handler rather than try/except per route.** Three
+  routers now raise billing exceptions and more will. The failure mode of the
+  per-route form is a new metered path that raises `QuotaExceeded` and returns
+  500 — a bug nobody sees until a customer hits a limit. `api/main.py` maps
+  `QuotaExceeded` → 429 (with `metric`/`used`/`limit` in the body, so a client
+  can tell it from the rate limiter's bare 429), `InsufficientCredit` → 402,
+  `PlanCatalogMissing` → 503. A route wanting a more specific sentence still
+  catches the exception itself and wins.
+
+- **Consequences, and the one that matters most.** **On merge, plan limits
+  become real for live users.** Every production organization has no
+  subscription row, so every one of them is on Free: 5 analyses a month, 1 site
+  audit, 1 project. That is the intended effect of the card and it is also a
+  visible product change on a box that auto-deploys, so two escape hatches ship
+  with it: `QUOTA_ENFORCEMENT_ENABLED=0` in `deploy/.env` turns all of it off,
+  and `scripts/set_org_plan.py --org <slug> --set enterprise` moves one
+  organization to unlimited without SQL. The operator file records both
+  (operator **B17**).
+
+  Also: the guard order on `POST /seo-projects` now answers 409 for a duplicate
+  domain *before* the quota can answer 429, because on Free both are true at
+  once and only one of them is useful advice. `already_tracked()` was extracted
+  so the route can ask the cheap, specific question first; the service keeps its
+  own check, which is the guarantee.
+
+- **Rejected:** *optional authentication — meter signed-in callers, leave the
+  anonymous path open* — preserves every existing test and leaves a quota that
+  signing out defeats; this repository has already recorded once, about the
+  admin-bypass merge habit, what it thinks of controls that only work on paper.
+  *Defaulting the kill switch off* — ships the enforcement dark and leaves the
+  tiers decorative, which is the defect. *Seeding a Free `Subscription` row at
+  signup* — `limit_for` already falls back to Free, so it changes no behaviour
+  today while committing now to lifecycle semantics (`status`,
+  `current_period_end`) that the Stripe card should choose. *A global
+  `unlimited` default in the test fixtures* — every suite would pass without
+  ever meeting a limit; the fixtures seed the real catalog instead and the
+  suites that need headroom say so out loud.

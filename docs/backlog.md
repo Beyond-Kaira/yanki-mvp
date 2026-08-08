@@ -8,6 +8,10 @@
 
 *Delta since generation (session 23): **P8.3 shipped whole** — the backlink router, and then the screens. "No router and no customer surface" above is stale on both counts. What is still missing is a licensed index, not code; see P2 below.*
 
+*Delta since generation (session 24): four P0 items closed — `cap-container-resources`, `bound-container-logs`, `fix-preflight-key-check`, `harden-rollback-pruned-image`, `ci-validate-prod-compose` — plus the interim Site Audit enqueue gate. `session-device-management` and `org-switcher-ui-multi-org-me` shipped from P1.*
+
+*Delta since generation (session 25): **`enforce-quota-on-spend-paths` shipped** (ADR-45), which unblocks `stripe-subscription-lifecycle`, `system-admin-pages` and `cross-tenant-leakage-suite` on the code side — every one of them listed it as a dependency. It also closed a hole nobody had filed: `POST /api/v1/analyses` took no authentication, so every customer's analysis belonged to no tenant. Two new rows appear in P1 below (`grant-monthly-plan-credit`, `analysis-history-per-org`), both created by that change rather than found by a survey.*
+
 ## How to read this
 
 - **Priority bands** answer "when." **P0** = a live production risk on the shared VPS, or a thing that blocks M1 from proceeding cleanly. **P1** = M1 (the next milestone, Phase 7 A5–A9). **P2** = M2 (the milestone after, Backlink Intelligence). **P3** = M3–M7 and opportunistic work.
@@ -51,7 +55,7 @@ M1 is large and mostly open. A1–A4 shipped the tenancy spine, RBAC enforcement
 
 | id | title | size | depends-on |
 |---|---|---|---|
-| `enforce-quota-on-spend-paths` | Wire `check_quota`/`consume_quota`/`reserve` into the analysis, checker, and **site-audit** submission paths — today `reserve()` is called only from a flag-off backlink path, so every plan tier is decorative | M | — |
+| `enforce-quota-on-spend-paths` | ~~Wire `check_quota`/`consume_quota`/`reserve` into the analysis, checker, and **site-audit** submission paths~~ (**done, session 25** — ADR-45). Analyses, site audits and projects are metered; `POST /analyses` had to be closed to anonymous callers first, since a quota needs a tenant. The checker stays **capped, not metered** — it is anonymous by design and has no org to charge. Residual: the plans' `monthly_credit_usd` is never granted, so `reserve()`'s credit gate can still never pass | M | — |
 | `stripe-subscription-lifecycle` | Subscription lifecycle + plan assignment (Stripe test mode) + billing-visibility API (invoices, credit ledger, spend-by-workspace) — no `Subscription` row is ever created today | L | `enforce-quota-on-spend-paths`, *Stripe account*, *terms text* |
 | `password-reset-endpoint` | Enumeration-safe password-reset endpoint + restore the removed `/forgot-password` screen (repays #49) | M | — |
 | `mfa-totp-and-org-policy` | TOTP MFA (enroll/verify/backup codes, admin reset) + org require-MFA policy (the audit spine already reserves the `mfa` event class) | L | — |
@@ -62,6 +66,8 @@ M1 is large and mostly open. A1–A4 shipped the tenancy spine, RBAC enforcement
 | `platform-back-office` | Super Admin/Support back office: cross-org directory, plan overrides, logged impersonation (roles/permissions defined, no platform-scoped route exists) | L | — |
 | `org-api-keys` | Org-scoped API keys: issue/rotate/revoke with scopes, caps, last-used, hashed at rest (`apikey:issue` is granted but there is no table/route) | M | — |
 | `audit-log-csv-export` | CSV export on the audit log, itself audit-logged (§6 requires it; list/filter/history/integrity exist, export does not) | S | — |
+| `grant-monthly-plan-credit` | Grant each plan's `monthly_credit_usd` at the start of a billing period — until then every balance is 0, so `reserve()`'s credit gate would refuse every call and is therefore used only on the dark backlink path (added session 25) | S | `stripe-subscription-lifecycle` |
+| `analysis-history-per-org` | A list of the organization's analyses. Runs carry `org_id` from session 25, so the data exists and there is no screen — the dashboard still sends you to one result by URL and forgets it | M | — |
 
 ### Infrastructure (platform / audit integrity / security hardening for M1)
 

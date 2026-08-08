@@ -45,7 +45,7 @@ table *is* the queue (see §4).
              /api/:path* + /healthz → 8141   │  /api/* + /healthz → 8141
                                             ▼
                         ┌─────────────────────────────────────────┐
-   api (FastAPI, sync) │  api  :8141   POST /api/v1/analyses (202) │
+   api (FastAPI, sync) │  api  :8141   POST /api/v1/analyses (auth) │
                         │               GET  /api/v1/analyses/{id} │
                         │               POST /api/v1/checker (202) │
                         │               POST /api/v1/checker/leads │
@@ -297,21 +297,41 @@ time, not by a sweeper.
 ## 3. Request lifecycles (submit vs. poll)
 
 ```
-Submit:
+Submit  (AUTHENTICATED since P7.6 — ADR-45):
   Browser ── POST /api/v1/analyses {url} ──▶ api
-                                            api validates URL (http/https only)
-                                            invalid → 422 (Pydantic shape / SSRF)
-                                            rate-limited → 429 + Retry-After
-                                            valid   → INSERT analyses (status=queued)
+                 Authorization: Bearer …       no/!valid token   → 401
+                 X-Org-Id: <uuid> (optional)   role lacks
+                                                 analysis:run    → 403 (audited)
+                                              invalid URL / SSRF → 422 (no row)
+                                              IP burst limit     → 429 + Retry-After
+                                              plan allowance out → 429 {metric,used,limit}
+                                              no plan catalog    → 503
+                                              valid → consume_quota(analyses)
+                                                    + INSERT analyses
+                                                        (status=queued, org_id=…)
+                                                    + audit analysis:create
+                                                    … all in ONE transaction
   Browser ◀─────────── 202 {id} ───────────  (returns immediately; no work yet)
 
 Poll (every 2s):
-  Browser ── GET /api/v1/analyses/{id} ────▶ api
+  Browser ── GET /api/v1/analyses/{id} ────▶ api    (bearer OPTIONAL)
+                                            tenancy.readable_analysis(ctx):
+                                              org_id IS NULL → anyone may read
+                                              org_id set     → that org only
                                             api reads analyses + prompts + responses
   Browser ◀── 200 {status, progress,        result{} is ALWAYS present;
               current_step, result{…}} ──    inner fields null/empty until produced
-                                            unknown id → 404
+                                            unknown id, or not yours → 404 (identical)
 ```
+
+**Why submit is authenticated and poll is not.** The submit route spends real
+money at a paid vendor on every call, and until P7.6 it took no credential at
+all — so every analysis a paying customer ran carried `org_id = NULL` and could
+be metered against nothing. Reading is a different question with a different
+answer: a row with no organization is a capability URL (every row created before
+P7.6, and every checker result), while a row that carries one belongs to that
+organization alone. `tenancy.readable_analysis` is the single place that rule
+lives; this is its first and only call site (tech-debt #63).
 
 `result` is always present so the frontend renders partial state as the pipeline
 fills it in. See the locked response shape in SPEC §"API contract".
@@ -331,9 +351,14 @@ raw answers) — both `null` for MVP rows.
 
 ### Rate limiting the submit endpoint (P5.0)
 
-`POST /api/v1/analyses` is public with real keys, so `services/rate_limit.py`
+`POST /api/v1/analyses` runs with real keys, so `services/rate_limit.py`
 rejects abusive traffic **before** any row is created or money is spent (the
-SSRF `422` check runs first, so `422`-rejected submits never count). The client
+SSRF `422` check runs first, so `422`-rejected submits never count). It kept its
+place after the route was closed to anonymous callers (ADR-45): a monthly plan
+allowance does not bound a burst — five hundred runs on the first of the month
+is inside a Business allowance and still a stampede at the vendor — and it runs
+*before* the quota, so a throttled submit costs the organization nothing. The
+client
 IP — first `X-Forwarded-For` entry (the host nginx edge sets it) else the socket
 peer — is stored as a salted hash in the nullable `analyses.ip_hash` column;
 the raw IP is never persisted. Two rolling-window guards, both returning `429`
@@ -482,6 +507,60 @@ and membership-verified server-side since P7.1 (`app/api/org_dependencies.py`),
 but no client code had ever sent it. The switcher in the app shell sends it, and
 it is a *request* for a scope, never a grant of one: an org the caller does not
 belong to is a 403, never a read.
+
+### Plans, quotas and the credit ledger (P7.6, milestone M1)
+
+Four tables shipped in migration `0015_billing` and `0016_seed_plans` seeded a
+five-tier catalog **as data**; the quota and ledger service was complete. None of
+it had a caller on any path a customer touches, so for three sessions every
+organization silently fell back to Free and Free meant nothing. P7.6's
+enforcement half is what changed that (ADR-45).
+
+Two mechanisms, deliberately kept apart:
+
+| Question | Mechanism | Storage |
+|---|---|---|
+| "May this org do one more?" | `billing.consume_quota` / `check_stock_quota` | `usage_counters` — one small mutable counter per (org, metric, month) |
+| "What has this org spent?" | `billing.record_charge` | `credit_ledger` — append-only and signed; a correction is a reversal, never an edit |
+
+Conflating them would make either the money mutable or the quota check a sum
+over all history.
+
+**Flow versus stock.** `analyses` and `site_audits` are events, counted per
+calendar month. `projects` is a possession, counted as *rows that exist* — a
+monthly counter would read Free's `projects: 1` as one new project per month
+(twelve by December) and deleting one would free nothing back.
+
+**Where the gate sits.** `services/quota.py` is the only reader of
+`QUOTA_ENFORCEMENT_ENABLED`, so the switch cannot be half-on; `services/billing`
+stays free of application `Settings` and remains callable from a worker, a
+script or a test.
+
+| Path | Metered as | Refusal |
+|---|---|---|
+| `POST /api/v1/analyses` | `analyses` (flow) | 429 |
+| `POST /api/v1/seo-projects` | `projects` (stock) + `site_audits` (flow, only if a crawl is actually queued) | 429 — after the 409 duplicate check, which is the more useful answer when both are true |
+| `POST /api/v1/seo-projects/{id}/audits` | `site_audits` (flow) | 429 — after the project resolves, so another tenant's id cannot drain your month |
+| `POST …/backlinks/refresh` | `backlink_refreshes` via `reserve()` | 429 / 402 (pre-existing, flag-off) |
+| `POST /api/v1/checker` | **not metered** — anonymous, so there is no org to charge | capped globally instead: `CHECKER_ENABLED`, IP/brand limits, `CHECKER_DAILY_USD_CAP` |
+
+`api/main.py` registers app-level handlers so the mapping cannot be forgotten by
+a future metered route: `QuotaExceeded` → **429** (body carries
+`metric`/`used`/`limit`, which is how a client tells it from the rate limiter's
+bare 429), `InsufficientCredit` → **402**, `PlanCatalogMissing` → **503**.
+
+**Money is recorded, not gated.** `reserve()` refuses when a balance cannot cover
+an estimate, and no organization has ever been granted credit — so every balance
+is 0 and using it here would have refused every analysis (tech-debt #74).
+Instead the worker calls `services/analyses.settle_cost` when a run reaches a
+terminal state, **including `failed`**: a run that died in step five still paid
+for steps one to four. It charges the difference between spend-so-far and what
+the ledger already holds for that analysis, which makes it safe across the
+worker's three retry attempts.
+
+**Changing a tier** is `scripts/set_org_plan.py` until the Stripe lifecycle and
+the platform back office exist. Enforcement without a way to lift a limit is a
+cage with no key.
 
 ---
 

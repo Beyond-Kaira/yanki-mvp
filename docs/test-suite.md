@@ -67,8 +67,11 @@ beyond a fake provider — so they carry the bulk of our confidence.
 
 ```
 backend/tests/
-├── conftest.py            # shared fixtures (client, db_session, settings, make_analysis)
+├── conftest.py            # shared fixtures (client, db_session, settings, make_analysis,
+│                          #   signed_in, on_plan; seeds the plan catalog like prod's)
 ├── test_api.py            # POST/GET routes via TestClient (+ nullable serp object — ADR-28)
+├── test_quota_enforcement.py  # plan limits on the spend paths, flow vs stock,
+│                              #   the three refusals kept apart, the kill switch (ADR-45)
 ├── test_queue.py          # portable claim / stale-reaper / retry logic (SQLite)
 ├── test_queue_postgres.py # real-Postgres FOR UPDATE SKIP LOCKED (gated on TEST_DATABASE_URL)
 ├── serp/                  # SERP sources: adapter, mock, registry (ADR-28)
@@ -505,6 +508,25 @@ Keep fixtures small, deterministic, and free. The important ones:
 | `db_session` | `tests/conftest.py` | a SQLAlchemy session sharing that in-memory SQLite (closed per test; schema dropped with the engine) |
 | `settings` | `tests/conftest.py` | a real `app.config.Settings()` (defaults, `dry_run=True`) |
 | `make_analysis` | `tests/conftest.py` | a factory that inserts and returns an `Analysis` row |
+| `signed_in` | `tests/conftest.py` | a user + provisioned personal org, with **both** `get_current_user` and `get_optional_user` overridden; optional `plan_key` puts the org on a tier (P7.6) |
+| `on_plan` | `tests/conftest.py` | `on_plan(org_id, "enterprise")` — move an existing org to a tier mid-test |
+
+**The plan catalog is seeded in the `engine` fixture, because production's is**
+(migration `0016_seed_plans`). Before P7.6 that made no difference; now that
+quotas are enforced, an empty catalog would mean every suite ran against a
+deployment that cannot exist — and would quietly prove that every route works
+when no limit applies. So the default test organization is on **Free**, with
+Free's real limits: 5 analyses a month, 1 site audit, 1 project. A suite that
+needs headroom says so out loud (`on_plan`, or `signed_in(plan_key=…)`), which
+is deliberately noisier than a global "unlimited" default: a test that has to
+name a tier is a test whose author saw the limit.
+
+Two suites make **opposite** pinning choices, on purpose, because the plan quota
+and the per-IP rate limit both answer **429** and both default to 5.
+`test_rate_limit.py` runs on an unlimited plan so only the limiter can refuse;
+`test_quota_enforcement.py` lifts the IP limit out of the way so only the plan
+can. Either file left on stock settings would silently be testing the other
+one's guard.
 | `pg_sessionmaker` | `tests/test_queue_postgres.py` | a sessionmaker on the live test Postgres (`TEST_DATABASE_URL`), fresh tables per test, or `skip` if unreachable |
 | `settings` (pipeline) | `tests/pipeline/conftest.py` | a `SimpleNamespace` mirroring `Settings` (lowercase attrs: `dry_run`, `panel_engines`, `prompt_count=4`, `max_responses_per_job=60`) |
 | `sample_kyc` | `tests/pipeline/conftest.py` | a valid `KYC` object (company, description, industry, aliases, products, …) |

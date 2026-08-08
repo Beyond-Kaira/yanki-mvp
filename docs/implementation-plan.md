@@ -2344,7 +2344,7 @@ paragraph, as the record.*
   remote revoke, org-level require-MFA policy.
 - **Dependencies:** P7.2 (policy), P7.3 (events). · **Complexity:** M ·
   **Status:** **partial — the migration-free half shipped 2026-08-08 (session
-  24)**, on `feat/session-24`.
+  24)**, merged as `ddf3167` (PR #40) and live in production.
 
   **Done (no schema change — reuses the `AuthSession` family model from
   migration 0006):** `GET /auth/sessions`, `DELETE /auth/sessions/{id}`,

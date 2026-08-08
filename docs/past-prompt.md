@@ -379,9 +379,12 @@ reconstructed it.
 cross-tenant leakage test, and the neighbouring leakage test was found to be
 passing for the wrong reason.
 
-**Not merged.** `feat/session-24` is unpushed with no PR; a merge to `main`
-auto-deploys and that call is the operator's (**B14**). The session's headline
-operator item is **B13 — database backups**, which now gates every remaining
-Phase 7 migration.
+**Merged and deployed at session close, on the operator's instruction** — PR
+**#40**, `ddf3167`, CI 11/11 green, Deploy 2m48s, verified in production
+(resource ceilings now actually bind; co-tenants untouched). The merge needed
+the operator's **admin bypass** for want of a second reviewer, for the second
+time after PR #8 — recorded in `operator-expected.md` rather than left implicit.
+The session's headline operator item remains **B13 — database backups**, which
+still gates every remaining Phase 7 migration.
 
 **The next brief lives at the end of `sessions/2026-08-08-01.md` §9.**

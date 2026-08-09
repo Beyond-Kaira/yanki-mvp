@@ -49,6 +49,11 @@ Last updated: 2026-08-09, **session 26 close**.
 >   the tests fail until somebody writes that down. This is the milestone's
 >   central safety claim, and it is the difference between believing it and
 >   knowing it.
+> - **The audit log can be exported.** Your own plan has required a CSV export
+>   since the milestone was written; it exists now, it exports what the filters
+>   on screen match, and each row says whether it still matches its own
+>   tamper-check. Taking an export is itself recorded — who, when, and what they
+>   filtered to, never what the file contained.
 >
 > **No migration in either PR**, and no new decision beyond B17 itself.
 >

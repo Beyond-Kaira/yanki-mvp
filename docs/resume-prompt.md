@@ -26,6 +26,9 @@ Before making any implementation decisions:
 
    **Read the code before the plan when the two could disagree.** Session 22 opened with `implementation-plan.md` listing two Phase 7 cards as `todo` that had in fact shipped a session earlier, and `admin-panel-plan.md` still saying "no code exists yet". Building from the documents would have duplicated a milestone's worth of work. A card's status line is the record; a summary paragraph is not.
 
+   **Sessions 25 and 26 are merged and live** (`e470244`, deployed 2026-08-09).
+   There is no unmerged work and no open PR; start from `main`.
+
    **And read CI before you read the code.** Session 26 opened on a branch whose own log recorded `make test` exit 0, `ruff check` clean and `mypy` clean — all true — and which had two CI gates red since its first commit: the scoped **formatting gate** (`make test` does not run the formatter) and the **compose stack check** (which submits a real analysis and had been 401ing since the route gained auth). *A green local run is not a green branch.* If the previous session left work unpushed, push it and read `gh pr checks` before deciding what to build. Note that `gh pr checks` rejects `--json`, so parse its tab-separated output.
 2. Treat the `@docs` directory as the source of truth. For platform work, the authority chain is: **roadmap.md** (what/why/when) → the milestone plan doc (scope) → **implementation-plan.md** (the ticket and its status) → **architecture-target.md** (target seams) vs **architecture.md** (as-built).
 3. `git fetch origin main` and check the branch's position **before** touching any shared sequential identifier (ADR numbers, session numbers, tech-debt numbers, session-log filenames). Two sessions collided twice on 2026-08-03; the rule exists because it was needed.

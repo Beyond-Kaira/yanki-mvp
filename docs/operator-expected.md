@@ -4,58 +4,63 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-09, **session 26 close**.
+Last updated: 2026-08-09, **session 26 close — both PRs merged and live**.
 
-> **Read this first. There are now two pull requests waiting on you, and one
-> decision: B17.**
+> **Read this first. B17 is closed — both pull requests are merged, deployed and
+> verified. There is nothing waiting on you in this file that was not already
+> here yesterday.**
 >
-> **#41** is session 25 — plan limits become real, database backups, a real
-> health check. **#42** is session 26 and is **stacked on #41**: merge #41
-> first, or #42's diff will read as both sessions at once.
+> On your instruction, **#41 and #42 were merged in that order** and production
+> now runs **`e470244`**. Verified on the box immediately afterwards:
 >
-> **Both are green.** That is worth one sentence of explanation, because the
-> version of this file you read last time said session 25 was verified and it
-> was — locally. When session 26 finally pushed that branch, **two CI gates came
-> back red**: the formatting gate, and the check that runs a whole analysis
-> through a real compose stack, which had been failing with a 401 ever since
-> session 25 closed `POST /api/v1/analyses` to anonymous callers and nobody told
-> the check. Neither was a defect in the product. Both are fixed, and #41 now
-> passes all eleven checks. Nothing about what #41 *does* has changed since the
-> description below.
+> - `/healthz` is a real probe and answers `ok` — database, schema `0018`, the
+>   five-tier plan catalog, an empty queue, a worker beating 0s ago, providers
+>   live. The public URL still prints only `{"status":"ok"}`, so the detail stays
+>   on the box.
+> - `docker ps` shows the worker **healthy** — the heartbeat attached correctly.
+> - `POST /api/v1/analyses`, `GET /api/v1/analyses` and the audit CSV export all
+>   answer **401** to an anonymous caller; the `/analyses` page serves.
+> - **All seven organizations have no subscription row and are therefore on
+>   Free — 5 analyses a month, 1 site audit, 1 project. Including yours
+>   (`aytek's organization`).** You chose this knowingly; it is repeated here
+>   because it is the one thing a user will notice, and the sixth analysis in a
+>   calendar month now answers 429.
 >
-> **What #42 adds, and why you might want it in the same deploy:**
+> **If Free turns out to be too tight, there are two levers and neither needs a
+> deploy:**
 >
-> - **Six mutating paths were writing no audit event**, in a milestone whose
->   headline promise is complete audit logging. The one that matters: when the
->   system detects a stolen refresh token it signs that device out of everything
->   — and recorded nothing at all. If anyone ever asks you "has a token been
->   stolen here?", the honest answer today is *we cannot tell*. From #42 on, it
->   is a row in the audit log.
-> - **A refusal is now recorded too.** #41 puts every organization on Free by
->   default, so being refused is about to become the most common thing that
->   happens to your users. Before #42, when someone writes in saying "my analysis
->   just fails", there is nothing in any log that says why. After it, there is.
-> - **Your customers can see their own analyses.** #41 made every run belong to
->   an organization and nothing read that; the only way back to a result was the
->   link you happened to still have open. #42 adds the list screen. It is the
->   first thing that makes #41's metering visible to the person paying for it,
->   which is a good thing to ship *with* the change rather than after it.
-> - **The promise that one customer cannot see another's data is now tested.**
->   It was true, as far as anyone could tell — but nothing checked it, and the
->   way this system is built, a single forgotten line in a new screen is all it
->   would take. There are now 34 tests that try it from the outside, as a real
->   signed-in customer, against another real customer's data. They also make it
->   **impossible to add a new page without saying who is allowed to see it** —
->   the tests fail until somebody writes that down. This is the milestone's
->   central safety claim, and it is the difference between believing it and
->   knowing it.
-> - **The audit log can be exported.** Your own plan has required a CSV export
->   since the milestone was written; it exists now, it exports what the filters
->   on screen match, and each row says whether it still matches its own
->   tamper-check. Taking an export is itself recorded — who, when, and what they
->   filtered to, never what the file contained.
+> ```bash
+> # 1. Put one organization on a real tier (starter | growth | business | enterprise)
+> cd /home/aytek/deploy/yanki-mvp
+> docker compose -f deploy/docker-compose.prod.yml exec db \
+>   psql -U yanki -d yanki -c "select o.slug, coalesce(p.key,'free') from organizations o \
+>     left join subscriptions s on s.org_id=o.id left join plans p on p.id=s.plan_id;"
 >
-> **No migration in either PR**, and no new decision beyond B17 itself.
+> # 2. Or switch enforcement off entirely, then restart the api
+> #    (deploy/.env)  QUOTA_ENFORCEMENT_ENABLED=false
+> docker compose -f deploy/docker-compose.prod.yml up -d api
+> ```
+>
+> `scripts/set_org_plan.py` exists in the repo but **is not in the api image** —
+> the Dockerfile builds from `backend/` and the script sits at the repo root. Use
+> it from a checkout with the backend venv, or use SQL as above. Recorded as
+> tech-debt #92.
+>
+> **One thing you did not specifically authorise, for the third time.** The
+> ruleset requires one approving review, GitHub will not let an author approve
+> their own pull request, and there was no second reviewer — so both merges used
+> **your admin bypass** (`--admin`). PRs #8 and #40 went the same way and this
+> file flagged it both times. It is now unambiguously a habit: **code reaches
+> production without the peer review your own ruleset asks for.** Either line up
+> a second reviewer or change the ruleset to match what actually happens; what
+> exists today is a control that only works on paper.
+>
+> **Still yours, unchanged:** **B13**'s remaining half (an off-box backup
+> destination and a cron line — and now that migrations are the next thing
+> Phase 7 needs, this is the gate on the rest of the milestone), **A5** (Stripe
+> account + terms text), **A4** (backlink vendor — gates M2 entirely), **B16**
+> (may Support impersonate? — A7 must not start until you answer), **B15**
+> (three stranded Site Audits).
 
 ---
 
@@ -437,8 +442,17 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 
 ## B. Actions only you can do (in priority order)
 
-- [ ] **B17. Decide whether to merge sessions 25 and 26, and pick who gets which
-  plan** (added 2026-08-09, session 25; **updated session 26**; ADR-45/48/49).
+- [x] ~~**B17. Decide whether to merge sessions 25 and 26**~~ — **DONE
+  2026-08-09.** Both merged on your instruction, in order, with the admin bypass
+  (no second reviewer exists). Production runs **`e470244`** and was verified: a
+  real `/healthz`, a healthy worker, 401 on every route that should refuse an
+  anonymous caller, and all seven organizations on Free. The plan question below
+  is still open as a *pricing* question — see A5.
+
+  *Kept below for the record of what the decision was.*
+
+  **B17 (as it stood before the merge). Decide whether to merge sessions 25 and
+  26, and pick who gets which plan** (added 2026-08-09, session 25; ADR-45/48/49).
 
   **There are now two PRs, and the order matters.**
 

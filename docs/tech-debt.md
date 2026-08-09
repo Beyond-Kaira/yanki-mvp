@@ -32,6 +32,13 @@ no supporting index, because an index is a migration and migrations are gated
 on operator item B13 — so it must ride along with the next migration rather
 than be discovered under load.
 
+**Both PRs merged and deployed at session close** — production moved from
+`ddf3167` to **`e470244`**, so everything in this header is live rather than
+pending. New: **#92** (the documented plan-tier escape hatch is not in the api
+image, found by running the documented command on the box). Also worth knowing
+for the next stacked pair: merging the parent with `--delete-branch` **closed**
+the child PR instead of retargeting it.
+
 **#63 SUBSTANTIALLY REPAID, deliberately not closed** — the fourth loop built
 the **M1 exit gate**: `tests/test_cross_tenant_leakage.py`, 34 tests, written to
 #63's own instruction rather than as a spot-check. Every operation is read out
@@ -1361,3 +1368,16 @@ devDependencies).)
     somebody hits this: a `X-Yanki-Truncated` response header, or a trailing
     comment row. The real answer is an export *artifact* — a job that produces a
     complete file — which belongs with the reporting work in M6.
+
+92. **`scripts/set_org_plan.py` is not in the api image** (2026-08-09, session
+    26, found while verifying the production deploy). The script is the
+    documented escape hatch for ADR-45 — "put an organization on any tier" — and
+    `operator-expected.md` gave it as the command to run. It cannot be run where
+    it is needed: the Dockerfile builds from `backend/` and the script lives at
+    the repo root, so `docker compose exec api python scripts/set_org_plan.py`
+    fails with `No such file or directory`. The operator file now gives SQL
+    instead, which works but is a worse tool for a person under time pressure.
+    Fix by moving it under `backend/scripts/` (it already imports `app.*`, so
+    that is where it belongs) or by adding it to the image. **Verify the fix by
+    running it inside the container, not by reading the Dockerfile** — this got
+    through because nobody ran the documented command on the box.

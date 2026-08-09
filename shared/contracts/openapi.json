@@ -359,6 +359,38 @@
         "title": "AdminUserListOut",
         "type": "object"
       },
+      "AnalysisListOut": {
+        "description": "A page of the caller's organization's analyses, newest first.",
+        "properties": {
+          "analyses": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSummaryOut"
+            },
+            "title": "Analyses",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "analyses"
+        ],
+        "title": "AnalysisListOut",
+        "type": "object"
+      },
       "AnalysisOut": {
         "properties": {
           "created_at": {
@@ -426,6 +458,92 @@
           "result"
         ],
         "title": "AnalysisOut",
+        "type": "object"
+      },
+      "AnalysisSummaryOut": {
+        "description": "One row of an organization's analysis history.\n\nDeliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``\ncarries the whole ``result`` envelope \u2014 every prompt, every raw engine\nresponse, every SERP and SEO check \u2014 which is right for the one run a reader\nopened and absurd for a table of twenty. A separate, flat schema also means\nadding a field to the detail view cannot silently make the list twenty times\nheavier.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "geo_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geo Score"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_responses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Responses"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "status",
+          "progress",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AnalysisSummaryOut",
         "type": "object"
       },
       "AnchorDistributionOut": {
@@ -4980,6 +5098,99 @@
       }
     },
     "/api/v1/analyses": {
+      "get": {
+        "description": "The caller's organization's analyses, newest first.\n\nSigned-in and org-scoped, unlike the sibling detail route. That asymmetry is\ndeliberate and worth stating, because the two look like they should match:\n``GET /analyses/{id}`` still serves an org-less run to anyone holding its id\n(a capability URL \u2014 the product's entire pre-P7.6 surface, and every row in\nproduction today), while a *list* has no capability to hold. There is no\nid to know, so the only possible answer to \"whose analyses?\" is the caller's\norganization, and an unauthenticated version of this route could only ever\nmean \"everyone's\".\n\nRuns from before P7.6 carry no ``org_id`` and therefore appear in nobody's\nhistory. That is the honest rendering: they belong to no tenant, and\ninventing an owner for them would be a worse answer than omitting them.",
+        "operationId": "list_analyses_api_v1_analyses_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Analyses",
+        "tags": [
+          "analyses"
+        ]
+      },
       "post": {
         "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged. A monthly plan\n   quota does not bound a burst; five hundred runs on the first of the month\n   is inside a Business allowance and still a stampede at the vendor.\n3. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.",
         "operationId": "submit_analysis_api_v1_analyses_post",

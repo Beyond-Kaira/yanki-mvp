@@ -476,6 +476,43 @@ class AnalysisOut(BaseModel):
     result: ResultOut
 
 
+class AnalysisSummaryOut(BaseModel):
+    """One row of an organization's analysis history.
+
+    Deliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``
+    carries the whole ``result`` envelope — every prompt, every raw engine
+    response, every SERP and SEO check — which is right for the one run a reader
+    opened and absurd for a table of twenty. A separate, flat schema also means
+    adding a field to the detail view cannot silently make the list twenty times
+    heavier.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    url: str
+    status: str
+    progress: int
+    current_step: str | None = None
+    error: str | None = None
+    # 0–100 on the measured path, and **null while a run is unfinished** — which
+    # the UI must render as an em dash rather than a confident zero. A queued run
+    # has no score; a run that scored zero is a different and much worse fact.
+    geo_score: float | None = None
+    total_responses: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AnalysisListOut(BaseModel):
+    """A page of the caller's organization's analyses, newest first."""
+
+    total: int
+    limit: int
+    offset: int
+    analyses: list[AnalysisSummaryOut]
+
+
 class AdminMemberOut(BaseModel):
     """One member of an organization, as an administrator sees them."""
 

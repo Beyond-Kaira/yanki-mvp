@@ -16,12 +16,14 @@ place that rule lives, and this module's job is to hand it the caller's context.
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.org_dependencies import get_optional_org_context, requires
 from app.api.schemas import (
+    AnalysisListOut,
     AnalysisOut,
+    AnalysisSummaryOut,
     CheckerLeadRequest,
     CheckerSubmitRequest,
     CheckerSubmitResponse,
@@ -45,7 +47,7 @@ from app.db.models import Analysis
 from app.db.session import get_session
 from app.net_guard import is_public_url
 from app.services import audit, billing, quota
-from app.services.analyses import create_analysis
+from app.services.analyses import MAX_PAGE, create_analysis, list_org_analyses
 from app.services.checker import (
     attach_lead,
     create_checker_analysis,
@@ -54,7 +56,7 @@ from app.services.checker import (
 )
 from app.services.checker_summary import summarize_checker
 from app.services.emailer import send_waitlist_emails
-from app.services.permissions import ANALYSIS_RUN
+from app.services.permissions import ANALYSIS_READ, ANALYSIS_RUN
 from app.services.rate_limit import (
     WAITLIST_RATE_LIMIT_PER_IP_HOUR,
     RateLimitExceeded,
@@ -345,6 +347,39 @@ def join_waitlist(
         session.commit()
         send_waitlist_emails(normalize_email(payload.email), signup_count(session), settings)
     return WaitlistResponse(ok=True)
+
+
+@router.get("/analyses", response_model=AnalysisListOut)
+def list_analyses(
+    status: str | None = Query(default=None, max_length=32),
+    limit: int = Query(default=20, ge=1, le=MAX_PAGE),
+    offset: int = Query(default=0, ge=0),
+    org: OrgContext = Depends(requires(ANALYSIS_READ)),
+    session: Session = Depends(get_session),
+) -> AnalysisListOut:
+    """The caller's organization's analyses, newest first.
+
+    Signed-in and org-scoped, unlike the sibling detail route. That asymmetry is
+    deliberate and worth stating, because the two look like they should match:
+    ``GET /analyses/{id}`` still serves an org-less run to anyone holding its id
+    (a capability URL — the product's entire pre-P7.6 surface, and every row in
+    production today), while a *list* has no capability to hold. There is no
+    id to know, so the only possible answer to "whose analyses?" is the caller's
+    organization, and an unauthenticated version of this route could only ever
+    mean "everyone's".
+
+    Runs from before P7.6 carry no ``org_id`` and therefore appear in nobody's
+    history. That is the honest rendering: they belong to no tenant, and
+    inventing an owner for them would be a worse answer than omitting them.
+    """
+
+    page = list_org_analyses(session, org, status=status, limit=limit, offset=offset)
+    return AnalysisListOut(
+        total=page.total,
+        limit=limit,
+        offset=offset,
+        analyses=[AnalysisSummaryOut.model_validate(row) for row in page.analyses],
+    )
 
 
 @router.get("/analyses/{analysis_id}", response_model=AnalysisOut)

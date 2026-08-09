@@ -6,6 +6,7 @@ import type {
   AdminMemberList,
   AdminOrganization,
   Analysis,
+  AnalysisList,
   AuditEventList,
   AuditIntegrity,
   AuthSessionList,
@@ -239,6 +240,57 @@ export async function getAnalysis(id: string): Promise<Analysis> {
     throw new ApiError(message, res.status)
   }
   return (await res.json()) as Analysis
+}
+
+export interface AnalysisHistoryQuery {
+  status?: string
+  limit?: number
+  offset?: number
+}
+
+/**
+ * The signed-in organization's own analyses.
+ *
+ * Unlike `getAnalysis`, this one has no anonymous mode. A run with no
+ * organization is a capability URL — hold the id, read the result — and a list
+ * has no id to hold, so the only thing an unauthenticated version could mean is
+ * "everyone's". The 401 copy says the session expired rather than inventing a
+ * permissions story, because that is the case a signed-in user actually hits.
+ */
+export async function listAnalyses(
+  query: AnalysisHistoryQuery = {},
+  signal?: AbortSignal,
+): Promise<AnalysisList> {
+  const params = new URLSearchParams()
+  if (query.status) params.set('status', query.status)
+  if (query.limit !== undefined) params.set('limit', String(query.limit))
+  if (query.offset !== undefined) params.set('offset', String(query.offset))
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+
+  let res: Response
+  try {
+    res = await authorizedFetch(`/api/v1/analyses${suffix}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to see your analyses.'
+        : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as AnalysisList
 }
 
 export async function listSeoProjects(signal?: AbortSignal): Promise<SeoProject[]> {

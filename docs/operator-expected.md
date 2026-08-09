@@ -40,6 +40,12 @@ Last updated: 2026-08-09, **session 25 close**.
 > is enough to unblock the migration-bearing Phase 7 work — which is your call,
 > not mine.
 >
+> **Two other things changed and need nothing from you**, listed so the diff
+> does not surprise you: `/healthz` is a real readiness probe instead of a
+> hardcoded `ok` (it gates every deploy, and could not previously fail), and the
+> worker now has a heartbeat so a wedged one is visible in `docker ps` instead
+> of looking idle.
+>
 > **A5 changed shape.** Its first half — "nothing enforces the quotas" — is
 > closed by this session's work, so what is left of A5 is only the part that was
 > always yours: a Stripe test-mode account and terms-of-service text, without
@@ -429,8 +435,17 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   **It contains no migration**, deliberately — same reasoning as session 24 —
   so the deploy is image-only and `rollback.sh` genuinely covers it.
 
-  **The branch carries the backup work too** (B13 below) and session 24's
-  stranded docs commit, which rides along as intended.
+  **The branch carries two more things** besides the quota work: the backup
+  tooling (B13 below) and a real `/healthz` plus a worker heartbeat. Neither
+  needs a decision from you — they only make failures visible that were silent —
+  but they are why the diff is larger than "enforce quotas" suggests. Session
+  24's stranded docs commit rides along as intended.
+
+  One consequence worth knowing before the deploy: **`/healthz` can now fail.**
+  It used to be a hardcoded `{"status": "ok"}`, which meant the deploy gate
+  could not catch a broken release. It refuses only on an unreachable database
+  or an empty plan catalog — but if a deploy ever *does* roll back on health
+  now, that is the gate working rather than a new fault.
 
   ```bash
   cd ~/repo/yanki-mvp

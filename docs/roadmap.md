@@ -85,9 +85,23 @@ M8's localization work is where it revives naturally if called.
 > **Since then:** A5's migration-free half — sessions, devices, the org switcher
 > — shipped 2026-08-08 (ADR-43), and **A6's quota enforcement shipped 2026-08-09
 > (ADR-45)**, which is the point at which a plan tier started refusing anything.
+> **A9's audit-completeness review shipped 2026-08-09 (ADR-48)**, out of stage
+> order: six mutating paths emitted no audit event, and one of them was
+> refresh-token reuse detection — which revokes a whole sign-in family for
+> suspected theft and recorded nothing, in a milestone whose headline promise is
+> complete audit logging.
+>
+> **A9's exit gate shipped the same day**: the cross-tenant leakage suite, 34
+> tests, built as a census over the live OpenAPI schema so a route added without
+> a stated tenancy story fails it. M1's central safety claim — *zero
+> cross-tenant reads* — is proved rather than asserted for the first time.
+>
 > A5's remaining half (password reset, MFA) waits on database backups; A6's
 > remaining half (Stripe lifecycle, billing visibility) waits on the operator's
-> Stripe account and terms text. A7–A9 are unstarted.
+> Stripe account and terms text. A7 waits on an operator decision (may Support
+> impersonate?); A8 is unstarted apart from its health slice. What A9 has left is
+> the operator runbook and one deliberate trade (`audit-emit-no-outbox`) —
+> neither a correctness gate.
 
 - **Objectives:** turn "a users table" into a governed multi-tenant B2B
   platform: organizations → workspaces → projects; granular resource-based

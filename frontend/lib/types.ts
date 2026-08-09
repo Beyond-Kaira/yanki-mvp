@@ -32,6 +32,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/audit-events/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Audit Events Csv
+         * @description The filtered audit trail as CSV — and the export is itself audited.
+         *
+         *     **Three things make this more than a formatting change.**
+         *
+         *     *It takes the same filters as the list*, deliberately. An export that
+         *     ignored them would hand someone the whole trail when they asked for one
+         *     week of one actor, which is both less useful and more disclosure than they
+         *     wanted. The filters are the same parameters, so a UI can export exactly
+         *     what is on screen.
+         *
+         *     *It carries the integrity verdict per row.* A trail that leaves this out is
+         *     a spreadsheet of claims; with it, whoever receives the file can see that
+         *     each row still hashes to its stored digest — ``intact``, ``altered``, or
+         *     ``unverifiable`` for rows written before ``record_hash`` existed. The three
+         *     answers are kept distinct here for the same reason
+         *     :func:`audit.verify_row` keeps them: reporting a pre-hash row as *altered*
+         *     cries wolf, and reporting it as *intact* is a claim the data cannot support.
+         *
+         *     *Exporting is a disclosure event, so it emits one* (``audit:export``,
+         *     admin-panel-plan §6). Somebody just took a copy of the compliance record
+         *     out of the system; that is precisely the kind of action this table exists
+         *     to remember, and an audit log that cannot say who exported it is missing
+         *     the event most likely to matter afterwards. The row records the filters and
+         *     the count, never the contents.
+         *
+         *     **No secrets leave here that the API would not already show.** The rows go
+         *     through ``_event_out``, so ``before``/``after`` are the same redacted
+         *     payloads the list view serves; only the computed ``changed`` diff is
+         *     flattened into the file, since a CSV cell cannot hold a nested object
+         *     usefully.
+         */
+        get: operations["export_audit_events_csv_api_v1_admin_audit_events_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/audit-events/history/{entity_type}/{entity_id}": {
         parameters: {
             query?: never;
@@ -250,7 +299,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Analyses
+         * @description The caller's organization's analyses, newest first.
+         *
+         *     Signed-in and org-scoped, unlike the sibling detail route. That asymmetry is
+         *     deliberate and worth stating, because the two look like they should match:
+         *     ``GET /analyses/{id}`` still serves an org-less run to anyone holding its id
+         *     (a capability URL — the product's entire pre-P7.6 surface, and every row in
+         *     production today), while a *list* has no capability to hold. There is no
+         *     id to know, so the only possible answer to "whose analyses?" is the caller's
+         *     organization, and an unauthenticated version of this route could only ever
+         *     mean "everyone's".
+         *
+         *     Runs from before P7.6 carry no ``org_id`` and therefore appear in nobody's
+         *     history. That is the honest rendering: they belong to no tenant, and
+         *     inventing an owner for them would be a worse answer than omitting them.
+         */
+        get: operations["list_analyses_api_v1_analyses_get"];
         put?: never;
         /**
          * Submit Analysis
@@ -1100,6 +1166,20 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * AnalysisListOut
+         * @description A page of the caller's organization's analyses, newest first.
+         */
+        AnalysisListOut: {
+            /** Analyses */
+            analyses: components["schemas"]["AnalysisSummaryOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** AnalysisOut */
         AnalysisOut: {
             /**
@@ -1121,6 +1201,48 @@ export interface components {
             result: components["schemas"]["ResultOut"];
             /** Status */
             status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * AnalysisSummaryOut
+         * @description One row of an organization's analysis history.
+         *
+         *     Deliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``
+         *     carries the whole ``result`` envelope — every prompt, every raw engine
+         *     response, every SERP and SEO check — which is right for the one run a reader
+         *     opened and absurd for a table of twenty. A separate, flat schema also means
+         *     adding a field to the detail view cannot silently make the list twenty times
+         *     heavier.
+         */
+        AnalysisSummaryOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Step */
+            current_step?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Geo Score */
+            geo_score?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Progress */
+            progress: number;
+            /** Status */
+            status: string;
+            /** Total Responses */
+            total_responses?: number | null;
             /**
              * Updated At
              * Format: date-time
@@ -2541,6 +2663,45 @@ export interface operations {
             };
         };
     };
+    export_audit_events_csv_api_v1_admin_audit_events_export_csv_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                action?: string | null;
+                actor_id?: string | null;
+                entity_type?: string | null;
+                entity_id?: string | null;
+                outcome?: string | null;
+                occurred_from?: string | null;
+                occurred_to?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     record_history_api_v1_admin_audit_events_history__entity_type___entity_id__get: {
         parameters: {
             query?: {
@@ -2902,6 +3063,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminOrganizationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_analyses_api_v1_analyses_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisListOut"];
                 };
             };
             /** @description Validation Error */

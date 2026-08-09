@@ -95,6 +95,21 @@ export type Analysis = Omit<
   result: AnalysisResult
 }
 
+// One row of the organization's analysis history. Narrowed the same way
+// `Analysis` is — `status` and `current_step` are open strings on the wire and
+// closed unions here, so a `switch` over them stays exhaustive.
+export type AnalysisSummary = Omit<
+  Schemas['AnalysisSummaryOut'],
+  'status' | 'current_step'
+> & {
+  status: AnalysisStatus
+  current_step: PipelineStep | null
+}
+
+export type AnalysisList = Omit<Schemas['AnalysisListOut'], 'analyses'> & {
+  analyses: AnalysisSummary[]
+}
+
 // Accounts (PR #9). Login answers with the user plus a bearer token while
 // setting the refresh cookie. Re-exported here rather than restated in
 // `lib/auth.ts` so a schema change reaches the auth screens through the

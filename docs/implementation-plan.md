@@ -2465,7 +2465,74 @@ paragraph, as the record.*
 ### P7.9 — Hardening + docs (stage A9, exit gate)
 - **Goal:** cross-tenant leakage suite (the merge gate for everything after),
   audit completeness review, ADRs, operator runbook, docs sync.
-- **Dependencies:** all of Phase 7. · **Complexity:** M · **Status:** todo
+- **Dependencies:** all of Phase 7. · **Complexity:** M · **Status:** **partial**
+  — the **audit completeness review is done** (2026-08-09, session 26, ADR-48),
+  pulled forward out of order because tech-debt #71 had been open for two
+  sessions and its sharpest case was a security event that recorded nothing:
+  refresh-token reuse detection revokes an entire sign-in family for suspected
+  theft, and wrote no row. Six mutating paths now emit, plus `billing:quota_denied`
+  for refusals, which ADR-45 made the likeliest thing to happen to a live user.
+
+  The review also **changed the standard the exit gate is measured against**.
+  "Every mutating action emits an audit event" is not a rule this system can
+  keep — a successful refresh rotation is a mutation, fires four times an hour
+  per device, and auditing it would bury the trail. The gate is now **every
+  mutation with a consequence emits, and every deliberate silence has a test
+  asserting the silence**; `tests/test_audit_coverage.py` is where both halves
+  are proven.
+
+  **The cross-tenant leakage suite is also done** (2026-08-09, session 26,
+  fourth loop) — `backend/tests/test_cross_tenant_leakage.py`, 34 tests, the
+  named M1 exit criterion. Built as a **census rather than a checklist**: every
+  operation is read out of the live OpenAPI schema and matched against an
+  explicit tenancy classification, so **an unclassified route fails the suite**
+  and the file cannot go stale as the surface grows. Every probe is a pair — the
+  owner must succeed *and* the stranger must get 404 — because a probe that only
+  checks the 404 passes just as happily against a route that is dark behind a
+  feature flag. It substantially repays tech-debt #63 and found #89 on the way
+  in (the quota kill switch does not cover the backlink refresh path).
+
+  It shipped **ahead of its stated dependency on `platform-back-office`**. That
+  dependency assumed A7 would land first; A7 is blocked on operator item B16,
+  and holding the milestone's central safety claim behind an operator decision
+  would have left "zero cross-tenant reads" unchecked indefinitely. When A7
+  lands, its routes will fail the census until they are classified — which is
+  the mechanism working as designed rather than a gap.
+
+  **CSV export on the audit log** (admin-panel-plan §6) shipped in the same
+  session's fifth loop: same filters as the list, a per-row integrity verdict,
+  a 5000-row ceiling, and an `audit:export` event recording who took a copy and
+  what they filtered to — never the contents.
+
+  **What A9 still owes:** the operator runbook, and the `audit-emit-no-outbox`
+  hardening — a deliberate trade rather than a defect (an audit write failure
+  must never 500 a request). Neither is a code-correctness gate.
+
+### P7.10 — Analysis history per organization
+- **Goal:** let a customer find the analyses their organization has run.
+- **Why now:** P7.6 gave `analyses` an `org_id` and nothing read it. The only
+  route back to a result was the URL the submitter was redirected to, so closing
+  the tab lost the run — the data claimed an owner and the product gave that
+  owner no way in (tech-debt #77). It is also the first screen that makes
+  session 25's metering visible to the person paying for it, which matters
+  directly after a change that put every organization on Free.
+- **Dependencies:** P7.6 (the `org_id` it reads). · **Complexity:** M ·
+  **Status: DONE** (2026-08-09, session 26, ADR-49).
+- **Deliverables:** `GET /api/v1/analyses` (`analysis:read`, org-scoped, paged,
+  status filter); `AnalysisSummaryOut`/`AnalysisListOut`; `services.analyses.
+  list_org_analyses`; the `/analyses` screen; a nav entry under AI Visibility;
+  14 backend and 13 frontend tests.
+- **Acceptance:** another tenant's runs are absent, an org-less context raises
+  rather than listing everything, pre-P7.6 and checker runs appear in nobody's
+  history, paging never repeats or skips a row, and an unmeasured run reports a
+  **null** score that the UI draws as an em dash.
+- **Two notes for whoever builds the next list route.** The route is
+  authenticated while its sibling `GET /analyses/{id}` is not, and that is the
+  design rather than an oversight: an unguessable id can be a capability, an
+  enumeration never can (ADR-49). And it is the **first application call site of
+  `tenancy.scoped()`** — the fail-closed seam three documents described as
+  shipped with zero callers. That does not close tech-debt #63; the A9 leakage
+  suite does. It does mean the seam now has a worked example to copy.
 
 ---
 

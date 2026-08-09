@@ -6,6 +6,7 @@ import type {
   AdminMemberList,
   AdminOrganization,
   Analysis,
+  AnalysisList,
   AuditEventList,
   AuditIntegrity,
   AuthSessionList,
@@ -239,6 +240,57 @@ export async function getAnalysis(id: string): Promise<Analysis> {
     throw new ApiError(message, res.status)
   }
   return (await res.json()) as Analysis
+}
+
+export interface AnalysisHistoryQuery {
+  status?: string
+  limit?: number
+  offset?: number
+}
+
+/**
+ * The signed-in organization's own analyses.
+ *
+ * Unlike `getAnalysis`, this one has no anonymous mode. A run with no
+ * organization is a capability URL — hold the id, read the result — and a list
+ * has no id to hold, so the only thing an unauthenticated version could mean is
+ * "everyone's". The 401 copy says the session expired rather than inventing a
+ * permissions story, because that is the case a signed-in user actually hits.
+ */
+export async function listAnalyses(
+  query: AnalysisHistoryQuery = {},
+  signal?: AbortSignal,
+): Promise<AnalysisList> {
+  const params = new URLSearchParams()
+  if (query.status) params.set('status', query.status)
+  if (query.limit !== undefined) params.set('limit', String(query.limit))
+  if (query.offset !== undefined) params.set('offset', String(query.offset))
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+
+  let res: Response
+  try {
+    res = await authorizedFetch(`/api/v1/analyses${suffix}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to see your analyses.'
+        : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as AnalysisList
 }
 
 export async function listSeoProjects(signal?: AbortSignal): Promise<SeoProject[]> {
@@ -573,6 +625,32 @@ export async function fetchAuditEvents(query: AuditQuery = {}): Promise<AuditEve
   const res = await authorizedFetch(`/api/v1/admin/audit-events${suffix}`)
   if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
   return (await res.json()) as AuditEventList
+}
+
+/**
+ * Download the filtered audit trail as CSV.
+ *
+ * A fetch-then-blob rather than an `<a href>`, because the export needs the
+ * caller's bearer and a plain link cannot carry one — a naked link would hit
+ * the endpoint unauthenticated and download a 401 body as a file, which is the
+ * worst of both outcomes. Sorting and paging are dropped from the query on
+ * purpose: an export covers the whole match, not the page you happen to be on.
+ */
+export async function downloadAuditEventsCsv(query: AuditQuery = {}): Promise<Blob> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (['sort', 'order', 'limit', 'offset'].includes(key)) continue
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString() ? `?${params}` : ''
+  const res = await authorizedFetch(
+    `/api/v1/admin/audit-events/export.csv${suffix}`,
+    { headers: { Accept: 'text/csv' } },
+  )
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return await res.blob()
 }
 
 export async function fetchRecordHistory(

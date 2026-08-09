@@ -432,3 +432,49 @@ answered healthy and was recorded as the good one to roll back to; and a
 `while True` worker that stopped looping left the container `running` with the
 queue quietly undrained. Both fixed (ADR-47). The P0 band is now empty apart
 from the repo-wide formatter item, which should stay parked.
+
+---
+
+## Session 26 — 2026-08-09
+
+**Prompt executed:** the Loop Engineering autonomous-execution brief — inspect,
+decide, implement, verify, document, check operator dependencies, continue —
+applied through `resume-prompt.md` and the session-25 handoff.
+
+**Outcome:** three loops, and the first one was not on the plan.
+
+**Loop 1 — push session 25 and read CI.** Its branch was five commits, unmerged
+and unpushed; its own log recorded `make test` exit 0 and three clean tools, all
+true. PR #41 came back with **two red gates that a laptop cannot see**: the
+scoped formatting gate (`make test` never runs the formatter), and the compose
+stack check, which submits one real analysis through real Postgres and had been
+answering **401** since ADR-45 closed that route to anonymous callers. The route
+change was right; the check had not been told. It now signs in — and needed the
+bearer on the *poll* as well, which is the part worth remembering: a run
+carrying an `org_id` is no longer a capability URL. #41 is green on all eleven
+checks. See [sessions/2026-08-09-02.md](sessions/2026-08-09-02.md).
+
+**Loop 2 — the audit spine's missing emitters** (tech-debt #71, ADR-48). Six
+mutating paths wrote nothing, and the sharp one was refresh-token reuse
+detection: it revokes an entire sign-in family for suspected theft and recorded
+that nowhere, so "has a token ever been stolen here?" could not be told apart
+from "nobody looked". The repair changed the *rule* rather than just the list —
+"every mutating action emits" is unkeepable, since a token rotation is a
+mutation that fires four times an hour per device and would bury the trail. It
+is now **every mutation with a consequence emits, and every deliberate silence
+has a test asserting it**. Two further decisions came with it: an append-only
+table must never hold erasable PII (the triggers make it permanent), and a
+*refusal* is worth auditing even though nothing mutated — ADR-45 made refusals
+the likeliest thing to happen to a live user, and nothing recorded them.
+
+**Loop 3 — the reader `org_id` never had** (tech-debt #77, ADR-49). P7.6 gave
+analyses an owner and no screen; closing the tab lost the run. `GET
+/api/v1/analyses` plus the `/analyses` history screen. The decision recorded is
+not "we added a list" but why it is authenticated when the route below it is
+not: a capability URL works because knowing the unguessable id *is* the
+authorization, and a list has no id to know — **a route keyed by an unguessable
+id may be a capability; a route that enumerates never can be.** It is also the
+first application call site of `tenancy.scoped()`, the fail-closed seam three
+documents had described as shipped with zero callers.
+
+**The next brief lives at the end of `sessions/2026-08-09-02.md` §8.**

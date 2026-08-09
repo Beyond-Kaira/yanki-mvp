@@ -16,12 +16,14 @@ place that rule lives, and this module's job is to hand it the caller's context.
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.org_dependencies import get_optional_org_context, requires
 from app.api.schemas import (
+    AnalysisListOut,
     AnalysisOut,
+    AnalysisSummaryOut,
     CheckerLeadRequest,
     CheckerSubmitRequest,
     CheckerSubmitResponse,
@@ -45,7 +47,7 @@ from app.db.models import Analysis
 from app.db.session import get_session
 from app.net_guard import is_public_url
 from app.services import audit, billing, quota
-from app.services.analyses import create_analysis
+from app.services.analyses import MAX_PAGE, create_analysis, list_org_analyses
 from app.services.checker import (
     attach_lead,
     create_checker_analysis,
@@ -54,7 +56,7 @@ from app.services.checker import (
 )
 from app.services.checker_summary import summarize_checker
 from app.services.emailer import send_waitlist_emails
-from app.services.permissions import ANALYSIS_RUN
+from app.services.permissions import ANALYSIS_READ, ANALYSIS_RUN
 from app.services.rate_limit import (
     WAITLIST_RATE_LIMIT_PER_IP_HOUR,
     RateLimitExceeded,
@@ -179,7 +181,7 @@ def submit_analysis(
     # `create_analysis(commit=False)` exists for exactly this: a commit inside it
     # would let the run be created and the quota rolled back by a later failure.
     org_id = org.require_org_id
-    quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_ANALYSES)
+    quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_ANALYSES, context=org)
     analysis = create_analysis(
         session, str(payload.url), ip_hash=ip_hash, org_id=org_id, commit=False
     )
@@ -242,6 +244,27 @@ def submit_checker(
     analysis, submission = create_checker_analysis(
         session, payload.brand, payload.category, payload.lang, settings, ip_hash=ip_hash
     )
+
+    # The one path on which this platform spends vendor money for somebody who
+    # has no account. `cache_hit` is the field that matters: a miss is an LLM
+    # bill, a hit is a database read, and without the distinction the log cannot
+    # answer "why did our checker cost go up" — which is the question this event
+    # exists for. Both are recorded, so "every mutating path emits" stays
+    # literally true rather than true-with-an-asterisk.
+    #
+    # NULL org and an anonymous actor, because that is the truth: nobody owns
+    # this. It is bounded by the guards above (kill switch, per-IP and per-brand
+    # rate limits, daily cost cap), so a public endpoint cannot flood the trail.
+    audit.emit(
+        session,
+        action="checker:submit",
+        actor_type="anonymous",
+        entity_type="analysis",
+        entity_id=analysis.id,
+        after={"brand": analysis.brand, "category": analysis.category, "lang": analysis.lang},
+        detail={"cache_hit": is_cache_hit, "submission": str(submission.id)},
+    )
+    session.commit()
     return CheckerSubmitResponse(id=analysis.id, submission_id=submission.id)
 
 
@@ -253,6 +276,31 @@ def submit_checker_lead(
     submission = attach_lead(session, payload.submission_id, payload.email)
     if submission is None:
         raise HTTPException(status_code=404, detail="submission not found")
+
+    # The event records that an address was attached, and deliberately does NOT
+    # record the address. Two reasons, and the second is the load-bearing one:
+    #
+    # 1. It adds nothing. `checker_submissions.email` holds it, and this row
+    #    points straight at that submission.
+    # 2. `audit_events` is append-only, enforced by database triggers (migration
+    #    0018) — a row written here can never be deleted, by anyone, through the
+    #    application. Copying an email in would make it un-erasable and put the
+    #    future erasure path (`pii-retention-and-erasure`) in direct conflict
+    #    with the integrity guarantee. Keeping the reference and dropping the
+    #    value lets both hold: erase the submission, and this row still truthfully
+    #    says an address was attached and then removed.
+    #
+    # Failed logins are the deliberate exception — there the attempted address
+    # IS the evidence, and there is no other row carrying it.
+    audit.emit(
+        session,
+        action="checker:lead",
+        actor_type="anonymous",
+        entity_type="checker_submission",
+        entity_id=submission.id,
+        detail={"analysis": str(submission.analysis_id), "email_recorded": True},
+    )
+    session.commit()
     return {"status": "ok"}
 
 
@@ -280,8 +328,58 @@ def join_waitlist(
     # Emails fire ONLY on a genuinely new signup (non-null returned id); a
     # duplicate is silent. Either way we answer 202 {ok: true} — no enumeration.
     if signup_id is not None:
+        # Audited on the same condition, and for the same reason: a duplicate
+        # inserted no row, so there is no mutation to record. Recording it anyway
+        # would also put "this address was already on the list" into a table —
+        # which is the enumeration answer this endpoint spends its whole design
+        # refusing to give.
+        #
+        # The address is not stored here; `waitlist_signups` holds it and this
+        # row points at it. See the `checker:lead` emit above for why an
+        # append-only table is the wrong place to copy erasable PII into.
+        audit.emit(
+            session,
+            action="waitlist:signup",
+            actor_type="anonymous",
+            entity_type="waitlist_signup",
+            entity_id=signup_id,
+        )
+        session.commit()
         send_waitlist_emails(normalize_email(payload.email), signup_count(session), settings)
     return WaitlistResponse(ok=True)
+
+
+@router.get("/analyses", response_model=AnalysisListOut)
+def list_analyses(
+    status: str | None = Query(default=None, max_length=32),
+    limit: int = Query(default=20, ge=1, le=MAX_PAGE),
+    offset: int = Query(default=0, ge=0),
+    org: OrgContext = Depends(requires(ANALYSIS_READ)),
+    session: Session = Depends(get_session),
+) -> AnalysisListOut:
+    """The caller's organization's analyses, newest first.
+
+    Signed-in and org-scoped, unlike the sibling detail route. That asymmetry is
+    deliberate and worth stating, because the two look like they should match:
+    ``GET /analyses/{id}`` still serves an org-less run to anyone holding its id
+    (a capability URL — the product's entire pre-P7.6 surface, and every row in
+    production today), while a *list* has no capability to hold. There is no
+    id to know, so the only possible answer to "whose analyses?" is the caller's
+    organization, and an unauthenticated version of this route could only ever
+    mean "everyone's".
+
+    Runs from before P7.6 carry no ``org_id`` and therefore appear in nobody's
+    history. That is the honest rendering: they belong to no tenant, and
+    inventing an owner for them would be a worse answer than omitting them.
+    """
+
+    page = list_org_analyses(session, org, status=status, limit=limit, offset=offset)
+    return AnalysisListOut(
+        total=page.total,
+        limit=limit,
+        offset=offset,
+        analyses=[AnalysisSummaryOut.model_validate(row) for row in page.analyses],
+    )
 
 
 @router.get("/analyses/{analysis_id}", response_model=AnalysisOut)

@@ -46,6 +46,7 @@ table *is* the queue (see §4).
                                             ▼
                         ┌─────────────────────────────────────────┐
    api (FastAPI, sync) │  api  :8141   POST /api/v1/analyses (auth) │
+                        │               GET  /api/v1/analyses (auth)│
                         │               GET  /api/v1/analyses/{id} │
                         │               POST /api/v1/checker (202) │
                         │               POST /api/v1/checker/leads │
@@ -333,6 +334,22 @@ P7.6, and every checker result), while a row that carries one belongs to that
 organization alone. `tenancy.readable_analysis` is the single place that rule
 lives; this is its first and only call site (tech-debt #63).
 
+**And why the *list* is authenticated even though the poll is not** (ADR-49).
+`GET /api/v1/analyses` — the organization's history, added in session 26 because
+`org_id` had been written since P7.6 and read by nothing — requires
+`analysis:read` and is org-scoped. That is not an inconsistency with the poll
+above it. A capability URL works because knowing the unguessable id *is* the
+authorization; a list has no id to know, so there is no capability a caller
+could present and the only coherent answer to "whose analyses?" is the caller's
+organization. The rule worth carrying into M3–M6: **a route keyed by an
+unguessable id may be a capability; a route that enumerates never can be.**
+
+The list is also the **first application call site of `tenancy.scoped()`**, the
+fail-closed helper that had none. Runs from before P7.6 carry no `org_id` and so
+appear in nobody's history while staying readable by id — they belong to no
+tenant, and inventing an owner for them would be a guess written into a
+customer-facing screen.
+
 `result` is always present so the frontend renders partial state as the pipeline
 fills it in. See the locked response shape in SPEC §"API contract".
 
@@ -471,6 +488,69 @@ Migration 0018 installs a Postgres trigger that raises on UPDATE or DELETE, and
 each row carries a SHA-256 of its own content so an edit is detectable if the
 trigger is ever bypassed. What that does *not* survive is a superuser who drops
 the trigger first; the limit is stated rather than papered over (ADR-38).
+
+**Which means the trail holds no erasable PII** (ADR-48). A row written here can
+never be deleted through the application, so an email copied into an event would
+be permanent — and the erasure path this milestone still owes would have to
+either break the triggers or lie. The two anonymous paths that handle an address
+(`checker:lead`, `waitlist:signup`) therefore store the *reference* and drop the
+*value*: erase the submission and the event still truthfully says an address was
+attached, and no longer says whose. Failed logins are the deliberate exception —
+there the attempted address is the evidence, and no other row carries it.
+
+#### What is audited, and what is deliberately not
+
+The rule is "every mutating action with a consequence emits, and every silence
+is deliberate and has a test asserting it." The second half is what stops an
+intentional gap from being indistinguishable from a forgotten one — which is how
+five mutating paths went unaudited for four sessions (tech-debt #71, closed
+2026-08-09).
+
+| Action | Emitted where | Notes |
+|---|---|---|
+| `auth:signup` · `auth:login` | `services/auth` | Login records success, wrong credentials **and** a disabled account, each with its own `outcome`/reason. |
+| `auth:logout` | `/auth/logout` | The user is resolved *before* the token is spent — afterwards there is nothing left to attribute it to. |
+| `auth:refresh_reuse` | `services/auth_sessions` | A consumed refresh token was replayed, so the whole family was revoked as presumed theft. Committed in the same transaction as the revocation. |
+| `auth:session_revoke` · `auth:session_revoke_all` | `/auth/sessions/*` | |
+| `member:*` · `invitation:*` | Admin routes | With before/after diffs. |
+| `analysis:create` | `POST /analyses` | Committed with the row and its quota. |
+| `project:create` · `site_audit:queue` | `services/seo_projects` | |
+| `backlink:refresh` | `POST …/backlinks/refresh` | Carries the vendor cost. |
+| `backlink:competitor_track` · `backlink:competitor_untrack` | Backlink routes | Untracking names the domain removed; the service returns it because after the delete there is nothing left to read. |
+| `checker:submit` | `POST /checker` | The only path that spends vendor money for someone with no account. `cache_hit` separates an LLM bill from a database read. |
+| `checker:lead` · `waitlist:signup` | `POST /checker/leads`, `POST /waitlist` | Reference only, never the address. |
+| `billing:quota_denied` | `services/quota` | A 429. Not a mutation; audited anyway, and in its own committed transaction — see below. |
+| *the permission string itself*, e.g. `analysis:run` | `api/org_dependencies` | A 403. Written with `outcome='denied'` and the caller's role. |
+
+Deliberately **not** audited, each with a test asserting the silence:
+
+- **A successful refresh rotation.** It fires about four times an hour per
+  signed-in device. Recording it would out-write every real event by orders of
+  magnitude and bury the trail under heartbeats.
+- **An ordinary invalid refresh** — an expired family, a cookie from a logout.
+  Every idle user reaches it and it indicates nothing.
+- **A duplicate waitlist signup.** No row was inserted, so there is no mutation;
+  and recording it would put "this address is already on the list" into a table,
+  which is the enumeration answer the endpoint's whole design refuses to give.
+- **A checker submit refused by the kill switch.** Nothing is created, and
+  auditing the attempt would give an unauthenticated endpoint a way to write
+  rows into a table that cannot be pruned.
+
+**Why a refusal commits its own transaction.** `billing:quota_denied` is written
+by `services/quota` and committed there, because the request is already
+unwinding: the route raises, the handler answers 429, and the session closes
+without committing — so an event merely added to it would be discarded along
+with the refusal it describes. That is safe only because the quota check raises
+*before* it writes and every route runs its quota gate before any other
+mutation, so the event is the only thing pending. A future metered path that
+writes first must emit at its own call site instead. The invariant is asserted
+by a test, not assumed.
+
+This is not a new pattern. The permission gate in `api/org_dependencies` has
+committed its own 403 event since P7.2, and `services/auth` commits a failed
+login the same way — for the same reason in both cases: the request that caused
+the event is about to be refused, so the event cannot ride in its transaction.
+Three refusal classes now behave identically, which is the point.
 
 ### Sessions, devices, and the org switcher (P7.5, milestone M1)
 

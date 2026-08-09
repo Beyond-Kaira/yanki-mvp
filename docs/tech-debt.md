@@ -4,7 +4,56 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-09 (**session 25** — the quota-enforcement session).
+Last updated: 2026-08-09 (**session 26** — the audit-coverage session).
+
+**Session 26 changes to this list, up front:** **#71 REPAID** — the six mutating
+paths that emitted nothing now emit, including refresh-token **reuse
+detection**, which revoked an entire sign-in family for suspected theft and
+wrote no record of it (ADR-48). Two things about the repair are worth reading
+before the new items. First, the rule it settled on is *not* "audit every
+mutation": a successful token rotation is a mutation and is deliberately silent,
+because it fires four times an hour per device and would bury the trail — so the
+rule is **every mutation with a consequence emits, and every silence has a test
+asserting it**. Second, `audit_events` is append-only by database trigger, which
+means anything written there is permanent; the two paths carrying an email
+address store the *reference* and drop the *value*, so the erasure path this
+milestone still owes cannot end up in conflict with the integrity guarantee.
+**Three new items, #84–#86**, and the one to read is **#84**: recording refusals
+means a client retry-looping into a 429 writes a row per retry.
+
+**#77 REPAID** in the same session (ADR-49) — the analyses a customer runs are
+now listable at `/analyses`, which is the first screen that makes P7.6's
+attribution visible to the person paying for it. It is also the **first
+application call site of `tenancy.scoped()`**, the fail-closed seam that three
+documents described as shipped and that had none (**#63 — still open**: one
+call site is not a guarantee, and the A9 leakage suite is what closes it).
+**Two new items, #87–#88**, and the one that matters is **#87**: the query has
+no supporting index, because an index is a migration and migrations are gated
+on operator item B13 — so it must ride along with the next migration rather
+than be discovered under load.
+
+**#63 SUBSTANTIALLY REPAID, deliberately not closed** — the fourth loop built
+the **M1 exit gate**: `tests/test_cross_tenant_leakage.py`, 34 tests, written to
+#63's own instruction rather than as a spot-check. Every operation is read out
+of the live OpenAPI schema and must carry a stated tenancy classification, so
+**an unclassified route fails the suite**; every probe is a pair (the owner
+succeeds *and* the stranger gets 404) so it cannot pass vacuously. It stays open
+because "no route leaks" is not "no query can" — see **#90**. **Two new items,
+#89–#90**, and #89 is the kind of finding this suite exists to produce: an
+owner-side probe returned **429 with quota enforcement switched off**, which
+revealed that the kill switch does not cover the backlink refresh path even
+though its docstring said it could not fail that way.
+
+This session also fixed two CI gates that session 25 could not see from a
+laptop and that its own log recorded as green: the scoped **formatting gate**
+(seven of its files were unformatted) and the **SERP stack check**, which
+submits an analysis through real compose and had been 401ing since ADR-45 closed
+that route to anonymous callers. Neither was a code defect; both were the branch
+being unverifiable until it was pushed. Measured suite at session 26 close:
+**952 backend passed / 7 skipped** with Postgres, **327 frontend across 57
+files**, `make test` exit 0.
+
+Earlier — 2026-08-09 (**session 25** — the quota-enforcement session).
 
 **Session 25 changes to this list, up front:** the session ran two loops and
 this header covers both. **Loop 2 built the engineering half of operator item
@@ -974,6 +1023,22 @@ devDependencies).)
     routes. Until then, treat every new tenant-scoped query as needing its own
     explicit `org_id` filter, because nothing does it for you.
 
+    **Update 2026-08-09 (session 26) — substantially repaid, and deliberately
+    not closed.** Both functions now have call sites: `readable_analysis()` in
+    `GET /analyses/{id}`, and `scoped()` in `services.analyses.
+    list_org_analyses` (ADR-49). More importantly, **the leakage suite exists**
+    (`tests/test_cross_tenant_leakage.py`, 34 tests) and it was built to the
+    instruction above rather than as a spot-check: every operation is read out
+    of the live OpenAPI schema, an unclassified route **fails the suite**, and
+    every probe is a pair so it cannot pass vacuously.
+
+    What keeps this open is the gap between "no route leaks" and "no query can".
+    The suite proves the first, which is the guarantee the milestone's exit
+    criterion asks for. The second needs scoping enforced at the query layer,
+    and a service function with a missing filter that no route reaches today is
+    still invisible — see **#90**. The standing instruction is unchanged: every
+    new tenant-scoped query needs its own explicit `org_id` filter.
+
 64. **Three Site Audits are stranded `queued` in production and need operator
     cleanup** (2026-08-08, session 24). `31eba473…`, `410c31d7…`, `35e06651…`,
     created 2026-08-05/06, zero pages each. They were enqueued through a UI
@@ -1046,16 +1111,30 @@ devDependencies).)
     it is a constant that encodes a fact about history and should be revisited
     if the deploy driver is ever rewritten.
 
-71. **Mutating paths that still emit no audit event** (2026-08-08, session 24,
-    found by audit-coverage review). M1 promises "every mutating action emits an
-    audit event." These do not: `track_competitor` / `untrack_competitor` in the
-    backlink routes, and `POST /auth/refresh` — including, notably, the
-    **refresh-token reuse detection** path, which revokes an entire session
-    family because it believes a token was stolen and writes no record that it
-    happened. That last one is the sharp edge: it is precisely the event a
-    security review would come looking for. Folded into the backlog's
-    `audit-coverage-public-writes` item (which already names analyses, checker,
-    waitlist and billing) and repaid at A9's audit-completeness review.
+71. ~~**Mutating paths that still emit no audit event**~~ (2026-08-08, session
+    24, found by audit-coverage review; **REPAID 2026-08-09, session 26,
+    ADR-48**). M1 promises "every mutating action emits an audit event." These
+    did not: `track_competitor` / `untrack_competitor`, `POST /auth/refresh` —
+    including, notably, the **refresh-token reuse detection** path, which
+    revokes an entire session family because it believes a token was stolen and
+    wrote no record that it happened — plus the checker submit, its lead gate,
+    and the waitlist.
+
+    All six now emit, and the repair changed the rule rather than just closing
+    the list. "Every mutating action" is not the rule the system can keep: a
+    successful refresh rotation *is* a mutation and is deliberately silent,
+    because it fires four times an hour per signed-in device and would bury
+    every real event under heartbeat rows. The rule is now **every mutation with
+    a consequence emits, and every deliberate silence has a test asserting the
+    silence** — the second half being what stopped this item from being
+    invisible for four sessions.
+
+    Residuals are **#84** (a retry loop into a 429 writes a row per retry),
+    **#85** (an optional `context` that degrades attribution silently) and
+    **#86** (the checker's cost trail overlaps its demand table). What is *not*
+    residual: A9's audit-completeness review no longer has a backlog of missing
+    emitters to work through, only `audit-emit-no-outbox` — the deliberate trade
+    that an audit write failure must never 500 a request.
 
 72. **Session 23 shipped without any of its eight close deliverables**
     (recorded 2026-08-08, session 24; **partially repaid on record**). P8.3's
@@ -1122,14 +1201,13 @@ devDependencies).)
     (operator B13) would take. Fold the check into the deep health endpoint when
     A8 builds it.
 
-77. **The analyses a customer runs are attributed but not listable**
-    (2026-08-09, session 25). Runs carry `org_id` from this session on, and the
-    only way to reach one is still the URL you were redirected to. There is no
-    per-org history, so a customer who closes the tab has lost the result —
-    which was also true before, but was then at least *consistent* with the runs
-    belonging to nobody. Now the data exists and the screen does not. Backlog:
-    `analysis-history-per-org`. Cheap, and it is the first thing that makes the
-    attribution visible to the person paying for it.
+77. ~~**The analyses a customer runs are attributed but not listable**~~
+    (2026-08-09, session 25; **REPAID the same day, session 26, ADR-49**). Runs
+    carried `org_id` and the only way to reach one was still the URL you were
+    redirected to, so a customer who closed the tab had lost the result.
+    `GET /api/v1/analyses` and the `/analyses` screen close it. Residuals **#87**
+    (no supporting index — it is a migration, and migrations are gated on B13)
+    and **#88** (the list does not poll; the run page it links to does).
 
 78. **The pre-migration snapshot has never run against a real migration**
     (2026-08-09, session 25, ADR-46). `deploy.sh` now compares `alembic current`
@@ -1189,3 +1267,97 @@ devDependencies).)
     "look" would slip through untested. The real fix is `deployment.sh`
     trusting the HTTP status, which is a change to the deploy driver and wants
     its own careful pass.
+
+84. **A client that retries into a 429 writes one audit row per retry**
+    (2026-08-09, session 26, ADR-48). `billing:quota_denied` records every
+    refusal, which is what makes a support question answerable — and it means a
+    caller looping against an exhausted plan writes an audit row each time. The
+    analyses path is bounded (the per-IP rate limit runs *before* the quota, so
+    the limiter refuses first and emits nothing); project creation and
+    site-audit starts are not, because no authenticated route in this codebase
+    has a throttle at all (`auth-endpoint-rate-limiting` in the backlog). The
+    exposure is therefore not new — an authenticated loop can already hammer
+    those routes — it now also grows a table that cannot be pruned. Not solved
+    with a de-duplication window because nobody has needed one, and a window is
+    the kind of state that is wrong in a way you only discover during the
+    incident it was meant to help with.
+
+85. **`billing:quota_denied` and the permission-denied event are attributed to
+    an org but not always to a person** (2026-08-09, session 26). `quota.consume`
+    takes `context` optionally, so a caller that omits it produces an event with
+    the right organization and a NULL actor. Every current call site passes it;
+    the optionality exists so `quota` stays callable from a worker or a script
+    that legitimately has no user. The debt is that nothing enforces the
+    distinction — a future route that forgets the argument degrades the event
+    silently rather than failing to compile. A required `context` with an
+    explicit `OrgContext.system()` for the caller-less case would close it.
+
+86. **The `checker:submit` trail duplicates a demand signal that already has a
+    table** (2026-08-09, session 26). `checker_submissions` records every submit
+    with its triple and IP hash, and the audit event now records the same submit
+    again. The overlap is deliberate — the audit row is the *cost* record and
+    the submission row is the *demand* record, and they answer to different
+    readers — but if the checker ever goes live at volume
+    (`public-checker-go-live`), it is the anonymous surface writing the most
+    rows into the append-only table, and the platform-wide
+    `verify_integrity(limit=5000)` sweep would fill with it. Per-org integrity
+    checks are unaffected (they filter by `org_id`, and these rows have none).
+    Revisit at go-live, not before.
+
+87. **No index on `analyses(org_id, created_at)`** (2026-08-09, session 26,
+    ADR-49). The history route filters by `org_id` and `kind` and sorts by
+    `created_at DESC`, and the table's only relevant index is
+    `ix_analyses_status_created`. Every page is a scan plus a sort. That is
+    free at production's current 57 rows and stops being free somewhere in the
+    low tens of thousands — which one busy month of one busy customer reaches.
+    Deliberately not fixed now: an index is a migration, and migration-bearing
+    work is gated on operator item B13. **The action is to add it to whatever
+    migration lands next**, not to write one for it alone.
+
+88. **The history screen does not refresh itself** (2026-08-09, session 26). A
+    run submitted from the dashboard reaches `/analyses` as `queued` and stays
+    that way on screen until the reader reloads — the result page polls, this
+    one does not. Acceptable because the list is a way *back* to a run rather
+    than a way to watch one, and the row links to the page that does poll. It
+    becomes wrong the moment this screen is the first thing a user sees after
+    submitting, which is a plausible next iteration.
+
+89. **`QUOTA_ENFORCEMENT_ENABLED` does not cover the backlink refresh path**
+    (2026-08-09, session 26, found by the cross-tenant leakage suite).
+    `services/quota` is the single home of the kill switch, and its docstring
+    claimed that turning it off "cannot half-work, leaving one path metered and
+    another not." It can. `backlink.delta` calls `billing.reserve` directly —
+    it needs the *credit* half as well as the count, and it predates
+    `services/quota` — so with enforcement off, analyses, site audits and
+    projects stop being metered and backlink refreshes do not.
+
+    Found the way findings like this should be found: the leakage suite's
+    owner-side probe got a **429 with enforcement switched off**, which is
+    impossible if the switch means what it said. Harmless today —
+    `BACKLINKS_ENABLED` is off in production, so the path is unreachable — and
+    the docstring now states what the switch actually covers rather than what it
+    was intended to. The real repair is a `quota.reserve` wrapper that gates the
+    credit path the same way, and it is small; it is not done here because it
+    changes billing behaviour on a branch the operator has not merged, and the
+    switch's whole purpose is to be trustworthy in an emergency.
+
+90. **The leakage suite proves isolation for the routes that exist, not for the
+    queries behind them** (2026-08-09, session 26, P7.9). Every org-scoped
+    operation is probed end to end, and a new route cannot be added without
+    classifying it — but the guarantee is still *behavioural*. A service
+    function with a missing `org_id` filter that no route reaches today is
+    invisible to this suite, and would become a leak the moment somebody wires
+    it up to a route that the census then dutifully records as covered. The
+    structural fix is the one #63 has always named — scoping enforced at the
+    query layer rather than remembered at each call site — and it stays open.
+
+91. **The audit CSV export is capped at 5000 rows and says so only in its own
+    audit event** (2026-08-09, session 26, P7.9 §6). The export is a synchronous
+    request holding a database connection, so it cannot be unbounded — but a
+    caller who exports a busy year gets the newest 5000 rows and **the CSV
+    itself does not say it was truncated**. The `audit:export` event records
+    `truncated: true` and the matched total, so the fact is recoverable, but the
+    person holding the file is the one who needs it. Two cheap improvements when
+    somebody hits this: a `X-Yanki-Truncated` response header, or a trailing
+    comment row. The real answer is an export *artifact* — a job that produces a
+    complete file — which belongs with the reporting work in M6.

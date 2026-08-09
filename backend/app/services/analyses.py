@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Analysis, CreditLedgerEntry, Response
 from app.services import billing
+from app.services.tenancy import OrgContext, scoped
 
 # What the ledger calls a charge that came from one GEO analysis. A constant
 # because the settle path both writes it and reads it back to stay idempotent,
@@ -56,6 +58,83 @@ def get_analysis(session: Session, analysis_id: uuid.UUID) -> Analysis | None:
     lives.
     """
     return session.get(Analysis, analysis_id)
+
+
+# The kinds a history screen is about. `checker` runs are excluded structurally
+# rather than by this filter — they are anonymous and carry no `org_id`, so an
+# org-scoped query cannot reach one — but naming the set here means a future
+# kind has to be added deliberately instead of appearing in someone's history
+# because it happened to be persisted in the same table.
+LISTABLE_KINDS = ("mvp",)
+
+MAX_PAGE = 100
+
+
+@dataclass(frozen=True)
+class AnalysisPage:
+    """One page of history, plus the total the filters matched."""
+
+    total: int
+    analyses: list[Analysis]
+
+
+def _history_statement(statement: Select, context: OrgContext, status: str | None) -> Select:
+    # `scoped` rather than a hand-written `where`: it raises on a missing or
+    # org-less context instead of quietly returning every tenant's rows, which
+    # is the difference between a filter you can forget and one you cannot.
+    # This is its first call site in the application (tech-debt #63).
+    statement = scoped(statement, Analysis.org_id, context)
+    statement = statement.where(Analysis.kind.in_(LISTABLE_KINDS))
+    if status:
+        statement = statement.where(Analysis.status == status)
+    return statement
+
+
+def list_org_analyses(
+    session: Session,
+    context: OrgContext,
+    *,
+    status: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> AnalysisPage:
+    """The organization's own analyses, newest first.
+
+    Runs have carried an ``org_id`` since P7.6 and there was no way to list
+    them: the only route to a result was the URL you were redirected to, so
+    closing the tab lost it (tech-debt #77). This is the read that makes the
+    attribution visible to the person paying for it.
+
+    **Summary rows only.** The relationships an analysis owns — prompts,
+    responses, SERP and SEO checks, geo records — are deliberately not loaded.
+    A single finished run holds dozens of responses, so a page of twenty would
+    serialize thousands of rows to render a table of URLs and scores. The
+    detail route already exists for the one the reader clicks.
+
+    The sort ends with ``id`` as a tiebreaker. Two runs submitted in the same
+    transaction share a timestamp often enough that without it, page 2 can
+    repeat a row from page 1 and silently skip another — the same unstable
+    pagination the audit log guards against.
+    """
+
+    total = int(
+        session.scalar(
+            select(func.count()).select_from(
+                _history_statement(select(Analysis.id), context, status).subquery()
+            )
+        )
+        or 0
+    )
+
+    rows = list(
+        session.scalars(
+            _history_statement(select(Analysis), context, status)
+            .order_by(Analysis.created_at.desc(), Analysis.id.desc())
+            .limit(max(1, min(limit, MAX_PAGE)))
+            .offset(max(0, offset))
+        )
+    )
+    return AnalysisPage(total=total, analyses=rows)
 
 
 def spend_on(session: Session, analysis_id: uuid.UUID) -> Decimal:

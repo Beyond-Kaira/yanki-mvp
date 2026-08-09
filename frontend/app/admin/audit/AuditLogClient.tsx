@@ -7,6 +7,7 @@ import {
   fetchAuditEvents,
   fetchAuditIntegrity,
   fetchRecordHistory,
+  downloadAuditEventsCsv,
   type AuditQuery,
 } from '@/lib/api'
 import type { AuditEvent, AuditEventList, AuditIntegrity } from '@/lib/contracts'
@@ -77,6 +78,8 @@ export default function AuditLogClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
   const [action, setAction] = useState('')
@@ -105,6 +108,42 @@ export default function AuditLogClient() {
     }),
     [search, action, entity, outcome, from, to, sort, order, offset],
   )
+
+  /**
+   * Export what the filters currently match.
+   *
+   * The blob is turned into an object URL and clicked, then revoked — the
+   * standard dance for a download that needs an Authorization header, since a
+   * plain `<a href>` cannot carry one and would save a 401 body as a CSV.
+   *
+   * Deliberately exports the **match, not the page**. Someone who filtered to
+   * one actor and one week wants that week, not the twenty-five rows currently
+   * on screen; the server caps it, and the export's own audit event records
+   * whether the cap truncated the answer.
+   */
+  const handleExport = useCallback(async () => {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const blob = await downloadAuditEventsCsv(query)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'audit-events.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setExportError(
+        err instanceof ApiError && err.status === 403
+          ? 'You do not have permission to export the audit log.'
+          : "We couldn't export the audit log. Try again.",
+      )
+    } finally {
+      setExporting(false)
+    }
+  }, [query])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -153,16 +192,39 @@ export default function AuditLogClient() {
 
   return (
     <section aria-labelledby="audit-heading">
-      <header className="mb-6">
-        <h2 id="audit-heading" className="text-lg font-semibold tracking-tight">
-          {scoped ? 'Change history' : 'Audit log'}
-        </h2>
-        <p className="mt-1 text-sm text-surface-subtle">
-          {scoped
-            ? `Everything that ever touched ${entityType} ${entityId}, oldest first.`
-            : 'Every change made in this organization: who, what, when, and the values on both sides.'}
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="audit-heading" className="text-lg font-semibold tracking-tight">
+            {scoped ? 'Change history' : 'Audit log'}
+          </h2>
+          <p className="mt-1 text-sm text-surface-subtle">
+            {scoped
+              ? `Everything that ever touched ${entityType} ${entityId}, oldest first.`
+              : 'Every change made in this organization: who, what, when, and the values on both sides.'}
+          </p>
+        </div>
+        {/* Hidden on the record-history view, which is a different question
+            ("what happened to this row") and has no filters to export. */}
+        {scoped ? null : (
+          <button
+            type="button"
+            disabled={exporting || total === 0}
+            onClick={handleExport}
+            className="h-10 shrink-0 rounded-md border border-surface-border bg-surface px-4 text-sm font-medium disabled:opacity-50"
+          >
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
+        )}
       </header>
+
+      {exportError ? (
+        <p
+          role="alert"
+          className="mb-4 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger-strong"
+        >
+          {exportError}
+        </p>
+      ) : null}
 
       {integrity ? (
         <p

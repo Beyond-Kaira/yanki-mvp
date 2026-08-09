@@ -2232,3 +2232,167 @@ things the PR did not intend.*
   api serves fine without one, and CI's e2e stack, the test suite and a laptop
   all legitimately run with no worker at all. *Reporting the full detail
   publicly* — needless disclosure on an endpoint the whole internet can reach.
+
+---
+
+### ADR-48 — What an append-only trail is allowed to remember (2026-08-09, tech-debt #71)
+
+- **Context:** M1's standing rule is "every mutating action emits an audit
+  event". Six paths did not. Five were unremarkable oversights — competitor
+  track/untrack, the checker submit, its lead gate, the waitlist. The sixth was
+  not: **refresh-token reuse detection** revokes an entire sign-in family
+  because it believes the token was stolen, and recorded nothing at all. That is
+  the single event a security review is most likely to come looking for, and the
+  answer to "has this ever happened?" was an empty table with no way to tell
+  *never* from *not recorded*.
+
+  Closing the gap forced three decisions that are not obvious, and each one has
+  a wrong answer that looks reasonable.
+
+- **Decision 1 — coverage is not the same as completeness, and silence must be
+  deliberate.** A refresh rotation is a *mutation*: it consumes a token and
+  writes a successor row. Under a literal reading of the rule it must be
+  audited. It is not, because it fires roughly four times an hour per signed-in
+  device — one active user would out-write the entire Admin Panel's yearly
+  output in a week, and every real event would be buried under heartbeat rows.
+  An audit log is read by a person; a record nobody can find is not a record.
+
+  The same reasoning excludes an ordinary expired refresh (every idle user hits
+  it) and a duplicate waitlist signup (nothing was inserted — and recording it
+  would put "this address is already on the list" into a table, which is exactly
+  the enumeration answer that endpoint's design spends its whole shape
+  refusing to give).
+
+  So the rule becomes: **every mutating action with a consequence emits, and
+  every deliberate silence has a test asserting the silence.** The second half
+  is the load-bearing one. An intentional gap that nobody wrote a test for is
+  indistinguishable from a forgotten one — which is precisely how #71 came to
+  exist and survive four sessions.
+
+- **Decision 2 — an append-only table must not hold erasable PII.**
+  `audit_events` cannot be updated or deleted through the application: migration
+  0018 installs database triggers that raise on UPDATE, DELETE and TRUNCATE.
+  That is the property the whole trail rests on, and it has a consequence nobody
+  had had to face yet — **anything written there is permanent.**
+
+  Two of the new paths carry an email address (`checker:lead`,
+  `waitlist:signup`). Copying it into the event would have been the obvious
+  thing, and it would have put the future erasure path
+  (`pii-retention-and-erasure`) into direct conflict with the integrity
+  guarantee: honouring a deletion request would require either breaking the
+  triggers or lying about having deleted the data. So these events store the
+  *reference* and drop the *value*. Erase the submission, and the audit row
+  still truthfully says an address was attached — and no longer says whose.
+
+  **Failed logins remain the deliberate exception**, and the distinction is
+  principled rather than convenient: there the attempted address *is* the
+  evidence ("somebody is guessing at my colleague's password"), and no other row
+  carries it. Where the value lives elsewhere and is erasable, the trail points
+  at it; where the value is the finding, the trail keeps it.
+
+- **Decision 3 — a refusal is worth auditing even though it mutates nothing.**
+  `billing:quota_denied` records a 429. Strictly it falls outside the rule: no
+  state changed. It is recorded because ADR-45 made every organization Free by
+  default, which makes a refusal the likeliest thing to happen to a live user —
+  and until now "my analysis just fails, why?" had an answer in no log, no
+  response body the customer could forward, and no screen. The spine already
+  had the shape for this: a failed login is an `auth:login` with
+  `outcome="denied"`.
+
+  It commits its own transaction, which is the part worth stating. The request
+  is unwinding — the route raises, the handler answers 429, the session closes
+  uncommitted — so an event merely *added* to that session would be discarded
+  along with the refusal it describes. Committing is safe only because
+  `check_quota`/`check_stock_quota` raise **before** they write and every route
+  runs its quota gate before any other mutation, so the event is the only thing
+  pending. That ordering is asserted by a test rather than assumed, and a future
+  metered path that writes first must emit at its own call site instead.
+
+- **Consequences:**
+  - Reuse detection is now visible, attributed to the user *and their
+    organization* — a NULL org would have made it invisible in the Admin Panel's
+    log, which is the only place anyone would look.
+  - `backlinks.untrack_competitor` returns the removed domain instead of a bare
+    `True`. After the delete there is nothing left to read, and a removal event
+    that cannot name what was removed answers a weaker question than the one it
+    exists for. Same reasoning as `/auth/logout` resolving its user before
+    revoking the token.
+  - The reuse event's detail key is `revoked_family`, **not** `family_id` or
+    `session_id`. `redact()` blanks any payload key containing "session", so the
+    obvious names would have stored `[redacted]` and lost the one field saying
+    which sign-in was killed. A test pins the name.
+  - A client that retries into a 429 writes one audit row per retry. The
+    analyses path is bounded by the per-IP rate limit that runs before the quota;
+    the project and site-audit paths are not, and no authenticated route has a
+    throttle today (`auth-endpoint-rate-limiting`). Recorded as tech-debt #84
+    rather than solved with a de-duplication window nobody has needed yet.
+  - **Rejected:** emitting the refusal from the exception handler in `api.main`.
+    It has the request but not the caller's organization, and the request-scoped
+    session is already gone — so it would need a second session, which the test
+    harness cannot even express (a `StaticPool` in-memory SQLite shares one
+    connection, so a "separate" session would share the transaction and behave
+    differently in tests than in production). A gate whose audit trail is
+    untestable is not a gate.
+
+---
+
+### ADR-49 — A list is not a capability URL (2026-08-09, tech-debt #77)
+
+- **Context:** P7.6 gave analyses an `org_id`. Nothing read it. The only route
+  back to a result was still the URL a submitter happened to be redirected to,
+  so closing the tab lost the run — which had been true before as well, but was
+  then at least *consistent* with runs belonging to nobody. After P7.6 the data
+  said the run had an owner and the product offered that owner no way to find it.
+
+  Adding the list forced a question that looks like a formality and is not:
+  `GET /api/v1/analyses/{id}` is **open to anonymous callers**, because an
+  analysis with no organization is a capability URL — hold the unguessable id,
+  read the result — and that is every row in production today plus every checker
+  run. Should the list match?
+
+- **Decision:** **No. The list requires authentication and is org-scoped, and
+  the asymmetry is the correct design rather than an inconsistency to tidy up
+  later.** A capability URL works because knowing the id *is* the authorization.
+  A list has no id to know. There is no capability a caller could present, so
+  the only coherent answer to "whose analyses?" is "the caller's organization" —
+  and an unauthenticated version of the route could only ever mean "everyone's",
+  which is not a weaker version of the same feature but a different and much
+  worse one.
+
+  The rule generalizes and is worth stating for the routes M3–M6 will add:
+  **a route keyed by an unguessable id may be a capability; a route that
+  enumerates never can be.**
+
+- **Consequences:**
+  - Runs created before P7.6 carry no `org_id` and therefore appear in **no**
+    organization's history, while remaining readable by id. They belong to no
+    tenant; assigning them to the first plausible owner would be a guess written
+    into a customer-visible screen.
+  - This is the **first application call site of `tenancy.scoped()`** — the
+    fail-closed helper that ADR-35, `architecture-target.md` and the P7.1 card
+    all described as shipped and that had zero callers (tech-debt #63). It is
+    used here rather than a hand-written `where` for the property it exists for:
+    a missing or org-less context raises instead of silently returning every
+    tenant's rows. #63 is **not** closed by this — one call site is not a
+    guarantee, and the A9 leakage suite is still what would make tenancy
+    enforced rather than remembered — but the seam is no longer fiction.
+  - A separate `AnalysisSummaryOut` schema rather than a trimmed `AnalysisOut`.
+    The detail envelope carries every prompt, every raw engine response, and
+    every SERP and SEO check; a twenty-row page of those is thousands of records
+    to render a table of URLs and scores. Two schemas also mean a field added to
+    the detail view cannot silently make the list twenty times heavier.
+  - **Null scores are not zeros, and this is load-bearing in the UI.** A queued
+    run has no `geo_score`; the screen renders an em dash. Rendering `0` would
+    tell a customer their brand is invisible in AI answers when the truth is
+    that nobody has measured yet. The same rule the Backlinks screens follow
+    (ADR-36), asserted here in both directions — a genuine `0.0` still shows as
+    `0.0`.
+  - **Rejected:** paging client-side over a full fetch. It is simpler today, at
+    57 rows in production, and it is the kind of simple that becomes an incident
+    on the first customer who runs a thousand analyses — by which time the fix
+    is a schema change to a shipped endpoint rather than a decision.
+  - **Not done:** an index on `analyses(org_id, created_at)`. It would be a
+    migration, and migration-bearing work is gated on operator item B13. At
+    production's current size the query is a trivial scan; recorded as
+    tech-debt #87 so the index lands with the next migration rather than being
+    discovered under load.

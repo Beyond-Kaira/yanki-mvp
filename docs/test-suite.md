@@ -77,6 +77,9 @@ backend/tests/
 │                          #   competitors, checker, waitlist, 429s (ADR-48)
 ├── test_analysis_history.py # GET /analyses: whose rows (the first `scoped()`
 │                            #   call site), which rows, how many rows (ADR-49)
+├── test_cross_tenant_leakage.py # the M1 exit gate. A census of every operation
+│                            #   in the live OpenAPI schema — an unclassified
+│                            #   route FAILS — plus paired probes (P7.9)
 ├── test_queue.py          # portable claim / stale-reaper / retry logic (SQLite)
 ├── test_queue_postgres.py # real-Postgres FOR UPDATE SKIP LOCKED (gated on TEST_DATABASE_URL)
 ├── serp/                  # SERP sources: adapter, mock, registry (ADR-28)
@@ -551,7 +554,43 @@ the rate limiter emits nothing. **A 429 is not evidence that the quota
 refused** — the tests now assert on the response body's `metric` field as well,
 which only the quota's handler sets.
 
-This suite also carries the project's clearest example of testing an absence.
+### The leakage suite is a census, and that is the whole design
+
+`test_cross_tenant_leakage.py` is the M1 exit gate ("zero cross-tenant reads")
+and the one file in this repo whose *structure* matters more than its
+assertions. Two properties, both deliberate:
+
+**It cannot go stale.** Every operation is read out of the running app's OpenAPI
+schema and matched against an explicit classification — `PUBLIC`, `SELF`,
+`CAPABILITY` or `ORG`. **An unclassified operation fails the suite.** A
+hand-written list of routes is stale the moment somebody adds one, and a stale
+leakage suite fails in the worst possible way: it stays green while the surface
+it was written for grows underneath it. There is a mirror test too, so a
+*removed* route must leave the file rather than leave a reader trusting a probe
+that has not run against anything for months.
+
+**It cannot pass vacuously.** Every probe is a pair — the owner must get a
+success *and* the stranger must get a 404. A probe that only asserts the
+stranger's 404 passes just as happily when the route is dark behind a feature
+flag, when the fixture silently failed to create the resource, or when the URL
+is misspelled. This is why the fixture switches `BACKLINKS_ENABLED` and
+`SITE_AUDIT_ENABLED` **on**: both are off in production, and a dark route
+answers exactly the 404 this suite reads as proof of isolation.
+
+It is also 404 everywhere and never 403: a 403 says "this exists and is not
+yours", which is an existence oracle that turns an unguessable id into an
+enumerable one.
+
+Worth knowing for anyone extending it: the tenants are built through the **real
+API** — signup, login, bearer tokens, no dependency overrides on the auth chain —
+so the probes exercise the same path a browser does. And the suite earns its
+keep already: its owner-side probe on `backlinks/refresh` returned a **429 with
+quota enforcement switched off**, which is how tech-debt #89 was found.
+
+---
+
+The audit-coverage suite also carries the project's clearest example of testing
+an absence.
 Four of its cases assert that something is **not** audited (a successful token
 rotation, an expired refresh, a duplicate waitlist signup, a checker submit
 parked by the kill switch). Those are the tests that make a deliberate silence

@@ -238,10 +238,17 @@ is a weaker literal claim and a stronger practical one: the previous wording was
 satisfied by nobody checking, which is how five unaudited paths survived four
 sessions.
 
+**Zero cross-tenant reads is now proved rather than claimed ✅** — the A9 suite
+shipped in session 26 (34 tests, `test_cross_tenant_leakage.py`). It is built as
+a census: every operation is read out of the live OpenAPI schema and must carry
+a stated tenancy classification, so a route added without one **fails the
+suite**. That is what turns the line above from a snapshot into a gate — and it
+means A7's back-office routes, when they land, cannot ship unclassified.
+
 Still owed: **purchasable in Stripe test mode** (operator A5), the Super Admin
-back office (A7) and system pages (A8), and the A9 cross-tenant suite — which is
-also the only thing that would turn today's per-route tenancy discipline into
-the guarantee this line claims (tech-debt #63).
+back office (A7) and system pages (A8). What A9 has left is the operator runbook
+and the `audit-emit-no-outbox` hardening, neither of which is a correctness
+gate.
 
 **Explicitly not in M1:** SSO/SCIM (M8) · customer dashboards (M4) ·
 white-label (M6) · public API keys' *consumer* docs (M7 — issuing/managing

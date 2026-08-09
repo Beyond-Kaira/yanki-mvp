@@ -2481,11 +2481,27 @@ paragraph, as the record.*
   asserting the silence**; `tests/test_audit_coverage.py` is where both halves
   are proven.
 
-  **What A9 still owes:** the cross-tenant leakage / permission-fuzzing suite
-  (the named M1 exit criterion, and the only thing that would turn per-route
-  tenancy discipline into a guarantee — tech-debt #63), the operator runbook,
-  and the `audit-emit-no-outbox` hardening, which is a deliberate trade rather
-  than a defect (an audit write failure must never 500 a request).
+  **The cross-tenant leakage suite is also done** (2026-08-09, session 26,
+  fourth loop) — `backend/tests/test_cross_tenant_leakage.py`, 34 tests, the
+  named M1 exit criterion. Built as a **census rather than a checklist**: every
+  operation is read out of the live OpenAPI schema and matched against an
+  explicit tenancy classification, so **an unclassified route fails the suite**
+  and the file cannot go stale as the surface grows. Every probe is a pair — the
+  owner must succeed *and* the stranger must get 404 — because a probe that only
+  checks the 404 passes just as happily against a route that is dark behind a
+  feature flag. It substantially repays tech-debt #63 and found #89 on the way
+  in (the quota kill switch does not cover the backlink refresh path).
+
+  It shipped **ahead of its stated dependency on `platform-back-office`**. That
+  dependency assumed A7 would land first; A7 is blocked on operator item B16,
+  and holding the milestone's central safety claim behind an operator decision
+  would have left "zero cross-tenant reads" unchecked indefinitely. When A7
+  lands, its routes will fail the census until they are classified — which is
+  the mechanism working as designed rather than a gap.
+
+  **What A9 still owes:** the operator runbook, and the `audit-emit-no-outbox`
+  hardening — a deliberate trade rather than a defect (an audit write failure
+  must never 500 a request). Neither is a code-correctness gate.
 
 ### P7.10 — Analysis history per organization
 - **Goal:** let a customer find the analyses their organization has run.

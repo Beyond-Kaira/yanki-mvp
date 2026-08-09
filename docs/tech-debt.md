@@ -32,6 +32,18 @@ no supporting index, because an index is a migration and migrations are gated
 on operator item B13 — so it must ride along with the next migration rather
 than be discovered under load.
 
+**#63 SUBSTANTIALLY REPAID, deliberately not closed** — the fourth loop built
+the **M1 exit gate**: `tests/test_cross_tenant_leakage.py`, 34 tests, written to
+#63's own instruction rather than as a spot-check. Every operation is read out
+of the live OpenAPI schema and must carry a stated tenancy classification, so
+**an unclassified route fails the suite**; every probe is a pair (the owner
+succeeds *and* the stranger gets 404) so it cannot pass vacuously. It stays open
+because "no route leaks" is not "no query can" — see **#90**. **Two new items,
+#89–#90**, and #89 is the kind of finding this suite exists to produce: an
+owner-side probe returned **429 with quota enforcement switched off**, which
+revealed that the kill switch does not cover the backlink refresh path even
+though its docstring said it could not fail that way.
+
 This session also fixed two CI gates that session 25 could not see from a
 laptop and that its own log recorded as green: the scoped **formatting gate**
 (seven of its files were unformatted) and the **SERP stack check**, which
@@ -1011,6 +1023,22 @@ devDependencies).)
     routes. Until then, treat every new tenant-scoped query as needing its own
     explicit `org_id` filter, because nothing does it for you.
 
+    **Update 2026-08-09 (session 26) — substantially repaid, and deliberately
+    not closed.** Both functions now have call sites: `readable_analysis()` in
+    `GET /analyses/{id}`, and `scoped()` in `services.analyses.
+    list_org_analyses` (ADR-49). More importantly, **the leakage suite exists**
+    (`tests/test_cross_tenant_leakage.py`, 34 tests) and it was built to the
+    instruction above rather than as a spot-check: every operation is read out
+    of the live OpenAPI schema, an unclassified route **fails the suite**, and
+    every probe is a pair so it cannot pass vacuously.
+
+    What keeps this open is the gap between "no route leaks" and "no query can".
+    The suite proves the first, which is the guarantee the milestone's exit
+    criterion asks for. The second needs scoping enforced at the query layer,
+    and a service function with a missing filter that no route reaches today is
+    still invisible — see **#90**. The standing instruction is unchanged: every
+    new tenant-scoped query needs its own explicit `org_id` filter.
+
 64. **Three Site Audits are stranded `queued` in production and need operator
     cleanup** (2026-08-08, session 24). `31eba473…`, `410c31d7…`, `35e06651…`,
     created 2026-08-05/06, zero pages each. They were enqueued through a UI
@@ -1293,3 +1321,32 @@ devDependencies).)
     than a way to watch one, and the row links to the page that does poll. It
     becomes wrong the moment this screen is the first thing a user sees after
     submitting, which is a plausible next iteration.
+
+89. **`QUOTA_ENFORCEMENT_ENABLED` does not cover the backlink refresh path**
+    (2026-08-09, session 26, found by the cross-tenant leakage suite).
+    `services/quota` is the single home of the kill switch, and its docstring
+    claimed that turning it off "cannot half-work, leaving one path metered and
+    another not." It can. `backlink.delta` calls `billing.reserve` directly —
+    it needs the *credit* half as well as the count, and it predates
+    `services/quota` — so with enforcement off, analyses, site audits and
+    projects stop being metered and backlink refreshes do not.
+
+    Found the way findings like this should be found: the leakage suite's
+    owner-side probe got a **429 with enforcement switched off**, which is
+    impossible if the switch means what it said. Harmless today —
+    `BACKLINKS_ENABLED` is off in production, so the path is unreachable — and
+    the docstring now states what the switch actually covers rather than what it
+    was intended to. The real repair is a `quota.reserve` wrapper that gates the
+    credit path the same way, and it is small; it is not done here because it
+    changes billing behaviour on a branch the operator has not merged, and the
+    switch's whole purpose is to be trustworthy in an emergency.
+
+90. **The leakage suite proves isolation for the routes that exist, not for the
+    queries behind them** (2026-08-09, session 26, P7.9). Every org-scoped
+    operation is probed end to end, and a new route cannot be added without
+    classifying it — but the guarantee is still *behavioural*. A service
+    function with a missing `org_id` filter that no route reaches today is
+    invisible to this suite, and would become a leak the moment somebody wires
+    it up to a route that the census then dutifully records as covered. The
+    structural fix is the one #63 has always named — scoping enforced at the
+    query layer rather than remembered at each call site — and it stays open.

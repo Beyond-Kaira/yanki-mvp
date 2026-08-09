@@ -4263,6 +4263,202 @@
         ]
       }
     },
+    "/api/v1/admin/audit-events/export.csv": {
+      "get": {
+        "description": "The filtered audit trail as CSV \u2014 and the export is itself audited.\n\n**Three things make this more than a formatting change.**\n\n*It takes the same filters as the list*, deliberately. An export that\nignored them would hand someone the whole trail when they asked for one\nweek of one actor, which is both less useful and more disclosure than they\nwanted. The filters are the same parameters, so a UI can export exactly\nwhat is on screen.\n\n*It carries the integrity verdict per row.* A trail that leaves this out is\na spreadsheet of claims; with it, whoever receives the file can see that\neach row still hashes to its stored digest \u2014 ``intact``, ``altered``, or\n``unverifiable`` for rows written before ``record_hash`` existed. The three\nanswers are kept distinct here for the same reason\n:func:`audit.verify_row` keeps them: reporting a pre-hash row as *altered*\ncries wolf, and reporting it as *intact* is a claim the data cannot support.\n\n*Exporting is a disclosure event, so it emits one* (``audit:export``,\nadmin-panel-plan \u00a76). Somebody just took a copy of the compliance record\nout of the system; that is precisely the kind of action this table exists\nto remember, and an audit log that cannot say who exported it is missing\nthe event most likely to matter afterwards. The row records the filters and\nthe count, never the contents.\n\n**No secrets leave here that the API would not already show.** The rows go\nthrough ``_event_out``, so ``before``/``after`` are the same redacted\npayloads the list view serves; only the computed ``changed`` diff is\nflattened into the file, since a CSV cell cannot hold a nested object\nusefully.",
+        "operationId": "export_audit_events_csv_api_v1_admin_audit_events_export_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "occurred_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Occurred From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "occurred_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Occurred To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Audit Events Csv",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/audit-events/history/{entity_type}/{entity_id}": {
       "get": {
         "description": "Everything that ever touched one record \u2014 \"what happened to this user?\".\n\nOldest first here, unlike the main log: a history is read as a story from\nthe beginning, where a log is read from the latest thing that happened.",

@@ -32,6 +32,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/audit-events/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Audit Events Csv
+         * @description The filtered audit trail as CSV — and the export is itself audited.
+         *
+         *     **Three things make this more than a formatting change.**
+         *
+         *     *It takes the same filters as the list*, deliberately. An export that
+         *     ignored them would hand someone the whole trail when they asked for one
+         *     week of one actor, which is both less useful and more disclosure than they
+         *     wanted. The filters are the same parameters, so a UI can export exactly
+         *     what is on screen.
+         *
+         *     *It carries the integrity verdict per row.* A trail that leaves this out is
+         *     a spreadsheet of claims; with it, whoever receives the file can see that
+         *     each row still hashes to its stored digest — ``intact``, ``altered``, or
+         *     ``unverifiable`` for rows written before ``record_hash`` existed. The three
+         *     answers are kept distinct here for the same reason
+         *     :func:`audit.verify_row` keeps them: reporting a pre-hash row as *altered*
+         *     cries wolf, and reporting it as *intact* is a claim the data cannot support.
+         *
+         *     *Exporting is a disclosure event, so it emits one* (``audit:export``,
+         *     admin-panel-plan §6). Somebody just took a copy of the compliance record
+         *     out of the system; that is precisely the kind of action this table exists
+         *     to remember, and an audit log that cannot say who exported it is missing
+         *     the event most likely to matter afterwards. The row records the filters and
+         *     the count, never the contents.
+         *
+         *     **No secrets leave here that the API would not already show.** The rows go
+         *     through ``_event_out``, so ``before``/``after`` are the same redacted
+         *     payloads the list view serves; only the computed ``changed`` diff is
+         *     flattened into the file, since a CSV cell cannot hold a nested object
+         *     usefully.
+         */
+        get: operations["export_audit_events_csv_api_v1_admin_audit_events_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/audit-events/history/{entity_type}/{entity_id}": {
         parameters: {
             query?: never;
@@ -2602,6 +2651,45 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuditEventListOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_audit_events_csv_api_v1_admin_audit_events_export_csv_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                action?: string | null;
+                actor_id?: string | null;
+                entity_type?: string | null;
+                entity_id?: string | null;
+                outcome?: string | null;
+                occurred_from?: string | null;
+                occurred_to?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -627,6 +627,32 @@ export async function fetchAuditEvents(query: AuditQuery = {}): Promise<AuditEve
   return (await res.json()) as AuditEventList
 }
 
+/**
+ * Download the filtered audit trail as CSV.
+ *
+ * A fetch-then-blob rather than an `<a href>`, because the export needs the
+ * caller's bearer and a plain link cannot carry one — a naked link would hit
+ * the endpoint unauthenticated and download a 401 body as a file, which is the
+ * worst of both outcomes. Sorting and paging are dropped from the query on
+ * purpose: an export covers the whole match, not the page you happen to be on.
+ */
+export async function downloadAuditEventsCsv(query: AuditQuery = {}): Promise<Blob> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (['sort', 'order', 'limit', 'offset'].includes(key)) continue
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString() ? `?${params}` : ''
+  const res = await authorizedFetch(
+    `/api/v1/admin/audit-events/export.csv${suffix}`,
+    { headers: { Accept: 'text/csv' } },
+  )
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return await res.blob()
+}
+
 export async function fetchRecordHistory(
   entityType: string,
   entityId: string,

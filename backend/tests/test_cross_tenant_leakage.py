@@ -106,6 +106,7 @@ ORG = {
     ("GET", "/api/v1/admin/audit-events"),
     ("GET", "/api/v1/admin/audit-events/history/{entity_type}/{entity_id}"),
     ("GET", "/api/v1/admin/audit-events/integrity"),
+    ("GET", "/api/v1/admin/audit-events/export.csv"),
     ("GET", "/api/v1/seo-projects"),
     ("POST", "/api/v1/seo-projects"),
     ("GET", "/api/v1/seo-projects/{project_id}"),

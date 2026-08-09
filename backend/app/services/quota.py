@@ -11,8 +11,18 @@ exactly two reasons that ``billing`` itself should not carry:
 
 1. **The kill switch has one home.** ``QUOTA_ENFORCEMENT_ENABLED`` is read here
    and nowhere else. A route asks this module rather than ``billing`` directly,
-   so "is enforcement on" cannot be answered differently in two places — and
-   turning it off cannot half-work, leaving one path metered and another not.
+   so "is enforcement on" cannot be answered differently in two places.
+
+   **One path does not go through here, and the switch therefore does not cover
+   it.** ``backlink.delta`` calls ``billing.reserve`` itself, because it needs
+   the *credit* half as well as the count and it predates this module. So
+   ``QUOTA_ENFORCEMENT_ENABLED=0`` disables metering on analyses, site audits and
+   projects, and leaves backlink refreshes metered. That is currently harmless —
+   ``BACKLINKS_ENABLED`` is off in production, so the path is unreachable — and
+   it is stated here rather than glossed, because an earlier version of this
+   docstring claimed the switch could not half-work and it can (tech-debt #89,
+   found by the cross-tenant leakage suite, whose owner-side probe got a 429
+   with enforcement switched off).
 2. **``billing`` stays free of ``Settings``.** The money layer should be
    callable from a worker, a script and a test without constructing application
    configuration; keeping the flag out here is what preserves that.

@@ -221,7 +221,10 @@ def test_get_serializes_the_serp_summary_and_its_evidence(client, db_session, ma
 def test_a_measured_but_unreadable_run_serializes_a_null_score(client, make_analysis):
     """Present summary, null score — "we looked and could not see"."""
     analysis = make_analysis(
-        status="done", serp_status="unavailable", serp_source="searxng", serp_hit_count=0,
+        status="done",
+        serp_status="unavailable",
+        serp_source="searxng",
+        serp_hit_count=0,
         serp_query_count=0,
     )
 
@@ -242,9 +245,7 @@ def test_get_reports_no_seo_audit_when_the_run_never_audited(client, make_analys
 def test_get_serializes_the_seo_audit_and_its_checks(client, db_session, make_analysis):
     from app.db.models import SeoCheck
 
-    analysis = make_analysis(
-        status="done", seo_status="ok", seo_score=61.4, seo_grade="C"
-    )
+    analysis = make_analysis(status="done", seo_status="ok", seo_score=61.4, seo_grade="C")
     db_session.add_all(
         [
             SeoCheck(

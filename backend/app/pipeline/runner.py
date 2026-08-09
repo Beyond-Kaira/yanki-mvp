@@ -71,9 +71,7 @@ def _complete_step(session, analysis: Analysis, progress: int) -> None:
 
 
 def run_pipeline(session, analysis_id, settings) -> Analysis:
-    analysis = session.execute(
-        select(Analysis).where(Analysis.id == analysis_id)
-    ).scalar_one()
+    analysis = session.execute(select(Analysis).where(Analysis.id == analysis_id)).scalar_one()
 
     session.execute(delete(GeoRecord).where(GeoRecord.analysis_id == analysis.id))
     session.execute(delete(Response).where(Response.analysis_id == analysis.id))
@@ -144,9 +142,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     if is_checker:
         specs = checker_prompts.generate(kyc, analysis.lang or "en")
     else:
-        specs = prompts_step.generate_prompts(
-            kyc, getattr(settings, "prompt_count", 10)
-        )
+        specs = prompts_step.generate_prompts(kyc, getattr(settings, "prompt_count", 10))
     prompt_rows = []
     for spec in specs:
         row = Prompt(analysis_id=analysis.id, text=spec.text, category=spec.category)
@@ -157,9 +153,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
 
     # 4. measured execute (Tavily + OpenRouter, or mocks under DRY_RUN)
     _start_step(session, analysis, "execute", settings)
-    responses = execute_step.run_measured_execute(
-        session, analysis, prompt_rows, settings
-    )
+    responses = execute_step.run_measured_execute(session, analysis, prompt_rows, settings)
     _complete_step(session, analysis, _EXECUTE_DONE)
 
     # 5. reliability over measured audits (+ footprint recount)

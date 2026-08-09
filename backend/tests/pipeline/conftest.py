@@ -34,9 +34,7 @@ def settings(tmp_path_factory):
         max_responses_per_job=60,
         anthropic_api_key="",
         openai_api_key="",
-        worker_heartbeat_path=str(
-            tmp_path_factory.mktemp("heartbeat") / "worker.heartbeat"
-        ),
+        worker_heartbeat_path=str(tmp_path_factory.mktemp("heartbeat") / "worker.heartbeat"),
     )
 
 
@@ -92,9 +90,7 @@ def seeded_analysis(db_session, models):
     db_session.add(analysis)
     db_session.flush()
     prompts = [
-        models.Prompt(
-            analysis_id=analysis.id, text=f"Question {i}?", category="recommendation"
-        )
+        models.Prompt(analysis_id=analysis.id, text=f"Question {i}?", category="recommendation")
         for i in range(3)
     ]
     db_session.add_all(prompts)

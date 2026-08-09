@@ -212,9 +212,7 @@ def test_a_rate_limited_submit_costs_no_quota(client, db_session, signed_in):
     assert billing.usage(db_session, org.id, billing.METRIC_ANALYSES) == 0
 
 
-def test_a_409_after_the_meter_ran_gives_the_allowance_back(
-    client, db_session, signed_in, on_plan
-):
+def test_a_409_after_the_meter_ran_gives_the_allowance_back(client, db_session, signed_in, on_plan):
     """The counter and the thing it pays for commit together, or neither does.
 
     `create_site_audit` meters *before* `queue_site_audit`, which is the only
@@ -467,7 +465,7 @@ def test_a_failed_run_still_records_what_it_spent(db_session, signed_in):
 
 
 def test_a_zero_cost_run_still_writes_a_row(db_session, signed_in):
-    """"This ran and cost nothing" and "this never ran" are different facts, and
+    """ "This ran and cost nothing" and "this never ran" are different facts, and
     the ledger is where the difference is visible — which is also what makes the
     DRY_RUN suite's $0 assertions mean anything."""
 

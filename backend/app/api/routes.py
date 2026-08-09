@@ -79,12 +79,9 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
     competitors_appeared: list[CompetitorMention] | None = None
     if analysis.kind == "checker":
         summary = summarize_checker(analysis.responses, analysis.kyc)
-        engine_presence = [
-            EnginePresence.model_validate(stat) for stat in summary.engine_presence
-        ]
+        engine_presence = [EnginePresence.model_validate(stat) for stat in summary.engine_presence]
         competitors_appeared = [
-            CompetitorMention.model_validate(stat)
-            for stat in summary.competitors_appeared
+            CompetitorMention.model_validate(stat) for stat in summary.competitors_appeared
         ]
 
     # SERP visibility (ADR-28). Present only when the run actually measured it:

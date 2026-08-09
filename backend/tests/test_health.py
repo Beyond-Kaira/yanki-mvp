@@ -120,9 +120,7 @@ def test_a_fresh_heartbeat_reports_the_worker_alive(client, pin_settings, tmp_pa
     assert body["checks"]["worker"]["last_beat_seconds"] < 5
 
 
-def test_a_stale_heartbeat_reports_a_worker_that_stopped_looping(
-    client, pin_settings, tmp_path
-):
+def test_a_stale_heartbeat_reports_a_worker_that_stopped_looping(client, pin_settings, tmp_path):
     """The defect this exists for: a `while True` that stops looping leaves the
     container "running" and the queue quietly undrained."""
 

@@ -130,9 +130,7 @@ def _on_plan(db_session, tenant: Tenant, plan_key: str) -> None:
     from app.services import billing
 
     org = db_session.scalar(
-        sa.select(Organization).where(
-            Organization.owner_user_id == _uuid.UUID(tenant.user_id)
-        )
+        sa.select(Organization).where(Organization.owner_user_id == _uuid.UUID(tenant.user_id))
     )
     assert org is not None, "signup must have provisioned an organization"
     billing.assign_plan(db_session, org.id, plan_key)
@@ -433,9 +431,7 @@ def test_an_organization_less_analysis_is_still_world_readable(client, db_sessio
     assert read.json()["url"] == "https://legacy.example.com"
 
 
-def test_a_signed_in_user_can_still_read_an_organization_less_analysis(
-    client, alice, db_session
-):
+def test_a_signed_in_user_can_still_read_an_organization_less_analysis(client, alice, db_session):
     analysis = _legacy_public_analysis(db_session)
 
     read = client.get(f"{ANALYSES_URL}/{analysis.id}", headers=alice.headers)
@@ -456,9 +452,7 @@ def test_one_tenants_analysis_is_unreachable_by_the_other_and_by_the_public(
 
     # A genuinely public host: the `.test` escape hatch above patches the SSRF
     # guard the *project* routes import, not this one.
-    submit = client.post(
-        ANALYSES_URL, json={"url": "https://example.com"}, headers=alice.headers
-    )
+    submit = client.post(ANALYSES_URL, json={"url": "https://example.com"}, headers=alice.headers)
     assert submit.status_code == 202, submit.text
     analysis_id = submit.json()["id"]
 

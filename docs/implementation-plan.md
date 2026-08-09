@@ -2487,6 +2487,32 @@ paragraph, as the record.*
   and the `audit-emit-no-outbox` hardening, which is a deliberate trade rather
   than a defect (an audit write failure must never 500 a request).
 
+### P7.10 — Analysis history per organization
+- **Goal:** let a customer find the analyses their organization has run.
+- **Why now:** P7.6 gave `analyses` an `org_id` and nothing read it. The only
+  route back to a result was the URL the submitter was redirected to, so closing
+  the tab lost the run — the data claimed an owner and the product gave that
+  owner no way in (tech-debt #77). It is also the first screen that makes
+  session 25's metering visible to the person paying for it, which matters
+  directly after a change that put every organization on Free.
+- **Dependencies:** P7.6 (the `org_id` it reads). · **Complexity:** M ·
+  **Status: DONE** (2026-08-09, session 26, ADR-49).
+- **Deliverables:** `GET /api/v1/analyses` (`analysis:read`, org-scoped, paged,
+  status filter); `AnalysisSummaryOut`/`AnalysisListOut`; `services.analyses.
+  list_org_analyses`; the `/analyses` screen; a nav entry under AI Visibility;
+  14 backend and 13 frontend tests.
+- **Acceptance:** another tenant's runs are absent, an org-less context raises
+  rather than listing everything, pre-P7.6 and checker runs appear in nobody's
+  history, paging never repeats or skips a row, and an unmeasured run reports a
+  **null** score that the UI draws as an em dash.
+- **Two notes for whoever builds the next list route.** The route is
+  authenticated while its sibling `GET /analyses/{id}` is not, and that is the
+  design rather than an oversight: an unguessable id can be a capability, an
+  enumeration never can (ADR-49). And it is the **first application call site of
+  `tenancy.scoped()`** — the fail-closed seam three documents described as
+  shipped with zero callers. That does not close tech-debt #63; the A9 leakage
+  suite does. It does mean the seam now has a worked example to copy.
+
 ---
 
 ## Phase 8 — Backlink Intelligence (roadmap M2)

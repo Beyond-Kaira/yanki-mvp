@@ -21,6 +21,17 @@ milestone still owes cannot end up in conflict with the integrity guarantee.
 **Three new items, #84–#86**, and the one to read is **#84**: recording refusals
 means a client retry-looping into a 429 writes a row per retry.
 
+**#77 REPAID** in the same session (ADR-49) — the analyses a customer runs are
+now listable at `/analyses`, which is the first screen that makes P7.6's
+attribution visible to the person paying for it. It is also the **first
+application call site of `tenancy.scoped()`**, the fail-closed seam that three
+documents described as shipped and that had none (**#63 — still open**: one
+call site is not a guarantee, and the A9 leakage suite is what closes it).
+**Two new items, #87–#88**, and the one that matters is **#87**: the query has
+no supporting index, because an index is a migration and migrations are gated
+on operator item B13 — so it must ride along with the next migration rather
+than be discovered under load.
+
 This session also fixed two CI gates that session 25 could not see from a
 laptop and that its own log recorded as green: the scoped **formatting gate**
 (seven of its files were unformatted) and the **SERP stack check**, which
@@ -1162,14 +1173,13 @@ devDependencies).)
     (operator B13) would take. Fold the check into the deep health endpoint when
     A8 builds it.
 
-77. **The analyses a customer runs are attributed but not listable**
-    (2026-08-09, session 25). Runs carry `org_id` from this session on, and the
-    only way to reach one is still the URL you were redirected to. There is no
-    per-org history, so a customer who closes the tab has lost the result —
-    which was also true before, but was then at least *consistent* with the runs
-    belonging to nobody. Now the data exists and the screen does not. Backlog:
-    `analysis-history-per-org`. Cheap, and it is the first thing that makes the
-    attribution visible to the person paying for it.
+77. ~~**The analyses a customer runs are attributed but not listable**~~
+    (2026-08-09, session 25; **REPAID the same day, session 26, ADR-49**). Runs
+    carried `org_id` and the only way to reach one was still the URL you were
+    redirected to, so a customer who closed the tab had lost the result.
+    `GET /api/v1/analyses` and the `/analyses` screen close it. Residuals **#87**
+    (no supporting index — it is a migration, and migrations are gated on B13)
+    and **#88** (the list does not poll; the run page it links to does).
 
 78. **The pre-migration snapshot has never run against a real migration**
     (2026-08-09, session 25, ADR-46). `deploy.sh` now compares `alembic current`
@@ -1265,3 +1275,21 @@ devDependencies).)
     `verify_integrity(limit=5000)` sweep would fill with it. Per-org integrity
     checks are unaffected (they filter by `org_id`, and these rows have none).
     Revisit at go-live, not before.
+
+87. **No index on `analyses(org_id, created_at)`** (2026-08-09, session 26,
+    ADR-49). The history route filters by `org_id` and `kind` and sorts by
+    `created_at DESC`, and the table's only relevant index is
+    `ix_analyses_status_created`. Every page is a scan plus a sort. That is
+    free at production's current 57 rows and stops being free somewhere in the
+    low tens of thousands — which one busy month of one busy customer reaches.
+    Deliberately not fixed now: an index is a migration, and migration-bearing
+    work is gated on operator item B13. **The action is to add it to whatever
+    migration lands next**, not to write one for it alone.
+
+88. **The history screen does not refresh itself** (2026-08-09, session 26). A
+    run submitted from the dashboard reaches `/analyses` as `queued` and stays
+    that way on screen until the reader reloads — the result page polls, this
+    one does not. Acceptable because the list is a way *back* to a run rather
+    than a way to watch one, and the row links to the page that does poll. It
+    becomes wrong the moment this screen is the first thing a user sees after
+    submitting, which is a plausible next iteration.

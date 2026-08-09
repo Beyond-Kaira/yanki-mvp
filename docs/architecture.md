@@ -46,6 +46,7 @@ table *is* the queue (see §4).
                                             ▼
                         ┌─────────────────────────────────────────┐
    api (FastAPI, sync) │  api  :8141   POST /api/v1/analyses (auth) │
+                        │               GET  /api/v1/analyses (auth)│
                         │               GET  /api/v1/analyses/{id} │
                         │               POST /api/v1/checker (202) │
                         │               POST /api/v1/checker/leads │
@@ -332,6 +333,22 @@ answer: a row with no organization is a capability URL (every row created before
 P7.6, and every checker result), while a row that carries one belongs to that
 organization alone. `tenancy.readable_analysis` is the single place that rule
 lives; this is its first and only call site (tech-debt #63).
+
+**And why the *list* is authenticated even though the poll is not** (ADR-49).
+`GET /api/v1/analyses` — the organization's history, added in session 26 because
+`org_id` had been written since P7.6 and read by nothing — requires
+`analysis:read` and is org-scoped. That is not an inconsistency with the poll
+above it. A capability URL works because knowing the unguessable id *is* the
+authorization; a list has no id to know, so there is no capability a caller
+could present and the only coherent answer to "whose analyses?" is the caller's
+organization. The rule worth carrying into M3–M6: **a route keyed by an
+unguessable id may be a capability; a route that enumerates never can be.**
+
+The list is also the **first application call site of `tenancy.scoped()`**, the
+fail-closed helper that had none. Runs from before P7.6 carry no `org_id` and so
+appear in nobody's history while staying readable by id — they belong to no
+tenant, and inventing an owner for them would be a guess written into a
+customer-facing screen.
 
 `result` is always present so the frontend renders partial state as the pipeline
 fills it in. See the locked response shape in SPEC §"API contract".

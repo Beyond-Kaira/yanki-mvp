@@ -2333,3 +2333,66 @@ things the PR did not intend.*
     connection, so a "separate" session would share the transaction and behave
     differently in tests than in production). A gate whose audit trail is
     untestable is not a gate.
+
+---
+
+### ADR-49 — A list is not a capability URL (2026-08-09, tech-debt #77)
+
+- **Context:** P7.6 gave analyses an `org_id`. Nothing read it. The only route
+  back to a result was still the URL a submitter happened to be redirected to,
+  so closing the tab lost the run — which had been true before as well, but was
+  then at least *consistent* with runs belonging to nobody. After P7.6 the data
+  said the run had an owner and the product offered that owner no way to find it.
+
+  Adding the list forced a question that looks like a formality and is not:
+  `GET /api/v1/analyses/{id}` is **open to anonymous callers**, because an
+  analysis with no organization is a capability URL — hold the unguessable id,
+  read the result — and that is every row in production today plus every checker
+  run. Should the list match?
+
+- **Decision:** **No. The list requires authentication and is org-scoped, and
+  the asymmetry is the correct design rather than an inconsistency to tidy up
+  later.** A capability URL works because knowing the id *is* the authorization.
+  A list has no id to know. There is no capability a caller could present, so
+  the only coherent answer to "whose analyses?" is "the caller's organization" —
+  and an unauthenticated version of the route could only ever mean "everyone's",
+  which is not a weaker version of the same feature but a different and much
+  worse one.
+
+  The rule generalizes and is worth stating for the routes M3–M6 will add:
+  **a route keyed by an unguessable id may be a capability; a route that
+  enumerates never can be.**
+
+- **Consequences:**
+  - Runs created before P7.6 carry no `org_id` and therefore appear in **no**
+    organization's history, while remaining readable by id. They belong to no
+    tenant; assigning them to the first plausible owner would be a guess written
+    into a customer-visible screen.
+  - This is the **first application call site of `tenancy.scoped()`** — the
+    fail-closed helper that ADR-35, `architecture-target.md` and the P7.1 card
+    all described as shipped and that had zero callers (tech-debt #63). It is
+    used here rather than a hand-written `where` for the property it exists for:
+    a missing or org-less context raises instead of silently returning every
+    tenant's rows. #63 is **not** closed by this — one call site is not a
+    guarantee, and the A9 leakage suite is still what would make tenancy
+    enforced rather than remembered — but the seam is no longer fiction.
+  - A separate `AnalysisSummaryOut` schema rather than a trimmed `AnalysisOut`.
+    The detail envelope carries every prompt, every raw engine response, and
+    every SERP and SEO check; a twenty-row page of those is thousands of records
+    to render a table of URLs and scores. Two schemas also mean a field added to
+    the detail view cannot silently make the list twenty times heavier.
+  - **Null scores are not zeros, and this is load-bearing in the UI.** A queued
+    run has no `geo_score`; the screen renders an em dash. Rendering `0` would
+    tell a customer their brand is invisible in AI answers when the truth is
+    that nobody has measured yet. The same rule the Backlinks screens follow
+    (ADR-36), asserted here in both directions — a genuine `0.0` still shows as
+    `0.0`.
+  - **Rejected:** paging client-side over a full fetch. It is simpler today, at
+    57 rows in production, and it is the kind of simple that becomes an incident
+    on the first customer who runs a thousand analyses — by which time the fix
+    is a schema change to a shipped endpoint rather than a decision.
+  - **Not done:** an index on `analyses(org_id, created_at)`. It would be a
+    migration, and migration-bearing work is gated on operator item B13. At
+    production's current size the query is a trivial scan; recorded as
+    tech-debt #87 so the index lands with the next migration rather than being
+    discovered under load.

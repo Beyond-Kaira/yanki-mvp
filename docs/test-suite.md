@@ -75,6 +75,8 @@ backend/tests/
 ├── test_audit_coverage.py # the mutating paths the spine used to skip, AND the
 │                          #   silences that are deliberate — reuse detection,
 │                          #   competitors, checker, waitlist, 429s (ADR-48)
+├── test_analysis_history.py # GET /analyses: whose rows (the first `scoped()`
+│                            #   call site), which rows, how many rows (ADR-49)
 ├── test_queue.py          # portable claim / stale-reaper / retry logic (SQLite)
 ├── test_queue_postgres.py # real-Postgres FOR UPDATE SKIP LOCKED (gated on TEST_DATABASE_URL)
 ├── serp/                  # SERP sources: adapter, mock, registry (ADR-28)
@@ -349,13 +351,24 @@ network. Five units with real logic get behaviour tests, and a parallel
   ("doesn't apply here") are neither collapsed together nor drawn as failures; and
   a `null` `result.seo` (a run that did not audit) renders nothing.
 
+- **`AnalysisHistoryClient`** (`AnalysisHistoryClient.test.tsx`) — the
+  organization's analysis history (ADR-49). The two cases worth knowing are a
+  matched pair, because each one alone permits the opposite bug: a **null score
+  renders as an em dash** (a queued run has not been measured, and drawing `0`
+  would tell a customer their brand is invisible when nobody has looked), and a
+  **real `0` still renders as `0.0`**. The rest assert that paging and filtering
+  go to the server rather than slicing locally, that the total shown is the
+  server's rather than the row count on screen, and that changing a filter
+  resets to page one — staying on page three of a filter matching four rows
+  shows an empty table that reads as "no results".
+
 Anything that talks to the API is tested by mocking `lib/api.ts`, never by
 hitting a backend. Fast, deterministic, offline.
 
 ### 4.1 Accessibility layer (vitest-axe + axe-core)
 
-The P4.5 a11y acceptance ("no critical axe violations") is **automated**. Seven
-`*.a11y.test.tsx` files render each component under jsdom and run
+The P4.5 a11y acceptance ("no critical axe violations") is **automated**.
+Twenty-one `*.a11y.test.tsx` files render each component under jsdom and run
 [`axe-core`](https://github.com/dequelabs/axe-core) via
 [`vitest-axe`](https://github.com/chaance/vitest-axe), asserting
 `expect(results).toHaveNoViolations()`. The matchers are registered in

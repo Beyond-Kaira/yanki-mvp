@@ -4,10 +4,44 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-09, **session 25 close**.
+Last updated: 2026-08-09, **session 26 close**.
 
-> **Read this first. One new thing is yours, and it changes what your users can
-> do: B17.**
+> **Read this first. There are now two pull requests waiting on you, and one
+> decision: B17.**
+>
+> **#41** is session 25 — plan limits become real, database backups, a real
+> health check. **#42** is session 26 and is **stacked on #41**: merge #41
+> first, or #42's diff will read as both sessions at once.
+>
+> **Both are green.** That is worth one sentence of explanation, because the
+> version of this file you read last time said session 25 was verified and it
+> was — locally. When session 26 finally pushed that branch, **two CI gates came
+> back red**: the formatting gate, and the check that runs a whole analysis
+> through a real compose stack, which had been failing with a 401 ever since
+> session 25 closed `POST /api/v1/analyses` to anonymous callers and nobody told
+> the check. Neither was a defect in the product. Both are fixed, and #41 now
+> passes all eleven checks. Nothing about what #41 *does* has changed since the
+> description below.
+>
+> **What #42 adds, and why you might want it in the same deploy:**
+>
+> - **Six mutating paths were writing no audit event**, in a milestone whose
+>   headline promise is complete audit logging. The one that matters: when the
+>   system detects a stolen refresh token it signs that device out of everything
+>   — and recorded nothing at all. If anyone ever asks you "has a token been
+>   stolen here?", the honest answer today is *we cannot tell*. From #42 on, it
+>   is a row in the audit log.
+> - **A refusal is now recorded too.** #41 puts every organization on Free by
+>   default, so being refused is about to become the most common thing that
+>   happens to your users. Before #42, when someone writes in saying "my analysis
+>   just fails", there is nothing in any log that says why. After it, there is.
+> - **Your customers can see their own analyses.** #41 made every run belong to
+>   an organization and nothing read that; the only way back to a result was the
+>   link you happened to still have open. #42 adds the list screen. It is the
+>   first thing that makes #41's metering visible to the person paying for it,
+>   which is a good thing to ship *with* the change rather than after it.
+>
+> **No migration in either PR**, and no new decision beyond B17 itself.
 >
 > Session 25 made **plan limits real**. They existed — five tiers, seeded as
 > data since session 21 — and nothing enforced them, so every organization was
@@ -59,7 +93,10 @@ Last updated: 2026-08-09, **session 25 close**.
 
 ---
 
-Previously — 2026-08-08, **session 24 close.**
+Previously — 2026-08-09, **session 25 close** (kept because B17 and B13 below
+still quote it).
+
+> **One new thing is yours, and it changes what your users can do: B17.**
 
 > **Note that the version of this file before session 24 was wrong.** It opened by telling you session 22's Admin Panel work was "NOT
 > merged and NOT live." It has been merged and live since 2026-08-06: session 23
@@ -382,11 +419,26 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 
 ## B. Actions only you can do (in priority order)
 
-- [ ] **B17. Decide whether to merge session 25, and pick who gets which plan**
-  (added 2026-08-09, session 25; ADR-45). The work is on
-  `feat/session-25-quota-enforcement`, **not merged**. Merging auto-deploys, and
-  this one changes what your users can do, so it is a release decision with a
-  product question inside it.
+- [ ] **B17. Decide whether to merge sessions 25 and 26, and pick who gets which
+  plan** (added 2026-08-09, session 25; **updated session 26**; ADR-45/48/49).
+
+  **There are now two PRs, and the order matters.**
+
+  - **#41** — `feat/session-25-quota-enforcement`. Everything described below.
+    **All eleven checks green.**
+  - **#42** — `feat/session-26-audit-coverage`, **stacked on #41**. The audit
+    events six mutating paths were not writing (including "we detected a stolen
+    token and signed a device out", which recorded nothing), a record of every
+    quota refusal so support questions have an answer, and the screen that lets
+    a customer see their own past analyses. **No migration. No new decision.**
+
+  **Merge #41 first.** #42's base is #41, so merging it first would land both
+  sessions in one diff and make the release harder to reason about — and if you
+  decide *not* to ship quota enforcement yet, #42 needs rebasing rather than
+  merging.
+
+  Both merges auto-deploy, and #41 changes what your users can do, so this is a
+  release decision with a product question inside it.
 
   **What becomes true on merge.** Every organization falls back to **Free** —
   5 analyses/month, 1 site audit, 1 project — because no organization has ever

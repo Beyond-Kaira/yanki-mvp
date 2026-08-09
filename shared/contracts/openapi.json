@@ -7022,18 +7022,13 @@
     },
     "/healthz": {
       "get": {
+        "description": "Readiness, not \"is uvicorn accepting sockets\" (ADR-47).\n\nThis returned the literal `{\"status\": \"ok\"}` until P7.8's groundwork, which\nmattered because **it is the deploy gate**: `deploy.sh` and `rollback.sh`\npoll it and record `.last-good` when it answers, so a release with an\nunreachable database was recorded as the good one to roll back *to*.\n\nOnly the components that make the service unservable for everyone can turn\nit red \u2014 see `app/health.py` for which and why. The rest report themselves\nand are read by a human.\n\n**The public body carries the verdict and nothing else.** nginx routes\n`/healthz` from the internet, and the component detail names the schema\nrevision, the queue depth, whether provider keys are configured and how\nstale the worker is. None of that is a credential and none of it should be\nhanded to anybody who asks either \u2014 so the breakdown goes to internal\ncallers (the loopback deploy gate, a shell on the box) and everyone else\ngets the status. The verdict is identical for both; only the reasons differ.\n\nNote the response shape is constrained by `deployment.sh`, which greps the\nbody for the substrings `status` and `ok` rather than trusting the status\ncode. A failing body must therefore contain no \"ok\" anywhere;\n`test_health.py` pins that for both shapes.",
         "operationId": "healthz_healthz_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Healthz Healthz Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"

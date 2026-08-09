@@ -2138,3 +2138,97 @@ things the PR did not intend.*
   step people skip. *Writing the cron entry ourselves* — it is a change to the
   live box's schedule and it needs the retention decision, which interacts with
   a PII retention policy that does not exist yet.
+
+### ADR-47 — A health endpoint that checks something, and a worker that can be seen to be alive (2026-08-09, P0/P7.8 groundwork)
+
+- **Context:** `/healthz` returned the literal `{"status": "ok"}`. That is not a
+  health check — it is a check that uvicorn is accepting sockets — and it
+  mattered more than it looks, because **it is the deploy gate**. `deploy.sh`
+  and `rollback.sh` poll it and write `.last-good` when it answers, so a release
+  whose database was unreachable, whose migrations had not run, or (after
+  ADR-45) whose plan catalog was empty, reported healthy and was recorded as the
+  good release to roll back *to*. The gate could not fail.
+
+  The worker had the mirror-image problem. It is a `while True` loop with no
+  HTTP surface, `restart: unless-stopped` and no healthcheck, so a loop that
+  stopped looping left a container in state `running` and a queue that quietly
+  stopped draining. The only symptom was jobs sitting in `queued`, noticed by a
+  human. Both are the same defect: **the system reports health it has not
+  checked.**
+
+- **Decision:**
+
+  1. **`/healthz` is a readiness probe** built from six components — database,
+     schema revision, plan catalog, queue, worker, providers.
+  2. **Only two can turn it red**: the database, and the plan catalog *while
+     quota enforcement is on*. Everything else reports itself and is read by a
+     human.
+  3. **The worker beats to a file** on a volume the api mounts read-only, on
+     every poll and at every pipeline step. A compose healthcheck reads the same
+     file; `/healthz` reports its age.
+  4. **The public body carries the verdict only.** Component detail goes to
+     internal callers.
+
+- **Why so few components can fail it.** A health check that goes red for things
+  that do not stop the service is a health check people learn to ignore, and
+  this one auto-rolls-back a deploy. A queue backlog means customers are using
+  the product. A missing provider key under `DRY_RUN` is the correct
+  configuration. A schema revision that differs from the code's head is *normal
+  during a rollback* — old code against a newer additive schema is exactly what
+  ADR-30 made possible, so failing on it would refuse to serve at the worst
+  possible moment. None of those is a reason to refuse a release. An unreachable
+  database and (with enforcement on) an empty catalog are, because with either
+  one every request that matters answers 503.
+
+- **Why the response body is shaped the way it is.** `deployment.sh` does not
+  trust the status code: it greps the body for the substrings `status` **and**
+  `ok`. So an unhealthy body containing "ok" anywhere — a field named
+  `"ok": false`, a detail mentioning a "token", a message about something
+  "broken" — would pass the gate it exists to fail. Component states are
+  therefore `pass`/`fail`/`warn`, the failing overall state is `unhealthy`, and
+  a test asserts the unhealthy body contains no "ok" at all. The coupling is
+  ugly; leaving it undocumented and unpinned would be worse.
+
+- **Why the detail is withheld from the public edge.** nginx routes `/healthz`
+  from the internet. The breakdown names the schema revision, the queue depth,
+  whether provider keys are configured and how stale the worker is. None of it
+  is a credential and none of it should be handed to anybody who asks, so the
+  edge gets `{"status": …}` and internal callers get the reasons. The verdict is
+  identical for both — a release that is unhealthy internally is unhealthy at
+  the edge, or the two gates disagree about the same deploy. Detection is by
+  `X-Forwarded-For`, which the edge sets and the loopback deploy gate does not;
+  it decides how much to print, never whether to answer, so getting it wrong
+  costs a terser page rather than a locked-out deploy.
+
+- **Why a heartbeat file rather than a table or an endpoint.** A heartbeat table
+  needs a migration, and migrations were the thing this session was working
+  around. A heartbeat endpoint means giving the worker a web server to answer
+  it. A file on a shared volume needs neither, and the api mounts it **`:ro`** —
+  which is what stops a future bug in the api forging liveness for a worker that
+  is not running.
+
+- **Consequences, and the honest limit.** The worker healthcheck is
+  **detection, not self-healing**. Compose — unlike Swarm — never restarts a
+  container for being unhealthy, so a wedged worker becomes visible in
+  `docker ps` and in `/healthz` and stays wedged. Fixing that needs either an
+  autoheal sidecar (another container on a box shared with four other tenants)
+  or an external watchdog; neither is worth adding blind, and "visible" is a
+  large improvement over "invisible" (tech-debt #81).
+
+  The probe now costs four small queries per request. `/healthz` is polled by
+  the deploy gate and by nothing else on a schedule today; if an uptime monitor
+  is ever pointed at it, that is the moment to cache the result for a second.
+
+  Beating at every pipeline step means the stale window has to exceed the
+  longest single step (`execute`, up to `MAX_RESPONSES_PER_JOB` paid calls),
+  hence 1800s. Erring long is the cheap direction: this signal must mean
+  "stopped", and a window that flags a slow-but-working job is one people learn
+  to ignore.
+
+- **Rejected:** *a separate `/readyz`* — correct by the book, and the deploy
+  gate greps `/healthz`; adding a second endpoint would mean the gate keeps
+  reading the one that never fails. *Failing the probe on a queue backlog* —
+  auto-rollback triggered by customer demand. *Failing on a stale worker* — the
+  api serves fine without one, and CI's e2e stack, the test suite and a laptop
+  all legitimately run with no worker at all. *Reporting the full detail
+  publicly* — needless disclosure on an endpoint the whole internet can reach.

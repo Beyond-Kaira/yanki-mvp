@@ -2441,7 +2441,26 @@ paragraph, as the record.*
   geo_mode/DRY_RUN visibility), health probes, usage analytics, error
   tracking wiring.
 - **Dependencies:** P7.3 (events), P7.6 (spend data). · **Complexity:** M ·
-  **Status:** todo
+  **Status:** **partial** — the *health* slice landed 2026-08-09 (session 25,
+  ADR-47), out of order, because it was also the last of the backlog's P0 band
+  and because it was a live defect rather than a missing page: `/healthz`
+  returned a hardcoded literal and **is the deploy gate**, so a release with an
+  unreachable database answered healthy and was recorded as `.last-good`. It is
+  now a readiness probe over six components (database, schema revision, plan
+  catalog, queue, worker, providers); only the database and — with quota
+  enforcement on — an empty plan catalog can fail it. Alongside it, the worker
+  gained a heartbeat and a compose healthcheck, so a `while True` that stops
+  looping is visible instead of silent.
+
+  What that leaves for A8 proper is the *pages*: the jobs/queues board with
+  retry and cancel, AI-provider status with spend rollups (now possible —
+  session 25's credit ledger is the first per-org spend data the platform has),
+  usage analytics, and error-tracking wiring. The health data this session
+  exposes is the input to the health page, not the page.
+
+  Residual: a wedged worker is detected and **not restarted** (tech-debt #81 —
+  Compose does not restart unhealthy containers), and `/healthz` re-queries on
+  every request (#82).
 
 ### P7.9 — Hardening + docs (stage A9, exit gate)
 - **Goal:** cross-tenant leakage suite (the merge gate for everything after),

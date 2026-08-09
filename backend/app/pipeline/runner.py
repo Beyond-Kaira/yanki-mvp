@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 
+from app import health
 from app.db.models import Analysis, GeoRecord, Prompt, Response, SeoCheck, SerpCheck
 from app.pipeline import checker_prompts, discovery
 from app.pipeline import execute_measured as execute_step
@@ -51,9 +52,15 @@ def _now():
     return datetime.now(UTC)
 
 
-def _start_step(session, analysis: Analysis, step: str) -> None:
+def _start_step(session, analysis: Analysis, step: str, settings) -> None:
     analysis.current_step = step
     analysis.claimed_at = _now()
+    # The same event, told to two audiences: `claimed_at` stops the stale-claim
+    # reaper taking this job away, and the heartbeat file stops `/healthz` and
+    # the compose healthcheck reporting a busy worker as a stopped one (ADR-47).
+    # A step is the right granularity for both — it is the unit the pipeline
+    # already treats as "still making progress".
+    health.beat(settings)
     session.commit()
 
 
@@ -91,7 +98,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     is_checker = analysis.kind == "checker"
 
     # 1. discovery
-    _start_step(session, analysis, "discovery")
+    _start_step(session, analysis, "discovery", settings)
     if is_checker:
         text = f"Brand: {analysis.brand}. Category: {analysis.category}."
     else:
@@ -109,7 +116,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     _complete_step(session, analysis, _DISCOVERY_DONE)
 
     # 2. kyc
-    _start_step(session, analysis, "kyc")
+    _start_step(session, analysis, "kyc", settings)
     kyc = kyc_step.generate_kyc(
         text,
         analysis.url,
@@ -133,7 +140,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     kyc_step.require_usable(kyc, known_topic=analysis.category if is_checker else "")
 
     # 3. prompts
-    _start_step(session, analysis, "prompts")
+    _start_step(session, analysis, "prompts", settings)
     if is_checker:
         specs = checker_prompts.generate(kyc, analysis.lang or "en")
     else:
@@ -149,14 +156,14 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     _complete_step(session, analysis, _PROMPTS_DONE)
 
     # 4. measured execute (Tavily + OpenRouter, or mocks under DRY_RUN)
-    _start_step(session, analysis, "execute")
+    _start_step(session, analysis, "execute", settings)
     responses = execute_step.run_measured_execute(
         session, analysis, prompt_rows, settings
     )
     _complete_step(session, analysis, _EXECUTE_DONE)
 
     # 5. reliability over measured audits (+ footprint recount)
-    _start_step(session, analysis, "footprint")
+    _start_step(session, analysis, "footprint", settings)
     if not responses:
         responses = (
             session.execute(select(Response).where(Response.analysis_id == analysis.id))
@@ -188,7 +195,7 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     _complete_step(session, analysis, _FOOTPRINT_DONE)
 
     # 6. interventions + composite GEO score (gaps excluded from score)
-    _start_step(session, analysis, "scoring")
+    _start_step(session, analysis, "scoring", settings)
     intervention_report = interventions_step.analyze_records(audit_records)
     analysis.interventions = intervention_report.get("aggregated_interventions") or []
     total = len(responses)

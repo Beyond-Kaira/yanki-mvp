@@ -17,8 +17,16 @@ from app.pipeline.kyc import KYC
 
 
 @pytest.fixture
-def settings():
-    """A plain settings object mirroring app.config.Settings (lowercase attrs)."""
+def settings(tmp_path_factory):
+    """A plain settings object mirroring app.config.Settings (lowercase attrs).
+
+    ``worker_heartbeat_path`` points at a temp file because `run_pipeline` beats
+    at every step (ADR-47) and the real default, `/var/run/yanki/`, is a volume
+    that exists only in a container. `health.beat` forgives a missing field
+    anyway — it must, since it runs inside the step loop — but a fixture that
+    relies on the forgiveness tests the fallback instead of the behaviour.
+    """
+
     return SimpleNamespace(
         dry_run=True,
         panel_engines="anthropic,openai,gemini,perplexity",
@@ -26,6 +34,9 @@ def settings():
         max_responses_per_job=60,
         anthropic_api_key="",
         openai_api_key="",
+        worker_heartbeat_path=str(
+            tmp_path_factory.mktemp("heartbeat") / "worker.heartbeat"
+        ),
     )
 
 

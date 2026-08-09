@@ -883,7 +883,32 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Healthz */
+        /**
+         * Healthz
+         * @description Readiness, not "is uvicorn accepting sockets" (ADR-47).
+         *
+         *     This returned the literal `{"status": "ok"}` until P7.8's groundwork, which
+         *     mattered because **it is the deploy gate**: `deploy.sh` and `rollback.sh`
+         *     poll it and record `.last-good` when it answers, so a release with an
+         *     unreachable database was recorded as the good one to roll back *to*.
+         *
+         *     Only the components that make the service unservable for everyone can turn
+         *     it red — see `app/health.py` for which and why. The rest report themselves
+         *     and are read by a human.
+         *
+         *     **The public body carries the verdict and nothing else.** nginx routes
+         *     `/healthz` from the internet, and the component detail names the schema
+         *     revision, the queue depth, whether provider keys are configured and how
+         *     stale the worker is. None of that is a credential and none of it should be
+         *     handed to anybody who asks either — so the breakdown goes to internal
+         *     callers (the loopback deploy gate, a shell on the box) and everyone else
+         *     gets the status. The verdict is identical for both; only the reasons differ.
+         *
+         *     Note the response shape is constrained by `deployment.sh`, which greps the
+         *     body for the substrings `status` and `ok` rather than trusting the status
+         *     code. A failing body must therefore contain no "ok" anywhere;
+         *     `test_health.py` pins that for both shapes.
+         */
         get: operations["healthz_healthz_get"];
         put?: never;
         post?: never;
@@ -3938,9 +3963,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": unknown;
                 };
             };
         };

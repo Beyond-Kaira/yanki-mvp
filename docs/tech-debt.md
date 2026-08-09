@@ -14,6 +14,13 @@ production. Its residuals are **#78–#80**, and the one to read is **#79**:
 backups live on the same box as the database, which covers a bad migration and
 not a lost VPS.
 
+**Loop 3 closed the last two P0 rows** (`deep-health-endpoint` and
+`worker-liveness-healthcheck`, ADR-47): `/healthz` was a hardcoded literal that
+the deploy gate greps, and a `while True` worker that stopped looping was
+invisible. Residuals **#81–#83**, and the one to read is **#81**: a wedged
+worker is now *detected* and still not *restarted*, because Compose does not
+restart unhealthy containers.
+
 **Loop 1 (quota enforcement):** **#63 PARTIALLY REPAID** —
 `readable_analysis()` now has a call site. `GET /api/v1/analyses/{id}` routes
 through it, which is the first time the NULL-is-public rule is applied by the
@@ -29,12 +36,12 @@ unit is expensive). Also **#73** (there is no anonymous analysis surface any
 more — a product decision now living in a route signature), **#76** (nothing
 asserts the plan catalog exists before a customer needs it) and **#77** (runs
 are attributed to an org and there is still no screen that lists them).
-Measured suite at session 25 close: **921 backend passed / 7 skipped** with
+Measured suite at session 25 close: **933 backend passed / 7 skipped** with
 Postgres, **327 frontend across 57 files**, `make test` exit 0. *(Measured at
 this session's start, before any of its work: **897 backend passed / 7
 skipped**, **319 frontend across 56 files**.)* The backup tooling is shell and
 carries no unit tests; it was verified by running it against the live database
-and by exercising both failure paths (ADR-46, session log §12).
+and by exercising both failure paths (ADR-46, session log §9).
 
 Earlier — 2026-08-08 (**session 24** — the deploy-safety and P7.5 session).
 
@@ -1151,3 +1158,34 @@ devDependencies).)
     and it is in `deploy/BACKUP.md`; installing it is a change to the live box's
     schedule and it needs the retention decision, which interacts with a PII
     retention policy that does not exist (`pii-retention-and-erasure`).
+
+81. **A wedged worker is now visible and still not restarted** (2026-08-09,
+    session 25, ADR-47). The heartbeat + compose healthcheck make a `while True`
+    that stopped looping show as `unhealthy` in `docker ps` and as a `warn` in
+    `/healthz`. **Compose does not restart a container for being unhealthy** —
+    that is a Swarm behaviour — so `restart: unless-stopped` only covers a
+    process that *exits*, which is the failure mode the worker was already
+    handling. Closing the gap needs either an autoheal sidecar (a sixth
+    container on a box shared with four other tenants, holding the Docker
+    socket, which is its own risk) or an external watchdog that reads
+    `/healthz`. Neither is worth adding blind. Detection first; if a wedge
+    actually happens, the log from it will say which fix is the right one.
+
+82. **`/healthz` queries the database on every request** (2026-08-09, session
+    25, ADR-47). Four small queries — `SELECT 1`, the alembic revision, a plan
+    count, a queue count and min. Nothing polls it on a schedule today except
+    the deploy gate, so this is fine; it stops being fine the moment an uptime
+    monitor is pointed at it every 10 seconds. The fix is a one-second cache on
+    the report, and the trigger for doing it is "we added a monitor", not a
+    date.
+
+83. **The unhealthy-body "no ok anywhere" rule is pinned for one scenario, not
+    all of them** (2026-08-09, session 25, ADR-47). `deployment.sh` greps the
+    body for `status` and `ok` instead of trusting the status code, so a failing
+    body containing "ok" anywhere passes the gate it should fail.
+    `test_health.py` asserts this for the empty-catalog failure, which is the
+    only way the probe currently goes red apart from the database being down —
+    but a future component whose detail string contains "broken", "token" or
+    "look" would slip through untested. The real fix is `deployment.sh`
+    trusting the HTTP status, which is a change to the deploy driver and wants
+    its own careful pass.

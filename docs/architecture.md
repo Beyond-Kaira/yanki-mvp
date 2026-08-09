@@ -55,7 +55,7 @@ table *is* the queue (see §4).
                         │               /api/v1/seo-projects/*     │
                         │                 └─ …/audits    (dark)    │
                         │                 └─ …/backlinks (dark)    │
-                        │               GET  /healthz              │
+                        │               GET  /healthz  (readiness) │
                         └───────────────────┬─────────────────────┘
                                             │  INSERT row status='queued'
                                             ▼
@@ -777,6 +777,8 @@ reaching Yanki over the stack's loopback host binds:
 | 503 "billing plans are not configured" | The `plans` table is empty, which migration `0016_seed_plans` fills. Realistically means a database restored from a dump that predates it, or a hand-built one. `alembic upgrade head`, then check `select count(*) from plans`. |
 | 401 on `POST /analyses` | Expected since ADR-45 — the route requires a bearer. If the *app* is getting it, the access token expired and the refresh failed; check the refresh cookie and `JWT_SECRET_KEY`. |
 | Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: host nginx path-routing (`/etc/nginx` vhost) + the 127.0.0.1:8142/8143 loopback binds. |
+| `/healthz` says `unhealthy` | It is a real probe now (ADR-47). From the box, `curl -s localhost:8143/healthz | python3 -m json.tool` prints which component failed — only `database` and `plans` can turn it red. Through the public URL you get the verdict without the reasons, on purpose. |
+| Worker container shows `unhealthy` | Its heartbeat file is older than 1800s, i.e. the `while True` stopped looping. **Compose will not restart it for you** (tech-debt #81) — `docker compose -p yanki-prod restart worker`, then read the log for what wedged it. A *busy* worker beats at every pipeline step, so this should not fire on a slow job. |
 | Need to restore the database | [deploy/BACKUP.md](../deploy/BACKUP.md) — read it *before* you need it. Dumps are in `~/yanki-backups`; `deploy/restore-check.sh` proves one is good without touching production. Step 0 of any restore is dumping what you have now, however broken. |
 
 ---

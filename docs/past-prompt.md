@@ -423,3 +423,12 @@ and leaving them undone was the thing that had made two consecutive sessions
 pick their work by what avoided a migration. Built and rehearsed against the
 live database (ADR-46). What genuinely needed the operator turned out to be two
 lines: an off-box destination and a cron entry.
+
+**Third loop, same session.** The check ran once more and found the backlog's
+last two P0 rows unblocked and, on inspection, one defect wearing two hats —
+*the system reports health it has not checked*. `/healthz` returned a hardcoded
+literal and **is the deploy gate**, so a release with an unreachable database
+answered healthy and was recorded as the good one to roll back to; and a
+`while True` worker that stopped looping left the container `running` with the
+queue quietly undrained. Both fixed (ADR-47). The P0 band is now empty apart
+from the repo-wide formatter item, which should stay parked.

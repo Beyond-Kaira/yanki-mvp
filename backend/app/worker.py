@@ -16,6 +16,7 @@ import logging
 import time
 import uuid
 
+from app import health
 from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import SessionLocal
@@ -104,6 +105,13 @@ def main() -> None:
     settings = get_settings()
     logger.info("worker starting (dry_run=%s)", settings.dry_run)
     while True:
+        # Beat first, every tick, before anything that can fail. A `while True`
+        # that stops looping was previously invisible — the container stays
+        # "running", the queue just quietly stops draining — and the only way
+        # anyone found out was noticing jobs stuck in `queued` (ADR-47).
+        # `run_pipeline` beats again at each step, so a worker busy on one long
+        # job is not mistaken for a dead one.
+        health.beat(settings)
         try:
             run_once(settings)
         except Exception:

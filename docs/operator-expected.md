@@ -56,6 +56,13 @@ Last updated: 2026-08-09, **session 26 close**.
 >   filtered to, never what the file contained.
 >
 > **No migration in either PR**, and no new decision beyond B17 itself.
+
+---
+
+Previously — 2026-08-09, **session 25 close** (kept because B17 and B13 below
+still quote it).
+
+> **One new thing was yours, and it changed what your users can do: B17.**
 >
 > Session 25 made **plan limits real**. They existed — five tiers, seeded as
 > data since session 21 — and nothing enforced them, so every organization was
@@ -107,10 +114,7 @@ Last updated: 2026-08-09, **session 26 close**.
 
 ---
 
-Previously — 2026-08-09, **session 25 close** (kept because B17 and B13 below
-still quote it).
-
-> **One new thing is yours, and it changes what your users can do: B17.**
+Previously — 2026-08-08, **session 24 close.**
 
 > **Note that the version of this file before session 24 was wrong.** It opened by telling you session 22's Admin Panel work was "NOT
 > merged and NOT live." It has been merged and live since 2026-08-06: session 23

@@ -40,6 +40,15 @@ Last updated: 2026-08-09, **session 26 close**.
 >   link you happened to still have open. #42 adds the list screen. It is the
 >   first thing that makes #41's metering visible to the person paying for it,
 >   which is a good thing to ship *with* the change rather than after it.
+> - **The promise that one customer cannot see another's data is now tested.**
+>   It was true, as far as anyone could tell — but nothing checked it, and the
+>   way this system is built, a single forgotten line in a new screen is all it
+>   would take. There are now 34 tests that try it from the outside, as a real
+>   signed-in customer, against another real customer's data. They also make it
+>   **impossible to add a new page without saying who is allowed to see it** —
+>   the tests fail until somebody writes that down. This is the milestone's
+>   central safety claim, and it is the difference between believing it and
+>   knowing it.
 >
 > **No migration in either PR**, and no new decision beyond B17 itself.
 >
@@ -429,8 +438,10 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   - **#42** — `feat/session-26-audit-coverage`, **stacked on #41**. The audit
     events six mutating paths were not writing (including "we detected a stolen
     token and signed a device out", which recorded nothing), a record of every
-    quota refusal so support questions have an answer, and the screen that lets
-    a customer see their own past analyses. **No migration. No new decision.**
+    quota refusal so support questions have an answer, the screen that lets a
+    customer see their own past analyses, and the cross-tenant test suite that
+    turns "one customer cannot see another's data" from a belief into a checked
+    fact. **No migration. No new decision.** All eleven checks green.
 
   **Merge #41 first.** #42's base is #41, so merging it first would land both
   sessions in one diff and make the release harder to reason about — and if you

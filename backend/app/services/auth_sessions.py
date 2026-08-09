@@ -1,4 +1,29 @@
-"""Refresh-session persistence, rotation, and revocation."""
+"""Refresh-session persistence, rotation, and revocation.
+
+**What this module writes to the audit trail, and what it deliberately does
+not.** Only :class:`RefreshTokenReuseDetectedError` produces an event. The other
+two outcomes of a refresh are silent on purpose, and the reasoning is the same
+in both directions — an audit log is read by a person, so an event that fires on
+every heartbeat is not a record, it is noise that hides the records:
+
+* **A successful rotation is not audited.** Rotation happens every time an
+  access token ages out — roughly four times an hour per signed-in device. One
+  active user would write more rows in a week than the entire Admin Panel
+  produces in a year, and every real event would be buried under them. The
+  session *itself* is already visible and revocable in "your devices"
+  (:func:`list_active_sessions_for_user`), which is what a reader of the trail
+  actually wants to know.
+* **An ordinary invalid refresh is not audited either** — an expired family, a
+  cookie from a logout, a token from a since-revoked session. Every idle user
+  hits this eventually and none of it indicates anything.
+* **Reuse is audited, because it is the one that means something.** A token that
+  is presented *after it was already consumed* is either a stolen token being
+  replayed or the legitimate holder racing themselves. We cannot tell which, so
+  the family is revoked either way — and until now that revocation, which signs
+  someone out of every device because we believe they were robbed, was recorded
+  nowhere at all. It is precisely the event a security review comes looking for
+  (tech-debt #71).
+"""
 
 from __future__ import annotations
 
@@ -10,7 +35,9 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db.models import AuthSession
+from app.db.models import AuthSession, User
+from app.services import audit
+from app.services.auth import audit_context
 from app.services.tokens import (
     IssuedToken,
     TokenClaims,
@@ -163,6 +190,15 @@ def rotate_refresh_session(
                 family_id=current_session.family_id,
                 revoked_at=rotation_time,
             )
+            _emit_reuse_detected(
+                session,
+                user_id=current_session.user_id,
+                family_id=current_session.family_id,
+            )
+            # The event and the revocation commit together. Emitting after this
+            # commit would leave a window in which someone was signed out of
+            # every device with nothing recorded — which is the exact state
+            # tech-debt #71 described.
             session.commit()
 
             raise RefreshTokenReuseDetectedError(
@@ -491,6 +527,54 @@ def revoke_other_sessions_for_user(
         execution_options={"synchronize_session": "fetch"},
     )
     return len(live)
+
+
+def _emit_reuse_detected(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    family_id: uuid.UUID,
+) -> None:
+    """Record that a consumed refresh token was replayed and cost a whole family.
+
+    ``outcome="denied"`` because the refresh itself was refused; the revocation
+    is the consequence, and ``detail`` carries the blast radius. That radius is
+    exactly **one family — one device's sign-in** — and not the user's other
+    sessions, which is worth stating in the record because "was I signed out
+    everywhere?" is the first question the person asks.
+
+    The family id is safe to store. It names a session for revocation and is not
+    the ``refresh_jti_hash``, so it cannot be replayed as a credential — the same
+    reasoning that lets :class:`SessionSummary` expose it to its owner.
+
+    Attribution is best-effort by design. A replayed token still carries a valid
+    signature and a user id, so the user is nearly always resolvable; if the row
+    has been deleted underneath us the event is still written with a NULL actor,
+    because "a token was replayed and we cannot say whose" is a far worse thing
+    to lose than to record imperfectly.
+    """
+
+    user = session.get(User, user_id)
+    audit.emit(
+        session,
+        action="auth:refresh_reuse",
+        context=audit_context(session, user) if user is not None else None,
+        actor_type="user" if user is not None else "anonymous",
+        actor_id=user_id,
+        actor_label=user.email if user is not None else None,
+        entity_type="user",
+        entity_id=user_id,
+        outcome="denied",
+        detail={
+            # NOT keyed `family_id`/`session_id`: `redact()` matches key names
+            # containing "session" and would replace the value with
+            # "[redacted]", losing the one field that says *which* sign-in was
+            # revoked. Named for what it is instead.
+            "revoked_family": str(family_id),
+            "scope": "one_family",
+            "reason": "refresh_token_reuse",
+        },
+    )
 
 
 def _revoke_family(

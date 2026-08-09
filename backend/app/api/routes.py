@@ -179,7 +179,7 @@ def submit_analysis(
     # `create_analysis(commit=False)` exists for exactly this: a commit inside it
     # would let the run be created and the quota rolled back by a later failure.
     org_id = org.require_org_id
-    quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_ANALYSES)
+    quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_ANALYSES, context=org)
     analysis = create_analysis(
         session, str(payload.url), ip_hash=ip_hash, org_id=org_id, commit=False
     )
@@ -242,6 +242,27 @@ def submit_checker(
     analysis, submission = create_checker_analysis(
         session, payload.brand, payload.category, payload.lang, settings, ip_hash=ip_hash
     )
+
+    # The one path on which this platform spends vendor money for somebody who
+    # has no account. `cache_hit` is the field that matters: a miss is an LLM
+    # bill, a hit is a database read, and without the distinction the log cannot
+    # answer "why did our checker cost go up" — which is the question this event
+    # exists for. Both are recorded, so "every mutating path emits" stays
+    # literally true rather than true-with-an-asterisk.
+    #
+    # NULL org and an anonymous actor, because that is the truth: nobody owns
+    # this. It is bounded by the guards above (kill switch, per-IP and per-brand
+    # rate limits, daily cost cap), so a public endpoint cannot flood the trail.
+    audit.emit(
+        session,
+        action="checker:submit",
+        actor_type="anonymous",
+        entity_type="analysis",
+        entity_id=analysis.id,
+        after={"brand": analysis.brand, "category": analysis.category, "lang": analysis.lang},
+        detail={"cache_hit": is_cache_hit, "submission": str(submission.id)},
+    )
+    session.commit()
     return CheckerSubmitResponse(id=analysis.id, submission_id=submission.id)
 
 
@@ -253,6 +274,31 @@ def submit_checker_lead(
     submission = attach_lead(session, payload.submission_id, payload.email)
     if submission is None:
         raise HTTPException(status_code=404, detail="submission not found")
+
+    # The event records that an address was attached, and deliberately does NOT
+    # record the address. Two reasons, and the second is the load-bearing one:
+    #
+    # 1. It adds nothing. `checker_submissions.email` holds it, and this row
+    #    points straight at that submission.
+    # 2. `audit_events` is append-only, enforced by database triggers (migration
+    #    0018) — a row written here can never be deleted, by anyone, through the
+    #    application. Copying an email in would make it un-erasable and put the
+    #    future erasure path (`pii-retention-and-erasure`) in direct conflict
+    #    with the integrity guarantee. Keeping the reference and dropping the
+    #    value lets both hold: erase the submission, and this row still truthfully
+    #    says an address was attached and then removed.
+    #
+    # Failed logins are the deliberate exception — there the attempted address
+    # IS the evidence, and there is no other row carrying it.
+    audit.emit(
+        session,
+        action="checker:lead",
+        actor_type="anonymous",
+        entity_type="checker_submission",
+        entity_id=submission.id,
+        detail={"analysis": str(submission.analysis_id), "email_recorded": True},
+    )
+    session.commit()
     return {"status": "ok"}
 
 
@@ -280,6 +326,23 @@ def join_waitlist(
     # Emails fire ONLY on a genuinely new signup (non-null returned id); a
     # duplicate is silent. Either way we answer 202 {ok: true} — no enumeration.
     if signup_id is not None:
+        # Audited on the same condition, and for the same reason: a duplicate
+        # inserted no row, so there is no mutation to record. Recording it anyway
+        # would also put "this address was already on the list" into a table —
+        # which is the enumeration answer this endpoint spends its whole design
+        # refusing to give.
+        #
+        # The address is not stored here; `waitlist_signups` holds it and this
+        # row points at it. See the `checker:lead` emit above for why an
+        # append-only table is the wrong place to copy erasable PII into.
+        audit.emit(
+            session,
+            action="waitlist:signup",
+            actor_type="anonymous",
+            entity_type="waitlist_signup",
+            entity_id=signup_id,
+        )
+        session.commit()
         send_waitlist_emails(normalize_email(payload.email), signup_count(session), settings)
     return WaitlistResponse(ok=True)
 

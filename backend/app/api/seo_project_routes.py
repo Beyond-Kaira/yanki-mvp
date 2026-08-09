@@ -186,9 +186,16 @@ def create_seo_project(
         org_id=org_id,
         metric=billing.METRIC_PROJECTS,
         current=count_org_projects(session, org_id),
+        context=org,
     )
     if settings.site_audit_enabled:
-        quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_SITE_AUDITS)
+        quota.consume(
+            session,
+            settings,
+            org_id=org_id,
+            metric=billing.METRIC_SITE_AUDITS,
+            context=org,
+        )
 
     try:
         project = create_project_with_audit(
@@ -256,6 +263,7 @@ def create_site_audit(
         settings,
         org_id=org.require_org_id,
         metric=billing.METRIC_SITE_AUDITS,
+        context=org,
     )
 
     try:

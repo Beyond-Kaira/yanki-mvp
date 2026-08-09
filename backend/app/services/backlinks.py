@@ -511,7 +511,21 @@ def track_competitor(
     return row
 
 
-def untrack_competitor(session: Session, subject: Subject, *, competitor_id: uuid.UUID) -> bool:
+def untrack_competitor(
+    session: Session, subject: Subject, *, competitor_id: uuid.UUID
+) -> str | None:
+    """Stop tracking one competitor. Returns the domain removed, or ``None``.
+
+    Returns the **domain** rather than a bare ``True`` so the caller can say what
+    it deleted. After the delete there is nothing left to read, and an audit
+    event for a removal that cannot name what was removed answers a strictly
+    weaker question than the one it exists to answer — the same reason
+    ``/auth/logout`` resolves its user before revoking the token.
+
+    Still falsy on the not-found path, so ``if not untrack_competitor(...)``
+    reads exactly as it did.
+    """
+
     row = session.scalar(
         select(BacklinkCompetitor).where(
             BacklinkCompetitor.id == competitor_id,
@@ -519,7 +533,8 @@ def untrack_competitor(session: Session, subject: Subject, *, competitor_id: uui
         )
     )
     if row is None:
-        return False
+        return None
+    removed_domain = row.competitor_domain
     session.delete(row)
     session.commit()
-    return True
+    return removed_domain

@@ -2499,6 +2499,11 @@ paragraph, as the record.*
   lands, its routes will fail the census until they are classified — which is
   the mechanism working as designed rather than a gap.
 
+  **CSV export on the audit log** (admin-panel-plan §6) shipped in the same
+  session's fifth loop: same filters as the list, a per-row integrity verdict,
+  a 5000-row ceiling, and an `audit:export` event recording who took a copy and
+  what they filtered to — never the contents.
+
   **What A9 still owes:** the operator runbook, and the `audit-emit-no-outbox`
   hardening — a deliberate trade rather than a defect (an audit write failure
   must never 500 a request). Neither is a code-correctness gate.

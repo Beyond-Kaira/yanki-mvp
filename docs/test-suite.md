@@ -77,6 +77,8 @@ backend/tests/
 │                          #   competitors, checker, waitlist, 429s (ADR-48)
 ├── test_analysis_history.py # GET /analyses: whose rows (the first `scoped()`
 │                            #   call site), which rows, how many rows (ADR-49)
+├── test_audit_export.py   # CSV export: same filters, per-row integrity verdict,
+│                          #   and the export's own audit event (P7.9 §6)
 ├── test_cross_tenant_leakage.py # the M1 exit gate. A census of every operation
 │                            #   in the live OpenAPI schema — an unclassified
 │                            #   route FAILS — plus paired probes (P7.9)

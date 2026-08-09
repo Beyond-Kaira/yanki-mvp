@@ -10,6 +10,8 @@
 
 *Delta since generation (session 24): four P0 items closed — `cap-container-resources`, `bound-container-logs`, `fix-preflight-key-check`, `harden-rollback-pruned-image`, `ci-validate-prod-compose` — plus the interim Site Audit enqueue gate. `session-device-management` and `org-switcher-ui-multi-org-me` shipped from P1.*
 
+*Delta since generation (session 26), fourth loop: **`audit-log-csv-export` shipped** — the last of §6's audit-log requirements. Notable only for one thing: exporting is itself an audited event, because taking a copy of the compliance record out of the system is the action that record most needs to remember.*
+
 *Delta since generation (session 26), third loop: **`cross-tenant-leakage-suite` shipped** — the M1 exit gate, and the last substantive item A9 owed besides the operator runbook. It found one thing on the way in: the quota kill switch does not cover the backlink refresh path, though `services/quota` claimed it could not fail that way (tech-debt #89).*
 
 *Delta since generation (session 26), second loop: **`analysis-history-per-org` shipped** (ADR-49) — the screen that makes session 25's `org_id` attribution visible to the customer, and the first application call site of the fail-closed `tenancy.scoped()` seam that three documents had described as shipped with zero callers.*
@@ -71,7 +73,7 @@ M1 is large and mostly open. A1–A4 shipped the tenancy spine, RBAC enforcement
 | `workspace-project-api-and-ui` | Workspace + project CRUD API and admin screens (schema exists, a default workspace is created at signup, but there is no surface to manage either) | M | — |
 | `platform-back-office` | Super Admin/Support back office: cross-org directory, plan overrides, logged impersonation (roles/permissions defined, no platform-scoped route exists) | L | — |
 | `org-api-keys` | Org-scoped API keys: issue/rotate/revoke with scopes, caps, last-used, hashed at rest (`apikey:issue` is granted but there is no table/route) | M | — |
-| `audit-log-csv-export` | CSV export on the audit log, itself audit-logged (§6 requires it; list/filter/history/integrity exist, export does not) | S | — |
+| `audit-log-csv-export` | ~~CSV export on the audit log, itself audit-logged~~ (**done, session 26** — takes the same filters as the list, carries the per-row integrity verdict so the file is evidence rather than a spreadsheet of claims, and emits `audit:export` recording the filters, the count and whether the 5000-row ceiling truncated the answer — never the contents) | S | — |
 | `grant-monthly-plan-credit` | Grant each plan's `monthly_credit_usd` at the start of a billing period — until then every balance is 0, so `reserve()`'s credit gate would refuse every call and is therefore used only on the dark backlink path (added session 25) | S | `stripe-subscription-lifecycle` |
 | `analysis-history-per-org` | ~~A list of the organization's analyses~~ (**done, session 26** — ADR-49. `GET /api/v1/analyses` + the `/analyses` screen + a nav entry. Signed-in and org-scoped, deliberately unlike the detail route it sits above: an id is a capability, a list is not. Also the **first application call site of `tenancy.scoped()`**. Residuals: tech-debt #87 (no index — it is a migration, gated on B13) and #88 (the list does not poll)) | M | — |
 

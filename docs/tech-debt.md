@@ -1350,3 +1350,14 @@ devDependencies).)
     it up to a route that the census then dutifully records as covered. The
     structural fix is the one #63 has always named — scoping enforced at the
     query layer rather than remembered at each call site — and it stays open.
+
+91. **The audit CSV export is capped at 5000 rows and says so only in its own
+    audit event** (2026-08-09, session 26, P7.9 §6). The export is a synchronous
+    request holding a database connection, so it cannot be unbounded — but a
+    caller who exports a busy year gets the newest 5000 rows and **the CSV
+    itself does not say it was truncated**. The `audit:export` event records
+    `truncated: true` and the matched total, so the fact is recoverable, but the
+    person holding the file is the one who needs it. Two cheap improvements when
+    somebody hits this: a `X-Yanki-Truncated` response header, or a trailing
+    comment row. The real answer is an export *artifact* — a job that produces a
+    complete file — which belongs with the reporting work in M6.

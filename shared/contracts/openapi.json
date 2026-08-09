@@ -4981,7 +4981,26 @@
     },
     "/api/v1/analyses": {
       "post": {
+        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged. A monthly plan\n   quota does not bound a burst; five hundred runs on the first of the month\n   is inside a Business allowance and still a stampede at the vendor.\n3. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.",
         "operationId": "submit_analysis_api_v1_analyses_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5014,6 +5033,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Submit Analysis",
         "tags": [
           "analyses"
@@ -5022,6 +5046,7 @@
     },
     "/api/v1/analyses/{analysis_id}": {
       "get": {
+        "description": "One analysis, if this caller may see it.\n\n404 covers both \"no such analysis\" and \"not yours\" on purpose. Splitting\nthem would turn this route into an oracle for which analysis ids exist,\nwhich is the whole value of an unguessable id.",
         "operationId": "read_analysis_api_v1_analyses__analysis_id__get",
         "parameters": [
           {
@@ -5032,6 +5057,22 @@
               "format": "uuid",
               "title": "Analysis Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
             }
           }
         ],
@@ -5057,6 +5098,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Read Analysis",
         "tags": [
           "analyses"
@@ -6976,18 +7022,13 @@
     },
     "/healthz": {
       "get": {
+        "description": "Readiness, not \"is uvicorn accepting sockets\" (ADR-47).\n\nThis returned the literal `{\"status\": \"ok\"}` until P7.8's groundwork, which\nmattered because **it is the deploy gate**: `deploy.sh` and `rollback.sh`\npoll it and record `.last-good` when it answers, so a release with an\nunreachable database was recorded as the good one to roll back *to*.\n\nOnly the components that make the service unservable for everyone can turn\nit red \u2014 see `app/health.py` for which and why. The rest report themselves\nand are read by a human.\n\n**The public body carries the verdict and nothing else.** nginx routes\n`/healthz` from the internet, and the component detail names the schema\nrevision, the queue depth, whether provider keys are configured and how\nstale the worker is. None of that is a credential and none of it should be\nhanded to anybody who asks either \u2014 so the breakdown goes to internal\ncallers (the loopback deploy gate, a shell on the box) and everyone else\ngets the status. The verdict is identical for both; only the reasons differ.\n\nNote the response shape is constrained by `deployment.sh`, which greps the\nbody for the substrings `status` and `ok` rather than trusting the status\ncode. A failing body must therefore contain no \"ok\" anywhere;\n`test_health.py` pins that for both shapes.",
         "operationId": "healthz_healthz_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Healthz Healthz Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"

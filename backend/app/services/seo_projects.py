@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -94,6 +94,32 @@ def normalize_project_domain(raw_domain: str) -> NormalizedProjectDomain:
     )
 
 
+def already_tracked(session: Session, *, user_id: uuid.UUID, domain_key: str) -> bool:
+    """Whether this user already tracks this domain.
+
+    Extracted so the route can ask *before* it spends a quota. A duplicate
+    submission and an exhausted plan both refuse the request, but they are not
+    the same answer: "you already track this" is a 409 the customer fixes by
+    opening the project they have, while a 429 tells them to buy something they
+    do not need. Checking the cheaper, more specific one first is what keeps the
+    order of guards from changing what the customer is told.
+
+    ``create_project_with_audit`` keeps its own copy of the check — this is a
+    pre-check, not a replacement, and the unique constraint underneath is the
+    actual guarantee.
+    """
+
+    return (
+        session.scalar(
+            select(SeoProject.id).where(
+                SeoProject.user_id == user_id,
+                SeoProject.domain_key == domain_key,
+            )
+        )
+        is not None
+    )
+
+
 def create_project_with_audit(
     session: Session,
     *,
@@ -123,13 +149,7 @@ def create_project_with_audit(
     ever queued once the feature is switched on. See ``config.site_audit_enabled``.
     """
 
-    existing_id = session.scalar(
-        select(SeoProject.id).where(
-            SeoProject.user_id == user_id,
-            SeoProject.domain_key == domain.key,
-        )
-    )
-    if existing_id is not None:
+    if already_tracked(session, user_id=user_id, domain_key=domain.key):
         raise DuplicateSeoProject
 
     project = SeoProject(
@@ -198,6 +218,24 @@ def list_org_projects(session: Session, org_id: uuid.UUID) -> list[SeoProject]:
             .options(selectinload(SeoProject.audits))
             .order_by(SeoProject.created_at.desc())
         )
+    )
+
+
+def count_org_projects(session: Session, org_id: uuid.UUID) -> int:
+    """How many Site Audit projects this organization currently holds.
+
+    The plan's ``projects`` allowance is a stock, not a monthly flow, so the
+    quota check compares against the rows that exist rather than a counter —
+    see ``billing.check_stock_quota``. Counting ``SeoProject`` rather than the
+    tenancy mirror ``Project`` is deliberate: ``SeoProject`` is the thing a
+    customer creates and sees, and the two are written together.
+    """
+
+    return int(
+        session.scalar(
+            select(func.count()).select_from(SeoProject).where(SeoProject.org_id == org_id)
+        )
+        or 0
     )
 
 

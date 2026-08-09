@@ -1,10 +1,25 @@
-"""HTTP routes for analyses (POST to submit, GET to poll status/results)."""
+"""HTTP routes for analyses (POST to submit, GET to poll status/results).
+
+**Submitting an analysis requires authentication (ADR-45).** It did not until
+P7.6, and the gap was invisible because no page had needed it since session 21
+moved the URL form behind sign-in: the route stayed open while every caller of
+it stopped being anonymous. An unauthenticated endpoint that spends money at a
+paid vendor cannot be metered — there is no tenant to meter — so closing it is
+the precondition for a plan tier meaning anything, not a separate hardening.
+
+Reading one is a different question and keeps a different answer. An analysis
+with no ``org_id`` is a capability URL: hold the id, read the result. That is
+every row in production today, and every checker run. An analysis that carries
+an organization belongs to it alone. ``tenancy.readable_analysis`` is the single
+place that rule lives, and this module's job is to hand it the caller's context.
+"""
 
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.api.org_dependencies import get_optional_org_context, requires
 from app.api.schemas import (
     AnalysisOut,
     CheckerLeadRequest,
@@ -29,7 +44,8 @@ from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import get_session
 from app.net_guard import is_public_url
-from app.services.analyses import create_analysis, get_analysis
+from app.services import audit, billing, quota
+from app.services.analyses import create_analysis
 from app.services.checker import (
     attach_lead,
     create_checker_analysis,
@@ -38,6 +54,7 @@ from app.services.checker import (
 )
 from app.services.checker_summary import summarize_checker
 from app.services.emailer import send_waitlist_emails
+from app.services.permissions import ANALYSIS_RUN
 from app.services.rate_limit import (
     WAITLIST_RATE_LIMIT_PER_IP_HOUR,
     RateLimitExceeded,
@@ -48,6 +65,7 @@ from app.services.rate_limit import (
     client_ip,
     hash_ip,
 )
+from app.services.tenancy import OrgContext, readable_analysis
 from app.services.waitlist import create_waitlist_signup, normalize_email, signup_count
 
 router = APIRouter(prefix="/api/v1", tags=["analyses"])
@@ -61,12 +79,9 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
     competitors_appeared: list[CompetitorMention] | None = None
     if analysis.kind == "checker":
         summary = summarize_checker(analysis.responses, analysis.kyc)
-        engine_presence = [
-            EnginePresence.model_validate(stat) for stat in summary.engine_presence
-        ]
+        engine_presence = [EnginePresence.model_validate(stat) for stat in summary.engine_presence]
         competitors_appeared = [
-            CompetitorMention.model_validate(stat)
-            for stat in summary.competitors_appeared
+            CompetitorMention.model_validate(stat) for stat in summary.competitors_appeared
         ]
 
     # SERP visibility (ADR-28). Present only when the run actually measured it:
@@ -125,9 +140,22 @@ def _to_out(analysis: Analysis) -> AnalysisOut:
 def submit_analysis(
     payload: CreateAnalysisRequest,
     request: Request,
+    org: OrgContext = Depends(requires(ANALYSIS_RUN)),
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> CreateAnalysisResponse:
+    """Queue one GEO analysis for the caller's organization.
+
+    The guards run cheapest-and-most-certain first, and each one refuses before
+    the next has any effect:
+
+    1. **SSRF** — 422, and no row, so a rejected target never counts anywhere.
+    2. **Per-credential burst** — the P5.0 IP limit, unchanged. A monthly plan
+       quota does not bound a burst; five hundred runs on the first of the month
+       is inside a Business allowance and still a stampede at the vendor.
+    3. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+    """
+
     # Reject SSRF targets (loopback/private/link-local/metadata) up front; the
     # worker's discovery step re-checks every redirect hop as defence in depth.
     # This runs first and returns 422 without creating a row, so SSRF-rejected
@@ -147,7 +175,26 @@ def submit_analysis(
             headers={"Retry-After": str(exc.retry_after)},
         ) from exc
 
-    analysis = create_analysis(session, str(payload.url), ip_hash=ip_hash)
+    # The counter and the row it pays for commit together, or neither does.
+    # `create_analysis(commit=False)` exists for exactly this: a commit inside it
+    # would let the run be created and the quota rolled back by a later failure.
+    org_id = org.require_org_id
+    quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_ANALYSES)
+    analysis = create_analysis(
+        session, str(payload.url), ip_hash=ip_hash, org_id=org_id, commit=False
+    )
+
+    audit.emit(
+        session,
+        action="analysis:create",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="analysis",
+        entity_id=analysis.id,
+        after={"url": analysis.url, "kind": analysis.kind or "mvp"},
+    )
+    session.commit()
     return CreateAnalysisResponse(id=analysis.id)
 
 
@@ -240,9 +287,17 @@ def join_waitlist(
 @router.get("/analyses/{analysis_id}", response_model=AnalysisOut)
 def read_analysis(
     analysis_id: uuid.UUID,
+    org: OrgContext | None = Depends(get_optional_org_context),
     session: Session = Depends(get_session),
 ) -> AnalysisOut:
-    analysis = get_analysis(session, analysis_id)
+    """One analysis, if this caller may see it.
+
+    404 covers both "no such analysis" and "not yours" on purpose. Splitting
+    them would turn this route into an oracle for which analysis ids exist,
+    which is the whole value of an unguessable id.
+    """
+
+    analysis = readable_analysis(session, analysis_id, org)
     if analysis is None:
         raise HTTPException(status_code=404, detail="analysis not found")
     return _to_out(analysis)

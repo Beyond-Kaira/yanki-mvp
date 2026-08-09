@@ -252,7 +252,19 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit Analysis */
+        /**
+         * Submit Analysis
+         * @description Queue one GEO analysis for the caller's organization.
+         *
+         *     The guards run cheapest-and-most-certain first, and each one refuses before
+         *     the next has any effect:
+         *
+         *     1. **SSRF** — 422, and no row, so a rejected target never counts anywhere.
+         *     2. **Per-credential burst** — the P5.0 IP limit, unchanged. A monthly plan
+         *        quota does not bound a burst; five hundred runs on the first of the month
+         *        is inside a Business allowance and still a stampede at the vendor.
+         *     3. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+         */
         post: operations["submit_analysis_api_v1_analyses_post"];
         delete?: never;
         options?: never;
@@ -267,7 +279,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read Analysis */
+        /**
+         * Read Analysis
+         * @description One analysis, if this caller may see it.
+         *
+         *     404 covers both "no such analysis" and "not yours" on purpose. Splitting
+         *     them would turn this route into an oracle for which analysis ids exist,
+         *     which is the whole value of an unguessable id.
+         */
         get: operations["read_analysis_api_v1_analyses__analysis_id__get"];
         put?: never;
         post?: never;
@@ -864,7 +883,32 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Healthz */
+        /**
+         * Healthz
+         * @description Readiness, not "is uvicorn accepting sockets" (ADR-47).
+         *
+         *     This returned the literal `{"status": "ok"}` until P7.8's groundwork, which
+         *     mattered because **it is the deploy gate**: `deploy.sh` and `rollback.sh`
+         *     poll it and record `.last-good` when it answers, so a release with an
+         *     unreachable database was recorded as the good one to roll back *to*.
+         *
+         *     Only the components that make the service unservable for everyone can turn
+         *     it red — see `app/health.py` for which and why. The rest report themselves
+         *     and are read by a human.
+         *
+         *     **The public body carries the verdict and nothing else.** nginx routes
+         *     `/healthz` from the internet, and the component detail names the schema
+         *     revision, the queue depth, whether provider keys are configured and how
+         *     stale the worker is. None of that is a credential and none of it should be
+         *     handed to anybody who asks either — so the breakdown goes to internal
+         *     callers (the loopback deploy gate, a shell on the box) and everyone else
+         *     gets the status. The verdict is identical for both; only the reasons differ.
+         *
+         *     Note the response shape is constrained by `deployment.sh`, which greps the
+         *     body for the substrings `status` and `ok` rather than trusting the status
+         *     code. A failing body must therefore contain no "ok" anywhere;
+         *     `test_health.py` pins that for both shapes.
+         */
         get: operations["healthz_healthz_get"];
         put?: never;
         post?: never;
@@ -2874,7 +2918,9 @@ export interface operations {
     submit_analysis_api_v1_analyses_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2907,7 +2953,9 @@ export interface operations {
     read_analysis_api_v1_analyses__analysis_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path: {
                 analysis_id: string;
             };
@@ -3915,9 +3963,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": unknown;
                 };
             };
         };

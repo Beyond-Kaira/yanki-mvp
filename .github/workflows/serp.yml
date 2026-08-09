@@ -161,8 +161,16 @@ jobs:
         # DRY_RUN keeps every LLM call on the deterministic mock ($0, no keys),
         # and SERP_ENABLED=1 with it selects the mock SERP source — so this
         # exercises the whole path without needing a search instance at all.
+        #
+        # JWT_SECRET_KEY is needed because P7.6 closed `POST /analyses` to
+        # anonymous callers (ADR-45), so this check now signs up and signs in
+        # before it can submit anything — and an api with no signing key answers
+        # 503 to every login. Generated per run rather than written down: a
+        # literal here would be a committed credential, which the gitleaks gate
+        # would (correctly) refuse.
         run: |
-          printf 'DRY_RUN=1\nSERP_ENABLED=1\nSERP_QUERY_COUNT=4\n' > deploy/.env
+          printf 'DRY_RUN=1\nSERP_ENABLED=1\nSERP_QUERY_COUNT=4\nJWT_SECRET_KEY=%s\n' \
+            "$(openssl rand -hex 32)" > deploy/.env
       - name: Boot the stack
         run: docker compose -f deploy/docker-compose.yml up -d --build
       - name: Wait for API health

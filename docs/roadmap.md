@@ -81,6 +81,13 @@ M8's localization work is where it revives naturally if called.
 > is larger: it also covers billing, plans, quotas, the Yanki-staff back office
 > and the system pages, none of which are part of the customer's Admin Panel.
 > Stages A1–A4 (the Panel and everything under it) shipped 2026-08-05.
+>
+> **Since then:** A5's migration-free half — sessions, devices, the org switcher
+> — shipped 2026-08-08 (ADR-43), and **A6's quota enforcement shipped 2026-08-09
+> (ADR-45)**, which is the point at which a plan tier started refusing anything.
+> A5's remaining half (password reset, MFA) waits on database backups; A6's
+> remaining half (Stripe lifecycle, billing visibility) waits on the operator's
+> Stripe account and terms text. A7–A9 are unstarted.
 
 - **Objectives:** turn "a users table" into a governed multi-tenant B2B
   platform: organizations → workspaces → projects; granular resource-based

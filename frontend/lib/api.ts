@@ -103,17 +103,51 @@ export async function authorizedFetch(
   return fetch(path, withBearer(scoped, refreshed))
 }
 
+// Submitting an analysis is an authorized, metered action (ADR-45). It used to
+// be a bare `fetch` against an open endpoint, which is why every run a customer
+// started was attributed to nobody: the form sat behind sign-in while the
+// request it sent carried no credential.
+//
+// The 429 needs care. Two different limits answer with it and they mean
+// opposite things to the person reading the message — one is "you are going too
+// fast, wait", the other is "you are out for the month, upgrade". The backend
+// keeps them distinct (the plan refusal carries a `limit` field); collapsing
+// them into "too many requests" would tell a customer to wait for something
+// that will not change until next month.
 export async function createAnalysis(url: string): Promise<CreateAnalysisResponse> {
-  const res = await fetch('/api/v1/analyses', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-  })
+  let res: Response
+  try {
+    res = await authorizedFetch('/api/v1/analyses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
   if (!res.ok) {
-    const message =
-      res.status === 422
-        ? "That doesn't look like a valid URL. Use http:// or https://."
-        : await readErrorMessage(res)
+    let message: string
+    if (res.status === 422) {
+      message = "That doesn't look like a valid URL. Use http:// or https://."
+    } else if (res.status === 401) {
+      message = 'Your session has expired. Sign in again to run an analysis.'
+    } else if (res.status === 403) {
+      message = 'Your role cannot start an analysis. Ask an Analyst or above.'
+    } else if (res.status === 503) {
+      message = 'Analyses are unavailable on this deployment right now.'
+    } else if (res.status === 429) {
+      const detail = await readErrorMessage(res)
+      message =
+        detail === 'rate limit exceeded'
+          ? 'You have started several analyses in a short time. Try again shortly.'
+          : detail
+    } else {
+      message = await readErrorMessage(res)
+    }
     throw new ApiError(message, res.status)
   }
   return (await res.json()) as CreateAnalysisResponse
@@ -183,8 +217,15 @@ export async function joinWaitlist(
   return (await res.json()) as WaitlistSignupResponse
 }
 
+// Reading an analysis stays open to anonymous callers — a run with no
+// organization is a capability URL, which is what every checker result and
+// every pre-P7.6 row is. But a run that belongs to an organization is only
+// served to that organization, so the poll has to carry the caller's bearer or
+// the person who just started the analysis would be 404'd from their own
+// result. `authorizedFetch` sends nothing extra when nobody is signed in, so
+// the anonymous path is unchanged.
 export async function getAnalysis(id: string): Promise<Analysis> {
-  const res = await fetch(`/api/v1/analyses/${encodeURIComponent(id)}`, {
+  const res = await authorizedFetch(`/api/v1/analyses/${encodeURIComponent(id)}`, {
     headers: { Accept: 'application/json' },
     cache: 'no-store',
   })

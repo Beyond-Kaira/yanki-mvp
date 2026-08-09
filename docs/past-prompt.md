@@ -379,9 +379,56 @@ reconstructed it.
 cross-tenant leakage test, and the neighbouring leakage test was found to be
 passing for the wrong reason.
 
-**Not merged.** `feat/session-24` is unpushed with no PR; a merge to `main`
-auto-deploys and that call is the operator's (**B14**). The session's headline
-operator item is **B13 — database backups**, which now gates every remaining
-Phase 7 migration.
+**Merged and deployed at session close, on the operator's instruction** — PR
+**#40**, `ddf3167`, CI 11/11 green, Deploy 2m48s, verified in production
+(resource ceilings now actually bind; co-tenants untouched). The merge needed
+the operator's **admin bypass** for want of a second reviewer, for the second
+time after PR #8 — recorded in `operator-expected.md` rather than left implicit.
+The session's headline operator item remains **B13 — database backups**, which
+still gates every remaining Phase 7 migration.
 
 **The next brief lives at the end of `sessions/2026-08-08-01.md` §9.**
+
+---
+
+## Session 25 — 2026-08-09
+
+**Prompt executed:** the Loop Engineering brief — "operate the project as a
+continuous autonomous loop: inspect, decide, implement, verify, document, check
+operator dependencies, continue; do not stop at session boundaries" — entered
+through `resume-prompt.md` and the session-24 handoff at
+`sessions/2026-08-08-01.md` §9.
+
+**Which branch of the handoff was taken, and why.** Session 24 left a
+conditional: build P7.5's migration-bearing half **if database backups exist**,
+otherwise build `enforce-quota-on-spend-paths`. Backups were checked and do not
+exist — no crontab, no dump anywhere on the box, `deploy/` carries no backup
+script — so **B13 is still open and the second branch was taken.**
+
+**Outcome:** P7.6's enforcement half shipped (ADR-45). Plan tiers stopped being
+decorative. The card turned out to be blocked by something no document
+mentioned: `POST /api/v1/analyses` — the product's central money-spending action
+— took **no authentication at all**, so every analysis a paying customer ran was
+attributed to no tenant and could be metered against nothing. Closing that came
+first; the quota followed. See
+[sessions/2026-08-09-01.md](sessions/2026-08-09-01.md).
+
+**The next brief lives at the end of `sessions/2026-08-09-01.md` §9.**
+
+**Second loop, same session.** With the quota work committed, the operator-
+dependency check found that **B13 was not as operator-owned as it looked**.
+Splitting it by who can actually do each part, taking a dump, verifying it,
+proving it restores and refusing to migrate without one are all engineering —
+and leaving them undone was the thing that had made two consecutive sessions
+pick their work by what avoided a migration. Built and rehearsed against the
+live database (ADR-46). What genuinely needed the operator turned out to be two
+lines: an off-box destination and a cron entry.
+
+**Third loop, same session.** The check ran once more and found the backlog's
+last two P0 rows unblocked and, on inspection, one defect wearing two hats —
+*the system reports health it has not checked*. `/healthz` returned a hardcoded
+literal and **is the deploy gate**, so a release with an unreachable database
+answered healthy and was recorded as the good one to roll back to; and a
+`while True` worker that stopped looping left the container `running` with the
+queue quietly undrained. Both fixed (ADR-47). The P0 band is now empty apart
+from the repo-wide formatter item, which should stay parked.

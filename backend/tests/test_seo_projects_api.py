@@ -53,11 +53,33 @@ def resolve_reserved_test_domains(monkeypatch) -> None:
 
 
 @pytest.fixture()
-def make_user(db_session: Session) -> Callable[[str], User]:
-    def _make(email: str) -> User:
+def make_user(db_session: Session, on_plan) -> Callable[..., User]:
+    """A user with a provisioned personal organization, on a tier with room.
+
+    Two things changed here at P7.6 and both are deliberate.
+
+    The org is provisioned **eagerly** rather than left to heal on first
+    request, because that is what signup does — the lazy path exists for
+    accounts that predate tenancy, and depending on it here would test the
+    repair rather than the product.
+
+    The default plan is **Starter**, not Free. This suite is about project and
+    audit *behaviour*: Free allows one project and one site audit a month, so on
+    Free half of these tests would be asserting a plan limit they never mention.
+    Free's limits are proved in ``test_quota_enforcement.py``, where they are the
+    subject rather than the weather.
+    """
+
+    from app.services.tenancy import provision_personal_org
+
+    def _make(email: str, plan: str | None = "starter") -> User:
         user = User(email=email, password_hash=hash_password("correct-horse"))
         db_session.add(user)
+        db_session.flush()
+        org = provision_personal_org(db_session, user)
         db_session.commit()
+        if plan is not None:
+            on_plan(org.id, plan)
         return user
 
     return _make

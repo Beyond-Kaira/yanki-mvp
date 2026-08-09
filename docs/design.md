@@ -1931,3 +1931,304 @@ things the PR did not intend.*
   additive, reversible, and buys the time to do that properly. *Hiding the UI
   only* — the route would stay open to anything holding a token, which is a
   gate in the one layer this project says a gate must never live in.
+
+### ADR-45 — Submitting an analysis requires a credential, and a plan tier that refuses nothing is not a plan (2026-08-09, P7.6)
+
+- **Context:** `services/billing` shipped whole in session 21 — the plan
+  catalog, usage counters, the append-only credit ledger, `check_quota` /
+  `consume_quota` / `reserve` / `settle` — and for three sessions nothing on any
+  path a customer touches called any of it. Migration `0016_seed_plans` seeds
+  five tiers with real numbers; `limit_for` falls back to Free for an org with
+  no subscription, and no subscription has ever been created. So **every
+  organization was on Free and Free meant nothing**: the tiers were decorative,
+  which `implementation-plan.md` P7.6 records in exactly those words.
+
+  Wiring the gate turned out to be blocked by something the plan did not
+  mention. `POST /api/v1/analyses` — the product's central money-spending action
+  — **took no authentication at all**. Session 21 moved the URL form behind
+  sign-in and made `/` a landing page; nobody closed the route it posts to. So
+  every analysis a paying customer ran carried `org_id = NULL`, was attributable
+  to no tenant, appeared in no organization's history, and could not be metered
+  against anything. A quota cannot be applied to a caller who does not exist.
+
+- **Decision:** four things, in the order they depend on each other.
+
+  1. **`POST /api/v1/analyses` requires authentication** and the
+     `analysis:run` permission (Analyst and above), and stamps the caller's
+     `org_id` on the row.
+  2. **`GET /api/v1/analyses/{id}` is scoped through `tenancy.readable_analysis`**
+     — which until now had *zero call sites* (tech-debt #63). A row with no
+     organization stays world-readable on its unguessable id; a row that carries
+     one is served to that organization alone, and to nobody else including the
+     anonymous public. A cross-tenant id gets the same 404 as a missing one.
+  3. **The three spend paths consume a plan allowance**: analyses and site-audit
+     runs against monthly counters, projects against the rows that exist. All of
+     it behind one kill switch, `QUOTA_ENFORCEMENT_ENABLED`, default **on**.
+  4. **The worker settles each finished run's real cost** into the org's credit
+     ledger, on success *and* on failure.
+
+- **Why requiring auth is part of this card and not a separate hardening:** a
+  per-tenant quota on a route anyone may call unauthenticated is a control that
+  works on paper only — sign out and the limit is gone. The two changes are one
+  change. Evidence that closing it breaks no product surface: every caller of
+  `createAnalysis` sits inside `RequireAuth` (`/dashboard`,
+  `/ai-visibility`, `/search-visibility`, and the analysis-bound subpages), the
+  landing page links to `/signup` and `/checker`, and the Playwright happy path
+  already signs up before it submits. The public anonymous funnel is
+  `/api/v1/checker`, which is unchanged.
+
+- **Why the checker is deliberately NOT org-metered.** The card names three
+  spend paths and this is the third; it is answered rather than skipped. The
+  checker is the anonymous lead-capture tool — it has no organization, so a
+  per-org quota has nothing to charge, and metering a *signed-in* caller for
+  using the free public tool would bill customers for marketing. Its spend is
+  bounded globally instead, by machinery that already exists and is live:
+  `CHECKER_ENABLED`, 10 submits/IP/hour, 20 fresh runs/brand/day, and
+  `CHECKER_DAILY_USD_CAP` summed over `responses.cost_usd`. The honest statement
+  is that the checker is capped, not metered, and the two are different words.
+
+- **Why counts gate and money only records.** `reserve()` refuses when the
+  credit balance cannot cover an estimate. No org has ever been granted credit,
+  so every balance is zero — using `reserve()` on the analysis path would have
+  refused **every analysis in production** with a 402. Credit gating stays where
+  it already is (the dark backlink path, whose mock estimate is $0), and the
+  ledger records spend without refusing it. Refusal is by count; visibility is
+  by ledger. Granting each plan's `monthly_credit_usd` is the Stripe card's job.
+
+- **Why projects are counted differently from analyses.** `UsageCounter` is a
+  monthly window, which is right for events and wrong for possessions. Free's
+  `projects: 1` read through a monthly counter would mean *one new project per
+  month* — twelve by December — and deleting a project would free nothing back.
+  So `check_stock_quota` compares the limit against the rows that exist.
+  "Analyses: 5" is a flow; "projects: 1" is a stock; the plan JSON does not
+  distinguish them, so the call site must.
+
+- **Why an unseeded catalog is a 503 and not a 429.** `limit_for` used to return
+  `0` when the `plans` table was empty, which is fail-closed and correct in
+  direction but indistinguishable from an exhausted customer. Production ran
+  with an empty catalog until session 21 caught it; with enforcement live, that
+  state would have told every organization simultaneously that it was out of
+  quota, and the real cause — an unseeded table — would have been the last thing
+  anyone checked. `PlanCatalogMissing` is now its own exception and its own
+  status code.
+
+- **Why an app-level exception handler rather than try/except per route.** Three
+  routers now raise billing exceptions and more will. The failure mode of the
+  per-route form is a new metered path that raises `QuotaExceeded` and returns
+  500 — a bug nobody sees until a customer hits a limit. `api/main.py` maps
+  `QuotaExceeded` → 429 (with `metric`/`used`/`limit` in the body, so a client
+  can tell it from the rate limiter's bare 429), `InsufficientCredit` → 402,
+  `PlanCatalogMissing` → 503. A route wanting a more specific sentence still
+  catches the exception itself and wins.
+
+- **Consequences, and the one that matters most.** **On merge, plan limits
+  become real for live users.** Every production organization has no
+  subscription row, so every one of them is on Free: 5 analyses a month, 1 site
+  audit, 1 project. That is the intended effect of the card and it is also a
+  visible product change on a box that auto-deploys, so two escape hatches ship
+  with it: `QUOTA_ENFORCEMENT_ENABLED=0` in `deploy/.env` turns all of it off,
+  and `scripts/set_org_plan.py --org <slug> --set enterprise` moves one
+  organization to unlimited without SQL. The operator file records both
+  (operator **B17**).
+
+  Also: the guard order on `POST /seo-projects` now answers 409 for a duplicate
+  domain *before* the quota can answer 429, because on Free both are true at
+  once and only one of them is useful advice. `already_tracked()` was extracted
+  so the route can ask the cheap, specific question first; the service keeps its
+  own check, which is the guarantee.
+
+- **Rejected:** *optional authentication — meter signed-in callers, leave the
+  anonymous path open* — preserves every existing test and leaves a quota that
+  signing out defeats; this repository has already recorded once, about the
+  admin-bypass merge habit, what it thinks of controls that only work on paper.
+  *Defaulting the kill switch off* — ships the enforcement dark and leaves the
+  tiers decorative, which is the defect. *Seeding a Free `Subscription` row at
+  signup* — `limit_for` already falls back to Free, so it changes no behaviour
+  today while committing now to lifecycle semantics (`status`,
+  `current_period_end`) that the Stripe card should choose. *A global
+  `unlimited` default in the test fixtures* — every suite would pass without
+  ever meeting a limit; the fixtures seed the real catalog instead and the
+  suites that need headroom say so out loud.
+
+### ADR-46 — A backup is a restore you have already done (2026-08-09, B13's engineering half)
+
+- **Context:** operator item **B13** had been the roadmap's largest blocker for
+  two sessions: no database backups, so every remaining Phase 7 stage — each of
+  which adds a migration to the live database — was unshippable. `rollback.sh`
+  restores the *image*; it has never been able to restore a **row**, and
+  `yanki_pgdata` is the only copy of every analysis, user, session,
+  organization, audit event and billing row. Two sessions in a row chose their
+  work by what avoided a migration, which is not a strategy.
+
+  The item was recorded as wholly operator-owned. Most of it is not. Choosing
+  where an off-box copy lives and installing a cron entry are the operator's;
+  *taking a dump, proving it is real, and refusing to migrate without one* are
+  engineering, and leaving them undone was the actual blocker.
+
+- **Decision:** three pieces, and the third is the one that makes the first two
+  worth anything.
+
+  1. **`deploy/backup.sh`** — one `pg_dump --format=custom`, written to a
+     `.partial` name and renamed only after it passes a size floor, a free-space
+     floor, and a **full read-back**. Dumps are `0600` in a `0700` directory;
+     retention is count-based (newest 14).
+  2. **`deploy/restore-check.sh`** — restores a dump into a **throwaway
+     container** and asserts `pg_restore --exit-on-error` succeeded,
+     `alembic_version` holds a revision, and `users` / `organizations` /
+     `analyses` / `audit_events` exist with their row counts printed. There is
+     no flag that makes it touch production.
+  3. **`deploy.sh` snapshots before a schema change**, and aborts the deploy if
+     the snapshot fails — while nothing has changed and the previous release is
+     still serving.
+
+- **Why the verification is a full read-back and not `pg_restore --list`.** The
+  first version used `--list`, which is the obvious check and a useless one. A
+  custom-format archive stores its table of contents in the **header**, so a
+  dump truncated to its first 100 KB lists all 207 entries and passes. That was
+  measured on a real dump, not reasoned about. `pg_restore --file=/dev/null`
+  decompresses every entry and discards the SQL, so truncation fails; it costs
+  1.1s on a 2.7 MB dump. A backup check that passes a half-written file is worse
+  than no check, because it is the reason nobody looks again.
+
+  Both forms run in a short-lived `postgres:16` container with the backup
+  directory mounted **read-only**. Piping the dump in on stdin does not work at
+  all — reading a custom archive needs to seek, so a *perfect* dump fails with
+  "did not find magic string in file header", and the check would have rejected
+  every good backup. The other way to give `pg_restore` a path is copying the
+  dump into the running production container, i.e. writing a full copy of the
+  database into a production container in order to run a safety check.
+
+- **Why the snapshot is conditional on a pending migration.** Every merge to
+  `main` deploys and most touch no schema; snapshotting all of them would push
+  the genuine pre-migration dumps out of the retention window with copies of a
+  database that never changed. `deploy.sh` compares `alembic current` with
+  `alembic heads`. **Failing to determine the answer takes the snapshot** — the
+  expensive answer is the safe one.
+
+- **Why retention is count-based, not age-based.** An age rule silently leaves
+  you with nothing if the schedule stops. "No backups" should require somebody
+  to have deleted them.
+
+- **Consequences.** Rehearsed end to end on 2026-08-09 against **live
+  production**: a 2.7 MB dump of the 17 MB database restored into a scratch
+  container at `alembic_version = 0018_invitations_audit_integrity` with 6
+  users, 7 organizations, 57 analyses, 35 audit events, 30 tables. The
+  truncated-dump and missing-dump paths were both exercised and both fail
+  correctly.
+
+  **What this does not do is survive losing the box.** Dumps live in
+  `~/yanki-backups` on the same VPS as the database. That covers a bad
+  migration, a dropped table and a mis-run backfill — the failures that actually
+  happen here — and nothing else. The off-box copy needs a destination and a
+  credential, which is a choice rather than an engineering task, and it stays
+  with the operator (B13, now narrowed). Saying so plainly matters more than
+  usual here: the failure mode of a backup system is somebody believing it
+  covers more than it does.
+
+  The pre-migration hook is also **unproven against a real migration** — the
+  schema has been at `0018` throughout, so only the no-op branch has run in
+  anger (tech-debt #78).
+
+- **Rejected:** *`pg_dumpall`* — it would sweep in the co-tenants' roles and is
+  the wrong blast radius on a shared box. *Plain-SQL dumps* — larger, and they
+  cannot be listed or read back without executing them. *A restore-into-
+  production script* — rare, irreversible, and every real instance has details a
+  script cannot know; `deploy/BACKUP.md` carries the sequence as a runbook
+  instead, starting with "dump what you have now, however broken", which is the
+  step people skip. *Writing the cron entry ourselves* — it is a change to the
+  live box's schedule and it needs the retention decision, which interacts with
+  a PII retention policy that does not exist yet.
+
+### ADR-47 — A health endpoint that checks something, and a worker that can be seen to be alive (2026-08-09, P0/P7.8 groundwork)
+
+- **Context:** `/healthz` returned the literal `{"status": "ok"}`. That is not a
+  health check — it is a check that uvicorn is accepting sockets — and it
+  mattered more than it looks, because **it is the deploy gate**. `deploy.sh`
+  and `rollback.sh` poll it and write `.last-good` when it answers, so a release
+  whose database was unreachable, whose migrations had not run, or (after
+  ADR-45) whose plan catalog was empty, reported healthy and was recorded as the
+  good release to roll back *to*. The gate could not fail.
+
+  The worker had the mirror-image problem. It is a `while True` loop with no
+  HTTP surface, `restart: unless-stopped` and no healthcheck, so a loop that
+  stopped looping left a container in state `running` and a queue that quietly
+  stopped draining. The only symptom was jobs sitting in `queued`, noticed by a
+  human. Both are the same defect: **the system reports health it has not
+  checked.**
+
+- **Decision:**
+
+  1. **`/healthz` is a readiness probe** built from six components — database,
+     schema revision, plan catalog, queue, worker, providers.
+  2. **Only two can turn it red**: the database, and the plan catalog *while
+     quota enforcement is on*. Everything else reports itself and is read by a
+     human.
+  3. **The worker beats to a file** on a volume the api mounts read-only, on
+     every poll and at every pipeline step. A compose healthcheck reads the same
+     file; `/healthz` reports its age.
+  4. **The public body carries the verdict only.** Component detail goes to
+     internal callers.
+
+- **Why so few components can fail it.** A health check that goes red for things
+  that do not stop the service is a health check people learn to ignore, and
+  this one auto-rolls-back a deploy. A queue backlog means customers are using
+  the product. A missing provider key under `DRY_RUN` is the correct
+  configuration. A schema revision that differs from the code's head is *normal
+  during a rollback* — old code against a newer additive schema is exactly what
+  ADR-30 made possible, so failing on it would refuse to serve at the worst
+  possible moment. None of those is a reason to refuse a release. An unreachable
+  database and (with enforcement on) an empty catalog are, because with either
+  one every request that matters answers 503.
+
+- **Why the response body is shaped the way it is.** `deployment.sh` does not
+  trust the status code: it greps the body for the substrings `status` **and**
+  `ok`. So an unhealthy body containing "ok" anywhere — a field named
+  `"ok": false`, a detail mentioning a "token", a message about something
+  "broken" — would pass the gate it exists to fail. Component states are
+  therefore `pass`/`fail`/`warn`, the failing overall state is `unhealthy`, and
+  a test asserts the unhealthy body contains no "ok" at all. The coupling is
+  ugly; leaving it undocumented and unpinned would be worse.
+
+- **Why the detail is withheld from the public edge.** nginx routes `/healthz`
+  from the internet. The breakdown names the schema revision, the queue depth,
+  whether provider keys are configured and how stale the worker is. None of it
+  is a credential and none of it should be handed to anybody who asks, so the
+  edge gets `{"status": …}` and internal callers get the reasons. The verdict is
+  identical for both — a release that is unhealthy internally is unhealthy at
+  the edge, or the two gates disagree about the same deploy. Detection is by
+  `X-Forwarded-For`, which the edge sets and the loopback deploy gate does not;
+  it decides how much to print, never whether to answer, so getting it wrong
+  costs a terser page rather than a locked-out deploy.
+
+- **Why a heartbeat file rather than a table or an endpoint.** A heartbeat table
+  needs a migration, and migrations were the thing this session was working
+  around. A heartbeat endpoint means giving the worker a web server to answer
+  it. A file on a shared volume needs neither, and the api mounts it **`:ro`** —
+  which is what stops a future bug in the api forging liveness for a worker that
+  is not running.
+
+- **Consequences, and the honest limit.** The worker healthcheck is
+  **detection, not self-healing**. Compose — unlike Swarm — never restarts a
+  container for being unhealthy, so a wedged worker becomes visible in
+  `docker ps` and in `/healthz` and stays wedged. Fixing that needs either an
+  autoheal sidecar (another container on a box shared with four other tenants)
+  or an external watchdog; neither is worth adding blind, and "visible" is a
+  large improvement over "invisible" (tech-debt #81).
+
+  The probe now costs four small queries per request. `/healthz` is polled by
+  the deploy gate and by nothing else on a schedule today; if an uptime monitor
+  is ever pointed at it, that is the moment to cache the result for a second.
+
+  Beating at every pipeline step means the stale window has to exceed the
+  longest single step (`execute`, up to `MAX_RESPONSES_PER_JOB` paid calls),
+  hence 1800s. Erring long is the cheap direction: this signal must mean
+  "stopped", and a window that flags a slow-but-working job is one people learn
+  to ignore.
+
+- **Rejected:** *a separate `/readyz`* — correct by the book, and the deploy
+  gate greps `/healthz`; adding a second endpoint would mean the gate keeps
+  reading the one that never fails. *Failing the probe on a queue backlog* —
+  auto-rollback triggered by customer demand. *Failing on a stale worker* — the
+  api serves fine without one, and CI's e2e stack, the test suite and a laptop
+  all legitimately run with no worker at all. *Reporting the full detail
+  publicly* — needless disclosure on an endpoint the whole internet can reach.

@@ -55,11 +55,14 @@ from app.config import Settings, get_settings
 from app.db.models import SeoProject, SiteAudit
 from app.db.session import get_session
 from app.net_guard import is_public_url
+from app.services import billing, quota
 from app.services.permissions import AUDIT_RUN, PROJECT_CREATE, PROJECT_READ
 from app.services.seo_projects import (
     DuplicateSeoProject,
     InvalidProjectDomain,
     SiteAuditAlreadyActive,
+    already_tracked,
+    count_org_projects,
     create_project_with_audit,
     get_org_audit,
     get_org_project,
@@ -158,6 +161,35 @@ def create_seo_project(
     if not is_public_url(domain.url):
         raise HTTPException(status_code=422, detail="domain host is not allowed")
 
+    # A duplicate is answered before a quota is spent, and before a quota can
+    # refuse. Both are 4xx and only one is actionable: "you already track this"
+    # sends the customer to the project they have, while a 429 on the same
+    # request would tell them to buy capacity they do not need. The service
+    # re-checks this itself — see `already_tracked` — so this is an ordering
+    # decision, not the guarantee.
+    if already_tracked(session, user_id=org.require_user_id, domain_key=domain.key):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="an SEO project for this domain already exists",
+        )
+
+    # Two allowances, and they are different kinds of thing (P7.6, ADR-45).
+    # `projects` is a stock — how many you may hold at once — so it is measured
+    # against the rows that exist and freed by deleting one. The first crawl is
+    # an event, so it consumes the monthly `site_audits` flow, and only when a
+    # crawl is actually queued: gating the count on `queue_audit` keeps
+    # SITE_AUDIT_ENABLED=0 from silently charging for work nobody will do.
+    org_id = org.require_org_id
+    quota.check_stock(
+        session,
+        settings,
+        org_id=org_id,
+        metric=billing.METRIC_PROJECTS,
+        current=count_org_projects(session, org_id),
+    )
+    if settings.site_audit_enabled:
+        quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_SITE_AUDITS)
+
     try:
         project = create_project_with_audit(
             session,
@@ -210,10 +242,21 @@ def create_site_audit(
     payload: SiteAuditSettingsRequest,
     org: OrgContext = Depends(requires(AUDIT_RUN)),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> SiteAuditSummaryOut:
     project = get_org_project(session, org_id=org.require_org_id, project_id=project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="SEO project not found")
+
+    # Metered after the project is resolved, so a 404 for another tenant's id
+    # never spends this tenant's allowance — and after the flag check, which is
+    # a route dependency, so a dark feature charges nobody.
+    quota.consume(
+        session,
+        settings,
+        org_id=org.require_org_id,
+        metric=billing.METRIC_SITE_AUDITS,
+    )
 
     try:
         audit = queue_site_audit(

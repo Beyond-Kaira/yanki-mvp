@@ -2344,7 +2344,7 @@ paragraph, as the record.*
   remote revoke, org-level require-MFA policy.
 - **Dependencies:** P7.2 (policy), P7.3 (events). · **Complexity:** M ·
   **Status:** **partial — the migration-free half shipped 2026-08-08 (session
-  24)**, on `feat/session-24`.
+  24)**, merged as `ddf3167` (PR #40) and live in production.
 
   **Done (no schema change — reuses the `AuthSession` family model from
   migration 0006):** `GET /auth/sessions`, `DELETE /auth/sessions/{id}`,
@@ -2390,6 +2390,46 @@ paragraph, as the record.*
   terms text, tech-debt #50); **the enforcement half is not blocked by
   anything** and is the highest-value unblocked card in Phase 7.
 
+  **Enforcement half DONE 2026-08-09 (session 25, ADR-45).** Plan tiers are no
+  longer decorative. What shipped:
+
+  - **`POST /api/v1/analyses` now requires authentication** and `analysis:run`,
+    and stamps `org_id` on the row. It had been open since the MVP; session 21
+    moved the URL form behind sign-in and nobody closed the route, so **every
+    analysis a customer ran was attributed to no tenant**. That, not the missing
+    `consume_quota` call, was the real blocker — a quota needs a tenant.
+  - **`GET /api/v1/analyses/{id}` is scoped through `tenancy.readable_analysis`**,
+    which had zero call sites (tech-debt #63, partially repaid). Org-less rows
+    stay world-readable on their id; an org's rows are that org's alone.
+  - **Three allowances enforced**: `analyses` and `site_audits` as monthly flows,
+    `projects` as a **stock** (rows held, not rows created — a monthly counter
+    would let Free hold twelve projects by December). New
+    `billing.check_stock_quota`.
+  - **`PlanCatalogMissing`** separates "this deployment has no plan catalog"
+    (503) from "you are out of quota" (429). `limit_for` used to answer both
+    with `0`.
+  - **App-level exception handlers** in `api/main.py` map `QuotaExceeded` → 429
+    with `metric`/`used`/`limit`, `InsufficientCredit` → 402,
+    `PlanCatalogMissing` → 503, so no future metered route can forget.
+  - **The worker settles each run's real cost** into the credit ledger, on
+    success and on failure, idempotently. Per-org spend is visible for the first
+    time — the input P7.8's rollups need.
+  - **`QUOTA_ENFORCEMENT_ENABLED`** (default **on**) and
+    **`scripts/set_org_plan.py`**, because enforcement without a way to change a
+    tier is a cage with no key. There is no Stripe lifecycle and no back office.
+
+  **The checker is deliberately capped rather than metered** — it is anonymous,
+  so there is no org to charge, and billing a signed-in caller for the free
+  public tool would be wrong. Its bound stays global: `CHECKER_ENABLED`, the
+  IP/brand rate limits, and `CHECKER_DAILY_USD_CAP`. Recorded in ADR-45 rather
+  than left as an unexplained gap.
+
+  **Still open in A6:** the Stripe subscription lifecycle and the billing
+  visibility API (invoices, ledger, spend-by-workspace), both still blocked on
+  the operator's Stripe account + terms text; and granting each plan's
+  `monthly_credit_usd`, without which `reserve()`'s credit gate can never pass
+  and so is used nowhere but the dark backlink path.
+
 ### P7.7 — Platform back office (stage A7)
 - **Goal:** Super Admin/Support surface: org directory, plan overrides,
   feature flags (global + per-org), audit-log viewer, logged impersonation.
@@ -2401,7 +2441,26 @@ paragraph, as the record.*
   geo_mode/DRY_RUN visibility), health probes, usage analytics, error
   tracking wiring.
 - **Dependencies:** P7.3 (events), P7.6 (spend data). · **Complexity:** M ·
-  **Status:** todo
+  **Status:** **partial** — the *health* slice landed 2026-08-09 (session 25,
+  ADR-47), out of order, because it was also the last of the backlog's P0 band
+  and because it was a live defect rather than a missing page: `/healthz`
+  returned a hardcoded literal and **is the deploy gate**, so a release with an
+  unreachable database answered healthy and was recorded as `.last-good`. It is
+  now a readiness probe over six components (database, schema revision, plan
+  catalog, queue, worker, providers); only the database and — with quota
+  enforcement on — an empty plan catalog can fail it. Alongside it, the worker
+  gained a heartbeat and a compose healthcheck, so a `while True` that stops
+  looping is visible instead of silent.
+
+  What that leaves for A8 proper is the *pages*: the jobs/queues board with
+  retry and cancel, AI-provider status with spend rollups (now possible —
+  session 25's credit ledger is the first per-org spend data the platform has),
+  usage analytics, and error-tracking wiring. The health data this session
+  exposes is the input to the health page, not the page.
+
+  Residual: a wedged worker is detected and **not restarted** (tech-debt #81 —
+  Compose does not restart unhealthy containers), and `/healthz` re-queries on
+  every request (#82).
 
 ### P7.9 — Hardening + docs (stage A9, exit gate)
 - **Goal:** cross-tenant leakage suite (the merge gate for everything after),

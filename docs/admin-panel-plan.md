@@ -68,7 +68,7 @@ lanes; no credit/billing/internal visibility — baseline §11.3).
 | Projects | Workspace → projects (a tracked business: URL/domain, locale, competitor set, prompt panel refs). Existing `analyses` and `seo_projects` rows get org/workspace/project foreign keys via backfill migration (personal-org scaffolding for existing users — baseline §10.4). |
 | Subscriptions & plans | Plan catalog as data (Free/Starter/Pro/Business/Enterprise per baseline §12 — tiers configurable, not hardcoded); Stripe subscription lifecycle (trial, active, past_due, canceled); proration; dunning state visible. |
 | Billing visibility | Read-only invoices/payment status per org (Stripe-sourced); credit ledger view; spend by workspace/project (the per-response `cost_usd` we already record, finally rolled up). |
-| Quotas & limits | Per-plan limits as data: projects, workspaces, paid seats, analyses/month, scan credits, AI credits, API rate. Enforcement = one `quota` service consulted by every spend path (extends the existing rate-limit service pattern). Approaching-limit events (80%) emitted for M4 alerts. |
+| Quotas & limits | Per-plan limits as data: projects, workspaces, paid seats, analyses/month, scan credits, AI credits, API rate. Enforcement = one `quota` service consulted by every spend path (extends the existing rate-limit service pattern). Approaching-limit events (80%) emitted for M4 alerts. **As built 2026-08-09 (ADR-45):** `services/quota.py` is that one service, consulted by the analysis, project and site-audit paths; limits are data in `plans.limits`; four metrics are live (`analyses`, `site_audits`, `projects`, `backlink_refreshes`) and workspaces/seats/API-rate are not yet metered. **`projects` is a stock limit, not a monthly flow** — counted as rows held, since "1 project" read as "1 per month" would mean twelve by December. The 80%-approaching event is **not** built; there is no event bus to emit it on. |
 | Plan management | Admin overrides: extend trial, grant credits, comp a plan, suspend org (read-only mode, export always allowed — "no data hostage-taking"). Every override audit-logged with reason. |
 
 ## 4. User management
@@ -187,7 +187,7 @@ lands in a personal org so nothing breaks for current users.
 | A3 | P7.3 | Audit-event emission service + append-only store (wired into auth + every mutating route as they exist today) |
 | A4 | P7.4 | Org admin UI v1: org/workspace/member/invite screens; the first signed-in destination (repays tech-debt #52's product half) |
 | A5 | P7.5 | Auth completion: password reset endpoint+screen (#49), MFA (TOTP), session/device management UI, org MFA policy |
-| A6 | P7.6 | Plans/subscriptions/quotas: Stripe integration, plan catalog, quota service + enforcement on analysis submission, credit ledger seed |
+| A6 | P7.6 | Plans/subscriptions/quotas: Stripe integration, plan catalog, quota service + enforcement on analysis submission, credit ledger seed — **catalog, quota service, enforcement and ledger DONE 2026-08-09 (ADR-45); Stripe still operator-blocked** |
 | A7 | P7.7 | Platform admin (back office): org directory, plan overrides, flags, audit viewer, Support role + logged impersonation |
 | A8 | P7.8 | System pages: jobs/queues/providers/health/usage/errors |
 | A9 | P7.9 | Hardening pass: permission fuzzing (cross-tenant leakage tests), audit completeness review, docs + ADRs, operator runbook |
@@ -220,6 +220,16 @@ Stripe test mode and quota-enforced on submission; every mutating action in
 the build appears in the audit log with before/after; Super Admin can find
 any org, flip a flag, retry a job, and see provider spend; `make test` green
 throughout; zero cross-tenant reads under the A9 suite.
+
+*Progress against that list, 2026-08-09:* signup→org ✅ (A1), invite as
+Analyst/Guest ✅ (A4), Guest cannot reach internal lanes ✅ and test-enforced
+(A2), **quota-enforced on submission ✅ (A6/ADR-45)**, audit log with
+before/after ✅ for the paths the spine covers (residual: tech-debt #71),
+`make test` green ✅. Still owed: **purchasable in Stripe test mode** (operator
+A5), the Super Admin back office (A7) and system pages (A8), and the A9
+cross-tenant suite — which is also the only thing that would turn today's
+per-route tenancy discipline into the guarantee this line claims (tech-debt
+#63).
 
 **Explicitly not in M1:** SSO/SCIM (M8) · customer dashboards (M4) ·
 white-label (M6) · public API keys' *consumer* docs (M7 — issuing/managing

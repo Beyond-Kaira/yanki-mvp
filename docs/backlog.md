@@ -8,6 +8,10 @@
 
 *Delta since generation (session 23): **P8.3 shipped whole** — the backlink router, and then the screens. "No router and no customer surface" above is stale on both counts. What is still missing is a licensed index, not code; see P2 below.*
 
+*Delta since generation (session 24): four P0 items closed — `cap-container-resources`, `bound-container-logs`, `fix-preflight-key-check`, `harden-rollback-pruned-image`, `ci-validate-prod-compose` — plus the interim Site Audit enqueue gate. `session-device-management` and `org-switcher-ui-multi-org-me` shipped from P1.*
+
+*Delta since generation (session 25): **`enforce-quota-on-spend-paths` shipped** (ADR-45), which unblocks `stripe-subscription-lifecycle`, `system-admin-pages` and `cross-tenant-leakage-suite` on the code side — every one of them listed it as a dependency. It also closed a hole nobody had filed: `POST /api/v1/analyses` took no authentication, so every customer's analysis belonged to no tenant. Two new rows appear in P1 below (`grant-monthly-plan-credit`, `analysis-history-per-org`), both created by that change rather than found by a survey. **Second loop: `database-backups` and `pre-migration-snapshot`** (ADR-46) — this file listed both as `infra`, unowned, and the operator file listed the first as wholly the operator's. Most of it was neither: the dump, the verification, the rehearsed restore and the deploy-time gate are engineering and are now built and exercised against live production. What genuinely needed the operator turned out to be two lines (an off-box destination and a cron entry). **Third loop: `worker-liveness-healthcheck` and `deep-health-endpoint`** (ADR-47) — one defect wearing two hats, *the system reports health it has not checked*: `/healthz` was a hardcoded literal that the deploy gate greps, so a release with an unreachable database was recorded as last-good, and a `while True` worker that stopped looping left the container `running` and the queue quietly undrained. **That empties the P0 band apart from `format-backlog-repo-wide`, which should stay parked.***
+
 ## How to read this
 
 - **Priority bands** answer "when." **P0** = a live production risk on the shared VPS, or a thing that blocks M1 from proceeding cleanly. **P1** = M1 (the next milestone, Phase 7 A5–A9). **P2** = M2 (the milestone after, Backlink Intelligence). **P3** = M3–M7 and opportunistic work.
@@ -24,15 +28,15 @@ These are not milestone features. They are standing risks on a box that is *the 
 
 | id | title | track | size | depends-on |
 |---|---|---|---|---|
-| `database-backups` | Scheduled Postgres backups, off-box copy, tested restore runbook | infra | M | — |
-| `pre-migration-snapshot` | Snapshot before every remaining M1 live-DB migration (A5–A8), gate the deploy on it | infra | M | `database-backups` |
-| `cap-container-resources` | `mem_limit`/`cpus` on api/worker/web so one container can't starve the co-tenants | infra | M | — |
-| `bound-container-logs` | Cap json-file log size on db/api/worker/web (only searxng is bounded today) | infra | S | — |
-| `worker-liveness-healthcheck` | Heartbeat healthcheck so a wedged `while True` worker is detected and restarted | infra | M | — |
-| `deep-health-endpoint` | Make `/healthz` a real readiness probe (DB + queue + provider keys) — the deploy gate greps it | infra | S | — |
-| `fix-preflight-key-check` | `check_env.py` must validate the keys the measured path actually needs (OpenRouter/Tavily/JWT, not the retired 4-engine keys) | infra | S | — |
-| `harden-rollback-pruned-image` | Fix `rollback.sh`'s pruned-image branch so it can't resurrect the fused migrate-on-boot compose and crash-loop | infra | M | — |
-| `ci-validate-prod-compose` | Validate `docker-compose.prod.yml` + deploy driver in CI, not first in production | infra | S | — |
+| `database-backups` | ~~Scheduled Postgres backups, off-box copy, tested restore runbook~~ (**engineering half done, session 25** — ADR-46: `deploy/backup.sh` with a full read-back verification, `deploy/restore-check.sh`, and a rehearsed restore of live production. Residual is operator-only: an off-box destination and a cron line — tech-debt #79/#80) | infra | M | — |
+| `pre-migration-snapshot` | ~~Snapshot before every remaining M1 live-DB migration (A5–A8), gate the deploy on it~~ (**done, session 25** — `deploy.sh` compares `alembic current` with `alembic heads`, dumps when they differ, and aborts the deploy if the dump fails. Unproven against a real migration: tech-debt #78) | infra | M | `database-backups` |
+| `cap-container-resources` | ~~`mem_limit`/`cpus` on api/worker/web so one container can't starve the co-tenants~~ (**done, session 24** — ADR-41) | infra | M | — |
+| `bound-container-logs` | ~~Cap json-file log size on db/api/worker/web~~ (**done, session 24** — ADR-41) | infra | S | — |
+| `worker-liveness-healthcheck` | ~~Heartbeat healthcheck so a wedged `while True` worker is detected~~ (**done, session 25** — ADR-47: the worker beats to a shared volume, a compose healthcheck reads it, `/healthz` reports its age). **Not `restarted`** — Compose never restarts a container for being unhealthy, so that half is still open: tech-debt #81 | infra | M | — |
+| `deep-health-endpoint` | ~~Make `/healthz` a real readiness probe — the deploy gate greps it~~ (**done, session 25** — ADR-47: database, schema, plan catalog, queue, worker and providers; only the database and an empty catalog under enforcement can fail it; component detail is withheld from the public edge) | infra | S | — |
+| `fix-preflight-key-check` | ~~`check_env.py` must validate the keys the measured path actually needs~~ (**done, session 24** — ADR-42) | infra | S | — |
+| `harden-rollback-pruned-image` | ~~Fix `rollback.sh`'s pruned-image branch so it can't resurrect the fused migrate-on-boot compose~~ (**done, session 24** — ADR-42) | infra | M | — |
+| `ci-validate-prod-compose` | ~~Validate `docker-compose.prod.yml` + deploy driver in CI~~ (**done, session 24** — `scripts/check_prod_compose.py`, asserted against the *rendered* config) | infra | S | — |
 | `format-backlog-repo-wide` | Repay the ~50-file `ruff format` backlog in one PR before Phase-7 lanes edit those files in parallel | infra | S | — |
 
 **Why these and not the M1 features first.** `database-backups` + `pre-migration-snapshot`: the `yanki_pgdata` volume is the only copy of every analysis, user, session and — from M1 — every `audit_events` and billing row, and A5–A8 each add a live-DB migration on top. A backfill that mangles rows today is permanent; rollback restores the image, never the data. `cap-container-resources` + `bound-container-logs`: the analysis worker already fetches arbitrary third-party pages (discovery/SPA mining) unfenced, and only searxng has a log cap — an OOM or a traceback loop takes pulse-prod/brier/antmedia/evrak-app down with us, not just Yanki. `deep-health-endpoint` + `fix-preflight-key-check`: the deploy gate greps a hardcoded `{"status":"ok"}` and the preflight checks the wrong provider keys, so a broken deploy ships green — on auto-deploy-to-prod that is a live outage the gate exists to catch. `format-backlog-repo-wide` is here because it is the cheap unblock for parallel M1 lanes: the scoped formatter gate only holds touched files, so two Phase-7 lanes editing the same unformatted file produce unreadable reformat-vs-reformat conflicts.
@@ -51,7 +55,7 @@ M1 is large and mostly open. A1–A4 shipped the tenancy spine, RBAC enforcement
 
 | id | title | size | depends-on |
 |---|---|---|---|
-| `enforce-quota-on-spend-paths` | Wire `check_quota`/`consume_quota`/`reserve` into the analysis, checker, and **site-audit** submission paths — today `reserve()` is called only from a flag-off backlink path, so every plan tier is decorative | M | — |
+| `enforce-quota-on-spend-paths` | ~~Wire `check_quota`/`consume_quota`/`reserve` into the analysis, checker, and **site-audit** submission paths~~ (**done, session 25** — ADR-45). Analyses, site audits and projects are metered; `POST /analyses` had to be closed to anonymous callers first, since a quota needs a tenant. The checker stays **capped, not metered** — it is anonymous by design and has no org to charge. Residual: the plans' `monthly_credit_usd` is never granted, so `reserve()`'s credit gate can still never pass | M | — |
 | `stripe-subscription-lifecycle` | Subscription lifecycle + plan assignment (Stripe test mode) + billing-visibility API (invoices, credit ledger, spend-by-workspace) — no `Subscription` row is ever created today | L | `enforce-quota-on-spend-paths`, *Stripe account*, *terms text* |
 | `password-reset-endpoint` | Enumeration-safe password-reset endpoint + restore the removed `/forgot-password` screen (repays #49) | M | — |
 | `mfa-totp-and-org-policy` | TOTP MFA (enroll/verify/backup codes, admin reset) + org require-MFA policy (the audit spine already reserves the `mfa` event class) | L | — |
@@ -62,6 +66,8 @@ M1 is large and mostly open. A1–A4 shipped the tenancy spine, RBAC enforcement
 | `platform-back-office` | Super Admin/Support back office: cross-org directory, plan overrides, logged impersonation (roles/permissions defined, no platform-scoped route exists) | L | — |
 | `org-api-keys` | Org-scoped API keys: issue/rotate/revoke with scopes, caps, last-used, hashed at rest (`apikey:issue` is granted but there is no table/route) | M | — |
 | `audit-log-csv-export` | CSV export on the audit log, itself audit-logged (§6 requires it; list/filter/history/integrity exist, export does not) | S | — |
+| `grant-monthly-plan-credit` | Grant each plan's `monthly_credit_usd` at the start of a billing period — until then every balance is 0, so `reserve()`'s credit gate would refuse every call and is therefore used only on the dark backlink path (added session 25) | S | `stripe-subscription-lifecycle` |
+| `analysis-history-per-org` | A list of the organization's analyses. Runs carry `org_id` from session 25, so the data exists and there is no screen — the dashboard still sends you to one result by URL and forgets it | M | — |
 
 ### Infrastructure (platform / audit integrity / security hardening for M1)
 
@@ -172,7 +178,11 @@ The same `infra` items, re-collected so the platform/operational lane can be rea
 Every item's dependencies appear in an earlier batch (or earlier within the same batch, noted inline). External blockers are marked `[EXT]` and must be started in parallel — see the next section.
 
 **Batch 1 — Stop the bleeding (no deps, fully parallel).**
-`database-backups` · `cap-container-resources` · `bound-container-logs` · `worker-liveness-healthcheck` · `deep-health-endpoint` · `fix-preflight-key-check` · `harden-rollback-pruned-image` · `ci-validate-prod-compose` · `format-backlog-repo-wide`. Also: gate the Site Audit enqueue in prod (interim mitigation of `deploy-site-audit-worker`). Kick off `[EXT]` Stripe account + terms text (#50) procurement now — they gate Batch 3.
+~~`database-backups`~~ · ~~`cap-container-resources`~~ · ~~`bound-container-logs`~~ · ~~`worker-liveness-healthcheck`~~ · ~~`deep-health-endpoint`~~ · ~~`fix-preflight-key-check`~~ · ~~`harden-rollback-pruned-image`~~ · ~~`ci-validate-prod-compose`~~ · `format-backlog-repo-wide`. Also: ~~gate the Site Audit enqueue in prod~~ (done, ADR-44). Kick off `[EXT]` Stripe account + terms text (#50) procurement now — they gate Batch 3.
+
+***Batch 1 is clear apart from `format-backlog-repo-wide`, which should stay parked*** — CI gates the linter and not the formatter, so a repo-wide `ruff format` would rewrite ~51 files nobody asked to touch and would collide with every open lane. Everything else in the P0 band shipped across sessions 24 and 25.
+
+*What is left of each closed item is written into its row and into tech-debt, and two of those residuals are worth carrying forward rather than forgetting: backups have no **off-box** copy (#79, operator **B13**), and a wedged worker is **detected but not restarted** (#81, because Compose does not restart unhealthy containers). Both are honest partials, not oversights.*
 
 **Batch 2 — M1 lanes open (needs Batch 1).**
 First `pre-migration-snapshot` (← `database-backups`), then the M1 work with no intra-M1 code deps, in parallel across lanes: `password-reset-endpoint` · `mfa-totp-and-org-policy` · `session-device-management` · `org-switcher-ui-multi-org-me` · `account-lifecycle-gdpr-owner-transfer` · `workspace-project-api-and-ui` · `platform-back-office` · `feature-flags-system` · `org-api-keys` · `audit-log-csv-export` · `enforce-quota-on-spend-paths` · `auth-endpoint-rate-limiting` · `cap-and-validate-email-columns` · `audit-coverage-public-writes` · `secrets-rotation-procedure` · `observability-error-tracking` · `refresh-test-suite-doc`.

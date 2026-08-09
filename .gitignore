@@ -32,6 +32,14 @@ deploy/searxng/settings.yml
 # --- Local deploy state -----------------------------------------------------
 deploy/.last-good
 
+# --- Database dumps ---------------------------------------------------------
+# `deploy/backup.sh` writes to ~/yanki-backups, outside the repo, so this is
+# belt-and-braces for the case where somebody points YANKI_BACKUP_DIR at the
+# working tree. A dump is the entire database in one file — password hashes,
+# email addresses, audit payloads — and this repository is public.
+*.dump
+*.dump.partial
+
 # --- Misc -------------------------------------------------------------------
 .claude/scheduled_tasks.lock
 *.log

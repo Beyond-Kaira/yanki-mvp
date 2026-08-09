@@ -16,10 +16,12 @@ import logging
 import time
 import uuid
 
+from app import health
 from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import SessionLocal
 from app.jobs.queue import claim_next
+from app.services.analyses import settle_cost
 from app.services.emailer import send_run_alert
 
 logger = logging.getLogger("yanki.worker")
@@ -34,6 +36,29 @@ def _alert(analysis: Analysis, settings: Settings) -> None:
         send_run_alert(analysis, settings)
     except Exception:
         logger.warning("run alert email failed for %s", analysis.id)
+
+
+def _settle(session, analysis: Analysis) -> None:
+    """Write the run's real cost into the org's credit ledger (P7.6).
+
+    Runs on **both** terminal outcomes. A failed run that died in step five
+    still paid for steps one to four, and a ledger that records only successes
+    understates spend in exactly the direction that hides a problem.
+
+    Best-effort, like the alert and for the same reason: the analysis result is
+    already committed, and turning a ledger-write failure into a lost analysis
+    would trade an accounting gap for a customer-visible one. Unlike the alert,
+    the loss is logged at error level — this is money, and a silent gap here is
+    the ADR-34 mistake wearing a different hat.
+    """
+
+    try:
+        entry = settle_cost(session, analysis)
+        if entry is not None:
+            session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("credit-ledger settle failed for analysis %s", analysis.id)
 
 
 def run_once(settings: Settings) -> bool:
@@ -58,6 +83,7 @@ def run_once(settings: Settings) -> bool:
                 failed.status = "failed"
                 failed.error = str(exc)[:500]
                 session.commit()
+                _settle(session, failed)
                 _alert(failed, settings)
             logger.exception("analysis %s failed", analysis_id)
             return True
@@ -68,6 +94,7 @@ def run_once(settings: Settings) -> bool:
             done.progress = 100
             done.current_step = None
             session.commit()
+            _settle(session, done)
             _alert(done, settings)
         return True
     finally:
@@ -78,6 +105,13 @@ def main() -> None:
     settings = get_settings()
     logger.info("worker starting (dry_run=%s)", settings.dry_run)
     while True:
+        # Beat first, every tick, before anything that can fail. A `while True`
+        # that stops looping was previously invisible — the container stays
+        # "running", the queue just quietly stops draining — and the only way
+        # anyone found out was noticing jobs stuck in `queued` (ADR-47).
+        # `run_pipeline` beats again at each step, so a worker busy on one long
+        # job is not mistaken for a dead one.
+        health.beat(settings)
         try:
             run_once(settings)
         except Exception:

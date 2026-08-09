@@ -4,10 +4,64 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
-Last updated: 2026-08-08, **session 24 close**.
+Last updated: 2026-08-09, **session 25 close**.
 
-> **Read this first — and note that the previous version of this file was
-> wrong.** It opened by telling you session 22's Admin Panel work was "NOT
+> **Read this first. One new thing is yours, and it changes what your users can
+> do: B17.**
+>
+> Session 25 made **plan limits real**. They existed — five tiers, seeded as
+> data since session 21 — and nothing enforced them, so every organization was
+> silently unlimited. Now the three paths that spend money check the plan before
+> they spend. **Every organization in production has no subscription row, so
+> every one of them falls back to Free: 5 analyses a month, 1 site audit, 1
+> project.** Including yours.
+>
+> That is the intended effect of the milestone and it is also a visible change
+> for whoever is using the product, so it does **not** merge without you. Two
+> escape hatches ship with it — a kill switch in `deploy/.env`, and a script
+> that puts an organization on any tier — and **B17** below is the decision plus
+> the two commands.
+>
+> **A second change worth knowing before you merge:** `POST /api/v1/analyses`
+> now requires sign-in. It never did, which nobody had noticed because every
+> page that submits an analysis has been behind sign-in since session 21 — the
+> route it posts to simply stayed open. That is why a quota was impossible: an
+> anonymous caller has no organization to charge. Nothing in the product breaks
+> (every caller was already authenticated); what goes away is the ability to
+> `curl` an analysis out of the API with no account. The public free tool is
+> still `/checker`, unchanged.
+>
+> **B13 is much smaller than it was.** There were no database backups at all —
+> no crontab, no dump on the box, no script. Most of that turned out not to be
+> yours: taking a dump, proving it restores, and refusing to migrate without one
+> are engineering, and this session built them and **rehearsed a real restore of
+> your production database** (ADR-46). What is left for you is an off-box
+> destination and one cron line. B13 below has both, and a note on whether this
+> is enough to unblock the migration-bearing Phase 7 work — which is your call,
+> not mine.
+>
+> **Two other things changed and need nothing from you**, listed so the diff
+> does not surprise you: `/healthz` is a real readiness probe instead of a
+> hardcoded `ok` (it gates every deploy, and could not previously fail), and the
+> worker now has a heartbeat so a wedged one is visible in `docker ps` instead
+> of looking idle.
+>
+> **A5 changed shape.** Its first half — "nothing enforces the quotas" — is
+> closed by this session's work, so what is left of A5 is only the part that was
+> always yours: a Stripe test-mode account and terms-of-service text, without
+> which a plan cannot be *sold*. It also gained one small new question: are
+> Free's numbers the ones you want to sell? They were seeded as plausible
+> defaults and nobody has ratified them as pricing.
+>
+> Nothing else changed for you: **B15** (three stranded Site Audits) and
+> **B16** (can Support impersonate?) are unchanged, as are **A1–A4** and
+> **B2–B5**, **B9**, **B11**.
+
+---
+
+Previously — 2026-08-08, **session 24 close.**
+
+> **Note that the version of this file before session 24 was wrong.** It opened by telling you session 22's Admin Panel work was "NOT
 > merged and NOT live." It has been merged and live since 2026-08-06: session 23
 > shipped without refreshing this file (tech-debt #72), so it kept warning you
 > about a decision you had already made, through two further merges. Verified
@@ -23,8 +77,20 @@ Last updated: 2026-08-08, **session 24 close**.
 > password reset and MFA both need one. B13 is the gate on the rest of the
 > milestone.
 >
-> Session 24's own work sits on **`feat/session-24`**, unmerged and unpushed:
-> see **B14** for what it contains and why merging it is a release decision.
+> Session 24's own work is **merged and deployed** — PR #40, `ddf3167`, on your
+> instruction at session close. Production runs it, the resource ceilings are in
+> force (verified: the containers now report their own limits rather than the
+> host's 11.7 GiB), and the Site Audit enqueue is gated. **B14 is closed.**
+>
+> One thing you should know about how it merged, because it is the second time.
+> The ruleset requires one approving review, GitHub will not let an author
+> approve their own PR, and with no second reviewer the merge used **your admin
+> bypass**. You authorised the merge; you did not specifically authorise the
+> bypass. PR #8 went the same way and this file flagged it then as "worth
+> deciding whether you want that to be a habit." It is now a habit — **code is
+> reaching production without the peer review your own ruleset asks for.**
+> Either line up a second reviewer or change the ruleset to match what actually
+> happens; what exists today is a control that only works on paper.
 
 ---
 
@@ -295,10 +361,17 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   five-tier catalog is seeded, and the quota/credit service is complete. What is
   missing splits cleanly in two:
 
-  - **Not blocked by you:** nothing enforces those quotas. The analysis,
-    checker and site-audit submission paths carry no quota check, so **every
-    plan tier is decorative today** and every org silently falls back to Free.
-    Engineering can and should fix that without waiting — it is the next card.
+  - **Not blocked by you — and DONE 2026-08-09 (session 25, ADR-45).** The
+    analysis, project and site-audit paths now check the plan before they spend.
+    Every org still falls back to Free, but Free now *means* something, which is
+    the whole point and also why **B17** asks you before it merges. The checker
+    is deliberately excluded: it is anonymous, so there is no organization to
+    charge, and it stays bounded by its existing global caps instead.
+  - **Newly yours, and small:** are Free's numbers — 5 analyses/month, 1 site
+    audit, 1 project — the ones you want to sell? They were seeded in session 21
+    as plausible defaults and nobody has ratified them as pricing. Changing them
+    is one edit to `DEFAULT_PLANS` plus a migration, or a hand-edit of the
+    `plans.limits` JSON on the live row. *Default: keep.* → Answer: ______
   - **Blocked by you:** actually *selling* a plan. That needs a Stripe account
     (test mode is enough to build the subscription lifecycle) and
     terms-of-service text, which is a legal document and has been on the
@@ -309,41 +382,182 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 
 ## B. Actions only you can do (in priority order)
 
-- [ ] **B13. Stand up database backups — this now gates the rest of Phase 7**
-  (added 2026-08-08, session 24). The `yanki_pgdata` volume is the **only copy**
-  of every analysis, user, session, organization, audit event and billing row.
-  There is no backup, no off-box copy, and no tested restore. Meanwhile each
-  remaining Admin Platform stage (A5 auth completion, A6 billing, A7 back
-  office, A8 system pages) adds a migration that runs against that database on
-  merge. `deploy/rollback.sh` restores the previous **image**; it cannot restore
-  a row a bad backfill mangled.
+- [ ] **B17. Decide whether to merge session 25, and pick who gets which plan**
+  (added 2026-08-09, session 25; ADR-45). The work is on
+  `feat/session-25-quota-enforcement`, **not merged**. Merging auto-deploys, and
+  this one changes what your users can do, so it is a release decision with a
+  product question inside it.
 
-  This is why session 24 built only the migration-free half of A5 (sessions +
-  org switcher) and deferred password reset and MFA. That deferral cannot
-  continue — the rest of the milestone needs schema changes.
+  **What becomes true on merge.** Every organization falls back to **Free** —
+  5 analyses/month, 1 site audit, 1 project — because no organization has ever
+  had a subscription row. The sixth analysis in a calendar month answers `429`
+  with a message naming the limit. `POST /api/v1/analyses` also starts requiring
+  sign-in (see the head of this file).
 
-  What is needed: a scheduled `pg_dump` of `yanki-prod-db-1`, a copy stored
-  **off this box**, and one rehearsed restore into a scratch database so we know
-  the dump is not empty. A rough shape to start from:
+  **Three ways to shape that, in the order I would try them:**
+
+  1. **Merge, then give yourself room.** The intended path. Look at who exists,
+     then lift whoever should not be capped:
+
+     ```bash
+     # after the deploy completes
+     docker exec yanki-prod-api-1 python /app/scripts/set_org_plan.py --list
+     docker exec yanki-prod-api-1 python /app/scripts/set_org_plan.py \
+         --org <slug-or-uuid> --set enterprise
+     ```
+
+     `--list` writes nothing; it prints every organization and its current tier.
+     `enterprise` is unlimited on every metric. The script supersedes the old
+     subscription rather than deleting it, so the change is legible afterwards.
+
+  2. **Merge with enforcement off.** Ship the code, keep today's behaviour, turn
+     it on when you choose. One line in `deploy/.env`, then redeploy:
+
+     ```
+     QUOTA_ENFORCEMENT_ENABLED=0
+     ```
+
+     Everything else in the branch (the authentication fix, per-org attribution
+     of analyses, the credit ledger recording real spend) still takes effect —
+     only refusal is switched off. This is the cautious choice and it costs
+     nothing but the delay.
+
+  3. **Don't merge yet.** Nothing here is urgent enough to override you. It does
+     block `stripe-subscription-lifecycle`, the system pages' spend rollups, and
+     the A9 leakage suite, all of which name it as a dependency.
+
+  **Two things I could not decide for you.** Whether Free's numbers are the ones
+  you want to sell (they were seeded in session 21 and nobody has ratified them
+  as pricing — see **A5**), and whether the tiers should apply to your own
+  organizations at all. Option 1's second command answers the second question in
+  one line per org.
+
+  **It contains no migration**, deliberately — same reasoning as session 24 —
+  so the deploy is image-only and `rollback.sh` genuinely covers it.
+
+  **The branch carries two more things** besides the quota work: the backup
+  tooling (B13 below) and a real `/healthz` plus a worker heartbeat. Neither
+  needs a decision from you — they only make failures visible that were silent —
+  but they are why the diff is larger than "enforce quotas" suggests. Session
+  24's stranded docs commit rides along as intended.
+
+  One consequence worth knowing before the deploy: **`/healthz` can now fail.**
+  It used to be a hardcoded `{"status": "ok"}`, which meant the deploy gate
+  could not catch a broken release. It refuses only on an unreachable database
+  or an empty plan catalog — but if a deploy ever *does* roll back on health
+  now, that is the gate working rather than a new fault.
 
   ```bash
-  # on the VPS — verify a dump succeeds and is non-trivial before scheduling it
-  docker exec yanki-prod-db-1 pg_dump -U yanki -d yanki --format=custom \
-    > ~/yanki-backup-$(date +%F).dump
-  ls -lh ~/yanki-backup-*.dump      # a few hundred KB+, not 0
+  cd ~/repo/yanki-mvp
+  git log --oneline main..feat/session-25-quota-enforcement
+  git push -u origin feat/session-25-quota-enforcement   # SSH remote — see below
+  gh pr create --fill
   ```
 
-  Decide: how often, where the off-box copy lives, and how long copies are kept.
-  Retention interacts with a promise we have not made yet — see `pii-retention-
-  and-erasure` in the backlog — so a short window is the safer default. Note the
-  co-tenant `pulse-prod-backup-1` container already does something similar for
-  another tenant and may be a pattern to copy; it is **not** backing up Yanki.
+  **The push must use the SSH remote, not the token.** This branch edits
+  `.github/workflows/ci.yml` (a `bash -n` gate on the deploy scripts) and the
+  `gh` token carries `repo` but not `workflow`, so a token-authenticated push is
+  refused outright. Same as session 24. `origin` is HTTPS and hangs on a
+  credential prompt; push over `git@github.com:` instead.
 
-- [ ] **B14. Decide whether to merge `feat/session-24` (added 2026-08-08,
-  session 24).** Four lanes plus review fixes, **unpushed, no PR**. Nothing in
-  it is live. Merging auto-deploys, so this is a release decision, and there is
-  a specific reason to want it: two of the four lanes are safety work that
-  should land *before* the migrations B13 unblocks.
+  Same review situation as PRs #8 and #40: the ruleset wants one approving
+  review, GitHub will not let the author approve their own PR, and with no
+  second reviewer a merge needs your admin bypass. That is now three times. It
+  is worth either lining up a second reviewer or changing the ruleset to match
+  what actually happens.
+
+- [ ] **B13. Database backups — NARROWED 2026-08-09. Most of it is built and
+  rehearsed; two things left, and they are both small.**
+
+  Session 25 read this item again and concluded most of it was never yours.
+  Choosing where an off-box copy lives and installing a cron entry are yours;
+  taking a dump, proving it restores, and refusing to migrate without one are
+  engineering, and leaving them undone was the actual blocker. They are done
+  (ADR-46, [deploy/BACKUP.md](../deploy/BACKUP.md)):
+
+  - **`deploy/backup.sh`** — one verified `pg_dump --format=custom` into
+    `~/yanki-backups`, `0600` in a `0700` directory, newest 14 kept. Verified
+    means the whole archive is read back before the file is kept, not merely
+    that it is non-empty.
+  - **`deploy/restore-check.sh`** — restores a dump into a **throwaway
+    container** and asserts the schema stamp and the row counts. It cannot touch
+    production; there is no flag for that.
+  - **`deploy.sh` snapshots automatically before any schema change** and aborts
+    the deploy if the snapshot fails, while the previous release is still
+    serving.
+
+  **Rehearsed against your live database on 2026-08-09**, which is the part that
+  makes the rest mean anything: a 2.7 MB dump of the 17 MB production database
+  restored into a scratch container at alembic
+  `0018_invitations_audit_integrity`, with **6 users, 7 organizations, 57
+  analyses, 35 audit events, 30 tables**. A deliberately truncated dump was
+  rejected. There are dumps in `~/yanki-backups` right now from that rehearsal.
+
+  **What is left for you — 1. an off-box copy.** Everything above writes to the
+  same VPS as the database. That covers a bad migration, a dropped table and a
+  mis-run backfill; it does not survive losing the box. Pick a destination and
+  put the credential in `deploy/.env` or the copying user's own config — never
+  in the repo, which is public and gitleaks-gated:
+
+  ```bash
+  rsync -az --delete ~/yanki-backups/ backups@elsewhere:/srv/yanki-backups/
+  # or:  rclone sync ~/yanki-backups remote:yanki-backups
+  ```
+
+  **2. A schedule.** Nothing runs `backup.sh` on a timer; the pre-migration hook
+  only fires on a deploy that changes the schema. One line, and note it points
+  at the **production** checkout, not the development one:
+
+  ```cron
+  17 3 * * * cd /home/aytek/deploy/yanki-mvp && ./deploy/backup.sh --quiet >> /home/aytek/yanki-backups/cron.log 2>&1
+  ```
+
+  Then `make restore-check` once, after the first scheduled run — an unverified
+  schedule is one you find out about during an incident.
+
+  **And decide the retention window.** 14 dumps is the default. It interacts
+  with a promise not yet made: there is no PII retention policy
+  (`pii-retention-and-erasure`), and a backup that outlives an erasure request
+  undoes it. Short is the safer default until that exists.
+
+  *For reference: the co-tenant `pulse-prod-backup-1` container does something
+  similar for another tenant and may be a pattern worth copying for the off-box
+  half. It is **not** backing up Yanki.*
+
+  **Does this unblock the rest of Phase 7?** Mostly — that is your call rather
+  than mine. A migration-bearing deploy now takes a dump first and refuses to
+  proceed without one, so the specific fear that motivated this item ("a bad
+  backfill is permanent") is addressed on-box. What is not yet covered is losing
+  the box during a migration. If you want the off-box copy in place before
+  password reset and MFA land, say so and the next session will keep picking
+  migration-free work; if on-box snapshots are enough for you, P7.5's second
+  half can start.
+
+- [x] ~~**B14. Decide whether to merge `feat/session-24`.**~~ **DONE
+  2026-08-08** — you instructed the merge at session close. PR **#40**, merged
+  as **`ddf3167`** (admin bypass; see the head of this file), CI 11/11 green,
+  Deploy ran 2m48s, `deploy/.last-good` = `ddf3167`.
+
+  Verified in production afterwards: images `yanki-api:ddf3167` /
+  `yanki-web:ddf3167` with **zero restarts**; the memory ceilings now actually
+  bind (worker 56 MiB/**1.5 GiB**, web 124 MiB/**768 MiB**, api 74 MiB/**1 GiB**,
+  db 32 MiB/**1 GiB** — before this deploy each of these reported the host's
+  full 11.7 GiB); log caps `10m × 3` on all four; `/healthz` 200; the P7.5
+  session routes answer 401 rather than 404, so they exist; the Site Audit
+  enqueue answers 404, so the gate is on; `/`, `/login` and `/backlinks` all
+  200; **and every co-tenant — pulse-prod, pulse-realams, brier, antmedia,
+  evrak-app — is untouched, with uptimes unchanged and no restarts.** Disk 65 G
+  free.
+
+  Original text follows.
+
+  <details><summary>Original B14 (2026-08-08, session 24)</summary>
+
+  **B14. Decide whether to merge `feat/session-24`.** Four lanes plus review
+  fixes, **unpushed, no PR**. Nothing in it is live. Merging auto-deploys, so
+  this is a release decision, and there is a specific reason to want it: two of
+  the four lanes are safety work that should land *before* the migrations B13
+  unblocks.
 
   - `infra/prod-compose-limits` — memory/CPU ceilings and log caps on `db`,
     `api`, `worker`, `web` (only `searxng` had them), plus CI validation that
@@ -371,6 +585,8 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   Note the ruleset needs one approving review and GitHub will not let the author
   approve their own PR — the same situation as B8, which was resolved with your
   admin bypass. Worth deciding whether that stays the habit.
+
+  </details>
 
 - [ ] **B15. Clean up three Site Audits stranded in production** (added
   2026-08-08, session 24; tech-debt #64). `31eba473…`, `410c31d7…`,

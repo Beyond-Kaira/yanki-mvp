@@ -414,3 +414,12 @@ first; the quota followed. See
 [sessions/2026-08-09-01.md](sessions/2026-08-09-01.md).
 
 **The next brief lives at the end of `sessions/2026-08-09-01.md` §9.**
+
+**Second loop, same session.** With the quota work committed, the operator-
+dependency check found that **B13 was not as operator-owned as it looked**.
+Splitting it by who can actually do each part, taking a dump, verifying it,
+proving it restores and refusing to migrate without one are all engineering —
+and leaving them undone was the thing that had made two consecutive sessions
+pick their work by what avoided a migration. Built and rehearsed against the
+live database (ADR-46). What genuinely needed the operator turned out to be two
+lines: an off-box destination and a cron entry.

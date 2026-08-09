@@ -2049,3 +2049,92 @@ things the PR did not intend.*
   `unlimited` default in the test fixtures* — every suite would pass without
   ever meeting a limit; the fixtures seed the real catalog instead and the
   suites that need headroom say so out loud.
+
+### ADR-46 — A backup is a restore you have already done (2026-08-09, B13's engineering half)
+
+- **Context:** operator item **B13** had been the roadmap's largest blocker for
+  two sessions: no database backups, so every remaining Phase 7 stage — each of
+  which adds a migration to the live database — was unshippable. `rollback.sh`
+  restores the *image*; it has never been able to restore a **row**, and
+  `yanki_pgdata` is the only copy of every analysis, user, session,
+  organization, audit event and billing row. Two sessions in a row chose their
+  work by what avoided a migration, which is not a strategy.
+
+  The item was recorded as wholly operator-owned. Most of it is not. Choosing
+  where an off-box copy lives and installing a cron entry are the operator's;
+  *taking a dump, proving it is real, and refusing to migrate without one* are
+  engineering, and leaving them undone was the actual blocker.
+
+- **Decision:** three pieces, and the third is the one that makes the first two
+  worth anything.
+
+  1. **`deploy/backup.sh`** — one `pg_dump --format=custom`, written to a
+     `.partial` name and renamed only after it passes a size floor, a free-space
+     floor, and a **full read-back**. Dumps are `0600` in a `0700` directory;
+     retention is count-based (newest 14).
+  2. **`deploy/restore-check.sh`** — restores a dump into a **throwaway
+     container** and asserts `pg_restore --exit-on-error` succeeded,
+     `alembic_version` holds a revision, and `users` / `organizations` /
+     `analyses` / `audit_events` exist with their row counts printed. There is
+     no flag that makes it touch production.
+  3. **`deploy.sh` snapshots before a schema change**, and aborts the deploy if
+     the snapshot fails — while nothing has changed and the previous release is
+     still serving.
+
+- **Why the verification is a full read-back and not `pg_restore --list`.** The
+  first version used `--list`, which is the obvious check and a useless one. A
+  custom-format archive stores its table of contents in the **header**, so a
+  dump truncated to its first 100 KB lists all 207 entries and passes. That was
+  measured on a real dump, not reasoned about. `pg_restore --file=/dev/null`
+  decompresses every entry and discards the SQL, so truncation fails; it costs
+  1.1s on a 2.7 MB dump. A backup check that passes a half-written file is worse
+  than no check, because it is the reason nobody looks again.
+
+  Both forms run in a short-lived `postgres:16` container with the backup
+  directory mounted **read-only**. Piping the dump in on stdin does not work at
+  all — reading a custom archive needs to seek, so a *perfect* dump fails with
+  "did not find magic string in file header", and the check would have rejected
+  every good backup. The other way to give `pg_restore` a path is copying the
+  dump into the running production container, i.e. writing a full copy of the
+  database into a production container in order to run a safety check.
+
+- **Why the snapshot is conditional on a pending migration.** Every merge to
+  `main` deploys and most touch no schema; snapshotting all of them would push
+  the genuine pre-migration dumps out of the retention window with copies of a
+  database that never changed. `deploy.sh` compares `alembic current` with
+  `alembic heads`. **Failing to determine the answer takes the snapshot** — the
+  expensive answer is the safe one.
+
+- **Why retention is count-based, not age-based.** An age rule silently leaves
+  you with nothing if the schedule stops. "No backups" should require somebody
+  to have deleted them.
+
+- **Consequences.** Rehearsed end to end on 2026-08-09 against **live
+  production**: a 2.7 MB dump of the 17 MB database restored into a scratch
+  container at `alembic_version = 0018_invitations_audit_integrity` with 6
+  users, 7 organizations, 57 analyses, 35 audit events, 30 tables. The
+  truncated-dump and missing-dump paths were both exercised and both fail
+  correctly.
+
+  **What this does not do is survive losing the box.** Dumps live in
+  `~/yanki-backups` on the same VPS as the database. That covers a bad
+  migration, a dropped table and a mis-run backfill — the failures that actually
+  happen here — and nothing else. The off-box copy needs a destination and a
+  credential, which is a choice rather than an engineering task, and it stays
+  with the operator (B13, now narrowed). Saying so plainly matters more than
+  usual here: the failure mode of a backup system is somebody believing it
+  covers more than it does.
+
+  The pre-migration hook is also **unproven against a real migration** — the
+  schema has been at `0018` throughout, so only the no-op branch has run in
+  anger (tech-debt #78).
+
+- **Rejected:** *`pg_dumpall`* — it would sweep in the co-tenants' roles and is
+  the wrong blast radius on a shared box. *Plain-SQL dumps* — larger, and they
+  cannot be listed or read back without executing them. *A restore-into-
+  production script* — rare, irreversible, and every real instance has details a
+  script cannot know; `deploy/BACKUP.md` carries the sequence as a runbook
+  instead, starting with "dump what you have now, however broken", which is the
+  step people skip. *Writing the cron entry ourselves* — it is a change to the
+  live box's schedule and it needs the retention decision, which interacts with
+  a PII retention policy that does not exist yet.

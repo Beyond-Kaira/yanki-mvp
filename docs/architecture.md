@@ -702,6 +702,18 @@ reaching Yanki over the stack's loopback host binds:
   while the previous release is still serving and touches no container.
   **First exercised for real 2026-07-10 (P4.2)** — both paths ran clean on the
   shared VPS with co-tenants verified undisturbed.
+- **A schema change is snapshotted before it runs (ADR-46).** `deploy.sh`
+  compares `alembic current` with `alembic heads`; when they differ — or when it
+  cannot tell, which is treated the same way — it runs `deploy/backup.sh` and
+  **aborts the deploy if the dump fails**, while the previous release is still
+  serving and nothing has changed. This closes the half of rollback that never
+  existed: `rollback.sh` restores the image, never the rows, and `yanki_pgdata`
+  is the only copy of the database. Dumps land in `~/yanki-backups` (`0600` in a
+  `0700` directory, newest 14 kept) and are verified by reading the whole
+  archive back, not by checking that the file is non-empty. `make restore-check`
+  rehearses a restore into a throwaway container. **What none of it survives is
+  losing the box** — there is no off-box copy yet (operator **B13**, tech-debt
+  #79). Runbook: [deploy/BACKUP.md](../deploy/BACKUP.md).
 - **A `searxng` service ships behind the `serp` profile (ADR-29).** The operator
   turned SERP on, so the `yanki-prod` compose file now defines a fifth container,
   `searxng` (`searxng/searxng:2026.8.1-8892414dc`, pinned like every other
@@ -760,8 +772,12 @@ reaching Yanki over the stack's loopback host binds:
 | Unexpected LLM spend | Confirm `DRY_RUN` and `PANEL_ENGINES`; check `MAX_RESPONSES_PER_JOB` and `llm_cache` hit rate. CI/tests must stay `DRY_RUN`. |
 | `result.serp` null / no SERP number | Expected unless an operator ran a SearXNG instance and set `SERP_ENABLED=1` + `SERP_BASE_URL`. SERP is off by default and **fail-open**: an instance being down leaves the `serp_*` columns null and never fails the run. A present `serp` with `score` null (not `0.0`) means the instance answered but every engine refused — see `serp_checks.unresponsive_engines`. |
 | `result.seo` null / no SEO grade | Expected on a run that did not audit — a checker submission has no site, and rows predating ADR-31 never audited. On a URL run the audit rides inside discovery and always writes `analyses.seo_status` (`ok` / `no_crawl` / `error`); it is **fail-open**, so an audit defect costs the run its grade (`seo_grade` null, `seo_status='error'`) and nothing else. The failing `seo_checks` rows are the real output. |
-| 404 on a valid-looking id | Unknown/never-created id. 422 instead means URL validation rejected the submit. |
+| 404 on a valid-looking id | Unknown/never-created id, **or an analysis belonging to another organization** — the two are deliberately indistinguishable (ADR-45), so check `analyses.org_id` against the caller's org before assuming the row is missing. 422 instead means URL validation rejected the submit. |
+| 429 on `POST /analyses` | Two different limits answer 429. A body carrying `metric`/`used`/`limit` is the **plan quota** (ADR-45) — lift it with `scripts/set_org_plan.py --org <slug> --set <tier>`, or turn enforcement off entirely with `QUOTA_ENFORCEMENT_ENABLED=0`. A `Retry-After` header and `"rate limit exceeded"` is the **per-IP burst limit** (P5.0) and clears on its own. |
+| 503 "billing plans are not configured" | The `plans` table is empty, which migration `0016_seed_plans` fills. Realistically means a database restored from a dump that predates it, or a hand-built one. `alembic upgrade head`, then check `select count(*) from plans`. |
+| 401 on `POST /analyses` | Expected since ADR-45 — the route requires a bearer. If the *app* is getting it, the access token expired and the refresh failed; check the refresh cookie and `JWT_SECRET_KEY`. |
 | Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: host nginx path-routing (`/etc/nginx` vhost) + the 127.0.0.1:8142/8143 loopback binds. |
+| Need to restore the database | [deploy/BACKUP.md](../deploy/BACKUP.md) — read it *before* you need it. Dumps are in `~/yanki-backups`; `deploy/restore-check.sh` proves one is good without touching production. Step 0 of any restore is dumping what you have now, however broken. |
 
 ---
 

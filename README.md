@@ -90,6 +90,8 @@ time to list everything.
 | `make rollback`   | Redeploy the last-good release SHA.                                     |
 | `make deploy-logs`| Tail logs from the running server stack.                                |
 | `make deploy-down`| Stop the server stack.                                                  |
+| `make backup`     | Take one verified dump of the prod database ([deploy/BACKUP.md](deploy/BACKUP.md)). |
+| `make restore-check` | Restore the newest dump into a throwaway database and assert it is real. |
 
 ---
 

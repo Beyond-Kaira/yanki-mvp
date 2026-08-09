@@ -6,7 +6,15 @@ roughly by risk.*
 
 Last updated: 2026-08-09 (**session 25** — the quota-enforcement session).
 
-**Session 25 changes to this list, up front:** **#63 PARTIALLY REPAID** —
+**Session 25 changes to this list, up front:** the session ran two loops and
+this header covers both. **Loop 2 built the engineering half of operator item
+B13** (database backups, ADR-46) — `deploy/backup.sh`, `deploy/restore-check.sh`
+and a pre-migration snapshot in `deploy.sh`, rehearsed end to end against live
+production. Its residuals are **#78–#80**, and the one to read is **#79**:
+backups live on the same box as the database, which covers a bad migration and
+not a lost VPS.
+
+**Loop 1 (quota enforcement):** **#63 PARTIALLY REPAID** —
 `readable_analysis()` now has a call site. `GET /api/v1/analyses/{id}` routes
 through it, which is the first time the NULL-is-public rule is applied by the
 function that owns it rather than by nothing at all. `scoped()` still has zero
@@ -24,7 +32,9 @@ are attributed to an org and there is still no screen that lists them).
 Measured suite at session 25 close: **921 backend passed / 7 skipped** with
 Postgres, **327 frontend across 57 files**, `make test` exit 0. *(Measured at
 this session's start, before any of its work: **897 backend passed / 7
-skipped**, **319 frontend across 56 files**.)*
+skipped**, **319 frontend across 56 files**.)* The backup tooling is shell and
+carries no unit tests; it was verified by running it against the live database
+and by exercising both failure paths (ADR-46, session log §12).
 
 Earlier — 2026-08-08 (**session 24** — the deploy-safety and P7.5 session).
 
@@ -1113,3 +1123,31 @@ devDependencies).)
     belonging to nobody. Now the data exists and the screen does not. Backlog:
     `analysis-history-per-org`. Cheap, and it is the first thing that makes the
     attribution visible to the person paying for it.
+
+78. **The pre-migration snapshot has never run against a real migration**
+    (2026-08-09, session 25, ADR-46). `deploy.sh` now compares `alembic current`
+    with `alembic heads` and dumps the database before migrating. The schema has
+    been at `0018_invitations_audit_integrity` throughout, so only the *no-op*
+    branch has executed in anger — verified against the live stack, where both
+    revisions report `0018` and the deploy correctly skips. The branch that
+    matters, the one that takes a dump and aborts the deploy when it fails, has
+    been exercised only by running `backup.sh` directly. The next migration-
+    bearing deploy is its first real test, which is a fine time to watch the
+    deploy log rather than walk away from it. Repay by reading that log.
+
+79. **Backups live on the same box as the database** (2026-08-09, session 25).
+    `~/yanki-backups` is on the VPS whose volume it is protecting. That covers a
+    bad migration, a dropped table and a mis-run backfill — the failures that
+    actually happen here — and it does not survive losing the box. This is
+    listed as debt rather than left to the operator item alone because the
+    dangerous failure mode of a backup system is somebody believing it covers
+    more than it does, and a half-covered system reads as a covered one.
+    Closing it needs a destination and a credential (operator **B13**);
+    `deploy/BACKUP.md` carries two one-line options.
+
+80. **Nothing runs `backup.sh` on a timer** (2026-08-09, session 25). The
+    pre-migration hook fires only on a deploy that changes the schema, so
+    between schema changes there is no new dump at all. One cron line closes it
+    and it is in `deploy/BACKUP.md`; installing it is a change to the live box's
+    schedule and it needs the retention decision, which interacts with a PII
+    retention policy that does not exist (`pii-retention-and-erasure`).

@@ -226,6 +226,19 @@ jobs:
           docker compose -f deploy/docker-compose.prod.yml config --format json \
             | python3 scripts/check_prod_compose.py
 
+      # The deploy scripts are the ones that run against production, and nothing
+      # else in CI executes them. A syntax error in backup.sh would surface
+      # during a migration-bearing deploy — where a failing backup deliberately
+      # ABORTS the deploy (ADR-46), so a typo becomes a refused release at the
+      # worst possible moment. `bash -n` parses without executing; it is the
+      # cheapest possible gate and it is strictly more than zero.
+      - name: Deploy scripts parse
+        run: |
+          for script in deploy/*.sh .github/scripts/*.sh; do
+            echo "checking ${script}"
+            bash -n "$script"
+          done
+
   e2e:
     name: e2e (playwright happy path, DRY_RUN stack)
     runs-on: ubuntu-latest

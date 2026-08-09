@@ -31,12 +31,14 @@ Last updated: 2026-08-09, **session 25 close**.
 > `curl` an analysis out of the API with no account. The public free tool is
 > still `/checker`, unchanged.
 >
-> **B13 is still open and still the biggest thing on this list.** There are no
-> database backups. Session 25 checked: no crontab, no dump on the box, no
-> backup script in `deploy/`. This session was chosen *because* it needs no
-> migration — that is now two sessions in a row steering around the same gap,
-> and the remaining Phase 7 work (password reset, MFA, org MFA policy, the back
-> office) cannot.
+> **B13 is much smaller than it was.** There were no database backups at all —
+> no crontab, no dump on the box, no script. Most of that turned out not to be
+> yours: taking a dump, proving it restores, and refusing to migrate without one
+> are engineering, and this session built them and **rehearsed a real restore of
+> your production database** (ADR-46). What is left for you is an off-box
+> destination and one cron line. B13 below has both, and a note on whether this
+> is enough to unblock the migration-bearing Phase 7 work — which is your call,
+> not mine.
 >
 > **A5 changed shape.** Its first half — "nothing enforces the quotas" — is
 > closed by this session's work, so what is left of A5 is only the part that was
@@ -427,12 +429,21 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   **It contains no migration**, deliberately — same reasoning as session 24 —
   so the deploy is image-only and `rollback.sh` genuinely covers it.
 
+  **The branch carries the backup work too** (B13 below) and session 24's
+  stranded docs commit, which rides along as intended.
+
   ```bash
   cd ~/repo/yanki-mvp
   git log --oneline main..feat/session-25-quota-enforcement
-  git push -u origin feat/session-25-quota-enforcement   # needs the SSH remote
+  git push -u origin feat/session-25-quota-enforcement   # SSH remote — see below
   gh pr create --fill
   ```
+
+  **The push must use the SSH remote, not the token.** This branch edits
+  `.github/workflows/ci.yml` (a `bash -n` gate on the deploy scripts) and the
+  `gh` token carries `repo` but not `workflow`, so a token-authenticated push is
+  refused outright. Same as session 24. `origin` is HTTPS and hangs on a
+  credential prompt; push over `git@github.com:` instead.
 
   Same review situation as PRs #8 and #40: the ruleset wants one approving
   review, GitHub will not let the author approve their own PR, and with no
@@ -440,35 +451,72 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
   is worth either lining up a second reviewer or changing the ruleset to match
   what actually happens.
 
-- [ ] **B13. Stand up database backups — this now gates the rest of Phase 7**
-  (added 2026-08-08, session 24). The `yanki_pgdata` volume is the **only copy**
-  of every analysis, user, session, organization, audit event and billing row.
-  There is no backup, no off-box copy, and no tested restore. Meanwhile each
-  remaining Admin Platform stage (A5 auth completion, A6 billing, A7 back
-  office, A8 system pages) adds a migration that runs against that database on
-  merge. `deploy/rollback.sh` restores the previous **image**; it cannot restore
-  a row a bad backfill mangled.
+- [ ] **B13. Database backups — NARROWED 2026-08-09. Most of it is built and
+  rehearsed; two things left, and they are both small.**
 
-  This is why session 24 built only the migration-free half of A5 (sessions +
-  org switcher) and deferred password reset and MFA. That deferral cannot
-  continue — the rest of the milestone needs schema changes.
+  Session 25 read this item again and concluded most of it was never yours.
+  Choosing where an off-box copy lives and installing a cron entry are yours;
+  taking a dump, proving it restores, and refusing to migrate without one are
+  engineering, and leaving them undone was the actual blocker. They are done
+  (ADR-46, [deploy/BACKUP.md](../deploy/BACKUP.md)):
 
-  What is needed: a scheduled `pg_dump` of `yanki-prod-db-1`, a copy stored
-  **off this box**, and one rehearsed restore into a scratch database so we know
-  the dump is not empty. A rough shape to start from:
+  - **`deploy/backup.sh`** — one verified `pg_dump --format=custom` into
+    `~/yanki-backups`, `0600` in a `0700` directory, newest 14 kept. Verified
+    means the whole archive is read back before the file is kept, not merely
+    that it is non-empty.
+  - **`deploy/restore-check.sh`** — restores a dump into a **throwaway
+    container** and asserts the schema stamp and the row counts. It cannot touch
+    production; there is no flag for that.
+  - **`deploy.sh` snapshots automatically before any schema change** and aborts
+    the deploy if the snapshot fails, while the previous release is still
+    serving.
+
+  **Rehearsed against your live database on 2026-08-09**, which is the part that
+  makes the rest mean anything: a 2.7 MB dump of the 17 MB production database
+  restored into a scratch container at alembic
+  `0018_invitations_audit_integrity`, with **6 users, 7 organizations, 57
+  analyses, 35 audit events, 30 tables**. A deliberately truncated dump was
+  rejected. There are dumps in `~/yanki-backups` right now from that rehearsal.
+
+  **What is left for you — 1. an off-box copy.** Everything above writes to the
+  same VPS as the database. That covers a bad migration, a dropped table and a
+  mis-run backfill; it does not survive losing the box. Pick a destination and
+  put the credential in `deploy/.env` or the copying user's own config — never
+  in the repo, which is public and gitleaks-gated:
 
   ```bash
-  # on the VPS — verify a dump succeeds and is non-trivial before scheduling it
-  docker exec yanki-prod-db-1 pg_dump -U yanki -d yanki --format=custom \
-    > ~/yanki-backup-$(date +%F).dump
-  ls -lh ~/yanki-backup-*.dump      # a few hundred KB+, not 0
+  rsync -az --delete ~/yanki-backups/ backups@elsewhere:/srv/yanki-backups/
+  # or:  rclone sync ~/yanki-backups remote:yanki-backups
   ```
 
-  Decide: how often, where the off-box copy lives, and how long copies are kept.
-  Retention interacts with a promise we have not made yet — see `pii-retention-
-  and-erasure` in the backlog — so a short window is the safer default. Note the
-  co-tenant `pulse-prod-backup-1` container already does something similar for
-  another tenant and may be a pattern to copy; it is **not** backing up Yanki.
+  **2. A schedule.** Nothing runs `backup.sh` on a timer; the pre-migration hook
+  only fires on a deploy that changes the schema. One line, and note it points
+  at the **production** checkout, not the development one:
+
+  ```cron
+  17 3 * * * cd /home/aytek/deploy/yanki-mvp && ./deploy/backup.sh --quiet >> /home/aytek/yanki-backups/cron.log 2>&1
+  ```
+
+  Then `make restore-check` once, after the first scheduled run — an unverified
+  schedule is one you find out about during an incident.
+
+  **And decide the retention window.** 14 dumps is the default. It interacts
+  with a promise not yet made: there is no PII retention policy
+  (`pii-retention-and-erasure`), and a backup that outlives an erasure request
+  undoes it. Short is the safer default until that exists.
+
+  *For reference: the co-tenant `pulse-prod-backup-1` container does something
+  similar for another tenant and may be a pattern worth copying for the off-box
+  half. It is **not** backing up Yanki.*
+
+  **Does this unblock the rest of Phase 7?** Mostly — that is your call rather
+  than mine. A migration-bearing deploy now takes a dump first and refuses to
+  proceed without one, so the specific fear that motivated this item ("a bad
+  backfill is permanent") is addressed on-box. What is not yet covered is losing
+  the box during a migration. If you want the off-box copy in place before
+  password reset and MFA land, say so and the next session will keep picking
+  migration-free work; if on-box snapshots are enough for you, P7.5's second
+  half can start.
 
 - [x] ~~**B14. Decide whether to merge `feat/session-24`.**~~ **DONE
   2026-08-08** — you instructed the merge at session close. PR **#40**, merged

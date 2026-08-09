@@ -72,6 +72,9 @@ backend/tests/
 ├── test_api.py            # POST/GET routes via TestClient (+ nullable serp object — ADR-28)
 ├── test_quota_enforcement.py  # plan limits on the spend paths, flow vs stock,
 │                              #   the three refusals kept apart, the kill switch (ADR-45)
+├── test_audit_coverage.py # the mutating paths the spine used to skip, AND the
+│                          #   silences that are deliberate — reuse detection,
+│                          #   competitors, checker, waitlist, 429s (ADR-48)
 ├── test_queue.py          # portable claim / stale-reaper / retry logic (SQLite)
 ├── test_queue_postgres.py # real-Postgres FOR UPDATE SKIP LOCKED (gated on TEST_DATABASE_URL)
 ├── serp/                  # SERP sources: adapter, mock, registry (ADR-28)
@@ -527,6 +530,20 @@ and the per-IP rate limit both answer **429** and both default to 5.
 `test_quota_enforcement.py` lifts the IP limit out of the way so only the plan
 can. Either file left on stock settings would silently be testing the other
 one's guard.
+
+`test_audit_coverage.py` makes the same pin for its refusal tests, and it is
+worth saying why in a doc rather than only in the file: the first draft asserted
+on a 429 and found no audit event, because the *rate limiter* had refused and
+the rate limiter emits nothing. **A 429 is not evidence that the quota
+refused** — the tests now assert on the response body's `metric` field as well,
+which only the quota's handler sets.
+
+This suite also carries the project's clearest example of testing an absence.
+Four of its cases assert that something is **not** audited (a successful token
+rotation, an expired refresh, a duplicate waitlist signup, a checker submit
+parked by the kill switch). Those are the tests that make a deliberate silence
+distinguishable from a forgotten one — which is exactly the distinction that let
+five unaudited mutating paths survive four sessions (ADR-48).
 | `pg_sessionmaker` | `tests/test_queue_postgres.py` | a sessionmaker on the live test Postgres (`TEST_DATABASE_URL`), fresh tables per test, or `skip` if unreachable |
 | `settings` (pipeline) | `tests/pipeline/conftest.py` | a `SimpleNamespace` mirroring `Settings` (lowercase attrs: `dry_run`, `panel_engines`, `prompt_count=4`, `max_responses_per_job=60`) |
 | `sample_kyc` | `tests/pipeline/conftest.py` | a valid `KYC` object (company, description, industry, aliases, products, …) |

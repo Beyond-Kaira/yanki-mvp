@@ -190,7 +190,7 @@ lands in a personal org so nothing breaks for current users.
 | A6 | P7.6 | Plans/subscriptions/quotas: Stripe integration, plan catalog, quota service + enforcement on analysis submission, credit ledger seed — **catalog, quota service, enforcement and ledger DONE 2026-08-09 (ADR-45); Stripe still operator-blocked** |
 | A7 | P7.7 | Platform admin (back office): org directory, plan overrides, flags, audit viewer, Support role + logged impersonation |
 | A8 | P7.8 | System pages: jobs/queues/providers/health/usage/errors |
-| A9 | P7.9 | Hardening pass: permission fuzzing (cross-tenant leakage tests), audit completeness review, docs + ADRs, operator runbook |
+| A9 | P7.9 | Hardening pass: permission fuzzing (cross-tenant leakage tests), audit completeness review, docs + ADRs, operator runbook — **audit completeness review DONE 2026-08-09 (ADR-48)**, pulled forward because its sharpest gap was a security event that recorded nothing; the leakage suite and the runbook remain |
 
 Sizing: A1–A3 are the load-bearing 40%; A4–A8 parallelize across lanes
 (backend-spine / frontend / infra) once A2's enforcement seam exists.
@@ -221,15 +221,27 @@ the build appears in the audit log with before/after; Super Admin can find
 any org, flip a flag, retry a job, and see provider spend; `make test` green
 throughout; zero cross-tenant reads under the A9 suite.
 
-*Progress against that list, 2026-08-09:* signup→org ✅ (A1), invite as
-Analyst/Guest ✅ (A4), Guest cannot reach internal lanes ✅ and test-enforced
-(A2), **quota-enforced on submission ✅ (A6/ADR-45)**, audit log with
-before/after ✅ for the paths the spine covers (residual: tech-debt #71),
-`make test` green ✅. Still owed: **purchasable in Stripe test mode** (operator
-A5), the Super Admin back office (A7) and system pages (A8), and the A9
-cross-tenant suite — which is also the only thing that would turn today's
-per-route tenancy discipline into the guarantee this line claims (tech-debt
-#63).
+*Progress against that list, 2026-08-09 (session 26):* signup→org ✅ (A1),
+invite as Analyst/Guest ✅ (A4), Guest cannot reach internal lanes ✅ and
+test-enforced (A2), **quota-enforced on submission ✅ (A6/ADR-45)**, **every
+mutating action in the audit log ✅ (A9's completeness review, ADR-48)**,
+`make test` green ✅.
+
+One clause of the exit criteria is worth restating rather than ticking, because
+the review found it unkeepable as written. "**Every** mutating action appears in
+the audit log" would include a successful refresh-token rotation, which fires
+about four times an hour per signed-in device and would bury every event a
+reader is actually looking for. The criterion the build now meets is **every
+mutation with a consequence emits, and every deliberate silence has a test
+asserting it** — four such silences are pinned in `test_audit_coverage.py`. That
+is a weaker literal claim and a stronger practical one: the previous wording was
+satisfied by nobody checking, which is how five unaudited paths survived four
+sessions.
+
+Still owed: **purchasable in Stripe test mode** (operator A5), the Super Admin
+back office (A7) and system pages (A8), and the A9 cross-tenant suite — which is
+also the only thing that would turn today's per-route tenancy discipline into
+the guarantee this line claims (tech-debt #63).
 
 **Explicitly not in M1:** SSO/SCIM (M8) · customer dashboards (M4) ·
 white-label (M6) · public API keys' *consumer* docs (M7 — issuing/managing

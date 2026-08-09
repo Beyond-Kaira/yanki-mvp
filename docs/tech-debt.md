@@ -4,7 +4,33 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-09 (**session 25** — the quota-enforcement session).
+Last updated: 2026-08-09 (**session 26** — the audit-coverage session).
+
+**Session 26 changes to this list, up front:** **#71 REPAID** — the six mutating
+paths that emitted nothing now emit, including refresh-token **reuse
+detection**, which revoked an entire sign-in family for suspected theft and
+wrote no record of it (ADR-48). Two things about the repair are worth reading
+before the new items. First, the rule it settled on is *not* "audit every
+mutation": a successful token rotation is a mutation and is deliberately silent,
+because it fires four times an hour per device and would bury the trail — so the
+rule is **every mutation with a consequence emits, and every silence has a test
+asserting it**. Second, `audit_events` is append-only by database trigger, which
+means anything written there is permanent; the two paths carrying an email
+address store the *reference* and drop the *value*, so the erasure path this
+milestone still owes cannot end up in conflict with the integrity guarantee.
+**Three new items, #84–#86**, and the one to read is **#84**: recording refusals
+means a client retry-looping into a 429 writes a row per retry.
+
+This session also fixed two CI gates that session 25 could not see from a
+laptop and that its own log recorded as green: the scoped **formatting gate**
+(seven of its files were unformatted) and the **SERP stack check**, which
+submits an analysis through real compose and had been 401ing since ADR-45 closed
+that route to anonymous callers. Neither was a code defect; both were the branch
+being unverifiable until it was pushed. Measured suite at session 26 close:
+**952 backend passed / 7 skipped** with Postgres, **327 frontend across 57
+files**, `make test` exit 0.
+
+Earlier — 2026-08-09 (**session 25** — the quota-enforcement session).
 
 **Session 25 changes to this list, up front:** the session ran two loops and
 this header covers both. **Loop 2 built the engineering half of operator item
@@ -1046,16 +1072,30 @@ devDependencies).)
     it is a constant that encodes a fact about history and should be revisited
     if the deploy driver is ever rewritten.
 
-71. **Mutating paths that still emit no audit event** (2026-08-08, session 24,
-    found by audit-coverage review). M1 promises "every mutating action emits an
-    audit event." These do not: `track_competitor` / `untrack_competitor` in the
-    backlink routes, and `POST /auth/refresh` — including, notably, the
-    **refresh-token reuse detection** path, which revokes an entire session
-    family because it believes a token was stolen and writes no record that it
-    happened. That last one is the sharp edge: it is precisely the event a
-    security review would come looking for. Folded into the backlog's
-    `audit-coverage-public-writes` item (which already names analyses, checker,
-    waitlist and billing) and repaid at A9's audit-completeness review.
+71. ~~**Mutating paths that still emit no audit event**~~ (2026-08-08, session
+    24, found by audit-coverage review; **REPAID 2026-08-09, session 26,
+    ADR-48**). M1 promises "every mutating action emits an audit event." These
+    did not: `track_competitor` / `untrack_competitor`, `POST /auth/refresh` —
+    including, notably, the **refresh-token reuse detection** path, which
+    revokes an entire session family because it believes a token was stolen and
+    wrote no record that it happened — plus the checker submit, its lead gate,
+    and the waitlist.
+
+    All six now emit, and the repair changed the rule rather than just closing
+    the list. "Every mutating action" is not the rule the system can keep: a
+    successful refresh rotation *is* a mutation and is deliberately silent,
+    because it fires four times an hour per signed-in device and would bury
+    every real event under heartbeat rows. The rule is now **every mutation with
+    a consequence emits, and every deliberate silence has a test asserting the
+    silence** — the second half being what stopped this item from being
+    invisible for four sessions.
+
+    Residuals are **#84** (a retry loop into a 429 writes a row per retry),
+    **#85** (an optional `context` that degrades attribution silently) and
+    **#86** (the checker's cost trail overlaps its demand table). What is *not*
+    residual: A9's audit-completeness review no longer has a backlog of missing
+    emitters to work through, only `audit-emit-no-outbox` — the deliberate trade
+    that an audit write failure must never 500 a request.
 
 72. **Session 23 shipped without any of its eight close deliverables**
     (recorded 2026-08-08, session 24; **partially repaid on record**). P8.3's
@@ -1189,3 +1229,39 @@ devDependencies).)
     "look" would slip through untested. The real fix is `deployment.sh`
     trusting the HTTP status, which is a change to the deploy driver and wants
     its own careful pass.
+
+84. **A client that retries into a 429 writes one audit row per retry**
+    (2026-08-09, session 26, ADR-48). `billing:quota_denied` records every
+    refusal, which is what makes a support question answerable — and it means a
+    caller looping against an exhausted plan writes an audit row each time. The
+    analyses path is bounded (the per-IP rate limit runs *before* the quota, so
+    the limiter refuses first and emits nothing); project creation and
+    site-audit starts are not, because no authenticated route in this codebase
+    has a throttle at all (`auth-endpoint-rate-limiting` in the backlog). The
+    exposure is therefore not new — an authenticated loop can already hammer
+    those routes — it now also grows a table that cannot be pruned. Not solved
+    with a de-duplication window because nobody has needed one, and a window is
+    the kind of state that is wrong in a way you only discover during the
+    incident it was meant to help with.
+
+85. **`billing:quota_denied` and the permission-denied event are attributed to
+    an org but not always to a person** (2026-08-09, session 26). `quota.consume`
+    takes `context` optionally, so a caller that omits it produces an event with
+    the right organization and a NULL actor. Every current call site passes it;
+    the optionality exists so `quota` stays callable from a worker or a script
+    that legitimately has no user. The debt is that nothing enforces the
+    distinction — a future route that forgets the argument degrades the event
+    silently rather than failing to compile. A required `context` with an
+    explicit `OrgContext.system()` for the caller-less case would close it.
+
+86. **The `checker:submit` trail duplicates a demand signal that already has a
+    table** (2026-08-09, session 26). `checker_submissions` records every submit
+    with its triple and IP hash, and the audit event now records the same submit
+    again. The overlap is deliberate — the audit row is the *cost* record and
+    the submission row is the *demand* record, and they answer to different
+    readers — but if the checker ever goes live at volume
+    (`public-checker-go-live`), it is the anonymous surface writing the most
+    rows into the append-only table, and the platform-wide
+    `verify_integrity(limit=5000)` sweep would fill with it. Per-org integrity
+    checks are unaffected (they filter by `org_id`, and these rows have none).
+    Revisit at go-live, not before.

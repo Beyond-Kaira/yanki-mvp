@@ -2465,7 +2465,27 @@ paragraph, as the record.*
 ### P7.9 — Hardening + docs (stage A9, exit gate)
 - **Goal:** cross-tenant leakage suite (the merge gate for everything after),
   audit completeness review, ADRs, operator runbook, docs sync.
-- **Dependencies:** all of Phase 7. · **Complexity:** M · **Status:** todo
+- **Dependencies:** all of Phase 7. · **Complexity:** M · **Status:** **partial**
+  — the **audit completeness review is done** (2026-08-09, session 26, ADR-48),
+  pulled forward out of order because tech-debt #71 had been open for two
+  sessions and its sharpest case was a security event that recorded nothing:
+  refresh-token reuse detection revokes an entire sign-in family for suspected
+  theft, and wrote no row. Six mutating paths now emit, plus `billing:quota_denied`
+  for refusals, which ADR-45 made the likeliest thing to happen to a live user.
+
+  The review also **changed the standard the exit gate is measured against**.
+  "Every mutating action emits an audit event" is not a rule this system can
+  keep — a successful refresh rotation is a mutation, fires four times an hour
+  per device, and auditing it would bury the trail. The gate is now **every
+  mutation with a consequence emits, and every deliberate silence has a test
+  asserting the silence**; `tests/test_audit_coverage.py` is where both halves
+  are proven.
+
+  **What A9 still owes:** the cross-tenant leakage / permission-fuzzing suite
+  (the named M1 exit criterion, and the only thing that would turn per-route
+  tenancy discipline into a guarantee — tech-debt #63), the operator runbook,
+  and the `audit-emit-no-outbox` hardening, which is a deliberate trade rather
+  than a defect (an audit write failure must never 500 a request).
 
 ---
 

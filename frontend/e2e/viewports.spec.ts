@@ -80,6 +80,49 @@ scenario('the nav rail is hidden on mobile and present on desktop', async ({ pag
   await expect(page.getByRole('button', { name: /open navigation/i })).toBeVisible()
 })
 
+scenario('desktop nav expands over the page without shifting its content', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await signUp(page)
+  await page.goto('/dashboard')
+
+  const rail = page.locator('#product-nav')
+  const content = page.locator('main').first()
+  await expect(rail).toHaveCSS('width', '74px')
+  const contentBefore = await content.boundingBox()
+
+  await rail.getByRole('button', { name: 'AI Visibility' }).hover()
+  await expect(rail).toHaveCSS('width', '240px')
+  await expect(rail.getByRole('link', { name: 'Prompts & Answers' })).toBeVisible()
+
+  const contentAfter = await content.boundingBox()
+  expect(contentAfter!.x).toBe(contentBefore!.x)
+  expect(contentAfter!.width).toBe(contentBefore!.width)
+})
+
+// Submenus used to open inside the icon column, so opening one pushed every
+// icon below it down — the icon you were reaching for moved as you reached.
+scenario('the icon column holds still while submenus open', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await signUp(page)
+  await page.goto('/ai-visibility')
+
+  const rail = page.locator('#product-nav')
+  const settings = rail.getByRole('button', { name: 'Settings' })
+  const collapsed = await settings.boundingBox()
+
+  await rail.getByRole('button', { name: 'AI Visibility' }).hover()
+  await expect(rail).toHaveCSS('width', '240px')
+  await expect(rail.getByRole('link', { name: 'Citations' })).toBeVisible()
+  const withFirstMenu = await settings.boundingBox()
+
+  await rail.getByRole('button', { name: 'Admin Panel' }).hover()
+  await expect(rail.getByRole('link', { name: 'Audit log' })).toBeVisible()
+  const withSecondMenu = await settings.boundingBox()
+
+  expect(withFirstMenu!.y).toBe(collapsed!.y)
+  expect(withSecondMenu!.y).toBe(collapsed!.y)
+})
+
 scenario('primary controls meet the 44px touch target', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await signUp(page)

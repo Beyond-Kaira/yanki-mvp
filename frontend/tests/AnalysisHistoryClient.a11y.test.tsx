@@ -9,7 +9,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
   return { ...actual, listAnalyses: mockedListAnalyses }
 })
 
-import AnalysisHistoryClient from '@/app/analyses/AnalysisHistoryClient'
+import AnalysisHistoryClient from '@/app/(app)/analyses/AnalysisHistoryClient'
 
 const ROW = {
   id: '4bb0f6e1-d873-47ce-b15a-d166c43f91f8',

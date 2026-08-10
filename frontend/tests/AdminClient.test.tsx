@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import AdminClient from '@/app/admin/AdminClient'
+import AdminClient from '@/app/(app)/admin/AdminClient'
 import { ApiError } from '@/lib/api'
 
 const fetchMembers = vi.fn()

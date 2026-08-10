@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import AnalysisHistoryClient from '@/app/analyses/AnalysisHistoryClient'
+import AnalysisHistoryClient from '@/app/(app)/analyses/AnalysisHistoryClient'
 import { ApiError } from '@/lib/api'
 
 const listAnalyses = vi.fn()

@@ -20,7 +20,7 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-import AnalysisPage from '@/app/analyses/[id]/page'
+import AnalysisPage from '@/app/(public)/analyses/[id]/page'
 import { getAnalysis } from '@/lib/api'
 
 const mockedGet = vi.mocked(getAnalysis)

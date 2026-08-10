@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import AuditLogClient from '@/app/admin/audit/AuditLogClient'
+import AuditLogClient from '@/app/(app)/admin/audit/AuditLogClient'
 import { ApiError } from '@/lib/api'
 
 const fetchAuditEvents = vi.fn()

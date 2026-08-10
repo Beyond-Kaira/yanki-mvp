@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import AdminClient from '@/app/admin/AdminClient'
+import AdminClient from '@/app/(app)/admin/AdminClient'
 import { axeCheck } from './a11y'
 
 vi.mock('@/lib/api', async (importOriginal) => {

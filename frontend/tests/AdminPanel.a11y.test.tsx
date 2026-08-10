@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import AuditLogClient from '@/app/admin/audit/AuditLogClient'
-import InvitationsClient from '@/app/admin/invitations/InvitationsClient'
+import AuditLogClient from '@/app/(app)/admin/audit/AuditLogClient'
+import InvitationsClient from '@/app/(app)/admin/invitations/InvitationsClient'
 import InviteClient from '@/app/invite/[token]/InviteClient'
 import { axeCheck } from './a11y'
 

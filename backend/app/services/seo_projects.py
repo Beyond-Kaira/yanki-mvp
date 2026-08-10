@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -94,6 +94,32 @@ def normalize_project_domain(raw_domain: str) -> NormalizedProjectDomain:
     )
 
 
+def already_tracked(session: Session, *, user_id: uuid.UUID, domain_key: str) -> bool:
+    """Whether this user already tracks this domain.
+
+    Extracted so the route can ask *before* it spends a quota. A duplicate
+    submission and an exhausted plan both refuse the request, but they are not
+    the same answer: "you already track this" is a 409 the customer fixes by
+    opening the project they have, while a 429 tells them to buy something they
+    do not need. Checking the cheaper, more specific one first is what keeps the
+    order of guards from changing what the customer is told.
+
+    ``create_project_with_audit`` keeps its own copy of the check — this is a
+    pre-check, not a replacement, and the unique constraint underneath is the
+    actual guarantee.
+    """
+
+    return (
+        session.scalar(
+            select(SeoProject.id).where(
+                SeoProject.user_id == user_id,
+                SeoProject.domain_key == domain_key,
+            )
+        )
+        is not None
+    )
+
+
 def create_project_with_audit(
     session: Session,
     *,
@@ -104,23 +130,26 @@ def create_project_with_audit(
     profile_id: AuditProfileId,
     js_rendering: bool,
     context: OrgContext | None = None,
+    queue_audit: bool = True,
 ) -> SeoProject:
-    """Create a Site Audit project and queue its first crawl.
+    """Create an SEO project and, unless suppressed, queue its first crawl.
 
     ``context`` is optional only so this stays callable from tests and from the
     pre-tenancy call path; when present — which is every HTTP request after
     P7.1 — the row is stamped with the caller's org/workspace and mirrored into
     a tenancy-level ``projects`` row, so Phase 8's backlink profiles have
     something to hang from.
+
+    ``queue_audit`` defaults to True, so every existing caller and test keeps
+    its behaviour. When False, the project and its tenancy ``projects`` mirror
+    are still created — the shared project entity that Backlinks hangs off must
+    exist regardless — but **no** ``SiteAudit`` row is enqueued. The enqueue
+    routes pass ``settings.site_audit_enabled`` here so project creation stays
+    open while the site-audit queue has no worker to drain it; an audit is only
+    ever queued once the feature is switched on. See ``config.site_audit_enabled``.
     """
 
-    existing_id = session.scalar(
-        select(SeoProject.id).where(
-            SeoProject.user_id == user_id,
-            SeoProject.domain_key == domain.key,
-        )
-    )
-    if existing_id is not None:
+    if already_tracked(session, user_id=user_id, domain_key=domain.key):
         raise DuplicateSeoProject
 
     project = SeoProject(
@@ -140,13 +169,15 @@ def create_project_with_audit(
         project.org_id = context.org_id
         project.workspace_id = tracked.workspace_id
         project.project_id = tracked.id
-    audit = SiteAudit(
-        project=project,
-        page_limit=page_limit,
-        profile_id=profile_id,
-        js_rendering=js_rendering,
-    )
-    session.add_all([project, audit])
+    session.add(project)
+    if queue_audit:
+        audit = SiteAudit(
+            project=project,
+            page_limit=page_limit,
+            profile_id=profile_id,
+            js_rendering=js_rendering,
+        )
+        session.add(audit)
 
     audit_service.emit(
         session,
@@ -187,6 +218,24 @@ def list_org_projects(session: Session, org_id: uuid.UUID) -> list[SeoProject]:
             .options(selectinload(SeoProject.audits))
             .order_by(SeoProject.created_at.desc())
         )
+    )
+
+
+def count_org_projects(session: Session, org_id: uuid.UUID) -> int:
+    """How many Site Audit projects this organization currently holds.
+
+    The plan's ``projects`` allowance is a stock, not a monthly flow, so the
+    quota check compares against the rows that exist rather than a counter —
+    see ``billing.check_stock_quota``. Counting ``SeoProject`` rather than the
+    tenancy mirror ``Project`` is deliberate: ``SeoProject`` is the thing a
+    customer creates and sees, and the two are written together.
+    """
+
+    return int(
+        session.scalar(
+            select(func.count()).select_from(SeoProject).where(SeoProject.org_id == org_id)
+        )
+        or 0
     )
 
 

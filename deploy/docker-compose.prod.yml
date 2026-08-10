@@ -24,6 +24,19 @@ services:
     volumes:
       - yanki_pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+    # Ceiling, not a reservation. Postgres idles ~60 MiB here (measured
+    # 2026-08-08), but connections, shared_buffers and work_mem grow it; 1g
+    # leaves ~17x headroom and still stops a runaway from taking the shared box.
+    # Host swap is 0, so memswap_limit == mem_limit (matching searxng) grants no
+    # swap allowance.
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U yanki -d yanki"]
       interval: 5s
@@ -55,7 +68,23 @@ services:
     env_file:
       - path: .env
         required: false
+    # READ-ONLY: the api reports the worker's heartbeat through /healthz and has
+    # no business writing one. `:ro` is what stops a future bug in the api from
+    # forging liveness for a worker that is not running (ADR-47).
+    volumes:
+      - yanki_worker_heartbeat:/var/run/yanki:ro
     restart: unless-stopped
+    # Measured ~80 MiB steady (2026-08-08); 1g is a deliberately generous
+    # ceiling — a too-tight mem_limit OOM-kills the API under real load, a worse
+    # outage than the one this cap prevents.
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -70,7 +99,42 @@ services:
     env_file:
       - path: .env
         required: false
+    # The worker writes a heartbeat here on every poll and at every pipeline
+    # step; the api mounts the same volume read-only so /healthz can report it
+    # (ADR-47). A volume rather than a table because a heartbeat table needs a
+    # migration, and rather than an endpoint because that means giving the
+    # worker a web server.
+    volumes:
+      - yanki_worker_heartbeat:/var/run/yanki
+    # Detection, not self-healing — be clear about which. Compose (unlike Swarm)
+    # never restarts a container for being unhealthy, so this makes a wedged
+    # `while True` visible in `docker ps` and in /healthz. Before it, a worker
+    # that stopped looping looked exactly like an idle one, and the only symptom
+    # was jobs sitting in `queued` until somebody noticed.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f /var/run/yanki/worker.heartbeat && [ $$(( $$(date +%s) - $$(stat -c %Y /var/run/yanki/worker.heartbeat) )) -lt 1800 ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      # The worker beats before it does anything else, but the container still
+      # has to import the application first.
+      start_period: 60s
     restart: unless-stopped
+    # The crawl/analysis worker is the service most likely to "grow into whatever
+    # is available" (the same warning that justifies searxng's cap), so a hard
+    # ceiling here is the whole point of this file. Measured ~115 MiB
+    # (2026-08-08); 1.5g leaves ~13x for a heavy crawl before the OOM killer
+    # steps in, which protects the four co-tenants sharing this box.
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -134,8 +198,19 @@ services:
       - path: .env
         required: false
     restart: unless-stopped
+    # `next start` measured ~95 MiB (2026-08-08); 768m is a generous ceiling.
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       - api
 
 volumes:
   yanki_pgdata:
+  # Shared worker->api liveness channel (ADR-47). Holds one small file.
+  yanki_worker_heartbeat:

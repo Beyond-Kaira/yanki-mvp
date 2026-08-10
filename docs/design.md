@@ -1487,6 +1487,27 @@ things the PR did not intend.*
     the NULL-is-public rule lives in exactly one function
     (`readable_analysis`). Postgres RLS is deferred — the workers open raw
     sessions and would have to be exempted anyway.
+
+    > **CORRECTION (2026-08-08, session 24).** The paragraph above describes a
+    > design, and this ADR presented it as the shipped mechanism. It is not
+    > wired. `scoped()` and `readable_analysis()` are defined in
+    > `app/services/tenancy.py` and **have zero call sites** — no route and no
+    > service calls either one; `GET /analyses/{id}` uses bare `get_analysis()`.
+    > Tenant isolation *is* enforced today, but by a different mechanism: the
+    > `requires(...)` / `OrgContext` dependency in `app/api/org_dependencies.py`
+    > resolves and membership-verifies the org on every request, and each route
+    > filters by `org.require_org_id` itself. That is per-route discipline, not
+    > a seam that fails closed — the difference is that a route which simply
+    > forgets to filter compiles, passes review, and leaks.
+    >
+    > This is recorded as a correction rather than an edit because the decision
+    > was real and the code was written; only the claim that it is *load-bearing*
+    > was false. The same overclaim was propagated to
+    > `architecture-target.md` and to the P7.1 card in `implementation-plan.md`.
+    > Closing it is P7.9/A9 work (the cross-tenant leakage suite is the exit
+    > gate that would have caught this), tracked as tech-debt **#63**. Until
+    > then, treat every new tenant-scoped query as needing its own explicit
+    > `org_id` filter, because nothing will do it for you.
   - The **backfill lives outside the migration** (`app/db/org_backfill.py`) so
     the SQLite suite can run it against adversarial fixtures.
 - **Consequences:**
@@ -1748,3 +1769,630 @@ things the PR did not intend.*
   *adopting a Prettier config as a side effect of this card* — a formatting
   standard is a team decision, and inventing one inside a feature branch is how
   it becomes nobody's decision.
+
+### ADR-41 — Resource ceilings on a shared box, and a gate that checks the caps rather than the syntax (2026-08-08, S24-1)
+
+- **Context:** this VPS runs Yanki's production stack beside four other
+  companies' production stacks (`pulse-prod`, `brier`, `antmedia`,
+  `evrak-app`) on ~11.7 GiB of shared RAM and one shared disk, and merging
+  `main` auto-deploys onto it. Only `searxng` had a memory cap and a bounded
+  log driver; `db`, `api`, `worker` and `web` had neither. So a leak in the
+  analysis worker — which fetches arbitrary third-party pages — or a traceback
+  loop filling a `json-file` log was not a Yanki incident but a four-tenant
+  incident, and nothing in CI would have said a word.
+- **Decision:** cap every Yanki service with **top-level** `mem_limit` /
+  `memswap_limit` / `cpus` plus a bounded `json-file` driver (10 MiB × 3), with
+  ceilings derived from measured RSS (8–17× headroom: db 1g, api 1g, web 768m,
+  worker 1.5g), and gate the file in CI with **two** steps — `docker compose
+  config -q` for syntax and interpolation, and `scripts/check_prod_compose.py`
+  for the caps themselves.
+- **Consequences:** the caps are ceilings, not reservations, so a co-tenant can
+  still be squeezed momentarily under simultaneous peak; total ceilings are
+  4.75 GiB of 11.68 and 5.0 of 6 cores. Adding a new prod service now fails CI
+  until it is capped, which is the regression this is really guarding against.
+  `memswap_limit == mem_limit` because host swap is 0.
+- **Why the form matters, and why it needed its own check:** the `deploy:
+  resources: limits:` form is what most documentation reaches for and it is
+  **swarm-only** — a plain `docker compose up`, which is exactly what
+  `deploy/deploy.sh` runs, silently ignores it. `config -q` exits 0 on that
+  form. A gate that only parses the file would therefore bless a compose file
+  whose caps enforce nothing, which is worse than no gate: it makes a reviewer
+  stop looking. So the check reads the **rendered** config and asserts
+  `mem_limit` is present and above a sane floor, that a log bound exists, and
+  that no service uses the dropped form. A cap that does not survive rendering
+  was never a cap.
+- **Rejected:** *a worker healthcheck in the same change* — a wedged
+  `while True` worker does need liveness, but that needs a heartbeat that does
+  not exist yet, and `/healthz` is the deploy's go/no-go gate: changing it here
+  risks rollback loops in production for an unrelated benefit. Kept as its own
+  backlog item. *Tighter ceilings* — a too-tight cap OOM-kills the app under
+  real load, which is a worse outage than the one being prevented, and the
+  measurement available was a single spot reading rather than a load peak.
+
+### ADR-42 — A rollback that refuses is better than a rollback that improvises (2026-08-08, S24-2)
+
+- **Context:** Phase 7 stages A5–A8 each add a live-database migration and this
+  project has **no database backups**, so the rollback path was about to become
+  load-bearing. Two things were wrong with it. `scripts/check_env.py` validated
+  the *retired* four-engine provider keys, so the preflight passed green and
+  then every job died at runtime wanting `OPEN_ROUTER_KEY` / `TAVILY_API_KEY` /
+  `JWT_SECRET_KEY` — a gate that reported success for a broken deploy. And
+  `deploy/rollback.sh`'s pruned-image branch git-checks-out the last-good SHA
+  and rebuilds; if that SHA predates `56c1fac` the rebuilt stack carries the
+  fused `alembic upgrade head && uvicorn` command and **migrates-on-boot into a
+  crash loop under `restart: unless-stopped`** — during a rollback, the moment
+  with the least room to recover — because the old image cannot resolve the
+  revision the live database is now stamped at. It also left the checkout in
+  detached HEAD.
+- **Decision:** `check_env.py` now validates what the live path actually reads,
+  traced from `config.py` and `execute_measured.py` rather than guessed
+  (`JWT_SECRET_KEY` + `OPEN_ROUTER_KEY` whenever `DRY_RUN` is off;
+  `TAVILY_API_KEY` unless the mode is exactly `simulated`), and requires
+  nothing under `DRY_RUN` so `make dev` / `make test` stay key-free and $0. The
+  rollback's pruned-image branch **refuses** a last-good SHA at or behind
+  `56c1fac`, failing loudly with a hand-recovery message, and restores the
+  original branch instead of leaving detached HEAD.
+- **Consequences:** a rollback to a pre-`56c1fac` release is now a manual
+  operation with an explicit message, not an automatic crash loop. The boundary
+  is a hardcoded SHA, which is debt: it is documented and re-derivable
+  (`git log -S 'sh -c "alembic upgrade head' -- deploy/docker-compose.prod.yml`),
+  and a history rewrite would make the guard fail closed — acceptable because
+  `main` is ruleset-protected against rewrites, and failing closed is the safe
+  direction.
+- **Rejected:** *auto-repairing the old compose file during rollback* (e.g.
+  `git checkout 56c1fac -- deploy/docker-compose.prod.yml` before building) —
+  it would usually work, and "usually" is the wrong standard for the code that
+  runs when production is already broken; a wrong repair here is unrecoverable
+  where a refusal is merely inconvenient. *Blocking on real DB backups first* —
+  correct, and it is an operator action this session cannot perform; these two
+  fixes are the part that could be done without one.
+
+### ADR-43 — Sign out everywhere keeps the device you clicked from (2026-08-08, P7.5)
+
+- **Context:** the `AuthSession` refresh-family model (migration 0006) has
+  supported rotation, reuse detection and family revocation since before the
+  Admin Panel shipped, and `revoke_all_sessions_for_user` had exactly one
+  caller: an admin disabling a member. The person the sessions belong to could
+  not see or end any of them. Separately, invitations (session 22) made
+  multi-org membership reachable, while `/auth/me` returned one org and
+  `resolve_org_context` silently picked `memberships[0]` — so a user who
+  accepted an invitation to a second org **could not get to it**, a defect
+  invitations opened and nothing closed.
+- **Decision:** expose the existing machinery — `GET /auth/sessions`,
+  `DELETE /auth/sessions/{id}`, `POST /auth/sessions/revoke-all` — with no
+  schema change, and add the caller's full organization list to `/auth/me`
+  **additively**, alongside the existing singular `organization` field rather
+  than replacing it. "Sign out everywhere" deliberately **keeps the current
+  session alive** and revokes only the others.
+- **Consequences:** the sessions list carries no device fingerprint (IP,
+  user-agent, device name) because `auth_sessions` stores none and adding
+  columns needs a migration this session forbade; "started / last active /
+  expires" is the only recognisability signal. `/auth/me` does a small N+1 over
+  memberships. When the server cannot identify the caller's own family the
+  revoke-all revokes everything including this device — the response says so
+  via `kept_current: false`, and the UI now tells the user, because a count
+  alone would report the one thing that is not true.
+- **Why keep the current session:** the action is always reached from a
+  signed-in device. Ending that device's own session as a side effect signs the
+  user out of the click they just made, with no chance to see that it worked —
+  and "Log out" already ends the current session on purpose, so the
+  all-inclusive behaviour would leave the product with two controls that do the
+  same thing and no way to say "everywhere *but here*". The service still takes
+  `keep_family_id=None` if a future security posture wants the stricter form.
+- **Rejected:** *replacing `organization` with `organizations[]` on `/auth/me`*
+  — cleaner, and non-additive on a contract the frontend and the committed
+  OpenAPI artifact already depend on, which the auto-deploy constraint forbids;
+  *building password reset and MFA in the same card* — both need migrations,
+  and migrations wait for backups.
+
+### ADR-44 — The Site Audit kill-switch gates the crawl, not the project (2026-08-08, S24-4)
+
+- **Context:** the Site Audit UI shipped in PRs #24/#25 and its enqueue path is
+  mounted, but `deploy/docker-compose.prod.yml` runs five services and none of
+  them drains the site-audit queue. So a user could start an audit that nothing
+  would ever process. The backlog described this as a trap "not yet sprung,"
+  citing zero rows in `seo_projects` and `site_audits`. **That was stale by the
+  time it was acted on:** production held three projects and three audits, all
+  `queued` with zero pages since 2026-08-05/06 (tech-debt #64). The trap had
+  been sprung; nobody had noticed because a queued row looks like progress.
+- **Decision:** a `site_audit_enabled` flag, default off, mirroring
+  `backlinks_enabled`. `POST /{project_id}/audits` carries a
+  `require_site_audit_enabled` dependency and answers **404** while off. But
+  `POST /seo-projects` — which also queues a first crawl — is **not** gated;
+  it passes `queue_audit=settings.site_audit_enabled` into
+  `create_project_with_audit`, which creates the project and its tenancy
+  `projects` mirror while creating no `SiteAudit` row. Read routes stay open in
+  both states.
+- **Why not simply gate both enqueue routes:** because `SeoProject` is not a
+  Site Audit concept — it is the shared project entity **Backlinks hangs off**
+  (`backlink_routes.py` imports `get_org_project` from `app.services.seo_projects`;
+  the backlink API lives at `/api/v1/seo-projects/{id}/backlinks`; and
+  `create_project_with_audit`'s own docstring says the tenancy row exists "so
+  Phase 8's backlink profiles have something to hang from"). Gating project
+  creation would mean that the moment the operator turns **Backlinks** on — M2,
+  the nearer-term revenue path — while Site Audit correctly stays off, **no
+  customer could create a project to attach a backlink profile to.** One
+  feature's kill-switch would silently disable another. The first version of
+  this card did gate both routes and an adversarial review caught it; the
+  correct seam is not the route, it is the *crawl*.
+- **Consequences:** with the flag off a project is created and reads
+  `latest_audit: null`, which the dashboard renders as "Not audited" — never a
+  `queued` that will not move. The frontend still learns the flag reactively
+  rather than from a capability endpoint (tech-debt #66). The flag alone does
+  **not** deliver the feature: turning it on still requires the M3 worker with
+  a Chromium image, egress isolation, and the settings isolation that
+  `site-audit-integration.md` claimed but never had (tech-debt #65). The three
+  stranded rows are untouched — mutating production data is an operator action,
+  especially with no backups (#64).
+- **Rejected:** *deploying the site-audit worker now instead of gating* — it is
+  the real fix and it is M3-sized, and shipping it today would put a container
+  whose whole job is fetching arbitrary third-party pages on a box shared with
+  four other tenants, holding the full `get_settings()` secret set. Gating is
+  additive, reversible, and buys the time to do that properly. *Hiding the UI
+  only* — the route would stay open to anything holding a token, which is a
+  gate in the one layer this project says a gate must never live in.
+
+### ADR-45 — Submitting an analysis requires a credential, and a plan tier that refuses nothing is not a plan (2026-08-09, P7.6)
+
+- **Context:** `services/billing` shipped whole in session 21 — the plan
+  catalog, usage counters, the append-only credit ledger, `check_quota` /
+  `consume_quota` / `reserve` / `settle` — and for three sessions nothing on any
+  path a customer touches called any of it. Migration `0016_seed_plans` seeds
+  five tiers with real numbers; `limit_for` falls back to Free for an org with
+  no subscription, and no subscription has ever been created. So **every
+  organization was on Free and Free meant nothing**: the tiers were decorative,
+  which `implementation-plan.md` P7.6 records in exactly those words.
+
+  Wiring the gate turned out to be blocked by something the plan did not
+  mention. `POST /api/v1/analyses` — the product's central money-spending action
+  — **took no authentication at all**. Session 21 moved the URL form behind
+  sign-in and made `/` a landing page; nobody closed the route it posts to. So
+  every analysis a paying customer ran carried `org_id = NULL`, was attributable
+  to no tenant, appeared in no organization's history, and could not be metered
+  against anything. A quota cannot be applied to a caller who does not exist.
+
+- **Decision:** four things, in the order they depend on each other.
+
+  1. **`POST /api/v1/analyses` requires authentication** and the
+     `analysis:run` permission (Analyst and above), and stamps the caller's
+     `org_id` on the row.
+  2. **`GET /api/v1/analyses/{id}` is scoped through `tenancy.readable_analysis`**
+     — which until now had *zero call sites* (tech-debt #63). A row with no
+     organization stays world-readable on its unguessable id; a row that carries
+     one is served to that organization alone, and to nobody else including the
+     anonymous public. A cross-tenant id gets the same 404 as a missing one.
+  3. **The three spend paths consume a plan allowance**: analyses and site-audit
+     runs against monthly counters, projects against the rows that exist. All of
+     it behind one kill switch, `QUOTA_ENFORCEMENT_ENABLED`, default **on**.
+  4. **The worker settles each finished run's real cost** into the org's credit
+     ledger, on success *and* on failure.
+
+- **Why requiring auth is part of this card and not a separate hardening:** a
+  per-tenant quota on a route anyone may call unauthenticated is a control that
+  works on paper only — sign out and the limit is gone. The two changes are one
+  change. Evidence that closing it breaks no product surface: every caller of
+  `createAnalysis` sits inside `RequireAuth` (`/dashboard`,
+  `/ai-visibility`, `/search-visibility`, and the analysis-bound subpages), the
+  landing page links to `/signup` and `/checker`, and the Playwright happy path
+  already signs up before it submits. The public anonymous funnel is
+  `/api/v1/checker`, which is unchanged.
+
+- **Why the checker is deliberately NOT org-metered.** The card names three
+  spend paths and this is the third; it is answered rather than skipped. The
+  checker is the anonymous lead-capture tool — it has no organization, so a
+  per-org quota has nothing to charge, and metering a *signed-in* caller for
+  using the free public tool would bill customers for marketing. Its spend is
+  bounded globally instead, by machinery that already exists and is live:
+  `CHECKER_ENABLED`, 10 submits/IP/hour, 20 fresh runs/brand/day, and
+  `CHECKER_DAILY_USD_CAP` summed over `responses.cost_usd`. The honest statement
+  is that the checker is capped, not metered, and the two are different words.
+
+- **Why counts gate and money only records.** `reserve()` refuses when the
+  credit balance cannot cover an estimate. No org has ever been granted credit,
+  so every balance is zero — using `reserve()` on the analysis path would have
+  refused **every analysis in production** with a 402. Credit gating stays where
+  it already is (the dark backlink path, whose mock estimate is $0), and the
+  ledger records spend without refusing it. Refusal is by count; visibility is
+  by ledger. Granting each plan's `monthly_credit_usd` is the Stripe card's job.
+
+- **Why projects are counted differently from analyses.** `UsageCounter` is a
+  monthly window, which is right for events and wrong for possessions. Free's
+  `projects: 1` read through a monthly counter would mean *one new project per
+  month* — twelve by December — and deleting a project would free nothing back.
+  So `check_stock_quota` compares the limit against the rows that exist.
+  "Analyses: 5" is a flow; "projects: 1" is a stock; the plan JSON does not
+  distinguish them, so the call site must.
+
+- **Why an unseeded catalog is a 503 and not a 429.** `limit_for` used to return
+  `0` when the `plans` table was empty, which is fail-closed and correct in
+  direction but indistinguishable from an exhausted customer. Production ran
+  with an empty catalog until session 21 caught it; with enforcement live, that
+  state would have told every organization simultaneously that it was out of
+  quota, and the real cause — an unseeded table — would have been the last thing
+  anyone checked. `PlanCatalogMissing` is now its own exception and its own
+  status code.
+
+- **Why an app-level exception handler rather than try/except per route.** Three
+  routers now raise billing exceptions and more will. The failure mode of the
+  per-route form is a new metered path that raises `QuotaExceeded` and returns
+  500 — a bug nobody sees until a customer hits a limit. `api/main.py` maps
+  `QuotaExceeded` → 429 (with `metric`/`used`/`limit` in the body, so a client
+  can tell it from the rate limiter's bare 429), `InsufficientCredit` → 402,
+  `PlanCatalogMissing` → 503. A route wanting a more specific sentence still
+  catches the exception itself and wins.
+
+- **Consequences, and the one that matters most.** **On merge, plan limits
+  become real for live users.** Every production organization has no
+  subscription row, so every one of them is on Free: 5 analyses a month, 1 site
+  audit, 1 project. That is the intended effect of the card and it is also a
+  visible product change on a box that auto-deploys, so two escape hatches ship
+  with it: `QUOTA_ENFORCEMENT_ENABLED=0` in `deploy/.env` turns all of it off,
+  and `scripts/set_org_plan.py --org <slug> --set enterprise` moves one
+  organization to unlimited without SQL. The operator file records both
+  (operator **B17**).
+
+  Also: the guard order on `POST /seo-projects` now answers 409 for a duplicate
+  domain *before* the quota can answer 429, because on Free both are true at
+  once and only one of them is useful advice. `already_tracked()` was extracted
+  so the route can ask the cheap, specific question first; the service keeps its
+  own check, which is the guarantee.
+
+- **Rejected:** *optional authentication — meter signed-in callers, leave the
+  anonymous path open* — preserves every existing test and leaves a quota that
+  signing out defeats; this repository has already recorded once, about the
+  admin-bypass merge habit, what it thinks of controls that only work on paper.
+  *Defaulting the kill switch off* — ships the enforcement dark and leaves the
+  tiers decorative, which is the defect. *Seeding a Free `Subscription` row at
+  signup* — `limit_for` already falls back to Free, so it changes no behaviour
+  today while committing now to lifecycle semantics (`status`,
+  `current_period_end`) that the Stripe card should choose. *A global
+  `unlimited` default in the test fixtures* — every suite would pass without
+  ever meeting a limit; the fixtures seed the real catalog instead and the
+  suites that need headroom say so out loud.
+
+### ADR-46 — A backup is a restore you have already done (2026-08-09, B13's engineering half)
+
+- **Context:** operator item **B13** had been the roadmap's largest blocker for
+  two sessions: no database backups, so every remaining Phase 7 stage — each of
+  which adds a migration to the live database — was unshippable. `rollback.sh`
+  restores the *image*; it has never been able to restore a **row**, and
+  `yanki_pgdata` is the only copy of every analysis, user, session,
+  organization, audit event and billing row. Two sessions in a row chose their
+  work by what avoided a migration, which is not a strategy.
+
+  The item was recorded as wholly operator-owned. Most of it is not. Choosing
+  where an off-box copy lives and installing a cron entry are the operator's;
+  *taking a dump, proving it is real, and refusing to migrate without one* are
+  engineering, and leaving them undone was the actual blocker.
+
+- **Decision:** three pieces, and the third is the one that makes the first two
+  worth anything.
+
+  1. **`deploy/backup.sh`** — one `pg_dump --format=custom`, written to a
+     `.partial` name and renamed only after it passes a size floor, a free-space
+     floor, and a **full read-back**. Dumps are `0600` in a `0700` directory;
+     retention is count-based (newest 14).
+  2. **`deploy/restore-check.sh`** — restores a dump into a **throwaway
+     container** and asserts `pg_restore --exit-on-error` succeeded,
+     `alembic_version` holds a revision, and `users` / `organizations` /
+     `analyses` / `audit_events` exist with their row counts printed. There is
+     no flag that makes it touch production.
+  3. **`deploy.sh` snapshots before a schema change**, and aborts the deploy if
+     the snapshot fails — while nothing has changed and the previous release is
+     still serving.
+
+- **Why the verification is a full read-back and not `pg_restore --list`.** The
+  first version used `--list`, which is the obvious check and a useless one. A
+  custom-format archive stores its table of contents in the **header**, so a
+  dump truncated to its first 100 KB lists all 207 entries and passes. That was
+  measured on a real dump, not reasoned about. `pg_restore --file=/dev/null`
+  decompresses every entry and discards the SQL, so truncation fails; it costs
+  1.1s on a 2.7 MB dump. A backup check that passes a half-written file is worse
+  than no check, because it is the reason nobody looks again.
+
+  Both forms run in a short-lived `postgres:16` container with the backup
+  directory mounted **read-only**. Piping the dump in on stdin does not work at
+  all — reading a custom archive needs to seek, so a *perfect* dump fails with
+  "did not find magic string in file header", and the check would have rejected
+  every good backup. The other way to give `pg_restore` a path is copying the
+  dump into the running production container, i.e. writing a full copy of the
+  database into a production container in order to run a safety check.
+
+- **Why the snapshot is conditional on a pending migration.** Every merge to
+  `main` deploys and most touch no schema; snapshotting all of them would push
+  the genuine pre-migration dumps out of the retention window with copies of a
+  database that never changed. `deploy.sh` compares `alembic current` with
+  `alembic heads`. **Failing to determine the answer takes the snapshot** — the
+  expensive answer is the safe one.
+
+- **Why retention is count-based, not age-based.** An age rule silently leaves
+  you with nothing if the schedule stops. "No backups" should require somebody
+  to have deleted them.
+
+- **Consequences.** Rehearsed end to end on 2026-08-09 against **live
+  production**: a 2.7 MB dump of the 17 MB database restored into a scratch
+  container at `alembic_version = 0018_invitations_audit_integrity` with 6
+  users, 7 organizations, 57 analyses, 35 audit events, 30 tables. The
+  truncated-dump and missing-dump paths were both exercised and both fail
+  correctly.
+
+  **What this does not do is survive losing the box.** Dumps live in
+  `~/yanki-backups` on the same VPS as the database. That covers a bad
+  migration, a dropped table and a mis-run backfill — the failures that actually
+  happen here — and nothing else. The off-box copy needs a destination and a
+  credential, which is a choice rather than an engineering task, and it stays
+  with the operator (B13, now narrowed). Saying so plainly matters more than
+  usual here: the failure mode of a backup system is somebody believing it
+  covers more than it does.
+
+  The pre-migration hook is also **unproven against a real migration** — the
+  schema has been at `0018` throughout, so only the no-op branch has run in
+  anger (tech-debt #78).
+
+- **Rejected:** *`pg_dumpall`* — it would sweep in the co-tenants' roles and is
+  the wrong blast radius on a shared box. *Plain-SQL dumps* — larger, and they
+  cannot be listed or read back without executing them. *A restore-into-
+  production script* — rare, irreversible, and every real instance has details a
+  script cannot know; `deploy/BACKUP.md` carries the sequence as a runbook
+  instead, starting with "dump what you have now, however broken", which is the
+  step people skip. *Writing the cron entry ourselves* — it is a change to the
+  live box's schedule and it needs the retention decision, which interacts with
+  a PII retention policy that does not exist yet.
+
+### ADR-47 — A health endpoint that checks something, and a worker that can be seen to be alive (2026-08-09, P0/P7.8 groundwork)
+
+- **Context:** `/healthz` returned the literal `{"status": "ok"}`. That is not a
+  health check — it is a check that uvicorn is accepting sockets — and it
+  mattered more than it looks, because **it is the deploy gate**. `deploy.sh`
+  and `rollback.sh` poll it and write `.last-good` when it answers, so a release
+  whose database was unreachable, whose migrations had not run, or (after
+  ADR-45) whose plan catalog was empty, reported healthy and was recorded as the
+  good release to roll back *to*. The gate could not fail.
+
+  The worker had the mirror-image problem. It is a `while True` loop with no
+  HTTP surface, `restart: unless-stopped` and no healthcheck, so a loop that
+  stopped looping left a container in state `running` and a queue that quietly
+  stopped draining. The only symptom was jobs sitting in `queued`, noticed by a
+  human. Both are the same defect: **the system reports health it has not
+  checked.**
+
+- **Decision:**
+
+  1. **`/healthz` is a readiness probe** built from six components — database,
+     schema revision, plan catalog, queue, worker, providers.
+  2. **Only two can turn it red**: the database, and the plan catalog *while
+     quota enforcement is on*. Everything else reports itself and is read by a
+     human.
+  3. **The worker beats to a file** on a volume the api mounts read-only, on
+     every poll and at every pipeline step. A compose healthcheck reads the same
+     file; `/healthz` reports its age.
+  4. **The public body carries the verdict only.** Component detail goes to
+     internal callers.
+
+- **Why so few components can fail it.** A health check that goes red for things
+  that do not stop the service is a health check people learn to ignore, and
+  this one auto-rolls-back a deploy. A queue backlog means customers are using
+  the product. A missing provider key under `DRY_RUN` is the correct
+  configuration. A schema revision that differs from the code's head is *normal
+  during a rollback* — old code against a newer additive schema is exactly what
+  ADR-30 made possible, so failing on it would refuse to serve at the worst
+  possible moment. None of those is a reason to refuse a release. An unreachable
+  database and (with enforcement on) an empty catalog are, because with either
+  one every request that matters answers 503.
+
+- **Why the response body is shaped the way it is.** `deployment.sh` does not
+  trust the status code: it greps the body for the substrings `status` **and**
+  `ok`. So an unhealthy body containing "ok" anywhere — a field named
+  `"ok": false`, a detail mentioning a "token", a message about something
+  "broken" — would pass the gate it exists to fail. Component states are
+  therefore `pass`/`fail`/`warn`, the failing overall state is `unhealthy`, and
+  a test asserts the unhealthy body contains no "ok" at all. The coupling is
+  ugly; leaving it undocumented and unpinned would be worse.
+
+- **Why the detail is withheld from the public edge.** nginx routes `/healthz`
+  from the internet. The breakdown names the schema revision, the queue depth,
+  whether provider keys are configured and how stale the worker is. None of it
+  is a credential and none of it should be handed to anybody who asks, so the
+  edge gets `{"status": …}` and internal callers get the reasons. The verdict is
+  identical for both — a release that is unhealthy internally is unhealthy at
+  the edge, or the two gates disagree about the same deploy. Detection is by
+  `X-Forwarded-For`, which the edge sets and the loopback deploy gate does not;
+  it decides how much to print, never whether to answer, so getting it wrong
+  costs a terser page rather than a locked-out deploy.
+
+- **Why a heartbeat file rather than a table or an endpoint.** A heartbeat table
+  needs a migration, and migrations were the thing this session was working
+  around. A heartbeat endpoint means giving the worker a web server to answer
+  it. A file on a shared volume needs neither, and the api mounts it **`:ro`** —
+  which is what stops a future bug in the api forging liveness for a worker that
+  is not running.
+
+- **Consequences, and the honest limit.** The worker healthcheck is
+  **detection, not self-healing**. Compose — unlike Swarm — never restarts a
+  container for being unhealthy, so a wedged worker becomes visible in
+  `docker ps` and in `/healthz` and stays wedged. Fixing that needs either an
+  autoheal sidecar (another container on a box shared with four other tenants)
+  or an external watchdog; neither is worth adding blind, and "visible" is a
+  large improvement over "invisible" (tech-debt #81).
+
+  The probe now costs four small queries per request. `/healthz` is polled by
+  the deploy gate and by nothing else on a schedule today; if an uptime monitor
+  is ever pointed at it, that is the moment to cache the result for a second.
+
+  Beating at every pipeline step means the stale window has to exceed the
+  longest single step (`execute`, up to `MAX_RESPONSES_PER_JOB` paid calls),
+  hence 1800s. Erring long is the cheap direction: this signal must mean
+  "stopped", and a window that flags a slow-but-working job is one people learn
+  to ignore.
+
+- **Rejected:** *a separate `/readyz`* — correct by the book, and the deploy
+  gate greps `/healthz`; adding a second endpoint would mean the gate keeps
+  reading the one that never fails. *Failing the probe on a queue backlog* —
+  auto-rollback triggered by customer demand. *Failing on a stale worker* — the
+  api serves fine without one, and CI's e2e stack, the test suite and a laptop
+  all legitimately run with no worker at all. *Reporting the full detail
+  publicly* — needless disclosure on an endpoint the whole internet can reach.
+
+---
+
+### ADR-48 — What an append-only trail is allowed to remember (2026-08-09, tech-debt #71)
+
+- **Context:** M1's standing rule is "every mutating action emits an audit
+  event". Six paths did not. Five were unremarkable oversights — competitor
+  track/untrack, the checker submit, its lead gate, the waitlist. The sixth was
+  not: **refresh-token reuse detection** revokes an entire sign-in family
+  because it believes the token was stolen, and recorded nothing at all. That is
+  the single event a security review is most likely to come looking for, and the
+  answer to "has this ever happened?" was an empty table with no way to tell
+  *never* from *not recorded*.
+
+  Closing the gap forced three decisions that are not obvious, and each one has
+  a wrong answer that looks reasonable.
+
+- **Decision 1 — coverage is not the same as completeness, and silence must be
+  deliberate.** A refresh rotation is a *mutation*: it consumes a token and
+  writes a successor row. Under a literal reading of the rule it must be
+  audited. It is not, because it fires roughly four times an hour per signed-in
+  device — one active user would out-write the entire Admin Panel's yearly
+  output in a week, and every real event would be buried under heartbeat rows.
+  An audit log is read by a person; a record nobody can find is not a record.
+
+  The same reasoning excludes an ordinary expired refresh (every idle user hits
+  it) and a duplicate waitlist signup (nothing was inserted — and recording it
+  would put "this address is already on the list" into a table, which is exactly
+  the enumeration answer that endpoint's design spends its whole shape
+  refusing to give).
+
+  So the rule becomes: **every mutating action with a consequence emits, and
+  every deliberate silence has a test asserting the silence.** The second half
+  is the load-bearing one. An intentional gap that nobody wrote a test for is
+  indistinguishable from a forgotten one — which is precisely how #71 came to
+  exist and survive four sessions.
+
+- **Decision 2 — an append-only table must not hold erasable PII.**
+  `audit_events` cannot be updated or deleted through the application: migration
+  0018 installs database triggers that raise on UPDATE, DELETE and TRUNCATE.
+  That is the property the whole trail rests on, and it has a consequence nobody
+  had had to face yet — **anything written there is permanent.**
+
+  Two of the new paths carry an email address (`checker:lead`,
+  `waitlist:signup`). Copying it into the event would have been the obvious
+  thing, and it would have put the future erasure path
+  (`pii-retention-and-erasure`) into direct conflict with the integrity
+  guarantee: honouring a deletion request would require either breaking the
+  triggers or lying about having deleted the data. So these events store the
+  *reference* and drop the *value*. Erase the submission, and the audit row
+  still truthfully says an address was attached — and no longer says whose.
+
+  **Failed logins remain the deliberate exception**, and the distinction is
+  principled rather than convenient: there the attempted address *is* the
+  evidence ("somebody is guessing at my colleague's password"), and no other row
+  carries it. Where the value lives elsewhere and is erasable, the trail points
+  at it; where the value is the finding, the trail keeps it.
+
+- **Decision 3 — a refusal is worth auditing even though it mutates nothing.**
+  `billing:quota_denied` records a 429. Strictly it falls outside the rule: no
+  state changed. It is recorded because ADR-45 made every organization Free by
+  default, which makes a refusal the likeliest thing to happen to a live user —
+  and until now "my analysis just fails, why?" had an answer in no log, no
+  response body the customer could forward, and no screen. The spine already
+  had the shape for this: a failed login is an `auth:login` with
+  `outcome="denied"`.
+
+  It commits its own transaction, which is the part worth stating. The request
+  is unwinding — the route raises, the handler answers 429, the session closes
+  uncommitted — so an event merely *added* to that session would be discarded
+  along with the refusal it describes. Committing is safe only because
+  `check_quota`/`check_stock_quota` raise **before** they write and every route
+  runs its quota gate before any other mutation, so the event is the only thing
+  pending. That ordering is asserted by a test rather than assumed, and a future
+  metered path that writes first must emit at its own call site instead.
+
+- **Consequences:**
+  - Reuse detection is now visible, attributed to the user *and their
+    organization* — a NULL org would have made it invisible in the Admin Panel's
+    log, which is the only place anyone would look.
+  - `backlinks.untrack_competitor` returns the removed domain instead of a bare
+    `True`. After the delete there is nothing left to read, and a removal event
+    that cannot name what was removed answers a weaker question than the one it
+    exists for. Same reasoning as `/auth/logout` resolving its user before
+    revoking the token.
+  - The reuse event's detail key is `revoked_family`, **not** `family_id` or
+    `session_id`. `redact()` blanks any payload key containing "session", so the
+    obvious names would have stored `[redacted]` and lost the one field saying
+    which sign-in was killed. A test pins the name.
+  - A client that retries into a 429 writes one audit row per retry. The
+    analyses path is bounded by the per-IP rate limit that runs before the quota;
+    the project and site-audit paths are not, and no authenticated route has a
+    throttle today (`auth-endpoint-rate-limiting`). Recorded as tech-debt #84
+    rather than solved with a de-duplication window nobody has needed yet.
+  - **Rejected:** emitting the refusal from the exception handler in `api.main`.
+    It has the request but not the caller's organization, and the request-scoped
+    session is already gone — so it would need a second session, which the test
+    harness cannot even express (a `StaticPool` in-memory SQLite shares one
+    connection, so a "separate" session would share the transaction and behave
+    differently in tests than in production). A gate whose audit trail is
+    untestable is not a gate.
+
+---
+
+### ADR-49 — A list is not a capability URL (2026-08-09, tech-debt #77)
+
+- **Context:** P7.6 gave analyses an `org_id`. Nothing read it. The only route
+  back to a result was still the URL a submitter happened to be redirected to,
+  so closing the tab lost the run — which had been true before as well, but was
+  then at least *consistent* with runs belonging to nobody. After P7.6 the data
+  said the run had an owner and the product offered that owner no way to find it.
+
+  Adding the list forced a question that looks like a formality and is not:
+  `GET /api/v1/analyses/{id}` is **open to anonymous callers**, because an
+  analysis with no organization is a capability URL — hold the unguessable id,
+  read the result — and that is every row in production today plus every checker
+  run. Should the list match?
+
+- **Decision:** **No. The list requires authentication and is org-scoped, and
+  the asymmetry is the correct design rather than an inconsistency to tidy up
+  later.** A capability URL works because knowing the id *is* the authorization.
+  A list has no id to know. There is no capability a caller could present, so
+  the only coherent answer to "whose analyses?" is "the caller's organization" —
+  and an unauthenticated version of the route could only ever mean "everyone's",
+  which is not a weaker version of the same feature but a different and much
+  worse one.
+
+  The rule generalizes and is worth stating for the routes M3–M6 will add:
+  **a route keyed by an unguessable id may be a capability; a route that
+  enumerates never can be.**
+
+- **Consequences:**
+  - Runs created before P7.6 carry no `org_id` and therefore appear in **no**
+    organization's history, while remaining readable by id. They belong to no
+    tenant; assigning them to the first plausible owner would be a guess written
+    into a customer-visible screen.
+  - This is the **first application call site of `tenancy.scoped()`** — the
+    fail-closed helper that ADR-35, `architecture-target.md` and the P7.1 card
+    all described as shipped and that had zero callers (tech-debt #63). It is
+    used here rather than a hand-written `where` for the property it exists for:
+    a missing or org-less context raises instead of silently returning every
+    tenant's rows. #63 is **not** closed by this — one call site is not a
+    guarantee, and the A9 leakage suite is still what would make tenancy
+    enforced rather than remembered — but the seam is no longer fiction.
+  - A separate `AnalysisSummaryOut` schema rather than a trimmed `AnalysisOut`.
+    The detail envelope carries every prompt, every raw engine response, and
+    every SERP and SEO check; a twenty-row page of those is thousands of records
+    to render a table of URLs and scores. Two schemas also mean a field added to
+    the detail view cannot silently make the list twenty times heavier.
+  - **Null scores are not zeros, and this is load-bearing in the UI.** A queued
+    run has no `geo_score`; the screen renders an em dash. Rendering `0` would
+    tell a customer their brand is invisible in AI answers when the truth is
+    that nobody has measured yet. The same rule the Backlinks screens follow
+    (ADR-36), asserted here in both directions — a genuine `0.0` still shows as
+    `0.0`.
+  - **Rejected:** paging client-side over a full fetch. It is simpler today, at
+    57 rows in production, and it is the kind of simple that becomes an incident
+    on the first customer who runs a thousand analyses — by which time the fix
+    is a schema change to a shipped endpoint rather than a decision.
+  - **Not done:** an index on `analyses(org_id, created_at)`. It would be a
+    migration, and migration-bearing work is gated on operator item B13. At
+    production's current size the query is a trivial scan; recorded as
+    tech-debt #87 so the index lands with the next migration rather than being
+    discovered under load.

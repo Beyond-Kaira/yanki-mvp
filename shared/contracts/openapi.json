@@ -359,6 +359,38 @@
         "title": "AdminUserListOut",
         "type": "object"
       },
+      "AnalysisListOut": {
+        "description": "A page of the caller's organization's analyses, newest first.",
+        "properties": {
+          "analyses": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSummaryOut"
+            },
+            "title": "Analyses",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "analyses"
+        ],
+        "title": "AnalysisListOut",
+        "type": "object"
+      },
       "AnalysisOut": {
         "properties": {
           "created_at": {
@@ -426,6 +458,92 @@
           "result"
         ],
         "title": "AnalysisOut",
+        "type": "object"
+      },
+      "AnalysisSummaryOut": {
+        "description": "One row of an organization's analysis history.\n\nDeliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``\ncarries the whole ``result`` envelope \u2014 every prompt, every raw engine\nresponse, every SERP and SEO check \u2014 which is right for the one run a reader\nopened and absurd for a table of twenty. A separate, flat schema also means\nadding a field to the detail view cannot silently make the list twenty times\nheavier.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "geo_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geo Score"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_responses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Responses"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "status",
+          "progress",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AnalysisSummaryOut",
         "type": "object"
       },
       "AnchorDistributionOut": {
@@ -718,6 +836,61 @@
           "ok"
         ],
         "title": "AuditIntegrityOut",
+        "type": "object"
+      },
+      "AuthSessionListOut": {
+        "description": "Every active session the caller holds, most-recently-used first.",
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/AuthSessionOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "AuthSessionListOut",
+        "type": "object"
+      },
+      "AuthSessionOut": {
+        "description": "One active sign-in (a refresh-token family) as its owner sees it.\n\nEnough for a human to recognise a device \u2014 when the session began, when it\nwas last used, when it expires \u2014 and a ``current`` flag on the one the\nrequest itself is coming from. What is deliberately ABSENT is anything\nreplayable: no ``refresh_jti_hash``, no token. ``id`` is the family id, which\nnames a session for revocation but is useless as a credential.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_active_at": {
+            "format": "date-time",
+            "title": "Last Active At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "last_active_at",
+          "expires_at",
+          "current"
+        ],
+        "title": "AuthSessionOut",
         "type": "object"
       },
       "BacklinkImportOut": {
@@ -1354,7 +1527,7 @@
         "type": "object"
       },
       "CurrentUserOut": {
-        "description": "``/auth/me`` \u2014 who you are AND what you can do.\n\nThe role and permission list ride along so the UI can reflect authority\nwithout a second round trip. They are for RENDERING only: the API enforces\nevery one of them independently, and a client that lies about its\npermissions gets a 403 exactly as before.",
+        "description": "``/auth/me`` \u2014 who you are AND what you can do.\n\nThe role and permission list ride along so the UI can reflect authority\nwithout a second round trip. They are for RENDERING only: the API enforces\nevery one of them independently, and a client that lies about its\npermissions gets a 403 exactly as before.\n\n``organization``/``role``/``permissions`` describe the ONE org the request is\nacting in (the caller's first, or the one named by ``X-Org-Id``).\n``organizations`` is the full list the caller belongs to \u2014 added so a\nmulti-org user can be offered a switch. The singular fields are kept exactly\nas they were, because the frontend and the locked contract already depend on\nthem; the list is strictly additive.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -1379,6 +1552,13 @@
                 "type": "null"
               }
             ]
+          },
+          "organizations": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizationMembershipOut"
+            },
+            "title": "Organizations",
+            "type": "array"
           },
           "permissions": {
             "items": {
@@ -2094,6 +2274,46 @@
           "provenance"
         ],
         "title": "OpportunitiesOut",
+        "type": "object"
+      },
+      "OrganizationMembershipOut": {
+        "description": "One organization the caller belongs to, and their role in it.\n\nThe entries of the multi-org list on ``/auth/me``. Same identity fields as\n``OrganizationOut`` plus the caller's ``role`` in *this specific* org \u2014 which\nis what the switcher needs to label each choice and what the singular\n``organization`` cannot carry, since a person is an owner of one org and a\nviewer in another. Purely additive: the singular field is untouched, so a\nclient that only reads it keeps working.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "kind",
+          "status",
+          "role"
+        ],
+        "title": "OrganizationMembershipOut",
         "type": "object"
       },
       "OrganizationOut": {
@@ -2999,6 +3219,25 @@
           "checks"
         ],
         "title": "SerpVisibilityOut",
+        "type": "object"
+      },
+      "SessionRevokeAllOut": {
+        "description": "The result of \"sign out everywhere else\".\n\n``revoked`` is how many OTHER sessions were ended. ``kept_current`` records\nthat the session issuing the request was left alive on purpose, so the caller\nis not signed out of the device they clicked from.",
+        "properties": {
+          "kept_current": {
+            "title": "Kept Current",
+            "type": "boolean"
+          },
+          "revoked": {
+            "title": "Revoked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revoked",
+          "kept_current"
+        ],
+        "title": "SessionRevokeAllOut",
         "type": "object"
       },
       "SignupRequest": {
@@ -4024,6 +4263,202 @@
         ]
       }
     },
+    "/api/v1/admin/audit-events/export.csv": {
+      "get": {
+        "description": "The filtered audit trail as CSV \u2014 and the export is itself audited.\n\n**Three things make this more than a formatting change.**\n\n*It takes the same filters as the list*, deliberately. An export that\nignored them would hand someone the whole trail when they asked for one\nweek of one actor, which is both less useful and more disclosure than they\nwanted. The filters are the same parameters, so a UI can export exactly\nwhat is on screen.\n\n*It carries the integrity verdict per row.* A trail that leaves this out is\na spreadsheet of claims; with it, whoever receives the file can see that\neach row still hashes to its stored digest \u2014 ``intact``, ``altered``, or\n``unverifiable`` for rows written before ``record_hash`` existed. The three\nanswers are kept distinct here for the same reason\n:func:`audit.verify_row` keeps them: reporting a pre-hash row as *altered*\ncries wolf, and reporting it as *intact* is a claim the data cannot support.\n\n*Exporting is a disclosure event, so it emits one* (``audit:export``,\nadmin-panel-plan \u00a76). Somebody just took a copy of the compliance record\nout of the system; that is precisely the kind of action this table exists\nto remember, and an audit log that cannot say who exported it is missing\nthe event most likely to matter afterwards. The row records the filters and\nthe count, never the contents.\n\n**No secrets leave here that the API would not already show.** The rows go\nthrough ``_event_out``, so ``before``/``after`` are the same redacted\npayloads the list view serves; only the computed ``changed`` diff is\nflattened into the file, since a CSV cell cannot hold a nested object\nusefully.",
+        "operationId": "export_audit_events_csv_api_v1_admin_audit_events_export_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "occurred_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Occurred From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "occurred_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Occurred To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Audit Events Csv",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/audit-events/history/{entity_type}/{entity_id}": {
       "get": {
         "description": "Everything that ever touched one record \u2014 \"what happened to this user?\".\n\nOldest first here, unlike the main log: a history is read as a story from\nthe beginning, where a log is read from the latest thing that happened.",
@@ -4859,8 +5294,120 @@
       }
     },
     "/api/v1/analyses": {
+      "get": {
+        "description": "The caller's organization's analyses, newest first.\n\nSigned-in and org-scoped, unlike the sibling detail route. That asymmetry is\ndeliberate and worth stating, because the two look like they should match:\n``GET /analyses/{id}`` still serves an org-less run to anyone holding its id\n(a capability URL \u2014 the product's entire pre-P7.6 surface, and every row in\nproduction today), while a *list* has no capability to hold. There is no\nid to know, so the only possible answer to \"whose analyses?\" is the caller's\norganization, and an unauthenticated version of this route could only ever\nmean \"everyone's\".\n\nRuns from before P7.6 carry no ``org_id`` and therefore appear in nobody's\nhistory. That is the honest rendering: they belong to no tenant, and\ninventing an owner for them would be a worse answer than omitting them.",
+        "operationId": "list_analyses_api_v1_analyses_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Analyses",
+        "tags": [
+          "analyses"
+        ]
+      },
       "post": {
+        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged. A monthly plan\n   quota does not bound a burst; five hundred runs on the first of the month\n   is inside a Business allowance and still a stampede at the vendor.\n3. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.",
         "operationId": "submit_analysis_api_v1_analyses_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4893,6 +5440,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Submit Analysis",
         "tags": [
           "analyses"
@@ -4901,6 +5453,7 @@
     },
     "/api/v1/analyses/{analysis_id}": {
       "get": {
+        "description": "One analysis, if this caller may see it.\n\n404 covers both \"no such analysis\" and \"not yours\" on purpose. Splitting\nthem would turn this route into an oracle for which analysis ids exist,\nwhich is the whole value of an unguessable id.",
         "operationId": "read_analysis_api_v1_analyses__analysis_id__get",
         "parameters": [
           {
@@ -4911,6 +5464,22 @@
               "format": "uuid",
               "title": "Analysis Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
             }
           }
         ],
@@ -4936,6 +5505,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Read Analysis",
         "tags": [
           "analyses"
@@ -5001,8 +5575,26 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "Who you are, which organization you are acting in, and what you may do.\n\nThe role and permission list ride along so the UI can hide a control the\ncaller cannot use, instead of showing it and failing on click. They are for\nRENDERING ONLY \u2014 every endpoint enforces its own permission independently,\nso a client that lies about this list gets a 403 exactly as before.",
+        "description": "Who you are, which organization you are acting in, and what you may do.\n\nThe role and permission list ride along so the UI can hide a control the\ncaller cannot use, instead of showing it and failing on click. They are for\nRENDERING ONLY \u2014 every endpoint enforces its own permission independently,\nso a client that lies about this list gets a 403 exactly as before.\n\n``X-Org-Id`` selects which org the singular ``organization``/``role``/\n``permissions`` describe, so a multi-org user who has switched sees the org\nthey switched to rather than always their first. Membership is verified, not\ntrusted \u2014 the same seam ``get_org_context`` uses \u2014 and honouring the header\nis additive: omitting it reproduces the old behaviour exactly. ``organizations``\nalways carries the caller's full list, which is what makes a switch offerable.",
         "operationId": "me_api_v1_auth_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5013,6 +5605,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -5043,6 +5645,102 @@
           }
         },
         "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "description": "The caller's own active sessions, one per device/login.\n\nA read, so it emits no audit event. The one from the current device is\nflagged ``current`` by matching the refresh cookie riding along on this\nrequest (the cookie's path covers ``/api/v1/auth``) to its session family.",
+        "operationId": "list_sessions_api_v1_auth_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/revoke-all": {
+      "post": {
+        "description": "Sign out everywhere else, keeping the current session alive.\n\nSee ``revoke_other_sessions_for_user`` for why the current device is spared.\nAlways audited \u2014 a lock-out of every other device is exactly the event worth\nrecording \u2014 even when there was nothing else to revoke.",
+        "operationId": "revoke_all_sessions_api_v1_auth_sessions_revoke_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRevokeAllOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke All Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{session_id}": {
+      "delete": {
+        "description": "Revoke one of the caller's own sessions (a whole family).\n\nStrictly self-scoped. A session id that is not the caller's \u2014 whether it\nbelongs to another user or does not exist \u2014 is a 404 with the same body in\nboth cases, so this cannot be used to probe whether a given session id\nexists. The revocation is audited only when something was actually revoked.",
+        "operationId": "revoke_session_api_v1_auth_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Session",
         "tags": [
           "auth"
         ]
@@ -6731,18 +7429,13 @@
     },
     "/healthz": {
       "get": {
+        "description": "Readiness, not \"is uvicorn accepting sockets\" (ADR-47).\n\nThis returned the literal `{\"status\": \"ok\"}` until P7.8's groundwork, which\nmattered because **it is the deploy gate**: `deploy.sh` and `rollback.sh`\npoll it and record `.last-good` when it answers, so a release with an\nunreachable database was recorded as the good one to roll back *to*.\n\nOnly the components that make the service unservable for everyone can turn\nit red \u2014 see `app/health.py` for which and why. The rest report themselves\nand are read by a human.\n\n**The public body carries the verdict and nothing else.** nginx routes\n`/healthz` from the internet, and the component detail names the schema\nrevision, the queue depth, whether provider keys are configured and how\nstale the worker is. None of that is a credential and none of it should be\nhanded to anybody who asks either \u2014 so the breakdown goes to internal\ncallers (the loopback deploy gate, a shell on the box) and everyone else\ngets the status. The verdict is identical for both; only the reasons differ.\n\nNote the response shape is constrained by `deployment.sh`, which greps the\nbody for the substrings `status` and `ok` rather than trusting the status\ncode. A failing body must therefore contain no \"ok\" anywhere;\n`test_health.py` pins that for both shapes.",
         "operationId": "healthz_healthz_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Healthz Healthz Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"

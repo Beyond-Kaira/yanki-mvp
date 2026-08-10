@@ -47,6 +47,41 @@ $COMPOSE build
 # here also means a BAD migration costs nothing: the old stack is still serving.
 echo ">> migrating schema (one-shot: alembic upgrade head)"
 $COMPOSE up -d --wait db
+
+# Snapshot before the schema moves, and ONLY then.
+#
+# The separation above means a bad migration costs nothing: the old stack is
+# still serving and rollback.sh puts the old image back. What rollback.sh has
+# never been able to put back is a *row* — a backfill that mangles data is
+# permanent, and the pgdata volume is the only copy. So a schema change now
+# takes a dump first, and a dump that fails aborts the deploy while nothing has
+# changed yet.
+#
+# Only when there is something to migrate. Every merge to main deploys, most of
+# them touch no schema, and snapshotting all of them would push the genuine
+# pre-migration dumps out of the retention window with copies of a database that
+# never changed. Detection failing is treated as "there might be" — the
+# expensive answer is the safe one.
+if [ "${YANKI_SKIP_PRE_MIGRATION_SNAPSHOT:-0}" = "1" ]; then
+  echo ">> pre-migration snapshot SKIPPED (YANKI_SKIP_PRE_MIGRATION_SNAPSHOT=1)"
+else
+  alembic_rev() { $COMPOSE run --rm --no-deps api alembic "$1" 2>/dev/null | grep -oE '^[0-9a-zA-Z_]+' | head -1; }
+  CURRENT_REV="$(alembic_rev current || true)"
+  HEAD_REV="$(alembic_rev heads || true)"
+  if [ -n "$CURRENT_REV" ] && [ -n "$HEAD_REV" ] && [ "$CURRENT_REV" = "$HEAD_REV" ]; then
+    echo ">> schema already at ${HEAD_REV} — no migration, no snapshot"
+  else
+    echo ">> schema change detected (${CURRENT_REV:-unknown} -> ${HEAD_REV:-unknown}) — snapshotting first"
+    if ! "$HERE/backup.sh" --quiet --label "pre-${HEAD_REV:-migration}"; then
+      echo "ERROR: pre-migration backup failed — refusing to migrate." >&2
+      echo "       Nothing has been deployed; the previous release is still serving." >&2
+      echo "       Fix the backup (disk? db up?) or, knowingly, set" >&2
+      echo "       YANKI_SKIP_PRE_MIGRATION_SNAPSHOT=1 and re-run." >&2
+      exit 1
+    fi
+  fi
+fi
+
 if ! $COMPOSE run --rm --no-deps api alembic upgrade head; then
   echo "ERROR: migration failed — nothing deployed, previous release still serving" >&2
   exit 1

@@ -63,6 +63,18 @@ def auth_settings(client: TestClient) -> Iterator[None]:
         jwt_issuer="test-yanki-api",
         jwt_audience="test-yanki-web",
         auth_refresh_cookie_secure=False,
+        # This suite is about TENANCY, not about the Site Audit kill-switch, so
+        # it runs with the feature on. The distinction is not cosmetic: with the
+        # flag off (its production default) no first crawl is queued, so
+        # `latest_audit` is null and the cross-tenant audit-read test has no
+        # audit to read — and, worse,
+        # `test_queueing_an_audit_on_another_tenants_project_is_refused` would
+        # still pass while asserting nothing about tenancy, because the 404 it
+        # sees would be the flag refusing everyone rather than the org check
+        # refusing Bob. A leakage test that passes for the wrong reason is worse
+        # than one that fails. The kill-switch itself is covered in
+        # tests/test_seo_projects_api.py, which is where it belongs.
+        site_audit_enabled=True,
     )
     app.dependency_overrides[get_settings] = lambda: settings
     yield
@@ -101,14 +113,42 @@ class Tenant:
         return {"Authorization": f"Bearer {self.token}"}
 
 
-@pytest.fixture()
-def alice(client: TestClient) -> Tenant:
-    return Tenant(client, "alice@acme.test")
+def _on_plan(db_session, tenant: Tenant, plan_key: str) -> None:
+    """Put a freshly signed-up tenant on a tier.
+
+    This suite is about **tenancy**, not about plan limits, and the two collide
+    at exactly one point: Free allows one project and one site audit a month
+    (P7.6), while isolation cannot be demonstrated with fewer than two of a
+    thing. Left on Free, the two-project tests would fail on a 429 that has
+    nothing to do with what they assert — and, worse, a cross-tenant test could
+    pass because the second create was refused for the wrong reason. The plan
+    limits themselves are proved in ``test_quota_enforcement.py``.
+    """
+
+    import uuid as _uuid
+
+    from app.services import billing
+
+    org = db_session.scalar(
+        sa.select(Organization).where(Organization.owner_user_id == _uuid.UUID(tenant.user_id))
+    )
+    assert org is not None, "signup must have provisioned an organization"
+    billing.assign_plan(db_session, org.id, plan_key)
+    db_session.commit()
 
 
 @pytest.fixture()
-def bob(client: TestClient) -> Tenant:
-    return Tenant(client, "bob@globex.test")
+def alice(client: TestClient, db_session) -> Tenant:
+    tenant = Tenant(client, "alice@acme.test")
+    _on_plan(db_session, tenant, "starter")
+    return tenant
+
+
+@pytest.fixture()
+def bob(client: TestClient, db_session) -> Tenant:
+    tenant = Tenant(client, "bob@globex.test")
+    _on_plan(db_session, tenant, "starter")
+    return tenant
 
 
 def _create_project(client: TestClient, tenant: Tenant, domain: str) -> dict:
@@ -346,35 +386,93 @@ def test_audit_events_carry_the_acting_org(client, alice, db_session):
 # --------------------------------------------------------------------------
 
 
-def test_an_anonymous_analysis_can_still_be_submitted_and_read(client, db_session):
+def _legacy_public_analysis(db_session, url: str = "https://legacy.example.com"):
+    """A row with no organization — every analysis in production before P7.6.
+
+    Written directly rather than submitted, because there is no longer a route
+    that produces one: submitting requires a credential and stamps the caller's
+    org (ADR-45). These rows still exist and must still be readable by anyone
+    holding the id, which is the promise this section is about.
+    """
+
+    from app.db.models import Analysis
+
+    analysis = Analysis(url=url)
+    db_session.add(analysis)
+    db_session.commit()
+    return analysis
+
+
+def test_submitting_an_analysis_without_a_credential_is_refused(client, db_session):
+    """The one behavioural change P7.6 makes to the public surface (ADR-45).
+
+    It was open, and unused-while-open: every page that submits one has been
+    behind sign-in since session 21. An endpoint that spends money at a paid
+    vendor with no tenant attached cannot be metered, so closing it is what
+    makes a plan tier mean anything.
+    """
+
     from app.db.models import Analysis
 
     submit = client.post(ANALYSES_URL, json={"url": "https://example.com"})
+    assert submit.status_code == 401
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(Analysis)) == 0
+
+
+def test_an_organization_less_analysis_is_still_world_readable(client, db_session):
+    """The capability URL survives. Every pre-P7.6 row and every checker run
+    has no organization, and `tenancy.readable_analysis` keeps serving them to
+    anyone holding the id — including with no bearer token at all."""
+
+    analysis = _legacy_public_analysis(db_session)
+
+    read = client.get(f"{ANALYSES_URL}/{analysis.id}")
+    assert read.status_code == 200
+    assert read.json()["url"] == "https://legacy.example.com"
+
+
+def test_a_signed_in_user_can_still_read_an_organization_less_analysis(client, alice, db_session):
+    analysis = _legacy_public_analysis(db_session)
+
+    read = client.get(f"{ANALYSES_URL}/{analysis.id}", headers=alice.headers)
+    assert read.status_code == 200
+
+
+def test_one_tenants_analysis_is_unreachable_by_the_other_and_by_the_public(
+    client, alice, bob, db_session
+):
+    """The leakage test the new attribution makes necessary.
+
+    Stamping `org_id` on a run is not free: the moment an analysis belongs to
+    somebody, serving it to everybody is a cross-tenant read. So the same 404
+    that hides another tenant's project must hide their analysis — and it must
+    look identical to a nonexistent id, or the response enumerates which runs
+    exist.
+    """
+
+    # A genuinely public host: the `.test` escape hatch above patches the SSRF
+    # guard the *project* routes import, not this one.
+    submit = client.post(ANALYSES_URL, json={"url": "https://example.com"}, headers=alice.headers)
     assert submit.status_code == 202, submit.text
     analysis_id = submit.json()["id"]
 
-    # No bearer token — the capability-URL read the whole live product uses.
-    read = client.get(f"{ANALYSES_URL}/{analysis_id}")
-    assert read.status_code == 200
+    assert client.get(f"{ANALYSES_URL}/{analysis_id}", headers=alice.headers).status_code == 200
+    assert client.get(f"{ANALYSES_URL}/{analysis_id}", headers=bob.headers).status_code == 404
+    assert client.get(f"{ANALYSES_URL}/{analysis_id}").status_code == 404
 
-    row = db_session.get(Analysis, __import__("uuid").UUID(analysis_id))
-    assert row is not None
-    assert row.org_id is None, "an anonymous analysis belongs to no tenant"
+    import uuid as _uuid
 
-
-def test_a_signed_in_user_can_still_read_an_anonymous_analysis(client, alice):
-    submit = client.post(ANALYSES_URL, json={"url": "https://example.com"})
-    analysis_id = submit.json()["id"]
-
-    read = client.get(f"{ANALYSES_URL}/{analysis_id}", headers=alice.headers)
-    assert read.status_code == 200
+    missing = client.get(f"{ANALYSES_URL}/{_uuid.uuid4()}", headers=bob.headers)
+    theirs = client.get(f"{ANALYSES_URL}/{analysis_id}", headers=bob.headers)
+    assert missing.status_code == theirs.status_code == 404
+    assert missing.json() == theirs.json()
 
 
-def test_the_analysis_response_did_not_grow_an_org_field(client):
-    """Contract drift guard — the anonymous payload must be unchanged."""
+def test_the_analysis_response_did_not_grow_an_org_field(client, db_session):
+    """Contract drift guard — attribution is a column, not a payload field."""
 
-    submit = client.post(ANALYSES_URL, json={"url": "https://example.com"})
-    body = client.get(f"{ANALYSES_URL}/{submit.json()['id']}").json()
+    analysis = _legacy_public_analysis(db_session)
+    body = client.get(f"{ANALYSES_URL}/{analysis.id}").json()
     assert "org_id" not in body
     assert "organization" not in body
 
@@ -504,18 +602,24 @@ def test_the_permission_dependency_refuses_and_audits(client, alice, db_session)
     assert denied is not None, "a refusal is an event worth having"
 
 
-def test_quota_is_enforced_for_a_real_signed_up_org(client, alice, db_session):
-    """The free tier's allowance, applied to an org that came from signup."""
+def test_quota_is_enforced_for_a_real_signed_up_org(client, db_session):
+    """The free tier's allowance, applied to an org that came from signup.
+
+    A tenant of its own rather than ``alice``, who is put on Starter so the
+    isolation tests can hold two projects. This one is specifically about the
+    state **every production organization is in**: signed up, never given a
+    subscription, falling back to Free.
+    """
 
     from app.db.models import User
     from app.services import billing
     from app.services.tenancy import resolve_org_context
 
-    billing.seed_plans(db_session)
-    db_session.commit()
+    tenant = Tenant(client, "unsubscribed@example.test")
 
-    user = db_session.scalar(sa.select(User).where(User.email == alice.email))
+    user = db_session.scalar(sa.select(User).where(User.email == tenant.email))
     context = resolve_org_context(db_session, user=user)
+    assert billing.plan_for_org(db_session, context.org_id) is None
 
     # No subscription → Free → 5 analyses.
     assert billing.limit_for(db_session, context.org_id, billing.METRIC_ANALYSES) == 5

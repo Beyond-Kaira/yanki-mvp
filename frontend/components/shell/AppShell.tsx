@@ -14,6 +14,7 @@ import {
 import { useAuth } from '@/components/AuthProvider'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { SECTION_ICONS } from '@/components/shell/icons'
+import OrgSwitcher from '@/components/shell/OrgSwitcher'
 import ShellAuthBar from '@/components/shell/ShellAuthBar'
 import { useShellState } from '@/components/shell/ShellStateProvider'
 import {
@@ -468,35 +469,38 @@ export default function AppShell({ children }: AppShellProps) {
               />
             )
           ) : signedIn ? (
-            <Link
-              href="/settings"
-              aria-label="Open profile settings"
-              title={!railExpanded ? 'Profile' : undefined}
-              className="-mx-2 flex min-h-[44px] items-center gap-3 rounded-lg px-2 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
-            >
-              <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white"
-                aria-hidden
+            <div className="space-y-2">
+              {railExpanded ? <OrgSwitcher /> : null}
+              <Link
+                href="/settings"
+                aria-label="Open profile settings"
+                title={!railExpanded ? 'Profile' : undefined}
+                className="-mx-2 flex min-h-[44px] items-center gap-3 rounded-lg px-2 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
               >
-                {initialsFor(user!)}
-              </div>
-              {railExpanded ? (
-                <div className="min-w-0 flex-1">
-                  {/* The organization and role, not a guess at a name derived
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white"
+                  aria-hidden
+                >
+                  {initialsFor(user!)}
+                </div>
+                {railExpanded ? (
+                  <div className="min-w-0 flex-1">
+                    {/* The organization and role, not a guess at a name derived
                     from the email local part — which read as "aytek" for an
                     account belonging to a company. */}
-                  <p className="truncate text-sm font-medium text-white">
-                    {user!.organization?.name ?? user!.email}
-                  </p>
-                  <p className="truncate text-xs text-ink-foreground/70">
-                    {user!.role
-                      ? `${ROLE_LABELS[user!.role] ?? user!.role} · `
-                      : ''}
-                    {user!.email}
-                  </p>
-                </div>
-              ) : null}
-            </Link>
+                    <p className="truncate text-sm font-medium text-white">
+                      {user!.organization?.name ?? user!.email}
+                    </p>
+                    <p className="truncate text-xs text-ink-foreground/70">
+                      {user!.role
+                        ? `${ROLE_LABELS[user!.role] ?? user!.role} · `
+                        : ''}
+                      {user!.email}
+                    </p>
+                  </div>
+                ) : null}
+              </Link>
+            </div>
           ) : (
             <div className="flex items-center gap-3">
               <div

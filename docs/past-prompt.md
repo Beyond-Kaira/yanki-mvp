@@ -328,3 +328,153 @@ call is the operator's. Two operator items gate its usefulness there: **B10**
 (`PUBLIC_BASE_URL`) and **B11** (`EMAILS_ENABLED`).
 
 **The next brief lives at the end of `sessions/2026-08-05-03.md` §8.**
+
+---
+
+## Session 23 (2026-08-06) — P8.3: the backlink API, then the screens
+
+**Prompt executed:** *not recoverable.* Session 23 shipped without any of its
+eight close deliverables, so no record of its brief survives (tech-debt #72).
+Reconstructed retroactively in session 24 from the commit range
+`4294fd4..e87c575` — see [sessions/2026-08-06-01.md](sessions/2026-08-06-01.md),
+which is explicit about being a reconstruction and about what it cannot recover.
+
+**Outcome:** P8.3 complete in two PRs. #33 gave the backlink engine an API —
+`app/services/backlinks.py`, twelve route handlers, a dedicated CI step
+defending a module that ships dark. #34 gave it screens: `/backlinks` and
+`/backlinks/[projectId]` with five tabs, and the nav entry graduated from
+`soon` to `live`. Merged and deployed as `e87c575`. `BACKLINKS_ENABLED` stays
+off in production — the surface is live, the data is fixture data, and the
+vendor decision (operator **A4**) is what stands between M2 and a customer.
+
+---
+
+## Session 24 (2026-08-08) — the guardrails before the migrations, and P7.5's migration-free half
+
+**Prompt executed:** "using workflows, @docs/resume-prompt.md" — the
+founder-orchestrator brief, to be worked through multi-agent workflows.
+
+**Outcome:** four lanes on `feat/session-24`, none of them carrying a migration,
+each adversarially reviewed — see
+[sessions/2026-08-08-01.md](sessions/2026-08-08-01.md). Resource ceilings and
+log bounds on every prod service plus a CI gate that checks the caps rather than
+the syntax (ADR-41); a deploy preflight that validates the keys the live path
+actually reads and a rollback that refuses to resurrect the fused
+migrate-on-boot compose (ADR-42, repaying most of tech-debt #17); P7.5's
+migration-free half — self-service session/device management and the org
+switcher, which closes a live defect invitations opened, where an accepted
+invitation to a second organization was unreachable (ADR-43); and a Site Audit
+kill-switch that gates the crawl rather than the project, after review caught
+the first version silently disabling Backlinks (ADR-44).
+
+**The start ritual was the session's most valuable hour.** It found that A6 was
+`todo` in the docs and *substantially built* in the code — with the consequence
+that every plan tier is decorative because nothing enforces the quotas that
+exist — and that `tenancy.scoped()` / `readable_analysis()`, described by three
+documents as the fail-closed seam enforcing tenant isolation, **have zero call
+sites** (tech-debt #63). It also found session 23's missing paper trail and
+reconstructed it.
+
+**Integration earned its keep too:** four green lanes went red together on a
+cross-tenant leakage test, and the neighbouring leakage test was found to be
+passing for the wrong reason.
+
+**Merged and deployed at session close, on the operator's instruction** — PR
+**#40**, `ddf3167`, CI 11/11 green, Deploy 2m48s, verified in production
+(resource ceilings now actually bind; co-tenants untouched). The merge needed
+the operator's **admin bypass** for want of a second reviewer, for the second
+time after PR #8 — recorded in `operator-expected.md` rather than left implicit.
+The session's headline operator item remains **B13 — database backups**, which
+still gates every remaining Phase 7 migration.
+
+**The next brief lives at the end of `sessions/2026-08-08-01.md` §9.**
+
+---
+
+## Session 25 — 2026-08-09
+
+**Prompt executed:** the Loop Engineering brief — "operate the project as a
+continuous autonomous loop: inspect, decide, implement, verify, document, check
+operator dependencies, continue; do not stop at session boundaries" — entered
+through `resume-prompt.md` and the session-24 handoff at
+`sessions/2026-08-08-01.md` §9.
+
+**Which branch of the handoff was taken, and why.** Session 24 left a
+conditional: build P7.5's migration-bearing half **if database backups exist**,
+otherwise build `enforce-quota-on-spend-paths`. Backups were checked and do not
+exist — no crontab, no dump anywhere on the box, `deploy/` carries no backup
+script — so **B13 is still open and the second branch was taken.**
+
+**Outcome:** P7.6's enforcement half shipped (ADR-45). Plan tiers stopped being
+decorative. The card turned out to be blocked by something no document
+mentioned: `POST /api/v1/analyses` — the product's central money-spending action
+— took **no authentication at all**, so every analysis a paying customer ran was
+attributed to no tenant and could be metered against nothing. Closing that came
+first; the quota followed. See
+[sessions/2026-08-09-01.md](sessions/2026-08-09-01.md).
+
+**The next brief lives at the end of `sessions/2026-08-09-01.md` §9.**
+
+**Second loop, same session.** With the quota work committed, the operator-
+dependency check found that **B13 was not as operator-owned as it looked**.
+Splitting it by who can actually do each part, taking a dump, verifying it,
+proving it restores and refusing to migrate without one are all engineering —
+and leaving them undone was the thing that had made two consecutive sessions
+pick their work by what avoided a migration. Built and rehearsed against the
+live database (ADR-46). What genuinely needed the operator turned out to be two
+lines: an off-box destination and a cron entry.
+
+**Third loop, same session.** The check ran once more and found the backlog's
+last two P0 rows unblocked and, on inspection, one defect wearing two hats —
+*the system reports health it has not checked*. `/healthz` returned a hardcoded
+literal and **is the deploy gate**, so a release with an unreachable database
+answered healthy and was recorded as the good one to roll back to; and a
+`while True` worker that stopped looping left the container `running` with the
+queue quietly undrained. Both fixed (ADR-47). The P0 band is now empty apart
+from the repo-wide formatter item, which should stay parked.
+
+---
+
+## Session 26 — 2026-08-09
+
+**Prompt executed:** the Loop Engineering autonomous-execution brief — inspect,
+decide, implement, verify, document, check operator dependencies, continue —
+applied through `resume-prompt.md` and the session-25 handoff.
+
+**Outcome:** three loops, and the first one was not on the plan.
+
+**Loop 1 — push session 25 and read CI.** Its branch was five commits, unmerged
+and unpushed; its own log recorded `make test` exit 0 and three clean tools, all
+true. PR #41 came back with **two red gates that a laptop cannot see**: the
+scoped formatting gate (`make test` never runs the formatter), and the compose
+stack check, which submits one real analysis through real Postgres and had been
+answering **401** since ADR-45 closed that route to anonymous callers. The route
+change was right; the check had not been told. It now signs in — and needed the
+bearer on the *poll* as well, which is the part worth remembering: a run
+carrying an `org_id` is no longer a capability URL. #41 is green on all eleven
+checks. See [sessions/2026-08-09-02.md](sessions/2026-08-09-02.md).
+
+**Loop 2 — the audit spine's missing emitters** (tech-debt #71, ADR-48). Six
+mutating paths wrote nothing, and the sharp one was refresh-token reuse
+detection: it revokes an entire sign-in family for suspected theft and recorded
+that nowhere, so "has a token ever been stolen here?" could not be told apart
+from "nobody looked". The repair changed the *rule* rather than just the list —
+"every mutating action emits" is unkeepable, since a token rotation is a
+mutation that fires four times an hour per device and would bury the trail. It
+is now **every mutation with a consequence emits, and every deliberate silence
+has a test asserting it**. Two further decisions came with it: an append-only
+table must never hold erasable PII (the triggers make it permanent), and a
+*refusal* is worth auditing even though nothing mutated — ADR-45 made refusals
+the likeliest thing to happen to a live user, and nothing recorded them.
+
+**Loop 3 — the reader `org_id` never had** (tech-debt #77, ADR-49). P7.6 gave
+analyses an owner and no screen; closing the tab lost the run. `GET
+/api/v1/analyses` plus the `/analyses` history screen. The decision recorded is
+not "we added a list" but why it is authenticated when the route below it is
+not: a capability URL works because knowing the unguessable id *is* the
+authorization, and a list has no id to know — **a route keyed by an unguessable
+id may be a capability; a route that enumerates never can be.** It is also the
+first application call site of `tenancy.scoped()`, the fail-closed seam three
+documents had described as shipped with zero callers.
+
+**The next brief lives at the end of `sessions/2026-08-09-02.md` §8.**

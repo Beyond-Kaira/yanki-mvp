@@ -4,7 +4,129 @@
 are not. Every session appends here and removes what it repays. Ordered
 roughly by risk.*
 
-Last updated: 2026-08-05 (**session 22** — the Admin Panel session).
+Last updated: 2026-08-09 (**session 26** — the audit-coverage session).
+
+**Session 26 changes to this list, up front:** **#71 REPAID** — the six mutating
+paths that emitted nothing now emit, including refresh-token **reuse
+detection**, which revoked an entire sign-in family for suspected theft and
+wrote no record of it (ADR-48). Two things about the repair are worth reading
+before the new items. First, the rule it settled on is *not* "audit every
+mutation": a successful token rotation is a mutation and is deliberately silent,
+because it fires four times an hour per device and would bury the trail — so the
+rule is **every mutation with a consequence emits, and every silence has a test
+asserting it**. Second, `audit_events` is append-only by database trigger, which
+means anything written there is permanent; the two paths carrying an email
+address store the *reference* and drop the *value*, so the erasure path this
+milestone still owes cannot end up in conflict with the integrity guarantee.
+**Three new items, #84–#86**, and the one to read is **#84**: recording refusals
+means a client retry-looping into a 429 writes a row per retry.
+
+**#77 REPAID** in the same session (ADR-49) — the analyses a customer runs are
+now listable at `/analyses`, which is the first screen that makes P7.6's
+attribution visible to the person paying for it. It is also the **first
+application call site of `tenancy.scoped()`**, the fail-closed seam that three
+documents described as shipped and that had none (**#63 — still open**: one
+call site is not a guarantee, and the A9 leakage suite is what closes it).
+**Two new items, #87–#88**, and the one that matters is **#87**: the query has
+no supporting index, because an index is a migration and migrations are gated
+on operator item B13 — so it must ride along with the next migration rather
+than be discovered under load.
+
+**Both PRs merged and deployed at session close** — production moved from
+`ddf3167` to **`e470244`**, so everything in this header is live rather than
+pending. New: **#92** (the documented plan-tier escape hatch is not in the api
+image, found by running the documented command on the box). Also worth knowing
+for the next stacked pair: merging the parent with `--delete-branch` **closed**
+the child PR instead of retargeting it.
+
+**#63 SUBSTANTIALLY REPAID, deliberately not closed** — the fourth loop built
+the **M1 exit gate**: `tests/test_cross_tenant_leakage.py`, 34 tests, written to
+#63's own instruction rather than as a spot-check. Every operation is read out
+of the live OpenAPI schema and must carry a stated tenancy classification, so
+**an unclassified route fails the suite**; every probe is a pair (the owner
+succeeds *and* the stranger gets 404) so it cannot pass vacuously. It stays open
+because "no route leaks" is not "no query can" — see **#90**. **Two new items,
+#89–#90**, and #89 is the kind of finding this suite exists to produce: an
+owner-side probe returned **429 with quota enforcement switched off**, which
+revealed that the kill switch does not cover the backlink refresh path even
+though its docstring said it could not fail that way.
+
+This session also fixed two CI gates that session 25 could not see from a
+laptop and that its own log recorded as green: the scoped **formatting gate**
+(seven of its files were unformatted) and the **SERP stack check**, which
+submits an analysis through real compose and had been 401ing since ADR-45 closed
+that route to anonymous callers. Neither was a code defect; both were the branch
+being unverifiable until it was pushed. Measured suite at session 26 close:
+**952 backend passed / 7 skipped** with Postgres, **327 frontend across 57
+files**, `make test` exit 0.
+
+Earlier — 2026-08-09 (**session 25** — the quota-enforcement session).
+
+**Session 25 changes to this list, up front:** the session ran two loops and
+this header covers both. **Loop 2 built the engineering half of operator item
+B13** (database backups, ADR-46) — `deploy/backup.sh`, `deploy/restore-check.sh`
+and a pre-migration snapshot in `deploy.sh`, rehearsed end to end against live
+production. Its residuals are **#78–#80**, and the one to read is **#79**:
+backups live on the same box as the database, which covers a bad migration and
+not a lost VPS.
+
+**Loop 3 closed the last two P0 rows** (`deep-health-endpoint` and
+`worker-liveness-healthcheck`, ADR-47): `/healthz` was a hardcoded literal that
+the deploy gate greps, and a `while True` worker that stopped looping was
+invisible. Residuals **#81–#83**, and the one to read is **#81**: a wedged
+worker is now *detected* and still not *restarted*, because Compose does not
+restart unhealthy containers.
+
+**Loop 1 (quota enforcement):** **#63 PARTIALLY REPAID** —
+`readable_analysis()` now has a call site. `GET /api/v1/analyses/{id}` routes
+through it, which is the first time the NULL-is-public rule is applied by the
+function that owns it rather than by nothing at all. `scoped()` still has zero
+call sites and the underlying complaint stands: isolation is per-route
+discipline, and the A9 leakage suite is still what would catch a route that
+forgets. **Five new items, #73–#77.** The two worth reading are **#74** (plan
+credit is never granted, so `reserve()`'s credit gate would refuse every request
+and is structurally unusable — this is why enforcement meters counts and merely
+*records* money) and **#75** (two concurrent submits from one org can both pass
+a quota check; worst case is one extra unit, and the fix waits until a metered
+unit is expensive). Also **#73** (there is no anonymous analysis surface any
+more — a product decision now living in a route signature), **#76** (nothing
+asserts the plan catalog exists before a customer needs it) and **#77** (runs
+are attributed to an org and there is still no screen that lists them).
+Measured suite at session 25 close: **933 backend passed / 7 skipped** with
+Postgres, **327 frontend across 57 files**, `make test` exit 0. *(Measured at
+this session's start, before any of its work: **897 backend passed / 7
+skipped**, **319 frontend across 56 files**.)* The backup tooling is shell and
+carries no unit tests; it was verified by running it against the live database
+and by exercising both failure paths (ADR-46, session log §9).
+
+Earlier — 2026-08-08 (**session 24** — the deploy-safety and P7.5 session).
+
+**Session 24 changes to this list, up front:** **#17 MOSTLY REPAID** (the
+rollback pruned-image branch no longer resurrects the fused migrate-on-boot
+compose, and no longer leaves detached HEAD — ADR-42; residual is that it is
+still unproven against a live rollback). **Ten new items, #63–#72.** The one to
+read first is **#63**: `tenancy.scoped()` and `readable_analysis()` — the
+fail-closed tenancy seam that ADR-35, `architecture-target.md` and the P7.1 card
+all described as shipped — **have zero call sites**. Isolation is real but it is
+per-route discipline, so a route that forgets to filter compiles and leaks. All
+three documents are corrected; the guardrail itself is A9 work. Also new:
+**#64** (three Site Audits stranded `queued` in production, needing operator
+cleanup), **#65** (the site-audit worker would hold every secret — its
+documented isolation was never built), **#66** (feature flags are discovered by
+catching a 404), **#67–#69** (P7.5 residuals: no device fingerprint without a
+migration, no live 403→clear-active-org, an `/auth/me` N+1), **#70** (the
+rollback guard's hardcoded boundary SHA), **#71** (mutating paths still emitting
+no audit event — including refresh-token **reuse detection**, which revokes a
+whole family and records nothing), and **#72** (session 23 shipped without any
+of its eight close deliverables; the log is reconstructed, the reasoning is
+gone). Measured suite at session 24 close: **897 backend passed / 7 skipped**
+with Postgres, **319 frontend across 56 files**, `make test` exit 0.
+*(The counts recorded below for session 22 — 835/281 — were correct then;
+session 23 added tests without updating them. Measured at this session's start,
+before any of its work: **873 backend passed / 7 skipped**, **305 frontend
+across 54 files**.)*
+
+Earlier — 2026-08-05 (**session 22** — the Admin Panel session).
 
 **Session 22 changes to this list, up front:** **#52 REPAID** (an account now
 grants something — the Admin Panel is a real signed-in destination that invites,
@@ -292,6 +414,21 @@ devDependencies).)
     checking that out restores a serve-only compose. The clean fix keeps the
     compose file out of the checkout: pin it, or roll the image tag back without
     moving the tree at all.
+
+    **MOSTLY REPAID (2026-08-08, session 24, ADR-42).** The crash-loop hazard
+    and the detached-HEAD mutation are both closed: the pruned-image branch now
+    **refuses** a last-good SHA at or behind `56c1fac` (the migrate-on-boot
+    split) with an actionable hand-recovery message rather than resurrecting the
+    fused command, and it restores the branch it started on instead of leaving
+    the operator's checkout moved. It was repaired *before* Phase 7's A5–A8
+    migrations land, which is the window this item warned about. Residual, and
+    the reason this is not struck through: the fix was proven in a scratch repo
+    with stubbed `docker`/`curl` and a truth table against the real `56c1fac`,
+    **not** by a live rollback — the images-present path remains the only one
+    ever exercised against production. The boundary constant is its own item
+    (**#70**). The originally-suggested clean fix (keep the compose file out of
+    the checkout entirely) was not taken: refusing is a smaller, more auditable
+    change to code that runs when production is already broken.
 18. **The prod web image ships devDependencies.** Session 7's fix for the
     build failure (`npm ci --include=dev`, needed because NODE_ENV=production
     otherwise omits the typescript devDep that `next build` requires) means
@@ -871,3 +1008,376 @@ devDependencies).)
     PR, and letting the gate switch on. Until then eslint at `--max-warnings 0`
     is the frontend's only automated style gate, which is what it has always
     been.
+
+63. **The fail-closed tenancy seam ADR-35 describes is not wired — isolation is
+    per-route discipline** (2026-08-08, session 24, found by a code-vs-docs
+    audit). `app/services/tenancy.py` defines `scoped()` (raises without an org
+    context rather than returning an unfiltered statement) and
+    `readable_analysis()` (the single home of the NULL-is-public rule). **Both
+    have zero call sites.** No route and no service calls either; `GET
+    /analyses/{id}` uses bare `get_analysis()`. Tenant isolation is real today
+    — the `requires(...)` / `OrgContext` dependency in
+    `app/api/org_dependencies.py` resolves and membership-verifies the org on
+    every request, and each route filters by `org.require_org_id` itself — but
+    that is discipline, not a seam: **a route that forgets to filter compiles,
+    passes review, and leaks.** This is the highest-risk item on this list
+    because three documents asserted the opposite (ADR-35,
+    `architecture-target.md`, the P7.1 card), so a reader had every reason to
+    believe the guardrail was there. All three are corrected as of this session.
+    Repay in P7.9/A9: the cross-tenant leakage suite is the exit gate that
+    would have caught this, and it should be written to fail if a tenant-owned
+    query is reachable without an org filter — not merely to spot-check a few
+    routes. Until then, treat every new tenant-scoped query as needing its own
+    explicit `org_id` filter, because nothing does it for you.
+
+    **Update 2026-08-09 (session 26) — substantially repaid, and deliberately
+    not closed.** Both functions now have call sites: `readable_analysis()` in
+    `GET /analyses/{id}`, and `scoped()` in `services.analyses.
+    list_org_analyses` (ADR-49). More importantly, **the leakage suite exists**
+    (`tests/test_cross_tenant_leakage.py`, 34 tests) and it was built to the
+    instruction above rather than as a spot-check: every operation is read out
+    of the live OpenAPI schema, an unclassified route **fails the suite**, and
+    every probe is a pair so it cannot pass vacuously.
+
+    What keeps this open is the gap between "no route leaks" and "no query can".
+    The suite proves the first, which is the guarantee the milestone's exit
+    criterion asks for. The second needs scoping enforced at the query layer,
+    and a service function with a missing filter that no route reaches today is
+    still invisible — see **#90**. The standing instruction is unchanged: every
+    new tenant-scoped query needs its own explicit `org_id` filter.
+
+64. **Three Site Audits are stranded `queued` in production and need operator
+    cleanup** (2026-08-08, session 24). `31eba473…`, `410c31d7…`, `35e06651…`,
+    created 2026-08-05/06, zero pages each. They were enqueued through a UI
+    that shipped in PRs #24/#25 while no site-audit worker was ever added to
+    `deploy/docker-compose.prod.yml`, so nothing has ever drained them and
+    nothing ever will in their current state. Session 24 gated the enqueue so
+    no more accumulate, but **it deliberately did not touch the rows**:
+    mutating production data is an operator action, and there are no database
+    backups. Repay by deciding their fate (mark failed with a reason, or
+    delete) — see [operator-expected.md](operator-expected.md). Note the
+    backlog's premise that both tables held **zero** rows was stale by the time
+    it was acted on; measure before trusting it again.
+
+65. **The site-audit worker holds every secret — its isolation is design, not
+    boundary** (2026-08-08, session 24). `docs/site-audit-integration.md`
+    claimed the audit worker receives only its database URL and `SITE_AUDIT_*`
+    settings. It calls the shared `get_settings()`, so it would hold
+    `jwt_secret_key` and every provider key. That claim is corrected in the doc
+    now, but the gap it described is unbuilt. This matters because the audit
+    worker is the one component whose whole job is to point a browser at
+    arbitrary third-party URLs — the highest-exposure process in the system
+    holding the widest secret set, on a box shared with four other tenants.
+    Repay before `SITE_AUDIT_ENABLED` is ever turned on: an `audit-runtime`
+    image with a split settings object. Tracked in M3 alongside
+    `deploy-site-audit-worker`, `site-audit-chromium-image-missing` and
+    `site-audit-egress-isolation` — none of which should land without this one.
+
+66. **Site Audit's off-state is discovered reactively, by catching a 404**
+    (2026-08-08, session 24). There is no runtime feature-flag endpoint, so the
+    frontend cannot know `SITE_AUDIT_ENABLED` (or `BACKLINKS_ENABLED`) at first
+    paint; it learns by attempting the action and handling the refusal. That is
+    honest but late. The proper repair is the `feature-flags-system` backlog
+    item (DB-backed flags, global + per-org, audited flips) with a small read
+    endpoint the shell can consume — which also retires the env-boolean
+    kill-switches that currently need a redeploy to flip.
+
+67. **The sessions list cannot tell you which device a session is** (2026-08-08,
+    session 24, P7.5). `auth_sessions` stores no IP, user-agent or device name,
+    so "Devices & sessions" shows started / last-active / expires and nothing a
+    human recognises. Adding columns needs a migration, which this session
+    deliberately deferred (no DB backups). Repay with the migration-bearing half
+    of A5, alongside password reset and MFA — a session list you cannot identify
+    a device in is a weak security control, because the user cannot tell their
+    own laptop from an intruder's.
+
+68. **A revoked membership is only noticed on the next `/auth/me`**
+    (2026-08-08, session 24, P7.5). The org switcher stores the active org
+    client-side and reconciles it against `/auth/me` on cold load, sign-in and
+    switch. If a user's membership in the *currently selected* org is revoked
+    mid-session, other org-scoped endpoints 403 until the next `/me` refresh.
+    Not a leakage risk — the server verifies membership on every request, which
+    is why the failure mode is a 403 and not a read — but it is a confusing
+    dead-end for the user. Repay with a global 403 interceptor that clears the
+    active org and re-fetches `/me`.
+
+69. **`/auth/me` does an N+1 over memberships** (2026-08-08, session 24, P7.5).
+    One `session.get(Organization)` per membership to build the organizations
+    list. N is the number of orgs a user belongs to, so this is nothing today
+    and would become something for a contractor in dozens of orgs. One
+    `IN`-query join when it matters.
+
+70. **The rollback guard hardcodes a boundary SHA** (2026-08-08, session 24,
+    ADR-42). `deploy/rollback.sh` refuses to rebuild a last-good SHA at or
+    behind `56c1fac` (the migrate-on-boot split). The constant is documented
+    and re-derivable —
+    `git log -S 'sh -c "alembic upgrade head' -- deploy/docker-compose.prod.yml`
+    — and a history rewrite would make the guard fail closed (refuse
+    everything) until it is updated. Acceptable because `main` is
+    ruleset-protected against rewrites and refusing is the safe direction, but
+    it is a constant that encodes a fact about history and should be revisited
+    if the deploy driver is ever rewritten.
+
+71. ~~**Mutating paths that still emit no audit event**~~ (2026-08-08, session
+    24, found by audit-coverage review; **REPAID 2026-08-09, session 26,
+    ADR-48**). M1 promises "every mutating action emits an audit event." These
+    did not: `track_competitor` / `untrack_competitor`, `POST /auth/refresh` —
+    including, notably, the **refresh-token reuse detection** path, which
+    revokes an entire session family because it believes a token was stolen and
+    wrote no record that it happened — plus the checker submit, its lead gate,
+    and the waitlist.
+
+    All six now emit, and the repair changed the rule rather than just closing
+    the list. "Every mutating action" is not the rule the system can keep: a
+    successful refresh rotation *is* a mutation and is deliberately silent,
+    because it fires four times an hour per signed-in device and would bury
+    every real event under heartbeat rows. The rule is now **every mutation with
+    a consequence emits, and every deliberate silence has a test asserting the
+    silence** — the second half being what stopped this item from being
+    invisible for four sessions.
+
+    Residuals are **#84** (a retry loop into a 429 writes a row per retry),
+    **#85** (an optional `context` that degrades attribution silently) and
+    **#86** (the checker's cost trail overlaps its demand table). What is *not*
+    residual: A9's audit-completeness review no longer has a backlog of missing
+    emitters to work through, only `audit-emit-no-outbox` — the deliberate trade
+    that an audit write failure must never 500 a request.
+
+72. **Session 23 shipped without any of its eight close deliverables**
+    (recorded 2026-08-08, session 24; **partially repaid on record**). P8.3's
+    API and screens merged as PRs #33 and #34 with no session log, no ADR, no
+    tech-debt entry, no operator refresh, and no next-session prompt — so
+    `operator-expected.md` still told the operator that session 22's work was
+    unmerged, two merges after it had shipped and deployed. Session 24
+    reconstructed the log from the commit range
+    ([`sessions/2026-08-06-01.md`](sessions/2026-08-06-01.md)) and repaired the
+    downstream docs. **What cannot be recovered is the reasoning**: an ADR
+    written by someone who was not in the room is a fabricated rationale, so
+    two decisions worth recording (the single-front-door rule for projects, and
+    `live`-while-dark as a nav badge) remain unwritten. This is process debt
+    rather than code debt, and it is listed because it is the second time it has
+    happened (PRs #11 and #23 before it, items #54/#55) and because the cost is
+    silent: the code is fine, the *why* is gone.
+
+73. **A signed-out caller can still run analyses on the anonymous funnel — no,
+    they cannot, and that is the item** (2026-08-09, session 25, ADR-45).
+    Recording the shape of what changed, because it is easy to misread later.
+    `POST /api/v1/analyses` now requires authentication, so there is **no
+    anonymous GEO analysis surface at all**. That is deliberate — the public
+    funnel is `/api/v1/checker` — but it means a product decision has been made
+    in code: if the operator ever wants a "try one analysis without an account"
+    funnel back, it is not a config flip, it is a route change plus a decision
+    about what bounds it. Nothing is broken; the debt is that the decision lives
+    in a route signature and an ADR rather than in a product doc.
+
+74. **Plan credit is never granted, so the credit half of the billing engine is
+    unreachable** (2026-08-09, session 25). Every plan declares a
+    `monthly_credit_usd` and nothing ever writes a `grant` ledger row, so every
+    organization's balance is exactly 0. `billing.reserve()` refuses when the
+    balance cannot cover an estimate — which means using it on any path with a
+    non-zero estimate would refuse **every** request. That is why P7.6's
+    enforcement uses `consume_quota` (counts) and `record_charge` (recording),
+    and why `reserve()` is still called only from the flag-off backlink path
+    whose mock estimate is $0. The credit gate is built, tested and structurally
+    unusable until grants exist. Backlog: `grant-monthly-plan-credit`, which
+    belongs with the Stripe lifecycle because "start of billing period" is a
+    subscription concept.
+
+75. **Usage counters have no per-org concurrency guarantee** (2026-08-09,
+    session 25). `consume_quota` reads the `UsageCounter` row, adds to it, and
+    flushes inside the request transaction. Two simultaneous submits from one
+    organization can both read `used=4` against a limit of 5 and both commit —
+    the unique constraint is on `(org_id, metric, window_start)`, which prevents
+    a duplicate row but not a lost update. Worst case is one extra unit of a
+    monthly allowance, which is why it is here rather than fixed today; the fix
+    is `SELECT … FOR UPDATE` on the counter (Postgres-only, so the SQLite test
+    path needs the usual dialect branch, as `jobs/queue.py` already does for
+    `SKIP LOCKED`). Do it when quotas gate something whose unit cost is large —
+    the backlink vendor adapter is the first candidate.
+
+76. **Nothing checks the plan catalog at runtime — only in CI** (2026-08-09,
+    session 25). An unseeded `plans` table now answers 503 with an honest
+    message instead of pretending everyone is out of quota (ADR-45), and
+    `test_migrations.py` asserts that a migrated database leaves a usable
+    catalog with Free present and every metered key declared. Between those two
+    there is still no *running-system* check: `scripts/check_env.py` runs at
+    deploy preflight and never touches the database, and `/healthz` is a
+    hardcoded literal (P7.8's `deep-health-endpoint`). Since seeding is a
+    migration, the realistic failure is a restored or hand-built database rather
+    than a missed deploy — which is exactly the path a **backup restore**
+    (operator B13) would take. Fold the check into the deep health endpoint when
+    A8 builds it.
+
+77. ~~**The analyses a customer runs are attributed but not listable**~~
+    (2026-08-09, session 25; **REPAID the same day, session 26, ADR-49**). Runs
+    carried `org_id` and the only way to reach one was still the URL you were
+    redirected to, so a customer who closed the tab had lost the result.
+    `GET /api/v1/analyses` and the `/analyses` screen close it. Residuals **#87**
+    (no supporting index — it is a migration, and migrations are gated on B13)
+    and **#88** (the list does not poll; the run page it links to does).
+
+78. **The pre-migration snapshot has never run against a real migration**
+    (2026-08-09, session 25, ADR-46). `deploy.sh` now compares `alembic current`
+    with `alembic heads` and dumps the database before migrating. The schema has
+    been at `0018_invitations_audit_integrity` throughout, so only the *no-op*
+    branch has executed in anger — verified against the live stack, where both
+    revisions report `0018` and the deploy correctly skips. The branch that
+    matters, the one that takes a dump and aborts the deploy when it fails, has
+    been exercised only by running `backup.sh` directly. The next migration-
+    bearing deploy is its first real test, which is a fine time to watch the
+    deploy log rather than walk away from it. Repay by reading that log.
+
+79. **Backups live on the same box as the database** (2026-08-09, session 25).
+    `~/yanki-backups` is on the VPS whose volume it is protecting. That covers a
+    bad migration, a dropped table and a mis-run backfill — the failures that
+    actually happen here — and it does not survive losing the box. This is
+    listed as debt rather than left to the operator item alone because the
+    dangerous failure mode of a backup system is somebody believing it covers
+    more than it does, and a half-covered system reads as a covered one.
+    Closing it needs a destination and a credential (operator **B13**);
+    `deploy/BACKUP.md` carries two one-line options.
+
+80. **Nothing runs `backup.sh` on a timer** (2026-08-09, session 25). The
+    pre-migration hook fires only on a deploy that changes the schema, so
+    between schema changes there is no new dump at all. One cron line closes it
+    and it is in `deploy/BACKUP.md`; installing it is a change to the live box's
+    schedule and it needs the retention decision, which interacts with a PII
+    retention policy that does not exist (`pii-retention-and-erasure`).
+
+81. **A wedged worker is now visible and still not restarted** (2026-08-09,
+    session 25, ADR-47). The heartbeat + compose healthcheck make a `while True`
+    that stopped looping show as `unhealthy` in `docker ps` and as a `warn` in
+    `/healthz`. **Compose does not restart a container for being unhealthy** —
+    that is a Swarm behaviour — so `restart: unless-stopped` only covers a
+    process that *exits*, which is the failure mode the worker was already
+    handling. Closing the gap needs either an autoheal sidecar (a sixth
+    container on a box shared with four other tenants, holding the Docker
+    socket, which is its own risk) or an external watchdog that reads
+    `/healthz`. Neither is worth adding blind. Detection first; if a wedge
+    actually happens, the log from it will say which fix is the right one.
+
+82. **`/healthz` queries the database on every request** (2026-08-09, session
+    25, ADR-47). Four small queries — `SELECT 1`, the alembic revision, a plan
+    count, a queue count and min. Nothing polls it on a schedule today except
+    the deploy gate, so this is fine; it stops being fine the moment an uptime
+    monitor is pointed at it every 10 seconds. The fix is a one-second cache on
+    the report, and the trigger for doing it is "we added a monitor", not a
+    date.
+
+83. **The unhealthy-body "no ok anywhere" rule is pinned for one scenario, not
+    all of them** (2026-08-09, session 25, ADR-47). `deployment.sh` greps the
+    body for `status` and `ok` instead of trusting the status code, so a failing
+    body containing "ok" anywhere passes the gate it should fail.
+    `test_health.py` asserts this for the empty-catalog failure, which is the
+    only way the probe currently goes red apart from the database being down —
+    but a future component whose detail string contains "broken", "token" or
+    "look" would slip through untested. The real fix is `deployment.sh`
+    trusting the HTTP status, which is a change to the deploy driver and wants
+    its own careful pass.
+
+84. **A client that retries into a 429 writes one audit row per retry**
+    (2026-08-09, session 26, ADR-48). `billing:quota_denied` records every
+    refusal, which is what makes a support question answerable — and it means a
+    caller looping against an exhausted plan writes an audit row each time. The
+    analyses path is bounded (the per-IP rate limit runs *before* the quota, so
+    the limiter refuses first and emits nothing); project creation and
+    site-audit starts are not, because no authenticated route in this codebase
+    has a throttle at all (`auth-endpoint-rate-limiting` in the backlog). The
+    exposure is therefore not new — an authenticated loop can already hammer
+    those routes — it now also grows a table that cannot be pruned. Not solved
+    with a de-duplication window because nobody has needed one, and a window is
+    the kind of state that is wrong in a way you only discover during the
+    incident it was meant to help with.
+
+85. **`billing:quota_denied` and the permission-denied event are attributed to
+    an org but not always to a person** (2026-08-09, session 26). `quota.consume`
+    takes `context` optionally, so a caller that omits it produces an event with
+    the right organization and a NULL actor. Every current call site passes it;
+    the optionality exists so `quota` stays callable from a worker or a script
+    that legitimately has no user. The debt is that nothing enforces the
+    distinction — a future route that forgets the argument degrades the event
+    silently rather than failing to compile. A required `context` with an
+    explicit `OrgContext.system()` for the caller-less case would close it.
+
+86. **The `checker:submit` trail duplicates a demand signal that already has a
+    table** (2026-08-09, session 26). `checker_submissions` records every submit
+    with its triple and IP hash, and the audit event now records the same submit
+    again. The overlap is deliberate — the audit row is the *cost* record and
+    the submission row is the *demand* record, and they answer to different
+    readers — but if the checker ever goes live at volume
+    (`public-checker-go-live`), it is the anonymous surface writing the most
+    rows into the append-only table, and the platform-wide
+    `verify_integrity(limit=5000)` sweep would fill with it. Per-org integrity
+    checks are unaffected (they filter by `org_id`, and these rows have none).
+    Revisit at go-live, not before.
+
+87. **No index on `analyses(org_id, created_at)`** (2026-08-09, session 26,
+    ADR-49). The history route filters by `org_id` and `kind` and sorts by
+    `created_at DESC`, and the table's only relevant index is
+    `ix_analyses_status_created`. Every page is a scan plus a sort. That is
+    free at production's current 57 rows and stops being free somewhere in the
+    low tens of thousands — which one busy month of one busy customer reaches.
+    Deliberately not fixed now: an index is a migration, and migration-bearing
+    work is gated on operator item B13. **The action is to add it to whatever
+    migration lands next**, not to write one for it alone.
+
+88. **The history screen does not refresh itself** (2026-08-09, session 26). A
+    run submitted from the dashboard reaches `/analyses` as `queued` and stays
+    that way on screen until the reader reloads — the result page polls, this
+    one does not. Acceptable because the list is a way *back* to a run rather
+    than a way to watch one, and the row links to the page that does poll. It
+    becomes wrong the moment this screen is the first thing a user sees after
+    submitting, which is a plausible next iteration.
+
+89. **`QUOTA_ENFORCEMENT_ENABLED` does not cover the backlink refresh path**
+    (2026-08-09, session 26, found by the cross-tenant leakage suite).
+    `services/quota` is the single home of the kill switch, and its docstring
+    claimed that turning it off "cannot half-work, leaving one path metered and
+    another not." It can. `backlink.delta` calls `billing.reserve` directly —
+    it needs the *credit* half as well as the count, and it predates
+    `services/quota` — so with enforcement off, analyses, site audits and
+    projects stop being metered and backlink refreshes do not.
+
+    Found the way findings like this should be found: the leakage suite's
+    owner-side probe got a **429 with enforcement switched off**, which is
+    impossible if the switch means what it said. Harmless today —
+    `BACKLINKS_ENABLED` is off in production, so the path is unreachable — and
+    the docstring now states what the switch actually covers rather than what it
+    was intended to. The real repair is a `quota.reserve` wrapper that gates the
+    credit path the same way, and it is small; it is not done here because it
+    changes billing behaviour on a branch the operator has not merged, and the
+    switch's whole purpose is to be trustworthy in an emergency.
+
+90. **The leakage suite proves isolation for the routes that exist, not for the
+    queries behind them** (2026-08-09, session 26, P7.9). Every org-scoped
+    operation is probed end to end, and a new route cannot be added without
+    classifying it — but the guarantee is still *behavioural*. A service
+    function with a missing `org_id` filter that no route reaches today is
+    invisible to this suite, and would become a leak the moment somebody wires
+    it up to a route that the census then dutifully records as covered. The
+    structural fix is the one #63 has always named — scoping enforced at the
+    query layer rather than remembered at each call site — and it stays open.
+
+91. **The audit CSV export is capped at 5000 rows and says so only in its own
+    audit event** (2026-08-09, session 26, P7.9 §6). The export is a synchronous
+    request holding a database connection, so it cannot be unbounded — but a
+    caller who exports a busy year gets the newest 5000 rows and **the CSV
+    itself does not say it was truncated**. The `audit:export` event records
+    `truncated: true` and the matched total, so the fact is recoverable, but the
+    person holding the file is the one who needs it. Two cheap improvements when
+    somebody hits this: a `X-Yanki-Truncated` response header, or a trailing
+    comment row. The real answer is an export *artifact* — a job that produces a
+    complete file — which belongs with the reporting work in M6.
+
+92. **`scripts/set_org_plan.py` is not in the api image** (2026-08-09, session
+    26, found while verifying the production deploy). The script is the
+    documented escape hatch for ADR-45 — "put an organization on any tier" — and
+    `operator-expected.md` gave it as the command to run. It cannot be run where
+    it is needed: the Dockerfile builds from `backend/` and the script lives at
+    the repo root, so `docker compose exec api python scripts/set_org_plan.py`
+    fails with `No such file or directory`. The operator file now gives SQL
+    instead, which works but is a worse tool for a person under time pressure.
+    Fix by moving it under `backend/scripts/` (it already imports `app.*`, so
+    that is where it belongs) or by adding it to the image. **Verify the fix by
+    running it inside the container, not by reading the Dockerfile** — this got
+    through because nobody ran the documented command on the box.

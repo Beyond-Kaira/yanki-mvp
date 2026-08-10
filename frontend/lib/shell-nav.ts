@@ -99,6 +99,17 @@ export const SHELL_SECTIONS: ShellSection[] = [
         href: '/ai-visibility/drivers',
         badge: 'live',
       },
+      // The record of what this organization has actually run. It belongs in
+      // this section rather than under Home because a GEO analysis *is* the AI
+      // Visibility product — and it exists at all because runs started
+      // belonging to an organization in P7.6, which made "where are my previous
+      // ones?" a question with a real answer for the first time.
+      {
+        id: 'analysis-history',
+        label: 'Your analyses',
+        href: '/analyses',
+        badge: 'live',
+      },
     ],
   },
   {

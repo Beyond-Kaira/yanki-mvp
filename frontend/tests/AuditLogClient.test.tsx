@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api'
 const fetchAuditEvents = vi.fn()
 const fetchRecordHistory = vi.fn()
 const fetchAuditIntegrity = vi.fn()
+const downloadAuditEventsCsv = vi.fn()
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
@@ -15,6 +16,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     fetchAuditEvents: (...args: unknown[]) => fetchAuditEvents(...args),
     fetchRecordHistory: (...args: unknown[]) => fetchRecordHistory(...args),
     fetchAuditIntegrity: (...args: unknown[]) => fetchAuditIntegrity(...args),
+    downloadAuditEventsCsv: (...args: unknown[]) => downloadAuditEventsCsv(...args),
   }
 })
 
@@ -245,5 +247,95 @@ describe('AuditLogClient entity filter', () => {
         expect.objectContaining({ entity_type: 'invitation' }),
       ),
     )
+  })
+})
+
+describe('Audit log export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    searchParams = new URLSearchParams()
+    fetchAuditIntegrity.mockResolvedValue({
+      checked: 1,
+      intact: 1,
+      altered: 0,
+      unverifiable: 0,
+      ok: true,
+      altered_ids: [],
+    })
+    // jsdom implements neither, and both are load-bearing for a
+    // blob-download-with-a-bearer — so they are defined rather than skipped.
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: vi.fn(() => 'blob:audit'),
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      value: vi.fn(),
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('exports what the filters match, not the page on screen', async () => {
+    // The distinction that makes an export worth having: someone who filtered
+    // to one action wants all of it, not the twenty-five rows they can see.
+    fetchAuditEvents.mockResolvedValue(listOf([event()]))
+    downloadAuditEventsCsv.mockResolvedValue(new Blob(['occurred_at\n']))
+    render(<AuditLogClient />)
+    await screen.findByRole('table')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled(),
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
+
+    await waitFor(() => expect(downloadAuditEventsCsv).toHaveBeenCalled())
+    const sent = downloadAuditEventsCsv.mock.calls.at(-1)?.[0] as Record<string, unknown>
+    expect(sent).not.toHaveProperty('offset', 25)
+  })
+
+  it('carries the active filters into the export', async () => {
+    fetchAuditEvents.mockResolvedValue(listOf([event()]))
+    downloadAuditEventsCsv.mockResolvedValue(new Blob(['occurred_at\n']))
+    render(<AuditLogClient />)
+    await screen.findByRole('table')
+
+    await userEvent.selectOptions(screen.getByLabelText('Outcome'), 'denied')
+    await waitFor(() =>
+      expect(fetchAuditEvents).toHaveBeenLastCalledWith(
+        expect.objectContaining({ outcome: 'denied' }),
+      ),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
+
+    await waitFor(() =>
+      expect(downloadAuditEventsCsv).toHaveBeenLastCalledWith(
+        expect.objectContaining({ outcome: 'denied' }),
+      ),
+    )
+  })
+
+  it('says so when the export is refused rather than failing silently', async () => {
+    fetchAuditEvents.mockResolvedValue(listOf([event()]))
+    downloadAuditEventsCsv.mockRejectedValue(new ApiError('nope', 403))
+    render(<AuditLogClient />)
+    await screen.findByRole('table')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled(),
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You do not have permission to export the audit log.',
+    )
+  })
+
+  it('offers no export when there is nothing to export', async () => {
+    fetchAuditEvents.mockResolvedValue(listOf([]))
+    render(<AuditLogClient />)
+
+    await waitFor(() => expect(fetchAuditEvents).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 })

@@ -1,4 +1,29 @@
-"""Refresh-session persistence, rotation, and revocation."""
+"""Refresh-session persistence, rotation, and revocation.
+
+**What this module writes to the audit trail, and what it deliberately does
+not.** Only :class:`RefreshTokenReuseDetectedError` produces an event. The other
+two outcomes of a refresh are silent on purpose, and the reasoning is the same
+in both directions — an audit log is read by a person, so an event that fires on
+every heartbeat is not a record, it is noise that hides the records:
+
+* **A successful rotation is not audited.** Rotation happens every time an
+  access token ages out — roughly four times an hour per signed-in device. One
+  active user would write more rows in a week than the entire Admin Panel
+  produces in a year, and every real event would be buried under them. The
+  session *itself* is already visible and revocable in "your devices"
+  (:func:`list_active_sessions_for_user`), which is what a reader of the trail
+  actually wants to know.
+* **An ordinary invalid refresh is not audited either** — an expired family, a
+  cookie from a logout, a token from a since-revoked session. Every idle user
+  hits this eventually and none of it indicates anything.
+* **Reuse is audited, because it is the one that means something.** A token that
+  is presented *after it was already consumed* is either a stolen token being
+  replayed or the legitimate holder racing themselves. We cannot tell which, so
+  the family is revoked either way — and until now that revocation, which signs
+  someone out of every device because we believe they were robbed, was recorded
+  nowhere at all. It is precisely the event a security review comes looking for
+  (tech-debt #71).
+"""
 
 from __future__ import annotations
 
@@ -10,7 +35,9 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db.models import AuthSession
+from app.db.models import AuthSession, User
+from app.services import audit
+from app.services.auth import audit_context
 from app.services.tokens import (
     IssuedToken,
     TokenClaims,
@@ -31,6 +58,26 @@ class SessionTokens:
     access_token: IssuedToken
     refresh_token: IssuedToken
     family_id: uuid.UUID
+
+
+@dataclass(frozen=True, slots=True)
+class SessionSummary:
+    """One active sign-in, as its owner sees it in "your devices".
+
+    A *session* here is a whole refresh-token family — one login on one device —
+    not a single rotation generation. Rotation replaces the live row many times
+    over the life of a session, so exposing rows would show a person dozens of
+    entries for one browser. The family is collapsed to a single line.
+
+    ``id`` is the family id. It names a session for revocation and nothing more:
+    it is not the ``refresh_jti_hash`` and cannot be replayed to authenticate.
+    """
+
+    id: uuid.UUID
+    created_at: datetime
+    last_active_at: datetime
+    expires_at: datetime
+    current: bool
 
 
 class RefreshSessionError(ValueError):
@@ -143,6 +190,15 @@ def rotate_refresh_session(
                 family_id=current_session.family_id,
                 revoked_at=rotation_time,
             )
+            _emit_reuse_detected(
+                session,
+                user_id=current_session.user_id,
+                family_id=current_session.family_id,
+            )
+            # The event and the revocation commit together. Emitting after this
+            # commit would leave a window in which someone was signed out of
+            # every device with nothing recorded — which is the exact state
+            # tech-debt #71 described.
             session.commit()
 
             raise RefreshTokenReuseDetectedError(
@@ -341,6 +397,184 @@ def revoke_all_sessions_for_user(
         execution_options={"synchronize_session": "fetch"},
     )
     return len(live)
+
+
+def list_active_sessions_for_user(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    current_family_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> list[SessionSummary]:
+    """Every live session this user holds, most-recently-used first.
+
+    One entry per family (per device/login), collapsed from its rotation rows.
+    A family is *live* when its tip — the one unconsumed row — is neither revoked
+    nor expired; a family whose tip is revoked (logout, another device's
+    "sign out everywhere", or reuse detection) or past its expiry is dropped, so
+    the list mirrors what could actually be used to obtain a new access token.
+
+    Never reads or returns ``refresh_jti_hash``. The only identifier that leaves
+    here is the family id, which cannot be replayed as a credential.
+    """
+
+    moment = _resolve_now(now)
+
+    rows = session.scalars(
+        select(AuthSession)
+        .where(AuthSession.user_id == user_id)
+        .order_by(AuthSession.family_id, AuthSession.created_at)
+    ).all()
+
+    families: dict[uuid.UUID, list[AuthSession]] = {}
+    for row in rows:
+        families.setdefault(row.family_id, []).append(row)
+
+    summaries: list[SessionSummary] = []
+    for family_id, family_rows in families.items():
+        # The tip is the single row that has not been consumed by a rotation.
+        # Revocation sets ``revoked_at`` on every row but leaves the tip
+        # unconsumed, so the tip is still where liveness is decided.
+        tip = next((row for row in family_rows if row.consumed_at is None), None)
+        if tip is None:
+            continue
+        if tip.revoked_at is not None:
+            continue
+        if _database_datetime_as_utc(tip.expires_at) <= moment:
+            continue
+
+        created_at = min(_database_datetime_as_utc(row.created_at) for row in family_rows)
+        last_active_at = max(_database_datetime_as_utc(row.created_at) for row in family_rows)
+        summaries.append(
+            SessionSummary(
+                id=family_id,
+                created_at=created_at,
+                last_active_at=last_active_at,
+                expires_at=_database_datetime_as_utc(tip.expires_at),
+                current=current_family_id is not None and family_id == current_family_id,
+            )
+        )
+
+    summaries.sort(key=lambda summary: summary.last_active_at, reverse=True)
+    return summaries
+
+
+def revoke_session_family_for_user(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    family_id: uuid.UUID,
+    now: datetime | None = None,
+) -> bool:
+    """Revoke one session (family), but only if it belongs to this user.
+
+    Returns ``False`` — not raising, and not distinguishing the cases — when the
+    family is not the caller's, whether because it is someone else's or does not
+    exist. The route turns that single answer into a 404, so a caller cannot
+    probe for the existence of another user's session ids.
+
+    Does **not** commit: the caller owns the transaction so the revocation and
+    its audit event land together, the same contract
+    :func:`revoke_all_sessions_for_user` keeps.
+    """
+
+    revoked_at = _resolve_now(now)
+
+    owned = session.scalar(
+        select(AuthSession.id)
+        .where(AuthSession.family_id == family_id, AuthSession.user_id == user_id)
+        .limit(1)
+    )
+    if owned is None:
+        return False
+
+    _revoke_family(session, family_id=family_id, revoked_at=revoked_at)
+    return True
+
+
+def revoke_other_sessions_for_user(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    keep_family_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> int:
+    """Revoke every live session this user holds except ``keep_family_id``.
+
+    This is "sign out everywhere else". Keeping the current family alive is a
+    deliberate choice: the action is reached from a signed-in device, and ending
+    that device's own session as a side effect would sign the person out of the
+    click they just made, with no chance to see it worked. "Log out" already
+    exists for ending the current session on purpose.
+
+    With ``keep_family_id=None`` it spares nothing and becomes a true
+    everywhere-including-here revoke. Does not commit; returns the number of rows
+    revoked so the caller can record it.
+    """
+
+    revoked_at = _resolve_now(now)
+
+    conditions = [AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None)]
+    if keep_family_id is not None:
+        conditions.append(AuthSession.family_id != keep_family_id)
+
+    live = session.scalars(select(AuthSession.id).where(*conditions)).all()
+    if not live:
+        return 0
+
+    session.execute(
+        update(AuthSession).where(*conditions).values(revoked_at=revoked_at),
+        execution_options={"synchronize_session": "fetch"},
+    )
+    return len(live)
+
+
+def _emit_reuse_detected(
+    session: Session,
+    *,
+    user_id: uuid.UUID,
+    family_id: uuid.UUID,
+) -> None:
+    """Record that a consumed refresh token was replayed and cost a whole family.
+
+    ``outcome="denied"`` because the refresh itself was refused; the revocation
+    is the consequence, and ``detail`` carries the blast radius. That radius is
+    exactly **one family — one device's sign-in** — and not the user's other
+    sessions, which is worth stating in the record because "was I signed out
+    everywhere?" is the first question the person asks.
+
+    The family id is safe to store. It names a session for revocation and is not
+    the ``refresh_jti_hash``, so it cannot be replayed as a credential — the same
+    reasoning that lets :class:`SessionSummary` expose it to its owner.
+
+    Attribution is best-effort by design. A replayed token still carries a valid
+    signature and a user id, so the user is nearly always resolvable; if the row
+    has been deleted underneath us the event is still written with a NULL actor,
+    because "a token was replayed and we cannot say whose" is a far worse thing
+    to lose than to record imperfectly.
+    """
+
+    user = session.get(User, user_id)
+    audit.emit(
+        session,
+        action="auth:refresh_reuse",
+        context=audit_context(session, user) if user is not None else None,
+        actor_type="user" if user is not None else "anonymous",
+        actor_id=user_id,
+        actor_label=user.email if user is not None else None,
+        entity_type="user",
+        entity_id=user_id,
+        outcome="denied",
+        detail={
+            # NOT keyed `family_id`/`session_id`: `redact()` matches key names
+            # containing "session" and would replace the value with
+            # "[redacted]", losing the one field that says *which* sign-in was
+            # revoked. Named for what it is instead.
+            "revoked_family": str(family_id),
+            "scope": "one_family",
+            "reason": "refresh_token_reuse",
+        },
+    )
 
 
 def _revoke_family(

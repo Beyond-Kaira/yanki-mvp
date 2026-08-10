@@ -142,3 +142,40 @@ def test_downgrade_base_reverses_every_migration(alembic_config):
         assert _table_names(engine) - {"alembic_version"} == set()
     finally:
         engine.dispose()
+
+
+def test_upgrade_head_leaves_a_usable_plan_catalog(alembic_config):
+    """`0016_seed_plans` is load-bearing now, not decorative (P7.6, ADR-45).
+
+    Since quotas are enforced, an empty `plans` table means every metered route
+    answers 503 — the whole product, refusing everything, for a reason nobody
+    would guess from the symptom. Production ran with an empty catalog once
+    already, before anything read it.
+
+    So this asserts what a *migrated* database contains, which no other test
+    does: `test_billing.py` calls `seed_plans()` directly and therefore proves
+    the function, not the chain. Free is named explicitly because it is the
+    fallback every organization without a subscription lands on — which today
+    is all of them.
+    """
+
+    command.upgrade(alembic_config, "head")
+
+    engine = sa.create_engine(TEST_DATABASE_URL, future=True)
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(sa.text("SELECT key, limits FROM plans")).all()
+    finally:
+        engine.dispose()
+
+    catalog = {key: limits for key, limits in rows}
+    assert catalog, "the migration chain must leave a non-empty plan catalog"
+    assert "free" in catalog, "every org without a subscription falls back to Free"
+
+    # A metric the code meters but a plan does not declare reads as unlimited
+    # (`limit_for` returns None for a missing key), so a gap here is a silent
+    # free-spend hole rather than a visible error.
+    metered = {"analyses", "site_audits", "backlink_refreshes", "projects"}
+    for key, limits in catalog.items():
+        missing = metered - set(limits)
+        assert not missing, f"plan {key!r} does not declare {sorted(missing)}"

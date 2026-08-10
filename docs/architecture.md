@@ -45,14 +45,18 @@ table *is* the queue (see §4).
              /api/:path* + /healthz → 8141   │  /api/* + /healthz → 8141
                                             ▼
                         ┌─────────────────────────────────────────┐
-   api (FastAPI, sync) │  api  :8141   POST /api/v1/analyses (202) │
+   api (FastAPI, sync) │  api  :8141   POST /api/v1/analyses (auth) │
+                        │               GET  /api/v1/analyses (auth)│
                         │               GET  /api/v1/analyses/{id} │
                         │               POST /api/v1/checker (202) │
                         │               POST /api/v1/checker/leads │
                         │               /api/v1/auth/*  (session)  │
                         │               /api/v1/admin/* (panel)    │
                         │               /api/v1/invitations/*      │
-                        │               GET  /healthz              │
+                        │               /api/v1/seo-projects/*     │
+                        │                 └─ …/audits    (dark)    │
+                        │                 └─ …/backlinks (dark)    │
+                        │               GET  /healthz  (readiness) │
                         └───────────────────┬─────────────────────┘
                                             │  INSERT row status='queued'
                                             ▼
@@ -294,21 +298,57 @@ time, not by a sweeper.
 ## 3. Request lifecycles (submit vs. poll)
 
 ```
-Submit:
+Submit  (AUTHENTICATED since P7.6 — ADR-45):
   Browser ── POST /api/v1/analyses {url} ──▶ api
-                                            api validates URL (http/https only)
-                                            invalid → 422 (Pydantic shape / SSRF)
-                                            rate-limited → 429 + Retry-After
-                                            valid   → INSERT analyses (status=queued)
+                 Authorization: Bearer …       no/!valid token   → 401
+                 X-Org-Id: <uuid> (optional)   role lacks
+                                                 analysis:run    → 403 (audited)
+                                              invalid URL / SSRF → 422 (no row)
+                                              IP burst limit     → 429 + Retry-After
+                                              plan allowance out → 429 {metric,used,limit}
+                                              no plan catalog    → 503
+                                              valid → consume_quota(analyses)
+                                                    + INSERT analyses
+                                                        (status=queued, org_id=…)
+                                                    + audit analysis:create
+                                                    … all in ONE transaction
   Browser ◀─────────── 202 {id} ───────────  (returns immediately; no work yet)
 
 Poll (every 2s):
-  Browser ── GET /api/v1/analyses/{id} ────▶ api
+  Browser ── GET /api/v1/analyses/{id} ────▶ api    (bearer OPTIONAL)
+                                            tenancy.readable_analysis(ctx):
+                                              org_id IS NULL → anyone may read
+                                              org_id set     → that org only
                                             api reads analyses + prompts + responses
   Browser ◀── 200 {status, progress,        result{} is ALWAYS present;
               current_step, result{…}} ──    inner fields null/empty until produced
-                                            unknown id → 404
+                                            unknown id, or not yours → 404 (identical)
 ```
+
+**Why submit is authenticated and poll is not.** The submit route spends real
+money at a paid vendor on every call, and until P7.6 it took no credential at
+all — so every analysis a paying customer ran carried `org_id = NULL` and could
+be metered against nothing. Reading is a different question with a different
+answer: a row with no organization is a capability URL (every row created before
+P7.6, and every checker result), while a row that carries one belongs to that
+organization alone. `tenancy.readable_analysis` is the single place that rule
+lives; this is its first and only call site (tech-debt #63).
+
+**And why the *list* is authenticated even though the poll is not** (ADR-49).
+`GET /api/v1/analyses` — the organization's history, added in session 26 because
+`org_id` had been written since P7.6 and read by nothing — requires
+`analysis:read` and is org-scoped. That is not an inconsistency with the poll
+above it. A capability URL works because knowing the unguessable id *is* the
+authorization; a list has no id to know, so there is no capability a caller
+could present and the only coherent answer to "whose analyses?" is the caller's
+organization. The rule worth carrying into M3–M6: **a route keyed by an
+unguessable id may be a capability; a route that enumerates never can be.**
+
+The list is also the **first application call site of `tenancy.scoped()`**, the
+fail-closed helper that had none. Runs from before P7.6 carry no `org_id` and so
+appear in nobody's history while staying readable by id — they belong to no
+tenant, and inventing an owner for them would be a guess written into a
+customer-facing screen.
 
 `result` is always present so the frontend renders partial state as the pipeline
 fills it in. See the locked response shape in SPEC §"API contract".
@@ -328,9 +368,14 @@ raw answers) — both `null` for MVP rows.
 
 ### Rate limiting the submit endpoint (P5.0)
 
-`POST /api/v1/analyses` is public with real keys, so `services/rate_limit.py`
+`POST /api/v1/analyses` runs with real keys, so `services/rate_limit.py`
 rejects abusive traffic **before** any row is created or money is spent (the
-SSRF `422` check runs first, so `422`-rejected submits never count). The client
+SSRF `422` check runs first, so `422`-rejected submits never count). It kept its
+place after the route was closed to anonymous callers (ADR-45): a monthly plan
+allowance does not bound a burst — five hundred runs on the first of the month
+is inside a Business allowance and still a stampede at the vendor — and it runs
+*before* the quota, so a throttled submit costs the organization nothing. The
+client
 IP — first `X-Forwarded-For` entry (the host nginx edge sets it) else the socket
 peer — is stored as a salted hash in the nullable `analyses.ip_hash` column;
 the raw IP is never persisted. Two rolling-window guards, both returning `429`
@@ -443,6 +488,159 @@ Migration 0018 installs a Postgres trigger that raises on UPDATE or DELETE, and
 each row carries a SHA-256 of its own content so an edit is detectable if the
 trigger is ever bypassed. What that does *not* survive is a superuser who drops
 the trigger first; the limit is stated rather than papered over (ADR-38).
+
+**Which means the trail holds no erasable PII** (ADR-48). A row written here can
+never be deleted through the application, so an email copied into an event would
+be permanent — and the erasure path this milestone still owes would have to
+either break the triggers or lie. The two anonymous paths that handle an address
+(`checker:lead`, `waitlist:signup`) therefore store the *reference* and drop the
+*value*: erase the submission and the event still truthfully says an address was
+attached, and no longer says whose. Failed logins are the deliberate exception —
+there the attempted address is the evidence, and no other row carries it.
+
+#### What is audited, and what is deliberately not
+
+The rule is "every mutating action with a consequence emits, and every silence
+is deliberate and has a test asserting it." The second half is what stops an
+intentional gap from being indistinguishable from a forgotten one — which is how
+five mutating paths went unaudited for four sessions (tech-debt #71, closed
+2026-08-09).
+
+| Action | Emitted where | Notes |
+|---|---|---|
+| `auth:signup` · `auth:login` | `services/auth` | Login records success, wrong credentials **and** a disabled account, each with its own `outcome`/reason. |
+| `auth:logout` | `/auth/logout` | The user is resolved *before* the token is spent — afterwards there is nothing left to attribute it to. |
+| `auth:refresh_reuse` | `services/auth_sessions` | A consumed refresh token was replayed, so the whole family was revoked as presumed theft. Committed in the same transaction as the revocation. |
+| `auth:session_revoke` · `auth:session_revoke_all` | `/auth/sessions/*` | |
+| `member:*` · `invitation:*` | Admin routes | With before/after diffs. |
+| `analysis:create` | `POST /analyses` | Committed with the row and its quota. |
+| `project:create` · `site_audit:queue` | `services/seo_projects` | |
+| `backlink:refresh` | `POST …/backlinks/refresh` | Carries the vendor cost. |
+| `backlink:competitor_track` · `backlink:competitor_untrack` | Backlink routes | Untracking names the domain removed; the service returns it because after the delete there is nothing left to read. |
+| `checker:submit` | `POST /checker` | The only path that spends vendor money for someone with no account. `cache_hit` separates an LLM bill from a database read. |
+| `checker:lead` · `waitlist:signup` | `POST /checker/leads`, `POST /waitlist` | Reference only, never the address. |
+| `billing:quota_denied` | `services/quota` | A 429. Not a mutation; audited anyway, and in its own committed transaction — see below. |
+| *the permission string itself*, e.g. `analysis:run` | `api/org_dependencies` | A 403. Written with `outcome='denied'` and the caller's role. |
+
+Deliberately **not** audited, each with a test asserting the silence:
+
+- **A successful refresh rotation.** It fires about four times an hour per
+  signed-in device. Recording it would out-write every real event by orders of
+  magnitude and bury the trail under heartbeats.
+- **An ordinary invalid refresh** — an expired family, a cookie from a logout.
+  Every idle user reaches it and it indicates nothing.
+- **A duplicate waitlist signup.** No row was inserted, so there is no mutation;
+  and recording it would put "this address is already on the list" into a table,
+  which is the enumeration answer the endpoint's whole design refuses to give.
+- **A checker submit refused by the kill switch.** Nothing is created, and
+  auditing the attempt would give an unauthenticated endpoint a way to write
+  rows into a table that cannot be pruned.
+
+**Why a refusal commits its own transaction.** `billing:quota_denied` is written
+by `services/quota` and committed there, because the request is already
+unwinding: the route raises, the handler answers 429, and the session closes
+without committing — so an event merely added to it would be discarded along
+with the refusal it describes. That is safe only because the quota check raises
+*before* it writes and every route runs its quota gate before any other
+mutation, so the event is the only thing pending. A future metered path that
+writes first must emit at its own call site instead. The invariant is asserted
+by a test, not assumed.
+
+This is not a new pattern. The permission gate in `api/org_dependencies` has
+committed its own 403 event since P7.2, and `services/auth` commits a failed
+login the same way — for the same reason in both cases: the request that caused
+the event is about to be refused, so the event cannot ride in its transaction.
+Three refusal classes now behave identically, which is the point.
+
+### Sessions, devices, and the org switcher (P7.5, milestone M1)
+
+The refresh-token machinery predates this surface by several sessions.
+`auth_sessions` (migration 0006) stores one row per refresh token in a **family**
+— rotation writes a new row pointing back at the one it replaced, so a family is
+a device's login lineage, and presenting an already-consumed token revokes the
+whole family as presumed theft. All of that existed and **only an administrator
+could reach it**: `revoke_all_sessions_for_user` had one caller, the
+member-disable path. These routes hand it to the person the sessions belong to.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/auth/sessions` | The caller's own active sessions, collapsed to one entry per family, with the current one flagged. Never returns `refresh_jti_hash` or anything replayable. |
+| DELETE | `/api/v1/auth/sessions/{session_id}` | Revokes one family. Strictly self-scoped: another user's session id is a 404 with the same body as a missing one, so it cannot be used to probe which ids exist. |
+| POST | `/api/v1/auth/sessions/revoke-all` | Sign out everywhere **else** — the current device is spared on purpose (ADR-43). Returns `kept_current`, which is `false` when the caller's own family could not be identified and everything went, this device included. |
+
+All three emit audit events; the two revokes are exactly the kind of action the
+trail exists for. What the list cannot yet show is *which device* a session is —
+`auth_sessions` stores no IP, user-agent or device name, and adding them needs a
+migration (tech-debt #67).
+
+**`GET /api/v1/auth/me` is now multi-org.** It gained an `organizations[]` array
+carrying every org the caller belongs to with their role in each, **alongside**
+the existing singular `organization` field rather than replacing it — the
+frontend and the committed OpenAPI artifact both depend on the old shape, and
+auto-deploy-on-merge makes non-additive contract changes a poor trade.
+
+This closed a defect invitations opened. `resolve_org_context` picks
+`memberships[0]` when no org is named, so once a user could hold two memberships
+— which invitations made possible in session 22 — **an accepted invitation to a
+second organization was unreachable**. The `X-Org-Id` header had been honoured
+and membership-verified server-side since P7.1 (`app/api/org_dependencies.py`),
+but no client code had ever sent it. The switcher in the app shell sends it, and
+it is a *request* for a scope, never a grant of one: an org the caller does not
+belong to is a 403, never a read.
+
+### Plans, quotas and the credit ledger (P7.6, milestone M1)
+
+Four tables shipped in migration `0015_billing` and `0016_seed_plans` seeded a
+five-tier catalog **as data**; the quota and ledger service was complete. None of
+it had a caller on any path a customer touches, so for three sessions every
+organization silently fell back to Free and Free meant nothing. P7.6's
+enforcement half is what changed that (ADR-45).
+
+Two mechanisms, deliberately kept apart:
+
+| Question | Mechanism | Storage |
+|---|---|---|
+| "May this org do one more?" | `billing.consume_quota` / `check_stock_quota` | `usage_counters` — one small mutable counter per (org, metric, month) |
+| "What has this org spent?" | `billing.record_charge` | `credit_ledger` — append-only and signed; a correction is a reversal, never an edit |
+
+Conflating them would make either the money mutable or the quota check a sum
+over all history.
+
+**Flow versus stock.** `analyses` and `site_audits` are events, counted per
+calendar month. `projects` is a possession, counted as *rows that exist* — a
+monthly counter would read Free's `projects: 1` as one new project per month
+(twelve by December) and deleting one would free nothing back.
+
+**Where the gate sits.** `services/quota.py` is the only reader of
+`QUOTA_ENFORCEMENT_ENABLED`, so the switch cannot be half-on; `services/billing`
+stays free of application `Settings` and remains callable from a worker, a
+script or a test.
+
+| Path | Metered as | Refusal |
+|---|---|---|
+| `POST /api/v1/analyses` | `analyses` (flow) | 429 |
+| `POST /api/v1/seo-projects` | `projects` (stock) + `site_audits` (flow, only if a crawl is actually queued) | 429 — after the 409 duplicate check, which is the more useful answer when both are true |
+| `POST /api/v1/seo-projects/{id}/audits` | `site_audits` (flow) | 429 — after the project resolves, so another tenant's id cannot drain your month |
+| `POST …/backlinks/refresh` | `backlink_refreshes` via `reserve()` | 429 / 402 (pre-existing, flag-off) |
+| `POST /api/v1/checker` | **not metered** — anonymous, so there is no org to charge | capped globally instead: `CHECKER_ENABLED`, IP/brand limits, `CHECKER_DAILY_USD_CAP` |
+
+`api/main.py` registers app-level handlers so the mapping cannot be forgotten by
+a future metered route: `QuotaExceeded` → **429** (body carries
+`metric`/`used`/`limit`, which is how a client tells it from the rate limiter's
+bare 429), `InsufficientCredit` → **402**, `PlanCatalogMissing` → **503**.
+
+**Money is recorded, not gated.** `reserve()` refuses when a balance cannot cover
+an estimate, and no organization has ever been granted credit — so every balance
+is 0 and using it here would have refused every analysis (tech-debt #74).
+Instead the worker calls `services/analyses.settle_cost` when a run reaches a
+terminal state, **including `failed`**: a run that died in step five still paid
+for steps one to four. It charges the difference between spend-so-far and what
+the ledger already holds for that analysis, which makes it safe across the
+worker's three retry attempts.
+
+**Changing a tier** is `scripts/set_org_plan.py` until the Stripe lifecycle and
+the platform back office exist. Enforcement without a way to lift a limit is a
+cage with no key.
 
 ---
 
@@ -584,6 +782,18 @@ reaching Yanki over the stack's loopback host binds:
   while the previous release is still serving and touches no container.
   **First exercised for real 2026-07-10 (P4.2)** — both paths ran clean on the
   shared VPS with co-tenants verified undisturbed.
+- **A schema change is snapshotted before it runs (ADR-46).** `deploy.sh`
+  compares `alembic current` with `alembic heads`; when they differ — or when it
+  cannot tell, which is treated the same way — it runs `deploy/backup.sh` and
+  **aborts the deploy if the dump fails**, while the previous release is still
+  serving and nothing has changed. This closes the half of rollback that never
+  existed: `rollback.sh` restores the image, never the rows, and `yanki_pgdata`
+  is the only copy of the database. Dumps land in `~/yanki-backups` (`0600` in a
+  `0700` directory, newest 14 kept) and are verified by reading the whole
+  archive back, not by checking that the file is non-empty. `make restore-check`
+  rehearses a restore into a throwaway container. **What none of it survives is
+  losing the box** — there is no off-box copy yet (operator **B13**, tech-debt
+  #79). Runbook: [deploy/BACKUP.md](../deploy/BACKUP.md).
 - **A `searxng` service ships behind the `serp` profile (ADR-29).** The operator
   turned SERP on, so the `yanki-prod` compose file now defines a fifth container,
   `searxng` (`searxng/searxng:2026.8.1-8892414dc`, pinned like every other
@@ -642,8 +852,14 @@ reaching Yanki over the stack's loopback host binds:
 | Unexpected LLM spend | Confirm `DRY_RUN` and `PANEL_ENGINES`; check `MAX_RESPONSES_PER_JOB` and `llm_cache` hit rate. CI/tests must stay `DRY_RUN`. |
 | `result.serp` null / no SERP number | Expected unless an operator ran a SearXNG instance and set `SERP_ENABLED=1` + `SERP_BASE_URL`. SERP is off by default and **fail-open**: an instance being down leaves the `serp_*` columns null and never fails the run. A present `serp` with `score` null (not `0.0`) means the instance answered but every engine refused — see `serp_checks.unresponsive_engines`. |
 | `result.seo` null / no SEO grade | Expected on a run that did not audit — a checker submission has no site, and rows predating ADR-31 never audited. On a URL run the audit rides inside discovery and always writes `analyses.seo_status` (`ok` / `no_crawl` / `error`); it is **fail-open**, so an audit defect costs the run its grade (`seo_grade` null, `seo_status='error'`) and nothing else. The failing `seo_checks` rows are the real output. |
-| 404 on a valid-looking id | Unknown/never-created id. 422 instead means URL validation rejected the submit. |
+| 404 on a valid-looking id | Unknown/never-created id, **or an analysis belonging to another organization** — the two are deliberately indistinguishable (ADR-45), so check `analyses.org_id` against the caller's org before assuming the row is missing. 422 instead means URL validation rejected the submit. |
+| 429 on `POST /analyses` | Two different limits answer 429. A body carrying `metric`/`used`/`limit` is the **plan quota** (ADR-45) — lift it with `scripts/set_org_plan.py --org <slug> --set <tier>`, or turn enforcement off entirely with `QUOTA_ENFORCEMENT_ENABLED=0`. A `Retry-After` header and `"rate limit exceeded"` is the **per-IP burst limit** (P5.0) and clears on its own. |
+| 503 "billing plans are not configured" | The `plans` table is empty, which migration `0016_seed_plans` fills. Realistically means a database restored from a dump that predates it, or a hand-built one. `alembic upgrade head`, then check `select count(*) from plans`. |
+| 401 on `POST /analyses` | Expected since ADR-45 — the route requires a bearer. If the *app* is getting it, the access token expired and the refresh failed; check the refresh cookie and `JWT_SECRET_KEY`. |
 | Frontend can't reach api | Dev: `rewrites()` / `API_ORIGIN`. Prod: host nginx path-routing (`/etc/nginx` vhost) + the 127.0.0.1:8142/8143 loopback binds. |
+| `/healthz` says `unhealthy` | It is a real probe now (ADR-47). From the box, `curl -s localhost:8143/healthz | python3 -m json.tool` prints which component failed — only `database` and `plans` can turn it red. Through the public URL you get the verdict without the reasons, on purpose. |
+| Worker container shows `unhealthy` | Its heartbeat file is older than 1800s, i.e. the `while True` stopped looping. **Compose will not restart it for you** (tech-debt #81) — `docker compose -p yanki-prod restart worker`, then read the log for what wedged it. A *busy* worker beats at every pipeline step, so this should not fire on a slow job. |
+| Need to restore the database | [deploy/BACKUP.md](../deploy/BACKUP.md) — read it *before* you need it. Dumps are in `~/yanki-backups`; `deploy/restore-check.sh` proves one is good without touching production. Step 0 of any restore is dumping what you have now, however broken. |
 
 ---
 

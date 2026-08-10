@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import AppShell from '@/components/shell/AppShell'
 import RequireAuth from '@/components/RequireAuth'
+import SessionsSection from '@/components/settings/SessionsSection'
 import { useAuth } from '@/components/AuthProvider'
 
 const ROLE_LABELS: Record<string, string> = {
@@ -104,6 +105,8 @@ export default function SettingsPage() {
                   </p>
                 )}
               </section>
+
+              <SessionsSection />
             </div>
           )}
         </div>

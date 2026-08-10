@@ -88,13 +88,26 @@ export default function KeywordsOverviewClient() {
 
       {overviewResult ? (
         <div className="mt-8 space-y-6">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-surface-border bg-surface p-4">
               <p className="text-xs uppercase tracking-wide text-surface-subtle">
                 Intent
               </p>
               <p className="mt-1 text-lg font-semibold capitalize">
                 {signalText(overviewResult.signals, 'intent')}
+              </p>
+            </div>
+            <div className="rounded-xl border border-surface-border bg-surface p-4">
+              <p className="text-xs uppercase tracking-wide text-surface-subtle">
+                Volume
+              </p>
+              <p className="mt-1 text-lg font-semibold">
+                {signalNumber(overviewResult.signals, 'volume')}
+              </p>
+              <p className="mt-1 text-xs text-surface-subtle">
+                {overviewResult.signals?.volume_estimated === false
+                  ? 'Google Ads'
+                  : '— (enable KEYWORD_ADS_ENABLED)'}
               </p>
             </div>
             <div className="rounded-xl border border-surface-border bg-surface p-4">

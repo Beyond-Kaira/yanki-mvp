@@ -168,6 +168,17 @@ class Settings(BaseSettings):
     keyword_variant_max: int = 3
     # Max SERP lookups per rank-check request (politeness budget).
     keyword_rank_max_queries: int = 10
+    # Google Ads Keyword Planning metrics (volume/CPC). Default OFF until the
+    # operator has developer token + OAuth + customer ids configured.
+    keyword_ads_enabled: bool = False
+    google_ads_developer_token: str = ""
+    google_ads_client_id: str = ""
+    google_ads_client_secret: str = ""
+    google_ads_refresh_token: str = ""
+    # Client account that owns the Keyword Planning lookup (digits; no dashes).
+    google_ads_customer_id: str = ""
+    # Manager (MCC) account id when calling as a manager (digits; no dashes).
+    google_ads_login_customer_id: str = ""
 
     # Transactional email via the Resend REST API (P5.13). Fail-open + env-gated:
     # send_email is a NO-OP unless emails_enabled is True AND resend_api_key is

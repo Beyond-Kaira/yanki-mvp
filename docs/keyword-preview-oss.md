@@ -76,11 +76,54 @@ spent on filler first.
 | Track | Job |
 |-------|-----|
 | Discovery cleanup (this policy) | Order, smart-skip, variant cap, related/PAA junk filters |
-| Ads volume roadmap | Real monthly searches / CPC on the metrics seam |
+| Ads volume metrics (below) | Real monthly searches / CPC via Google Ads API |
 | Rank-check | Already shipped; unchanged by this policy |
 
+## Ads volume metrics policy (accepted)
 
-## UI honesty
+**Status:** accepted (docs only — implementation starts after Google Ads API access)  
+**Canvas:** `keyword-ads-volume-roadmap.canvas.tsx`  
+**Out of scope here:** building a proprietary keyword index; wholesale providers unless Ads is blocked.
+
+**Demand assumption:** we are building toward real volume (path B), not waiting on a user demand-test window.
+
+### Split of responsibilities
+
+| Concern | Source |
+|---------|--------|
+| Idea discovery (suggestion / paa / related / variant) | **SearXNG** (unchanged) |
+| Absolute monthly search volume, competition, CPC bands | **Google Ads Keyword Planning API** |
+| Estimated demand / difficulty proxies | Remain only where Ads metrics are missing or flag off; never invent Ads-like volume |
+
+### Kill-switch / config (to implement)
+
+| Knob | Intent |
+|------|--------|
+| `KEYWORD_ENABLED` | Module on/off (existing) |
+| `KEYWORD_ADS_ENABLED` | When 1 + credentials present → enrich ideas with Ads metrics; default **0** until account smoke passes |
+| Ads secrets | Developer token, OAuth client, refresh token, customer id (never in git) |
+
+### Success when Ads path ships
+
+- Magic / Overview show **Volume** from Ads (`avg_monthly_searches` or equivalent) with `volume_estimated: false`
+- Estimated badge / demand_score demoted or hidden for rows that have Ads volume
+- Ads down or flag off → clear “metrics unavailable” (or keep proxies with Estimated) — **no fake volume numbers**
+- Batch + cache required (~1 QPS Keyword Planning); one expand ≈ one metrics batch for the idea list
+
+### Implementation order (checklist — not a diary)
+
+1. Google Ads MCC + developer token + OAuth smoke (`GenerateKeywordHistoricalMetrics`)
+2. Metrics adapter seam (mock under `DRY_RUN`; live Ads behind flag)
+3. Wire expand/overview + OpenAPI/UI Volume column
+4. Cache `(phrase, locale/geo)` + rate limit
+5. Honesty / matrix Product tick on absolute volume
+6. Access-level upgrade only if Explorer quotas bind
+7. Wholesale fallback only if Ads path is blocked
+
+### Cost note
+
+Google Ads Keyword Planning API: **$0 per request**; limit ≈ **1 QPS** / customer id + access-level daily ops. Soft cost = eng time + token approval. Wholesale (e.g. DataForSEO) is pay-per-task — not the first path.
+
 
 - Any non-Keyword-Planner volume-like score → label **Estimated**.
 - Difficulty from SERP heuristics → label **Estimated difficulty** (not “KD%”).
@@ -185,8 +228,8 @@ until its Semrush column is `[x]`.
 
 | Capability | Preview | Product | Semrush | Notes / transition |
 |------------|:-------:|:-------:|:-------:|--------------------|
-| Absolute monthly search volume | [ ] | [ ] | [ ] | Preview→Product: Google Ads / wholesale. Semrush: own calibrated volume DB + history. |
-| Volume labeled Estimated / proxy | [x] | — | — | `volume_estimated` + `estimated_demand_score` in signals. Drop when real volume ships (Product). |
+| Absolute monthly search volume | [ ] | [ ] | [ ] | **Accepted path:** Google Ads Keyword Planning API (`KEYWORD_ADS_ENABLED`). Preview until wired. Semrush: own calibrated volume DB + history. |
+| Volume labeled Estimated / proxy | [x] | — | — | `volume_estimated` + `estimated_demand_score` until Ads volume ships; then drop Estimated on volume field. |
 | Trend (12-month) | [ ] | [ ] | [ ] | Needs time series / Planner monthly buckets. |
 | Keyword Difficulty (true KD%) | [ ] | [ ] | [ ] | Preview has `estimated_difficulty_score` (seed SERP), not KD%. Product: licensed KD or honest “competition”. Semrush: KD%. |
 | Personal KD (PKD) for a domain | [ ] | [ ] | [ ] | Needs domain + stronger model/vendor. |

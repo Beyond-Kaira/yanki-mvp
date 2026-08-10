@@ -1,8 +1,8 @@
 # Keyword preview → Product (engineering checklist)
 
 **Audience:** engineers  
-**Status:** preview shipped; use after demand-test A/B/C (see companion)  
-**Companion:** [keyword-preview-oss.md](keyword-preview-oss.md) (scope, quality bars, intentional roughness, demand-test)
+**Status:** discovery cleanup core done; Ads volume policy accepted — implement after API access  
+**Companion:** [keyword-preview-oss.md](keyword-preview-oss.md) (scope, quality bars, discovery + Ads policies)
 
 This doc is the **codebase-shaped** path from Preview quality to Product quality.
 Product/Business track *what* on the quality canvas; this track *where in the
@@ -41,9 +41,9 @@ repo* and *what to change*.
 ### B. Metrics
 
 - **Preview now:** `intent.py`, `signals.py` (estimated only)
-- **Product next (pick one after demand-test):**
-  - **B path:** Google Ads / wholesale adapter on `KeywordSource`; real `volume`; drop `volume_estimated`
-  - **Product-lite:** remove or demote estimated demand/difficulty columns; do not tick Product on volume/KD rows
+- **Accepted path:** Google Ads Keyword Planning on a metrics seam (not replacing SearXNG discovery). See companion **Ads volume metrics policy**.
+- **Next:** Google account + developer token smoke → `KEYWORD_ADS_ENABLED` adapter → expand/overview enrich + Volume UI → cache/QPS
+- **Fallback (only if Ads blocked):** wholesale on the same seam; or Product-lite (hide estimated demand/difficulty)
 
 ### C. HTTP + UI
 

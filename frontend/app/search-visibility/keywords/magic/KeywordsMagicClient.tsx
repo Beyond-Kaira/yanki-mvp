@@ -186,6 +186,7 @@ export default function KeywordsMagicClient() {
                   <th className="px-4 py-2 font-medium">Keyword</th>
                   <th className="px-4 py-2 font-medium">Source</th>
                   <th className="px-4 py-2 font-medium">Intent</th>
+                  <th className="px-4 py-2 font-medium">Volume</th>
                   <th className="px-4 py-2 font-medium">Est. demand</th>
                   <th className="px-4 py-2 font-medium">Est. difficulty</th>
                   <th className="px-4 py-2 font-medium">Our rank</th>
@@ -208,6 +209,9 @@ export default function KeywordsMagicClient() {
                     <td className="px-4 py-2 text-surface-subtle">{idea.source}</td>
                     <td className="px-4 py-2 capitalize text-surface-subtle">
                       {signalText(idea.signals, 'intent')}
+                    </td>
+                    <td className="px-4 py-2 text-surface-subtle">
+                      {signalNumber(idea.signals, 'volume')}
                     </td>
                     <td className="px-4 py-2 text-surface-subtle">
                       {signalNumber(idea.signals, 'estimated_demand_score')}

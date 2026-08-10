@@ -24,7 +24,10 @@ from app.api.keyword_schemas import (
 )
 from app.config import Settings, get_settings
 from app.db.models import User
-from app.keyword.base import KeywordUnavailable
+from app.keyword.base import KeywordIdea, KeywordUnavailable
+from app.keyword.metrics.enrich import enrich_ideas_with_metrics
+from app.keyword.metrics.google_ads import GoogleAdsMetricsUnavailable
+from app.keyword.metrics.registry import get_keyword_metrics_source
 from app.keyword.rank_check import check_keyword_ranks
 from app.keyword.registry import get_keyword_serp_source, get_keyword_source
 
@@ -48,6 +51,24 @@ def _idea_out(idea) -> KeywordIdeaOut:
         source=idea.source,
         signals=dict(idea.signals or {}),
     )
+
+
+def _enrich_ideas_if_configured(
+    settings: Settings,
+    ideas: tuple[KeywordIdea, ...],
+    *,
+    locale: str,
+) -> tuple[KeywordIdea, ...]:
+    """Optionally attach Ads volume; on failure leave discovery signals unchanged."""
+    metrics_source = get_keyword_metrics_source(settings)
+    if metrics_source is None:
+        return ideas
+    try:
+        return enrich_ideas_with_metrics(ideas, metrics_source, locale=locale)
+    except GoogleAdsMetricsUnavailable:
+        return ideas
+    except Exception:  # noqa: BLE001 — metrics must not break expand
+        return ideas
 
 
 @router.post("/expand", response_model=KeywordExpandResponse)
@@ -79,11 +100,12 @@ def expand_keywords(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc) or "keyword source unavailable",
         ) from exc
+    ideas = _enrich_ideas_if_configured(settings, result.ideas, locale=body.locale)
     return KeywordExpandResponse(
         seed=result.seed,
         locale=result.locale,
         provider=result.provider,
-        ideas=[_idea_out(idea) for idea in result.ideas],
+        ideas=[_idea_out(idea) for idea in ideas],
         estimated=True,
     )
 
@@ -115,12 +137,13 @@ def overview_keyword(
             detail=str(exc) or "keyword source unavailable",
         ) from exc
 
+    ideas = _enrich_ideas_if_configured(settings, result.ideas, locale=body.locale)
     seed_signals: dict = {}
-    for idea in result.ideas:
+    for idea in ideas:
         if idea.source == "seed":
             seed_signals = dict(idea.signals or {})
             break
-    sample = [_idea_out(idea) for idea in result.ideas[:8]]
+    sample = [_idea_out(idea) for idea in ideas[:8]]
     return KeywordOverviewResponse(
         keyword=result.seed,
         locale=result.locale,

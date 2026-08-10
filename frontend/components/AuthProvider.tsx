@@ -12,7 +12,7 @@ import {
 import type { AuthUser } from '@/lib/auth'
 import { acceptInvitation } from '@/lib/api'
 import { getActiveOrgId, setActiveOrgId } from '@/lib/active-org'
-import { refreshAccessToken, setAccessToken } from '@/lib/session'
+import { onSessionLost, refreshAccessToken, setAccessToken } from '@/lib/session'
 
 // Drop a stored active-org that the authoritative `/auth/me` list no longer
 // contains — a membership revoked while it was selected, or a value left behind
@@ -101,6 +101,21 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [])
+
+  // A session that dies mid-visit — the cookie revoked from another device, the
+  // family invalidated — surfaces as a 401 the refresh cannot rescue, and only
+  // the fetch layer is there to see it. Landing it back in state is what makes
+  // the guard notice: status flips to anonymous, and RequireAuth sends them to
+  // /login with where they were.
+  useEffect(
+    () =>
+      onSessionLost(() => {
+        setAccessToken(null)
+        setUser(null)
+        setStatus('anonymous')
+      }),
+    [],
+  )
 
   const signIn = useCallback(async (email: string, password: string) => {
     const session = await login({ email, password })

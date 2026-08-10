@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 import AppShell from '@/components/shell/AppShell'
-import RequireAuth from '@/components/RequireAuth'
 import { useAuth } from '@/components/AuthProvider'
 import { ADMIN_PANEL_TABS } from '@/lib/shell-nav'
 
@@ -13,11 +12,10 @@ import { ADMIN_PANEL_TABS } from '@/lib/shell-nav'
  *
  * The layout owns the identity so every sub-page reads as part of the same
  * surface rather than three unrelated screens that happen to share a URL
- * prefix. It also owns the two guards a governance surface needs.
+ * prefix.
  *
- * **The gate is the shell, not the data.** `RequireAuth` keeps a signed-out
- * visitor from seeing the panel at all; every endpoint underneath enforces its
- * own permission independently, so someone who skips the UI still gets a 403.
+ * Being signed in is the `(app)` group layout's business, not this file's.
+ * What stays here is the permission read, which is a different question.
  *
  * **A tab the caller cannot use is not shown.** The permission list on
  * `/auth/me` is for rendering only — hiding the audit tab from an Analyst is a
@@ -31,11 +29,9 @@ const TAB_PERMISSION: Record<string, string> = {
 
 export default function AdminPanelChrome({ children }: { children: ReactNode }) {
   return (
-    <RequireAuth>
-      <AppShell>
-        <PanelHeader>{children}</PanelHeader>
-      </AppShell>
-    </RequireAuth>
+    <AppShell>
+      <PanelHeader>{children}</PanelHeader>
+    </AppShell>
   )
 }
 

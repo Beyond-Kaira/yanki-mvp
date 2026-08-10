@@ -11,8 +11,8 @@ import AdminPanelChrome from './AdminPanelChrome'
  * of inheriting the root layout's marketing title, which is the string a user
  * scans when they have six tabs open.
  *
- * Everything else — the auth gate, the shell, the tabs — lives in the client
- * component this renders.
+ * Everything else — the shell, the tabs — lives in the client component this
+ * renders; the auth gate is the `(app)` group layout's.
  */
 export const metadata: Metadata = {
   title: 'Admin Panel · Yanki',

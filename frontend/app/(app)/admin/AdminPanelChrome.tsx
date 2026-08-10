@@ -14,9 +14,6 @@ import { ADMIN_PANEL_TABS } from '@/lib/shell-nav'
  * surface rather than three unrelated screens that happen to share a URL
  * prefix.
  *
- * Being signed in is the `(app)` group layout's business, not this file's.
- * What stays here is the permission read, which is a different question.
- *
  * **A tab the caller cannot use is not shown.** The permission list on
  * `/auth/me` is for rendering only — hiding the audit tab from an Analyst is a
  * courtesy that saves them a dead end, not a security boundary.

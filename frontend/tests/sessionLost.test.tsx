@@ -54,8 +54,6 @@ describe('authorizedFetch when the session is over', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
-        // The refresh is what decides: a cookie the server will not honour any
-        // more answers 401, so there is no new token to replay the call with.
         if (String(input).includes('/auth/refresh')) return new Response(null, { status: 401 })
         return new Response(null, { status: 401 })
       }),
@@ -69,8 +67,6 @@ describe('authorizedFetch when the session is over', () => {
   })
 
   it('stays quiet when the refresh rescues the request', async () => {
-    // The common case, and the one that must NOT sign anybody out: access
-    // tokens are short-lived by design, so an expired one is routine.
     const heard = vi.fn()
     const unsubscribe = onSessionLost(heard)
     let seenBearer = 0

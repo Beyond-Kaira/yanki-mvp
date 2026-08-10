@@ -33,12 +33,6 @@ export function setAccessToken(token: string | null): void {
   accessToken = token
 }
 
-// A refresh that fails mid-session is the one signal `AuthProvider` cannot see
-// for itself: `authorizedFetch` lives in a plain fetch layer with no access to
-// context, so without this the UI keeps claiming "signed in" against a session
-// the server has already let go. Listeners rather than a direct import because
-// the dependency has to run this way round — React knows about the fetch layer,
-// not the other way about.
 type SessionLostListener = () => void
 
 const sessionLostListeners = new Set<SessionLostListener>()

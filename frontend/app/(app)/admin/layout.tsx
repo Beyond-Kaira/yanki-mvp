@@ -12,7 +12,7 @@ import AdminPanelChrome from './AdminPanelChrome'
  * scans when they have six tabs open.
  *
  * Everything else — the shell, the tabs — lives in the client component this
- * renders; the auth gate is the `(app)` group layout's.
+ * renders.
  */
 export const metadata: Metadata = {
   title: 'Admin Panel · Yanki',

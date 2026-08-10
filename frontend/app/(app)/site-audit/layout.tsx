@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 import AppShell from '@/components/shell/AppShell'
 
-/** Site Audit renders inside the shell; the `(app)` group gates it. */
+/** Site Audit is a signed-in product surface and now renders inside the shell. */
 export default function Layout({ children }: { children: ReactNode }) {
   return <AppShell>{children}</AppShell>
 }

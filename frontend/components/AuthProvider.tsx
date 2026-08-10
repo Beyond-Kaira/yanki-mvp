@@ -102,11 +102,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // A session that dies mid-visit — the cookie revoked from another device, the
-  // family invalidated — surfaces as a 401 the refresh cannot rescue, and only
-  // the fetch layer is there to see it. Landing it back in state is what makes
-  // the guard notice: status flips to anonymous, and RequireAuth sends them to
-  // /login with where they were.
   useEffect(
     () =>
       onSessionLost(() => {

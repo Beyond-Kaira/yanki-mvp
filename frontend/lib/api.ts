@@ -100,8 +100,6 @@ export async function authorizedFetch(
 
   const refreshed = await refreshAccessToken()
   if (!refreshed) {
-    // The 401 stood and the cookie could not buy a new token: the session is
-    // over. Say so, or the shell keeps rendering a signed-in user who is not.
     notifySessionLost()
     return res
   }

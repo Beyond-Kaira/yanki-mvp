@@ -23,16 +23,6 @@ function renderLayout() {
   )
 }
 
-/**
- * The regression this file exists for: every protected route is gated by this
- * one layout, so a page that stops being gated is a change HERE, not a change
- * spread across eight files nobody diffed together.
- *
- * `queryByText` rather than a visibility assertion — the requirement is that
- * protected children never MOUNT while the session is unresolved. Rendering
- * them hidden would still run their effects and fire their requests, and would
- * still flash on a slow connection.
- */
 describe('(app) route group layout', () => {
   beforeEach(() => {
     vi.clearAllMocks()

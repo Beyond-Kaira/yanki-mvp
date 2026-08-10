@@ -21,9 +21,6 @@ describe('safeNext', () => {
   })
 
   it('refuses a protocol-relative URL', () => {
-    // `//evil.example` is an absolute URL wearing a path's clothes: the browser
-    // reads it as "same scheme, that host". A `startsWith('/')` check alone
-    // lets it straight through.
     expect(safeNext('//evil.example')).toBe('/dashboard')
     expect(safeNext('//evil.example/steal')).toBe('/dashboard')
   })

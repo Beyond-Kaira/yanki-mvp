@@ -1,9 +1,7 @@
 'use client'
 
-import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useState } from 'react'
-import { useAuth } from '@/components/AuthProvider'
 import Button from '@/components/Button'
 import SiteAuditIssuesPanel from '@/components/site-audit/issues/SiteAuditIssuesPanel'
 import SiteAuditCrawledPagesPanel from '@/components/site-audit/pages/SiteAuditCrawledPagesPanel'
@@ -16,15 +14,9 @@ import type { SiteAuditTab } from './SiteAuditTabs'
 
 export default function SiteAuditProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>()
-  const { status } = useAuth()
-  const { state, retry } = useSiteAuditProject(
-    projectId,
-    status === 'authenticated',
-  )
+  const { state, retry } = useSiteAuditProject(projectId)
   const [tab, setTab] = useState<SiteAuditTab>('overview')
 
-  if (status === 'loading') return <DetailLoading label="Checking your session" />
-  if (status === 'anonymous') return <SignedOutDetail />
   if (state.kind === 'loading') return <DetailLoading label="Loading Site Audit" />
   if (state.kind === 'error') {
     return (
@@ -104,27 +96,6 @@ function DetailLoading({ label }: { label: string }) {
       >
         {label}…
       </p>
-    </DetailShell>
-  )
-}
-
-function SignedOutDetail() {
-  return (
-    <DetailShell>
-      <section className="rounded-xl border border-surface-border bg-surface p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-surface-foreground">
-          Sign in to view this Site Audit
-        </h1>
-        <p className="mt-2 text-sm text-surface-subtle">
-          Audit results are private to the account that created the project.
-        </p>
-        <Link
-          href="/login"
-          className="mt-5 inline-flex min-h-[44px] items-center rounded-md bg-primary px-5 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          Sign in
-        </Link>
-      </section>
     </DetailShell>
   )
 }

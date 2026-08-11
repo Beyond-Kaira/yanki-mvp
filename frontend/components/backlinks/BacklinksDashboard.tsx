@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { useAuth } from '@/components/AuthProvider'
 import { listSeoProjects } from '@/lib/api'
 import type { SeoProject } from '@/lib/contracts'
 
@@ -14,13 +13,11 @@ import type { SeoProject } from '@/lib/contracts'
  * two projects for the same domain and a split profile.
  */
 export default function BacklinksDashboard() {
-  const { status } = useAuth()
   const [projects, setProjects] = useState<SeoProject[]>([])
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    if (status !== 'authenticated') return
     const controller = new AbortController()
     let cancelled = false
     setState('loading')
@@ -45,35 +42,7 @@ export default function BacklinksDashboard() {
       cancelled = true
       controller.abort()
     }
-  }, [status])
-
-  if (status === 'loading') {
-    return (
-      <Shell>
-        <p role="status" className="text-sm text-surface-subtle">
-          Checking your session…
-        </p>
-      </Shell>
-    )
-  }
-
-  if (status === 'anonymous') {
-    return (
-      <Shell>
-        <section className="rounded-xl border border-surface-border bg-surface p-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-surface-foreground">
-            Sign in to view backlinks
-          </h1>
-          <Link
-            href="/login"
-            className="mt-5 inline-flex min-h-[44px] items-center rounded-md bg-primary px-5 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            Sign in
-          </Link>
-        </section>
-      </Shell>
-    )
-  }
+  }, [])
 
   return (
     <Shell>

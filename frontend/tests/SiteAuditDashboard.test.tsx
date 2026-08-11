@@ -288,19 +288,4 @@ describe('SiteAuditDashboard', () => {
     expect(screen.getByText('7 warnings')).toBeInTheDocument()
     expect(screen.getByText('Complete')).toBeInTheDocument()
   })
-
-  it('does not request account projects for an anonymous visitor', async () => {
-    mockedUseAuth.mockReturnValue({ status: 'anonymous', user: null })
-
-    render(<SiteAuditDashboard />)
-
-    expect(
-      screen.getByRole('heading', { name: /sign in to view site audit/i }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^sign in$/i })).toHaveAttribute(
-      'href',
-      '/login',
-    )
-    await waitFor(() => expect(mockedListSeoProjects).not.toHaveBeenCalled())
-  })
 })

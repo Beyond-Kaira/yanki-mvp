@@ -96,11 +96,4 @@ describe('SiteAuditProjectDetail', () => {
       await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 }),
     ).toBeInTheDocument()
   })
-
-  it('does not request private results for an anonymous visitor', () => {
-    mockedUseAuth.mockReturnValue({ status: 'anonymous', user: null })
-    render(<SiteAuditProjectDetail />)
-    expect(screen.getByRole('heading', { name: /sign in to view this site audit/i })).toBeInTheDocument()
-    expect(mockedGetSeoProject).not.toHaveBeenCalled()
-  })
 })

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { useAuth } from '@/components/AuthProvider'
+import { currentPathWithQuery, loginHref } from '@/lib/auth-redirect'
 
 /**
  * Gate a route on being signed in.
@@ -35,8 +36,7 @@ export default function RequireAuth({ children }: { children: React.ReactNode })
     // opts the whole subtree out of static prerendering unless it is wrapped in
     // Suspense, and this only ever runs in the browser — so the hook would buy
     // a build-time constraint for a value we already have.
-    const next = `${window.location.pathname}${window.location.search}`
-    router.replace(`/login?next=${encodeURIComponent(next || '/dashboard')}`)
+    router.replace(loginHref(currentPathWithQuery()))
   }, [status, router])
 
   if (status === 'authenticated') return <>{children}</>

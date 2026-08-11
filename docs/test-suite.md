@@ -34,7 +34,7 @@ API/integration tests, and a single thin end-to-end happy path at the top.
 
 ```
         ┌───────────────────────────┐
-        │   e2e (Playwright) ×1      │   happy path, gated on E2E_BASE_URL
+        │  e2e (Playwright) ×22     │   3 specs, gated on E2E_BASE_URL
         ├───────────────────────────┤
         │  API tests (TestClient)   │   FastAPI routes, in-process
         │  component tests (vitest) │   React components, jsdom
@@ -52,7 +52,7 @@ API/integration tests, and a single thin end-to-end happy path at the top.
 | Backend queue (real PG) | pytest + `TEST_DATABASE_URL` | real Postgres (skips if unset/unreachable) | medium | `test_queue_postgres.py` |
 | Frontend component | vitest + testing-library | React in jsdom | fast | per component |
 | Backend integration (real SearXNG) | pytest + a live instance | a self-hosted SearXNG (skips unless `SERP_TEST_BASE_URL` set) | slow | `tests/integration/` |
-| End-to-end | Playwright | a running `DRY_RUN=1` stack | slow | one spec |
+| End-to-end | Playwright | a running `DRY_RUN=1` stack | slow | 3 specs, 22 scenarios |
 
 **Why the base is so wide:** the whole GEO engine is built from pure, sync
 functions (`scoring`, `footprint`, `prompts`, plus KYC JSON parsing). Pure
@@ -67,8 +67,21 @@ beyond a fake provider — so they carry the bulk of our confidence.
 
 ```
 backend/tests/
-├── conftest.py            # shared fixtures (client, db_session, settings, make_analysis)
+├── conftest.py            # shared fixtures (client, db_session, settings, make_analysis,
+│                          #   signed_in, on_plan; seeds the plan catalog like prod's)
 ├── test_api.py            # POST/GET routes via TestClient (+ nullable serp object — ADR-28)
+├── test_quota_enforcement.py  # plan limits on the spend paths, flow vs stock,
+│                              #   the three refusals kept apart, the kill switch (ADR-45)
+├── test_audit_coverage.py # the mutating paths the spine used to skip, AND the
+│                          #   silences that are deliberate — reuse detection,
+│                          #   competitors, checker, waitlist, 429s (ADR-48)
+├── test_analysis_history.py # GET /analyses: whose rows (the first `scoped()`
+│                            #   call site), which rows, how many rows (ADR-49)
+├── test_audit_export.py   # CSV export: same filters, per-row integrity verdict,
+│                          #   and the export's own audit event (P7.9 §6)
+├── test_cross_tenant_leakage.py # the M1 exit gate. A census of every operation
+│                            #   in the live OpenAPI schema — an unclassified
+│                            #   route FAILS — plus paired probes (P7.9)
 ├── test_queue.py          # portable claim / stale-reaper / retry logic (SQLite)
 ├── test_queue_postgres.py # real-Postgres FOR UPDATE SKIP LOCKED (gated on TEST_DATABASE_URL)
 ├── serp/                  # SERP sources: adapter, mock, registry (ADR-28)
@@ -343,13 +356,24 @@ network. Five units with real logic get behaviour tests, and a parallel
   ("doesn't apply here") are neither collapsed together nor drawn as failures; and
   a `null` `result.seo` (a run that did not audit) renders nothing.
 
+- **`AnalysisHistoryClient`** (`AnalysisHistoryClient.test.tsx`) — the
+  organization's analysis history (ADR-49). The two cases worth knowing are a
+  matched pair, because each one alone permits the opposite bug: a **null score
+  renders as an em dash** (a queued run has not been measured, and drawing `0`
+  would tell a customer their brand is invisible when nobody has looked), and a
+  **real `0` still renders as `0.0`**. The rest assert that paging and filtering
+  go to the server rather than slicing locally, that the total shown is the
+  server's rather than the row count on screen, and that changing a filter
+  resets to page one — staying on page three of a filter matching four rows
+  shows an empty table that reads as "no results".
+
 Anything that talks to the API is tested by mocking `lib/api.ts`, never by
 hitting a backend. Fast, deterministic, offline.
 
 ### 4.1 Accessibility layer (vitest-axe + axe-core)
 
-The P4.5 a11y acceptance ("no critical axe violations") is **automated**. Seven
-`*.a11y.test.tsx` files render each component under jsdom and run
+The P4.5 a11y acceptance ("no critical axe violations") is **automated**.
+Twenty-one `*.a11y.test.tsx` files render each component under jsdom and run
 [`axe-core`](https://github.com/dequelabs/axe-core) via
 [`vitest-axe`](https://github.com/chaance/vitest-axe), asserting
 `expect(results).toHaveNoViolations()`. The matchers are registered in
@@ -391,7 +415,18 @@ run — the same reason the e2e (§5) is browser-based.
 
 ## 5. End-to-end (Playwright)
 
-One spec — `e2e/happy-path.spec.ts` — proves the whole loop renders:
+Three specs, **22 scenarios** (corrected 2026-08-08, session 24 — this section
+described only the first, which was accurate until PR #30 added the other two).
+Every scenario is gated on `E2E_BASE_URL` and skipped without it.
+
+- **`e2e/happy-path.spec.ts`** (1) — the original: proves the whole loop renders.
+- **`e2e/journeys.spec.ts`** (16) — signed-in browser journeys: sign-up as an
+  individual and as an organization, sign-in, route guards, the admin panel.
+- **`e2e/viewports.spec.ts`** (5) — the viewport matrix down to 375px, which
+  exists because the shell shipped a fixed 220px sidebar that left ~123px of
+  content on a phone.
+
+The happy path proves the whole loop renders:
 
 1. open the landing page, fill the URL field with `https://example.com`, click
    **Run analysis**;
@@ -494,6 +529,75 @@ Keep fixtures small, deterministic, and free. The important ones:
 | `db_session` | `tests/conftest.py` | a SQLAlchemy session sharing that in-memory SQLite (closed per test; schema dropped with the engine) |
 | `settings` | `tests/conftest.py` | a real `app.config.Settings()` (defaults, `dry_run=True`) |
 | `make_analysis` | `tests/conftest.py` | a factory that inserts and returns an `Analysis` row |
+| `signed_in` | `tests/conftest.py` | a user + provisioned personal org, with **both** `get_current_user` and `get_optional_user` overridden; optional `plan_key` puts the org on a tier (P7.6) |
+| `on_plan` | `tests/conftest.py` | `on_plan(org_id, "enterprise")` — move an existing org to a tier mid-test |
+
+**The plan catalog is seeded in the `engine` fixture, because production's is**
+(migration `0016_seed_plans`). Before P7.6 that made no difference; now that
+quotas are enforced, an empty catalog would mean every suite ran against a
+deployment that cannot exist — and would quietly prove that every route works
+when no limit applies. So the default test organization is on **Free**, with
+Free's real limits: 5 analyses a month, 1 site audit, 1 project. A suite that
+needs headroom says so out loud (`on_plan`, or `signed_in(plan_key=…)`), which
+is deliberately noisier than a global "unlimited" default: a test that has to
+name a tier is a test whose author saw the limit.
+
+Two suites make **opposite** pinning choices, on purpose, because the plan quota
+and the per-IP rate limit both answer **429** and both default to 5.
+`test_rate_limit.py` runs on an unlimited plan so only the limiter can refuse;
+`test_quota_enforcement.py` lifts the IP limit out of the way so only the plan
+can. Either file left on stock settings would silently be testing the other
+one's guard.
+
+`test_audit_coverage.py` makes the same pin for its refusal tests, and it is
+worth saying why in a doc rather than only in the file: the first draft asserted
+on a 429 and found no audit event, because the *rate limiter* had refused and
+the rate limiter emits nothing. **A 429 is not evidence that the quota
+refused** — the tests now assert on the response body's `metric` field as well,
+which only the quota's handler sets.
+
+### The leakage suite is a census, and that is the whole design
+
+`test_cross_tenant_leakage.py` is the M1 exit gate ("zero cross-tenant reads")
+and the one file in this repo whose *structure* matters more than its
+assertions. Two properties, both deliberate:
+
+**It cannot go stale.** Every operation is read out of the running app's OpenAPI
+schema and matched against an explicit classification — `PUBLIC`, `SELF`,
+`CAPABILITY` or `ORG`. **An unclassified operation fails the suite.** A
+hand-written list of routes is stale the moment somebody adds one, and a stale
+leakage suite fails in the worst possible way: it stays green while the surface
+it was written for grows underneath it. There is a mirror test too, so a
+*removed* route must leave the file rather than leave a reader trusting a probe
+that has not run against anything for months.
+
+**It cannot pass vacuously.** Every probe is a pair — the owner must get a
+success *and* the stranger must get a 404. A probe that only asserts the
+stranger's 404 passes just as happily when the route is dark behind a feature
+flag, when the fixture silently failed to create the resource, or when the URL
+is misspelled. This is why the fixture switches `BACKLINKS_ENABLED` and
+`SITE_AUDIT_ENABLED` **on**: both are off in production, and a dark route
+answers exactly the 404 this suite reads as proof of isolation.
+
+It is also 404 everywhere and never 403: a 403 says "this exists and is not
+yours", which is an existence oracle that turns an unguessable id into an
+enumerable one.
+
+Worth knowing for anyone extending it: the tenants are built through the **real
+API** — signup, login, bearer tokens, no dependency overrides on the auth chain —
+so the probes exercise the same path a browser does. And the suite earns its
+keep already: its owner-side probe on `backlinks/refresh` returned a **429 with
+quota enforcement switched off**, which is how tech-debt #89 was found.
+
+---
+
+The audit-coverage suite also carries the project's clearest example of testing
+an absence.
+Four of its cases assert that something is **not** audited (a successful token
+rotation, an expired refresh, a duplicate waitlist signup, a checker submit
+parked by the kill switch). Those are the tests that make a deliberate silence
+distinguishable from a forgotten one — which is exactly the distinction that let
+five unaudited mutating paths survive four sessions (ADR-48).
 | `pg_sessionmaker` | `tests/test_queue_postgres.py` | a sessionmaker on the live test Postgres (`TEST_DATABASE_URL`), fresh tables per test, or `skip` if unreachable |
 | `settings` (pipeline) | `tests/pipeline/conftest.py` | a `SimpleNamespace` mirroring `Settings` (lowercase attrs: `dry_run`, `panel_engines`, `prompt_count=4`, `max_responses_per_job=60`) |
 | `sample_kyc` | `tests/pipeline/conftest.py` | a valid `KYC` object (company, description, industry, aliases, products, …) |

@@ -111,6 +111,17 @@ export const SHELL_SECTIONS: ShellSection[] = [
         href: '/ai-visibility/drivers',
         badge: 'live',
       },
+      // The record of what this organization has actually run. It belongs in
+      // this section rather than under Home because a GEO analysis *is* the AI
+      // Visibility product — and it exists at all because runs started
+      // belonging to an organization in P7.6, which made "where are my previous
+      // ones?" a question with a real answer for the first time.
+      {
+        id: 'analysis-history',
+        label: 'Your analyses',
+        href: '/analyses',
+        badge: 'live',
+      },
     ],
   },
   {
@@ -185,6 +196,7 @@ export function sectionFromPath(pathname: string): ShellSectionId {
   if (pathname.startsWith('/checker')) return 'free-checker'
   if (pathname.startsWith('/methodology')) return 'methodology'
   if (pathname.startsWith('/search-visibility')) return 'search-visibility'
+  if (pathname.startsWith('/site-audit')) return 'search-visibility'
   if (pathname.startsWith('/admin')) return 'admin'
   if (pathname.startsWith('/settings')) return 'settings'
   if (pathname.startsWith('/ai-visibility')) return 'ai-visibility'

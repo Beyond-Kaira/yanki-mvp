@@ -1,5 +1,6 @@
 """API tests for email/password and JWT authentication."""
 
+import uuid
 from collections.abc import Iterator
 from typing import Any
 
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_cookies import REFRESH_COOKIE_PATH
 from app.api.main import app
 from app.config import Settings, get_settings
-from app.db.models import AuthSession, User
+from app.db.models import AuditEvent, AuthSession, Membership, Organization, User
 from app.services.auth import verify_password
 from app.services.tokens import (
     TokenType,
@@ -25,6 +26,8 @@ LOGIN_URL = "/api/v1/auth/login"
 REFRESH_URL = "/api/v1/auth/refresh"
 LOGOUT_URL = "/api/v1/auth/logout"
 ME_URL = "/api/v1/auth/me"
+SESSIONS_URL = "/api/v1/auth/sessions"
+REVOKE_ALL_URL = "/api/v1/auth/sessions/revoke-all"
 
 
 @pytest.fixture()
@@ -556,6 +559,251 @@ def test_refresh_rejects_missing_cookie(
     assert response.json() == {
         "detail": "invalid or missing refresh token",
     }
+
+
+# ---------------------------------------------------------------------------
+# Multi-org /auth/me and self-service session management (P7.5)
+# ---------------------------------------------------------------------------
+
+
+def _add_membership(
+    db_session: Session,
+    *,
+    user_id: uuid.UUID,
+    name: str,
+    slug: str,
+    role: str = "admin",
+    kind: str = "company",
+) -> Organization:
+    """Give ``user_id`` a second organization, as accepting an invitation does."""
+
+    org = Organization(
+        name=name,
+        slug=slug,
+        kind=kind,
+        status="active",
+        owner_user_id=user_id,
+    )
+    db_session.add(org)
+    db_session.flush()
+    db_session.add(
+        Membership(org_id=org.id, user_id=user_id, role=role, status="active"),
+    )
+    db_session.commit()
+    return org
+
+
+def test_me_still_returns_singular_org_and_adds_the_full_list(
+    client: TestClient,
+) -> None:
+    """The contract's singular fields are untouched; the list is purely additive."""
+
+    _signup(client)
+    login_body, _ = _login(client)
+
+    body = client.get(
+        ME_URL,
+        headers={"Authorization": f"Bearer {login_body['access_token']}"},
+    ).json()
+
+    # The pre-existing singular fields still say exactly what they said before.
+    assert body["organization"]["kind"] == "personal"
+    assert body["role"] == "owner"
+    assert "project:read" in body["permissions"]
+
+    # And the new list carries the caller's memberships — one, for a solo user —
+    # each with the caller's role in that org.
+    assert [org["role"] for org in body["organizations"]] == ["owner"]
+    assert body["organizations"][0]["id"] == body["organization"]["id"]
+
+
+def test_me_lists_every_org_and_switches_by_header(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """A user who joined a second org can reach it — the defect this card closes."""
+
+    user_body = _signup(client)
+    login_body, _ = _login(client)
+    bearer = {"Authorization": f"Bearer {login_body['access_token']}"}
+
+    second = _add_membership(
+        db_session,
+        user_id=uuid.UUID(user_body["id"]),
+        name="Acme Co",
+        slug="acme-co",
+        role="admin",
+    )
+
+    default_me = client.get(ME_URL, headers=bearer).json()
+    # With no header the singular fields still resolve to the FIRST org, exactly
+    # as before — additive, not a behaviour change.
+    assert default_me["organization"]["kind"] == "personal"
+    assert default_me["role"] == "owner"
+    orgs = {org["id"]: org for org in default_me["organizations"]}
+    assert len(orgs) == 2
+    assert orgs[str(second.id)]["role"] == "admin"
+    assert orgs[str(second.id)]["name"] == "Acme Co"
+
+    # Naming the second org in X-Org-Id makes the singular fields describe it —
+    # this is what a switch does, and without it the second org is unreachable.
+    switched = client.get(ME_URL, headers={**bearer, "X-Org-Id": str(second.id)}).json()
+    assert switched["organization"]["id"] == str(second.id)
+    assert switched["role"] == "admin"
+    assert len(switched["organizations"]) == 2
+
+
+def test_me_falls_back_when_org_header_is_not_the_callers(
+    client: TestClient,
+) -> None:
+    """A stale or forged X-Org-Id degrades to the default org, never a 403 here."""
+
+    _signup(client)
+    login_body, _ = _login(client)
+
+    resp = client.get(
+        ME_URL,
+        headers={
+            "Authorization": f"Bearer {login_body['access_token']}",
+            "X-Org-Id": str(uuid.uuid4()),
+        },
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["organization"]["kind"] == "personal"
+
+
+def test_sessions_lists_only_the_current_session_and_flags_it(
+    client: TestClient,
+) -> None:
+    _signup(client)
+    login_body, _ = _login(client)
+
+    resp = client.get(
+        SESSIONS_URL,
+        headers={"Authorization": f"Bearer {login_body['access_token']}"},
+    )
+
+    assert resp.status_code == 200
+    sessions = resp.json()["sessions"]
+    assert len(sessions) == 1
+
+    only = sessions[0]
+    assert only["current"] is True
+    # Nothing replayable leaves the endpoint: the shape is exactly these fields,
+    # and in particular there is no refresh_jti_hash and no token.
+    assert set(only) == {"id", "created_at", "last_active_at", "expires_at", "current"}
+
+
+def test_sessions_are_scoped_to_the_caller(
+    client: TestClient,
+) -> None:
+    _signup(client, email="a@example.com")
+    a_login, _ = _login(client, email="a@example.com")
+    a_bearer = {"Authorization": f"Bearer {a_login['access_token']}"}
+    a_sessions = client.get(SESSIONS_URL, headers=a_bearer).json()["sessions"]
+    a_family = a_sessions[0]["id"]
+
+    # A second user logging in on the same client must not see A's session.
+    _signup(client, email="b@example.com")
+    b_login, _ = _login(client, email="b@example.com")
+    b_bearer = {"Authorization": f"Bearer {b_login['access_token']}"}
+    b_families = {s["id"] for s in client.get(SESSIONS_URL, headers=b_bearer).json()["sessions"]}
+
+    assert a_family not in b_families
+
+
+def test_revoke_rejects_another_users_session_without_leaking_existence(
+    client: TestClient,
+) -> None:
+    _signup(client, email="a@example.com")
+    a_login, _ = _login(client, email="a@example.com")
+    a_bearer = {"Authorization": f"Bearer {a_login['access_token']}"}
+    a_family = client.get(SESSIONS_URL, headers=a_bearer).json()["sessions"][0]["id"]
+
+    _signup(client, email="b@example.com")
+    b_login, _ = _login(client, email="b@example.com")
+    b_bearer = {"Authorization": f"Bearer {b_login['access_token']}"}
+
+    real = client.delete(f"{SESSIONS_URL}/{a_family}", headers=b_bearer)
+    fake = client.delete(f"{SESSIONS_URL}/{uuid.uuid4()}", headers=b_bearer)
+
+    # A real-but-not-yours id and a made-up id answer identically, so revocation
+    # cannot be used to probe for the existence of another user's session ids.
+    assert real.status_code == 404
+    assert fake.status_code == 404
+    assert real.json() == fake.json()
+
+    # And A's session was not touched.
+    a_after = {s["id"] for s in client.get(SESSIONS_URL, headers=a_bearer).json()["sessions"]}
+    assert a_after == {a_family}
+
+
+def test_revoke_own_session_revokes_family_and_writes_audit(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+) -> None:
+    _signup(client)
+    login_body, refresh_token = _login(client, auth_settings=auth_settings)
+    bearer = {"Authorization": f"Bearer {login_body['access_token']}"}
+
+    family = client.get(SESSIONS_URL, headers=bearer).json()["sessions"][0]["id"]
+
+    revoke = client.delete(f"{SESSIONS_URL}/{family}", headers=bearer)
+    assert revoke.status_code == 204
+
+    # The family is genuinely revoked: its refresh token can no longer rotate.
+    client.cookies.set(
+        auth_settings.auth_refresh_cookie_name,
+        refresh_token,
+        path=REFRESH_COOKIE_PATH,
+    )
+    assert client.post(REFRESH_URL).status_code == 401
+
+    db_session.expire_all()
+    event = db_session.scalar(
+        select(AuditEvent).where(AuditEvent.action == "auth:session_revoke"),
+    )
+    assert event is not None
+    assert event.actor_type == "user"
+    assert str(event.entity_id) == family
+
+
+def test_revoke_all_keeps_current_signs_out_others_and_audits(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+) -> None:
+    _signup(client)
+    # Two logins for the same user are two families — two "devices". The second
+    # login's cookie is the one the client now carries, so it is the current one.
+    _login(client, auth_settings=auth_settings)
+    second_login, _ = _login(client, auth_settings=auth_settings)
+    bearer = {"Authorization": f"Bearer {second_login['access_token']}"}
+
+    before = client.get(SESSIONS_URL, headers=bearer).json()["sessions"]
+    assert len(before) == 2
+    assert sum(1 for s in before if s["current"]) == 1
+
+    resp = client.post(REVOKE_ALL_URL, headers=bearer)
+    assert resp.status_code == 200
+    assert resp.json() == {"revoked": 1, "kept_current": True}
+
+    after = client.get(SESSIONS_URL, headers=bearer).json()["sessions"]
+    assert len(after) == 1
+    assert after[0]["current"] is True
+
+    # The kept session still works.
+    assert client.post(REFRESH_URL).status_code == 200
+
+    db_session.expire_all()
+    event = db_session.scalar(
+        select(AuditEvent).where(AuditEvent.action == "auth:session_revoke_all"),
+    )
+    assert event is not None
+    assert event.detail["devices_signed_out"] == 1
+    assert event.detail["kept_current"] is True
 
 
 def _signup(

@@ -301,8 +301,10 @@ def test_checker_get_carries_presence_and_competitors(client, db_session):
     assert isinstance(result.get("interventions"), list)
 
 
-def test_mvp_get_has_null_checker_fields(client):
+def test_mvp_get_has_null_checker_fields(client, signed_in):
+    signed_in(email="mvp-summary@example.test")
     resp = client.post("/api/v1/analyses", json={"url": "https://example.com"})
+    assert resp.status_code == 202, resp.text
     analysis_id = resp.json()["id"]
     result = client.get(f"/api/v1/analyses/{analysis_id}").json()["result"]
     assert result["engine_presence"] is None

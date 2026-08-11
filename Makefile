@@ -8,7 +8,7 @@ TEST_DB_CONTAINER := yanki-test-db
 TEST_DATABASE_URL := postgresql+psycopg://yanki:yanki@localhost:5433/yanki_test
 
 .PHONY: help setup bootstrap dev test lint fmt typecheck migrate gen-types e2e \
-        deploy rollback deploy-logs deploy-down
+        deploy rollback deploy-logs deploy-down backup restore-check
 
 help: ## List all targets (default goal)
 	@awk 'BEGIN {FS = ":.*## "; printf "Yanki make targets:\n\n"} \
@@ -91,3 +91,9 @@ deploy-logs: ## Tail logs from the running prod stack
 
 deploy-down: ## Stop the prod stack (keeps data volumes)
 	./deploy/deploy-down.sh
+
+backup: ## Take one verified dump of the prod database (see deploy/BACKUP.md)
+	./deploy/backup.sh
+
+restore-check: ## Restore the newest dump into a throwaway DB and assert it is real
+	./deploy/restore-check.sh

@@ -6,8 +6,10 @@ import type {
   AdminMemberList,
   AdminOrganization,
   Analysis,
+  AnalysisList,
   AuditEventList,
   AuditIntegrity,
+  AuthSessionList,
   BacklinkOpportunities,
   BacklinkPage,
   BacklinkRefreshResult,
@@ -27,9 +29,11 @@ import type {
   ReferringDomainPage,
     SeoProject,
     SeoProjectDetail,
+  SessionRevokeAllResult,
     SiteAuditDetail,
   WaitlistSignupResponse,
 } from './contracts'
+import { getActiveOrgId } from './active-org'
 import { getAccessToken, refreshAccessToken } from './session'
 
 // Thin fetch wrapper. All paths are relative — Next rewrites proxy them to the
@@ -67,6 +71,19 @@ function withBearer(init: RequestInit, token: string): RequestInit {
   return { ...init, headers, credentials: 'same-origin' }
 }
 
+// Fold in the active organization as `X-Org-Id`, the header the backend already
+// honours for org scoping. Applied once here — the single seam every authorized
+// request passes through — rather than at each call site, so the switcher only
+// has to set the stored org and every request follows. A caller that set the
+// header itself wins, and a single-org user (no stored org) adds nothing.
+function withActiveOrg(init: RequestInit): RequestInit {
+  const orgId = getActiveOrgId()
+  if (!orgId) return init
+  const headers = new Headers(init.headers)
+  if (!headers.has('X-Org-Id')) headers.set('X-Org-Id', orgId)
+  return { ...init, headers }
+}
+
 // A request that needs the signed-in user. Access tokens are short-lived by
 // design, so a 401 is the expected way to learn one has expired rather than an
 // error to surface: rotate the refresh cookie once and replay the request.
@@ -77,30 +94,67 @@ export async function authorizedFetch(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
+  // Scope is resolved before the bearer so the retry after a refresh carries the
+  // same X-Org-Id as the first attempt.
+  const scoped = withActiveOrg(init)
   const token = getAccessToken()
   const res = token
-    ? await fetch(path, withBearer(init, token))
-    : await fetch(path, { ...init, credentials: 'same-origin' })
+    ? await fetch(path, withBearer(scoped, token))
+    : await fetch(path, { ...scoped, credentials: 'same-origin' })
 
   if (res.status !== 401) return res
 
   const refreshed = await refreshAccessToken()
   if (!refreshed) return res
 
-  return fetch(path, withBearer(init, refreshed))
+  return fetch(path, withBearer(scoped, refreshed))
 }
 
+// Submitting an analysis is an authorized, metered action (ADR-45). It used to
+// be a bare `fetch` against an open endpoint, which is why every run a customer
+// started was attributed to nobody: the form sat behind sign-in while the
+// request it sent carried no credential.
+//
+// The 429 needs care. Two different limits answer with it and they mean
+// opposite things to the person reading the message — one is "you are going too
+// fast, wait", the other is "you are out for the month, upgrade". The backend
+// keeps them distinct (the plan refusal carries a `limit` field); collapsing
+// them into "too many requests" would tell a customer to wait for something
+// that will not change until next month.
 export async function createAnalysis(url: string): Promise<CreateAnalysisResponse> {
-  const res = await fetch('/api/v1/analyses', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-  })
+  let res: Response
+  try {
+    res = await authorizedFetch('/api/v1/analyses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
   if (!res.ok) {
-    const message =
-      res.status === 422
-        ? "That doesn't look like a valid URL. Use http:// or https://."
-        : await readErrorMessage(res)
+    let message: string
+    if (res.status === 422) {
+      message = "That doesn't look like a valid URL. Use http:// or https://."
+    } else if (res.status === 401) {
+      message = 'Your session has expired. Sign in again to run an analysis.'
+    } else if (res.status === 403) {
+      message = 'Your role cannot start an analysis. Ask an Analyst or above.'
+    } else if (res.status === 503) {
+      message = 'Analyses are unavailable on this deployment right now.'
+    } else if (res.status === 429) {
+      const detail = await readErrorMessage(res)
+      message =
+        detail === 'rate limit exceeded'
+          ? 'You have started several analyses in a short time. Try again shortly.'
+          : detail
+    } else {
+      message = await readErrorMessage(res)
+    }
     throw new ApiError(message, res.status)
   }
   return (await res.json()) as CreateAnalysisResponse
@@ -170,8 +224,15 @@ export async function joinWaitlist(
   return (await res.json()) as WaitlistSignupResponse
 }
 
+// Reading an analysis stays open to anonymous callers — a run with no
+// organization is a capability URL, which is what every checker result and
+// every pre-P7.6 row is. But a run that belongs to an organization is only
+// served to that organization, so the poll has to carry the caller's bearer or
+// the person who just started the analysis would be 404'd from their own
+// result. `authorizedFetch` sends nothing extra when nobody is signed in, so
+// the anonymous path is unchanged.
 export async function getAnalysis(id: string): Promise<Analysis> {
-  const res = await fetch(`/api/v1/analyses/${encodeURIComponent(id)}`, {
+  const res = await authorizedFetch(`/api/v1/analyses/${encodeURIComponent(id)}`, {
     headers: { Accept: 'application/json' },
     cache: 'no-store',
   })
@@ -185,6 +246,57 @@ export async function getAnalysis(id: string): Promise<Analysis> {
     throw new ApiError(message, res.status)
   }
   return (await res.json()) as Analysis
+}
+
+export interface AnalysisHistoryQuery {
+  status?: string
+  limit?: number
+  offset?: number
+}
+
+/**
+ * The signed-in organization's own analyses.
+ *
+ * Unlike `getAnalysis`, this one has no anonymous mode. A run with no
+ * organization is a capability URL — hold the id, read the result — and a list
+ * has no id to hold, so the only thing an unauthenticated version could mean is
+ * "everyone's". The 401 copy says the session expired rather than inventing a
+ * permissions story, because that is the case a signed-in user actually hits.
+ */
+export async function listAnalyses(
+  query: AnalysisHistoryQuery = {},
+  signal?: AbortSignal,
+): Promise<AnalysisList> {
+  const params = new URLSearchParams()
+  if (query.status) params.set('status', query.status)
+  if (query.limit !== undefined) params.set('limit', String(query.limit))
+  if (query.offset !== undefined) params.set('offset', String(query.offset))
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+
+  let res: Response
+  try {
+    res = await authorizedFetch(`/api/v1/analyses${suffix}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to see your analyses.'
+        : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as AnalysisList
 }
 
 export async function listSeoProjects(signal?: AbortSignal): Promise<SeoProject[]> {
@@ -240,7 +352,12 @@ export async function createSeoProject(
         ? 'Your session has expired. Sign in again to start a Site Audit.'
         : res.status === 409
           ? 'A Site Audit project for this domain already exists.'
-          : await readErrorMessage(res)
+          : res.status === 404
+            ? // The enqueue routes 404 while the site-audit worker is not
+              // deployed (config.site_audit_enabled). Give the caller an honest
+              // reason instead of a bare "Not Found".
+              'Site Audit is not available in this deployment yet.'
+            : await readErrorMessage(res)
     throw new ApiError(message, res.status)
   }
 
@@ -453,6 +570,39 @@ export async function acceptInvitation(
   return (await res.json()) as LoginResponse
 }
 
+// --- Sessions / devices ----------------------------------------------------
+//
+// Self-service session management. All three are self-scoped server-side: the
+// list and the revocations only ever touch the caller's own sessions, and a
+// session id that is not theirs answers 404 without confirming it exists.
+
+export async function fetchSessions(): Promise<AuthSessionList> {
+  const res = await authorizedFetch('/api/v1/auth/sessions')
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as AuthSessionList
+}
+
+export async function revokeSession(sessionId: string): Promise<void> {
+  const res = await authorizedFetch(
+    `/api/v1/auth/sessions/${encodeURIComponent(sessionId)}`,
+    { method: 'DELETE' },
+  )
+  // 404 is the answer for a session that is not the caller's — surface it as a
+  // gone-already rather than a raw failure, since the goal (it is not active)
+  // is met either way.
+  if (!res.ok && res.status !== 404) {
+    throw new ApiError(await readErrorMessage(res), res.status)
+  }
+}
+
+export async function revokeAllSessions(): Promise<SessionRevokeAllResult> {
+  const res = await authorizedFetch('/api/v1/auth/sessions/revoke-all', {
+    method: 'POST',
+  })
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return (await res.json()) as SessionRevokeAllResult
+}
+
 // --- Audit log ------------------------------------------------------------
 
 export interface AuditQuery {
@@ -481,6 +631,32 @@ export async function fetchAuditEvents(query: AuditQuery = {}): Promise<AuditEve
   const res = await authorizedFetch(`/api/v1/admin/audit-events${suffix}`)
   if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
   return (await res.json()) as AuditEventList
+}
+
+/**
+ * Download the filtered audit trail as CSV.
+ *
+ * A fetch-then-blob rather than an `<a href>`, because the export needs the
+ * caller's bearer and a plain link cannot carry one — a naked link would hit
+ * the endpoint unauthenticated and download a 401 body as a file, which is the
+ * worst of both outcomes. Sorting and paging are dropped from the query on
+ * purpose: an export covers the whole match, not the page you happen to be on.
+ */
+export async function downloadAuditEventsCsv(query: AuditQuery = {}): Promise<Blob> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (['sort', 'order', 'limit', 'offset'].includes(key)) continue
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString() ? `?${params}` : ''
+  const res = await authorizedFetch(
+    `/api/v1/admin/audit-events/export.csv${suffix}`,
+    { headers: { Accept: 'text/csv' } },
+  )
+  if (!res.ok) throw new ApiError(await readErrorMessage(res), res.status)
+  return await res.blob()
 }
 
 export async function fetchRecordHistory(

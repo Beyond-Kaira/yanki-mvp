@@ -35,6 +35,9 @@ services:
       # Bind the source for --reload; the image already installed the deps.
       - ../backend/app:/app/app
       - ../backend/alembic:/app/alembic
+      # Read-only, exactly as in prod: the api reports the worker's heartbeat
+      # and must never be able to forge one (ADR-47).
+      - yanki_worker_heartbeat:/var/run/yanki:ro
     depends_on:
       db:
         condition: service_healthy
@@ -50,6 +53,10 @@ services:
     volumes:
       - ../backend/app:/app/app
       - ../backend/alembic:/app/alembic
+      # Mirrors prod (ADR-47) so `/healthz` reports worker liveness locally too
+      # — a dev stack whose health endpoint says something different from the
+      # deployed one is a health endpoint nobody trusts.
+      - yanki_worker_heartbeat:/var/run/yanki
     depends_on:
       db:
         condition: service_healthy
@@ -89,3 +96,4 @@ services:
 
 volumes:
   yanki_pgdata:
+  yanki_worker_heartbeat:

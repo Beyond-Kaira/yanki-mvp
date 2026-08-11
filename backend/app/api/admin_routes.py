@@ -25,6 +25,9 @@ nobody can change their own role.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
@@ -776,6 +779,163 @@ def list_audit_events(
         order=order,
         actions=audit.distinct_actions(session, org_id=org.require_org_id),
         events=[_event_out(event) for event in page.events],
+    )
+
+
+#: The export's columns. A fixed, ordered tuple rather than "whatever the row
+#: has", because a CSV whose columns move between exports is unusable to the
+#: thing that actually consumes it — a spreadsheet, or an auditor's script.
+_AUDIT_CSV_COLUMNS = (
+    "occurred_at",
+    "action",
+    "outcome",
+    "actor_type",
+    "actor_label",
+    "actor_id",
+    "entity_type",
+    "entity_id",
+    "request_id",
+    "record_hash",
+    "integrity",
+    "changed",
+)
+
+#: A hard ceiling, independent of the list view's 200. An export is meant to
+#: cover a period, not a page — but it is still a synchronous request holding a
+#: database connection, so it cannot be unbounded either. When an organization
+#: outgrows this the answer is an export *artifact* (a job that produces a file),
+#: not a bigger number here.
+AUDIT_EXPORT_MAX = 5000
+
+
+@router.get("/audit-events/export.csv", response_class=Response)
+def export_audit_events_csv(
+    org: Annotated[OrgContext, Depends(requires(AUDIT_READ))],
+    session: Annotated[Session, Depends(get_session)],
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    action: Annotated[str | None, Query(max_length=100)] = None,
+    actor_id: Annotated[uuid.UUID | None, Query()] = None,
+    entity_type: Annotated[str | None, Query(max_length=60)] = None,
+    entity_id: Annotated[uuid.UUID | None, Query()] = None,
+    outcome: Annotated[str | None, Query(max_length=20)] = None,
+    occurred_from: Annotated[str | None, Query(max_length=40)] = None,
+    occurred_to: Annotated[str | None, Query(max_length=40)] = None,
+    limit: Annotated[int, Query(ge=1, le=AUDIT_EXPORT_MAX)] = AUDIT_EXPORT_MAX,
+) -> Response:
+    """The filtered audit trail as CSV — and the export is itself audited.
+
+    **Three things make this more than a formatting change.**
+
+    *It takes the same filters as the list*, deliberately. An export that
+    ignored them would hand someone the whole trail when they asked for one
+    week of one actor, which is both less useful and more disclosure than they
+    wanted. The filters are the same parameters, so a UI can export exactly
+    what is on screen.
+
+    *It carries the integrity verdict per row.* A trail that leaves this out is
+    a spreadsheet of claims; with it, whoever receives the file can see that
+    each row still hashes to its stored digest — ``intact``, ``altered``, or
+    ``unverifiable`` for rows written before ``record_hash`` existed. The three
+    answers are kept distinct here for the same reason
+    :func:`audit.verify_row` keeps them: reporting a pre-hash row as *altered*
+    cries wolf, and reporting it as *intact* is a claim the data cannot support.
+
+    *Exporting is a disclosure event, so it emits one* (``audit:export``,
+    admin-panel-plan §6). Somebody just took a copy of the compliance record
+    out of the system; that is precisely the kind of action this table exists
+    to remember, and an audit log that cannot say who exported it is missing
+    the event most likely to matter afterwards. The row records the filters and
+    the count, never the contents.
+
+    **No secrets leave here that the API would not already show.** The rows go
+    through ``_event_out``, so ``before``/``after`` are the same redacted
+    payloads the list view serves; only the computed ``changed`` diff is
+    flattened into the file, since a CSV cell cannot hold a nested object
+    usefully.
+    """
+
+    page = audit.search_events(
+        session,
+        audit.EventQuery(
+            org_id=org.require_org_id,
+            q=q,
+            action=action,
+            actor_id=actor_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            outcome=outcome,
+            occurred_from=_parse_moment(occurred_from, field="occurred_from"),
+            occurred_to=_parse_moment(occurred_to, field="occurred_to"),
+            sort=audit.DEFAULT_SORT,
+            descending=True,
+            limit=limit,
+            offset=0,
+        ),
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(_AUDIT_CSV_COLUMNS)
+    for event in page.events:
+        verdict = audit.verify_row(event)
+        out = _event_out(event)
+        writer.writerow(
+            [
+                event.occurred_at.isoformat() if event.occurred_at else "",
+                event.action,
+                event.outcome or "",
+                event.actor_type or "",
+                event.actor_label or "",
+                str(event.actor_id) if event.actor_id else "",
+                event.entity_type or "",
+                str(event.entity_id) if event.entity_id else "",
+                event.request_id or "",
+                event.record_hash or "",
+                "intact" if verdict else ("unverifiable" if verdict is None else "altered"),
+                json.dumps(out.changed, sort_keys=True) if out.changed else "",
+            ]
+        )
+
+    audit.emit(
+        session,
+        action="audit:export",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="audit_events",
+        detail={
+            "format": "csv",
+            "rows": len(page.events),
+            "matched": page.total,
+            # Recorded so "what did they take?" is answerable. Only the filters
+            # that were actually set, so the common unfiltered export does not
+            # bury the interesting one under nine empty fields.
+            "filters": {
+                key: value
+                for key, value in {
+                    "q": q,
+                    "action": action,
+                    "actor_id": str(actor_id) if actor_id else None,
+                    "entity_type": entity_type,
+                    "entity_id": str(entity_id) if entity_id else None,
+                    "outcome": outcome,
+                    "occurred_from": occurred_from,
+                    "occurred_to": occurred_to,
+                }.items()
+                if value
+            },
+            # The honest caveat, in the row itself: an export capped at the
+            # ceiling may not be the whole answer, and whoever reads this event
+            # later should not have to infer that from two numbers.
+            "truncated": page.total > len(page.events),
+        },
+    )
+    session.commit()
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="audit-events.csv"'},
     )
 
 

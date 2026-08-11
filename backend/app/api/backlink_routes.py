@@ -311,6 +311,27 @@ def track_competitor(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    # `track_competitor` commits, so this event lands in a transaction of its
+    # own rather than alongside the row it describes. That is the shape the
+    # service already had and is not worth restructuring for: the failure mode
+    # is a tracked competitor with no event (audit.emit never raises), which is
+    # the same trade the whole spine makes.
+    audit.emit(
+        session,
+        action="backlink:competitor_track",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="backlink_competitor",
+        entity_id=row.id,
+        after={
+            "project_id": str(subject.project_id),
+            "competitor_domain": row.competitor_domain,
+            "label": row.label,
+        },
+    )
+    session.commit()
     return CompetitorOut.model_validate(row)
 
 
@@ -322,8 +343,24 @@ def untrack_competitor(
     session: Session = Depends(get_session),
 ) -> Response:
     subject = _subject(session, org, project_id)
-    if not backlinks.untrack_competitor(session, subject, competitor_id=competitor_id):
+    removed_domain = backlinks.untrack_competitor(session, subject, competitor_id=competitor_id)
+    if removed_domain is None:
         raise HTTPException(status_code=404, detail="competitor not found")
+
+    audit.emit(
+        session,
+        action="backlink:competitor_untrack",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="backlink_competitor",
+        entity_id=competitor_id,
+        before={
+            "project_id": str(subject.project_id),
+            "competitor_domain": removed_domain,
+        },
+    )
+    session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

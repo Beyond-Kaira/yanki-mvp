@@ -32,6 +32,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/audit-events/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Audit Events Csv
+         * @description The filtered audit trail as CSV — and the export is itself audited.
+         *
+         *     **Three things make this more than a formatting change.**
+         *
+         *     *It takes the same filters as the list*, deliberately. An export that
+         *     ignored them would hand someone the whole trail when they asked for one
+         *     week of one actor, which is both less useful and more disclosure than they
+         *     wanted. The filters are the same parameters, so a UI can export exactly
+         *     what is on screen.
+         *
+         *     *It carries the integrity verdict per row.* A trail that leaves this out is
+         *     a spreadsheet of claims; with it, whoever receives the file can see that
+         *     each row still hashes to its stored digest — ``intact``, ``altered``, or
+         *     ``unverifiable`` for rows written before ``record_hash`` existed. The three
+         *     answers are kept distinct here for the same reason
+         *     :func:`audit.verify_row` keeps them: reporting a pre-hash row as *altered*
+         *     cries wolf, and reporting it as *intact* is a claim the data cannot support.
+         *
+         *     *Exporting is a disclosure event, so it emits one* (``audit:export``,
+         *     admin-panel-plan §6). Somebody just took a copy of the compliance record
+         *     out of the system; that is precisely the kind of action this table exists
+         *     to remember, and an audit log that cannot say who exported it is missing
+         *     the event most likely to matter afterwards. The row records the filters and
+         *     the count, never the contents.
+         *
+         *     **No secrets leave here that the API would not already show.** The rows go
+         *     through ``_event_out``, so ``before``/``after`` are the same redacted
+         *     payloads the list view serves; only the computed ``changed`` diff is
+         *     flattened into the file, since a CSV cell cannot hold a nested object
+         *     usefully.
+         */
+        get: operations["export_audit_events_csv_api_v1_admin_audit_events_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/audit-events/history/{entity_type}/{entity_id}": {
         parameters: {
             query?: never;
@@ -250,9 +299,38 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Analyses
+         * @description The caller's organization's analyses, newest first.
+         *
+         *     Signed-in and org-scoped, unlike the sibling detail route. That asymmetry is
+         *     deliberate and worth stating, because the two look like they should match:
+         *     ``GET /analyses/{id}`` still serves an org-less run to anyone holding its id
+         *     (a capability URL — the product's entire pre-P7.6 surface, and every row in
+         *     production today), while a *list* has no capability to hold. There is no
+         *     id to know, so the only possible answer to "whose analyses?" is the caller's
+         *     organization, and an unauthenticated version of this route could only ever
+         *     mean "everyone's".
+         *
+         *     Runs from before P7.6 carry no ``org_id`` and therefore appear in nobody's
+         *     history. That is the honest rendering: they belong to no tenant, and
+         *     inventing an owner for them would be a worse answer than omitting them.
+         */
+        get: operations["list_analyses_api_v1_analyses_get"];
         put?: never;
-        /** Submit Analysis */
+        /**
+         * Submit Analysis
+         * @description Queue one GEO analysis for the caller's organization.
+         *
+         *     The guards run cheapest-and-most-certain first, and each one refuses before
+         *     the next has any effect:
+         *
+         *     1. **SSRF** — 422, and no row, so a rejected target never counts anywhere.
+         *     2. **Per-credential burst** — the P5.0 IP limit, unchanged. A monthly plan
+         *        quota does not bound a burst; five hundred runs on the first of the month
+         *        is inside a Business allowance and still a stampede at the vendor.
+         *     3. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+         */
         post: operations["submit_analysis_api_v1_analyses_post"];
         delete?: never;
         options?: never;
@@ -267,7 +345,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read Analysis */
+        /**
+         * Read Analysis
+         * @description One analysis, if this caller may see it.
+         *
+         *     404 covers both "no such analysis" and "not yours" on purpose. Splitting
+         *     them would turn this route into an oracle for which analysis ids exist,
+         *     which is the whole value of an unguessable id.
+         */
         get: operations["read_analysis_api_v1_analyses__analysis_id__get"];
         put?: never;
         post?: never;
@@ -332,6 +417,13 @@ export interface paths {
          *     caller cannot use, instead of showing it and failing on click. They are for
          *     RENDERING ONLY — every endpoint enforces its own permission independently,
          *     so a client that lies about this list gets a 403 exactly as before.
+         *
+         *     ``X-Org-Id`` selects which org the singular ``organization``/``role``/
+         *     ``permissions`` describe, so a multi-org user who has switched sees the org
+         *     they switched to rather than always their first. Membership is verified, not
+         *     trusted — the same seam ``get_org_context`` uses — and honouring the header
+         *     is additive: omitting it reproduces the old behaviour exactly. ``organizations``
+         *     always carries the caller's full list, which is what makes a switch offerable.
          */
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
@@ -357,6 +449,79 @@ export interface paths {
          */
         post: operations["refresh_api_v1_auth_refresh_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description The caller's own active sessions, one per device/login.
+         *
+         *     A read, so it emits no audit event. The one from the current device is
+         *     flagged ``current`` by matching the refresh cookie riding along on this
+         *     request (the cookie's path covers ``/api/v1/auth``) to its session family.
+         */
+        get: operations["list_sessions_api_v1_auth_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sessions/revoke-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke All Sessions
+         * @description Sign out everywhere else, keeping the current session alive.
+         *
+         *     See ``revoke_other_sessions_for_user`` for why the current device is spared.
+         *     Always audited — a lock-out of every other device is exactly the event worth
+         *     recording — even when there was nothing else to revoke.
+         */
+        post: operations["revoke_all_sessions_api_v1_auth_sessions_revoke_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Session
+         * @description Revoke one of the caller's own sessions (a whole family).
+         *
+         *     Strictly self-scoped. A session id that is not the caller's — whether it
+         *     belongs to another user or does not exist — is a 404 with the same body in
+         *     both cases, so this cannot be used to probe whether a given session id
+         *     exists. The revocation is audited only when something was actually revoked.
+         */
+        delete: operations["revoke_session_api_v1_auth_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -841,7 +1006,32 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Healthz */
+        /**
+         * Healthz
+         * @description Readiness, not "is uvicorn accepting sockets" (ADR-47).
+         *
+         *     This returned the literal `{"status": "ok"}` until P7.8's groundwork, which
+         *     mattered because **it is the deploy gate**: `deploy.sh` and `rollback.sh`
+         *     poll it and record `.last-good` when it answers, so a release with an
+         *     unreachable database was recorded as the good one to roll back *to*.
+         *
+         *     Only the components that make the service unservable for everyone can turn
+         *     it red — see `app/health.py` for which and why. The rest report themselves
+         *     and are read by a human.
+         *
+         *     **The public body carries the verdict and nothing else.** nginx routes
+         *     `/healthz` from the internet, and the component detail names the schema
+         *     revision, the queue depth, whether provider keys are configured and how
+         *     stale the worker is. None of that is a credential and none of it should be
+         *     handed to anybody who asks either — so the breakdown goes to internal
+         *     callers (the loopback deploy gate, a shell on the box) and everyone else
+         *     gets the status. The verdict is identical for both; only the reasons differ.
+         *
+         *     Note the response shape is constrained by `deployment.sh`, which greps the
+         *     body for the substrings `status` and `ok` rather than trusting the status
+         *     code. A failing body must therefore contain no "ok" anywhere;
+         *     `test_health.py` pins that for both shapes.
+         */
         get: operations["healthz_healthz_get"];
         put?: never;
         post?: never;
@@ -1033,6 +1223,20 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * AnalysisListOut
+         * @description A page of the caller's organization's analyses, newest first.
+         */
+        AnalysisListOut: {
+            /** Analyses */
+            analyses: components["schemas"]["AnalysisSummaryOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** AnalysisOut */
         AnalysisOut: {
             /**
@@ -1054,6 +1258,48 @@ export interface components {
             result: components["schemas"]["ResultOut"];
             /** Status */
             status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * AnalysisSummaryOut
+         * @description One row of an organization's analysis history.
+         *
+         *     Deliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``
+         *     carries the whole ``result`` envelope — every prompt, every raw engine
+         *     response, every SERP and SEO check — which is right for the one run a reader
+         *     opened and absurd for a table of twenty. A separate, flat schema also means
+         *     adding a field to the detail view cannot silently make the list twenty times
+         *     heavier.
+         */
+        AnalysisSummaryOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Step */
+            current_step?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Geo Score */
+            geo_score?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Progress */
+            progress: number;
+            /** Status */
+            status: string;
+            /** Total Responses */
+            total_responses?: number | null;
             /**
              * Updated At
              * Format: date-time
@@ -1179,6 +1425,48 @@ export interface components {
             ok: boolean;
             /** Unverifiable */
             unverifiable: number;
+        };
+        /**
+         * AuthSessionListOut
+         * @description Every active session the caller holds, most-recently-used first.
+         */
+        AuthSessionListOut: {
+            /** Sessions */
+            sessions: components["schemas"]["AuthSessionOut"][];
+        };
+        /**
+         * AuthSessionOut
+         * @description One active sign-in (a refresh-token family) as its owner sees it.
+         *
+         *     Enough for a human to recognise a device — when the session began, when it
+         *     was last used, when it expires — and a ``current`` flag on the one the
+         *     request itself is coming from. What is deliberately ABSENT is anything
+         *     replayable: no ``refresh_jti_hash``, no token. ``id`` is the family id, which
+         *     names a session for revocation but is useless as a credential.
+         */
+        AuthSessionOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current */
+            current: boolean;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Active At
+             * Format: date-time
+             */
+            last_active_at: string;
         };
         /** BacklinkImportOut */
         BacklinkImportOut: {
@@ -1430,6 +1718,13 @@ export interface components {
          *     without a second round trip. They are for RENDERING only: the API enforces
          *     every one of them independently, and a client that lies about its
          *     permissions gets a 403 exactly as before.
+         *
+         *     ``organization``/``role``/``permissions`` describe the ONE org the request is
+         *     acting in (the caller's first, or the one named by ``X-Org-Id``).
+         *     ``organizations`` is the full list the caller belongs to — added so a
+         *     multi-org user can be offered a switch. The singular fields are kept exactly
+         *     as they were, because the frontend and the locked contract already depend on
+         *     them; the list is strictly additive.
          */
         CurrentUserOut: {
             /**
@@ -1445,6 +1740,8 @@ export interface components {
              */
             id: string;
             organization?: components["schemas"]["OrganizationOut"] | null;
+            /** Organizations */
+            organizations?: components["schemas"]["OrganizationMembershipOut"][];
             /** Permissions */
             permissions?: string[];
             /** Role */
@@ -1801,6 +2098,34 @@ export interface components {
             unlinked_mentions: components["schemas"]["UnlinkedMentionOut"][];
         };
         /**
+         * OrganizationMembershipOut
+         * @description One organization the caller belongs to, and their role in it.
+         *
+         *     The entries of the multi-org list on ``/auth/me``. Same identity fields as
+         *     ``OrganizationOut`` plus the caller's ``role`` in *this specific* org — which
+         *     is what the switcher needs to label each choice and what the singular
+         *     ``organization`` cannot carry, since a person is an owner of one org and a
+         *     viewer in another. Purely additive: the singular field is untouched, so a
+         *     client that only reads it keeps working.
+         */
+        OrganizationMembershipOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+        };
+        /**
          * OrganizationOut
          * @description The organization a request is acting within.
          */
@@ -2137,6 +2462,20 @@ export interface components {
             source: string | null;
             /** Status */
             status: string;
+        };
+        /**
+         * SessionRevokeAllOut
+         * @description The result of "sign out everywhere else".
+         *
+         *     ``revoked`` is how many OTHER sessions were ended. ``kept_current`` records
+         *     that the session issuing the request was left alive on purpose, so the caller
+         *     is not signed out of the device they clicked from.
+         */
+        SessionRevokeAllOut: {
+            /** Kept Current */
+            kept_current: boolean;
+            /** Revoked */
+            revoked: number;
         };
         /**
          * SignupRequest
@@ -2482,6 +2821,45 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuditEventListOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_audit_events_csv_api_v1_admin_audit_events_export_csv_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                action?: string | null;
+                actor_id?: string | null;
+                entity_type?: string | null;
+                entity_id?: string | null;
+                outcome?: string | null;
+                occurred_from?: string | null;
+                occurred_to?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2868,10 +3246,47 @@ export interface operations {
             };
         };
     };
+    list_analyses_api_v1_analyses_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_analysis_api_v1_analyses_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2904,7 +3319,9 @@ export interface operations {
     read_analysis_api_v1_analyses__analysis_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path: {
                 analysis_id: string;
             };
@@ -2986,7 +3403,9 @@ export interface operations {
     me_api_v1_auth_me_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2999,6 +3418,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3019,6 +3447,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RefreshResponse"];
+                };
+            };
+        };
+    };
+    list_sessions_api_v1_auth_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionListOut"];
+                };
+            };
+        };
+    };
+    revoke_all_sessions_api_v1_auth_sessions_revoke_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRevokeAllOut"];
+                };
+            };
+        };
+    };
+    revoke_session_api_v1_auth_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3931,9 +4428,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": unknown;
                 };
             };
         };

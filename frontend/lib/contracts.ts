@@ -95,6 +95,21 @@ export type Analysis = Omit<
   result: AnalysisResult
 }
 
+// One row of the organization's analysis history. Narrowed the same way
+// `Analysis` is — `status` and `current_step` are open strings on the wire and
+// closed unions here, so a `switch` over them stays exhaustive.
+export type AnalysisSummary = Omit<
+  Schemas['AnalysisSummaryOut'],
+  'status' | 'current_step'
+> & {
+  status: AnalysisStatus
+  current_step: PipelineStep | null
+}
+
+export type AnalysisList = Omit<Schemas['AnalysisListOut'], 'analyses'> & {
+  analyses: AnalysisSummary[]
+}
+
 // Accounts (PR #9). Login answers with the user plus a bearer token while
 // setting the refresh cookie. Re-exported here rather than restated in
 // `lib/auth.ts` so a schema change reaches the auth screens through the
@@ -107,6 +122,23 @@ export type AuthUser = Schemas['UserOut'] &
   Partial<Omit<Schemas['CurrentUserOut'], keyof Schemas['UserOut']>>
 
 export type Organization = Schemas['OrganizationOut']
+
+// One organization the signed-in user belongs to, with their role in it. The
+// multi-org list on `/auth/me`; the singular `organization` on AuthUser is the
+// one currently being acted in, this is the full set the switcher offers.
+export type OrganizationMembership = Schemas['OrganizationMembershipOut']
+
+// --- Sessions / devices ----------------------------------------------------
+//
+// `AuthSession` is one active sign-in (a device/login) as its owner sees it. It
+// carries NO token and no replayable material — `id` is a family id that names a
+// session for revocation only. See backend/app/api/auth_routes.py.
+
+export type AuthSession = Schemas['AuthSessionOut']
+
+export type AuthSessionList = Schemas['AuthSessionListOut']
+
+export type SessionRevokeAllResult = Schemas['SessionRevokeAllOut']
 
 export type Credentials = Schemas['LoginRequest']
 

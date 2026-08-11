@@ -16,7 +16,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.auth_dependencies import get_current_user
+from app.api.auth_dependencies import get_current_user, get_optional_user
 from app.db.models import User
 from app.db.session import get_session
 from app.services import audit
@@ -61,6 +61,31 @@ def get_org_context(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="no access to the requested organization",
         ) from exc
+
+
+def get_optional_org_context(
+    user: Annotated[User | None, Depends(get_optional_user)],
+    session: Annotated[Session, Depends(get_session)],
+    x_org_id: Annotated[str | None, Header(alias="X-Org-Id")] = None,
+) -> OrgContext | None:
+    """The caller's organization, or ``None`` when nobody is signed in.
+
+    For routes that serve both audiences off one URL. ``GET /analyses/{id}`` is
+    the reason it exists: an analysis with no organization is a capability URL
+    anyone holding the id may read (every row created before P7.6, and every
+    checker run), while one that *does* carry an organization is that
+    organization's alone. The route cannot express both rules with a dependency
+    that 401s the anonymous half.
+
+    A signed-in caller gets the same treatment as ``get_org_context`` — a
+    malformed ``X-Org-Id`` is still a 400 and an org they do not belong to is
+    still a 403, because a client that named an organization meant it, and
+    quietly resolving a different one would answer the wrong question.
+    """
+
+    if user is None:
+        return None
+    return get_org_context(user=user, session=session, x_org_id=x_org_id)
 
 
 def requires(permission: str):

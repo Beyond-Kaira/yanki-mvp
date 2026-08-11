@@ -124,6 +124,27 @@ class QuotaExceeded(RuntimeError):
         self.limit = limit
 
 
+class PlanCatalogMissing(RuntimeError):
+    """There is no plan catalog to answer "what is this org allowed to do".
+
+    Distinct from :class:`QuotaExceeded` on purpose. Both used to arrive as
+    "limit 0, refuse everything", and they are opposite facts: one is a customer
+    who has used their month, the other is a deployment whose ``plans`` table was
+    never seeded. Told apart, the first is a 429 the customer can act on and the
+    second is a 503 that names a misconfiguration; conflated, an unseeded catalog
+    reads to everyone — customer, support, and the logs — as though every
+    organization simultaneously ran out of quota.
+
+    Fail-closed is still the direction: an empty catalog refuses rather than
+    waving spend through. Migration ``0016_seed_plans`` is what makes this
+    unreachable in a real deployment.
+    """
+
+    def __init__(self, metric: str) -> None:
+        super().__init__(f"no plan catalog is configured (asked for {metric!r})")
+        self.metric = metric
+
+
 class InsufficientCredit(RuntimeError):
     """The org cannot afford what it is about to be charged."""
 
@@ -164,6 +185,11 @@ def seed_plans(session: Session) -> int:
     return added
 
 
+# The statuses that mean "this subscription is the one in force". Named once so
+# the uniqueness index, the plan lookup and the plan swap cannot drift apart.
+_LIVE_SUBSCRIPTION_STATUSES = ("trialing", "active", "past_due")
+
+
 def plan_for_org(session: Session, org_id: uuid.UUID) -> Plan | None:
     """The org's current plan, or None if it has no live subscription."""
 
@@ -172,10 +198,59 @@ def plan_for_org(session: Session, org_id: uuid.UUID) -> Plan | None:
         .join(Subscription, Subscription.plan_id == Plan.id)
         .where(
             Subscription.org_id == org_id,
-            Subscription.status.in_(("trialing", "active", "past_due")),
+            Subscription.status.in_(_LIVE_SUBSCRIPTION_STATUSES),
         )
         .limit(1)
     )
+
+
+def plan_by_key(session: Session, key: str) -> Plan | None:
+    """One catalog entry by its stable key (``free``, ``pro``, …)."""
+
+    return session.scalar(select(Plan).where(Plan.key == key))
+
+
+def assign_plan(
+    session: Session,
+    org_id: uuid.UUID,
+    plan_key: str,
+    *,
+    status: str = "active",
+) -> Subscription:
+    """Put an organization on a plan, replacing whatever it was on.
+
+    The only way an org gets a plan today: there is no Stripe lifecycle yet, and
+    until there is, "which tier is this customer on" has to be settable by hand
+    (``scripts/set_org_plan.py``) or enforcement is a cage with no key.
+
+    ``uq_subscriptions_one_active_per_org`` allows exactly one live subscription
+    per org, so an existing one is **moved** rather than joined by a second —
+    which also means the swap must land in one transaction, and the caller owns
+    the commit.
+    """
+
+    plan = plan_by_key(session, plan_key)
+    if plan is None:
+        raise LookupError(f"no such plan: {plan_key!r}")
+
+    current = session.scalar(
+        select(Subscription).where(
+            Subscription.org_id == org_id,
+            Subscription.status.in_(_LIVE_SUBSCRIPTION_STATUSES),
+        )
+    )
+    if current is not None:
+        if current.plan_id == plan.id and current.status == status:
+            return current
+        # Superseded, not deleted: a subscription row is billing history, and
+        # the next tier's row should not erase which tier preceded it.
+        current.status = "superseded"
+        session.flush()
+
+    subscription = Subscription(org_id=org_id, plan_id=plan.id, status=status)
+    session.add(subscription)
+    session.flush()
+    return subscription
 
 
 def limit_for(session: Session, org_id: uuid.UUID, metric: str) -> int | None:
@@ -191,7 +266,7 @@ def limit_for(session: Session, org_id: uuid.UUID, metric: str) -> int | None:
         free = session.scalar(select(Plan).where(Plan.key == "free"))
         plan = free
     if plan is None:
-        return 0
+        raise PlanCatalogMissing(metric)
     if metric not in plan.limits:
         # An unmetered thing is unlimited; a metered thing missing from a plan
         # would be a seeding bug, and 0 there would break the product silently.
@@ -233,6 +308,34 @@ def check_quota(
     used = usage(session, org_id, metric, now=now)
     if used + amount > limit:
         raise QuotaExceeded(metric, used, limit)
+
+
+def check_stock_quota(
+    session: Session,
+    org_id: uuid.UUID,
+    metric: str,
+    *,
+    current: int,
+    amount: int = 1,
+) -> None:
+    """Raise :class:`QuotaExceeded` if the org already holds its allowance.
+
+    **Stock, not flow.** :func:`check_quota` answers "how many of these have you
+    started this month" and is right for analyses and audit runs, which are
+    events. It is wrong for projects, which are *things you have*: a monthly
+    counter would let a Free organization add its one project every month and
+    hold twelve by December, while deleting a project would free nothing back.
+
+    So this compares the plan limit against the rows that actually exist. The
+    plan's ``projects: 1`` then means what a customer reads it to mean — one
+    project at a time — and deleting one makes room immediately.
+    """
+
+    limit = limit_for(session, org_id, metric)
+    if limit is None:
+        return
+    if current + amount > limit:
+        raise QuotaExceeded(metric, current, limit)
 
 
 def consume_quota(

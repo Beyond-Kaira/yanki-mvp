@@ -2271,9 +2271,14 @@ paragraph, as the record.*
   `RESTRICT` (a `SET NULL` would republish a deleted org's private analyses);
   (c) child tables (`site_audits`, `responses`, `geo_records`, …) get **no**
   denormalized `org_id` — they are reachable only through org-scoped parents,
-  so the join is the isolation. Postgres RLS deferred; scoping is a
-  fail-closed service-layer seam. Verified up/down/up on Postgres with seeded
-  colliding-slug data.
+  so the join is the isolation. Postgres RLS deferred. Verified up/down/up on
+  Postgres with seeded colliding-slug data.
+  **Corrected 2026-08-08 (session 24):** this card originally read "scoping is
+  a fail-closed service-layer seam." It is not. `scoped()` and
+  `readable_analysis()` were written but are called by nothing; isolation is
+  enforced per-route via the `requires(...)`/`OrgContext` dependency, which
+  works but does not fail closed when a route forgets to filter. See the
+  correction on ADR-35 in [design.md](design.md) and tech-debt **#63**.
 - **Acceptance:** additive migrations up+down clean; every pre-existing row
   reachable through exactly one org; zero behaviour change for anonymous
   flows; cross-org read attempts fail in tests.
@@ -2338,14 +2343,92 @@ paragraph, as the record.*
   enumeration-safe), TOTP MFA with backup codes, device/session list with
   remote revoke, org-level require-MFA policy.
 - **Dependencies:** P7.2 (policy), P7.3 (events). · **Complexity:** M ·
-  **Status:** todo
+  **Status:** **partial — the migration-free half shipped 2026-08-08 (session
+  24)**, merged as `ddf3167` (PR #40) and live in production.
+
+  **Done (no schema change — reuses the `AuthSession` family model from
+  migration 0006):** `GET /auth/sessions`, `DELETE /auth/sessions/{id}`,
+  `POST /auth/sessions/revoke-all`, all three self-scoped and audited; a
+  "Devices & sessions" section in `/settings`; the caller's full organization
+  list added **additively** to `/auth/me`; and an org switcher in the app shell
+  that sends `X-Org-Id`. That last piece closes a real defect invitations
+  opened in session 22: a user could hold two memberships while
+  `resolve_org_context` silently picked `memberships[0]`, so an accepted
+  invitation to a second org was **unreachable**. Note the frontend had never
+  sent `X-Org-Id` at all — the seam was honoured server-side and no client code
+  carried it. See ADR-43.
+
+  **Deferred, deliberately — every remaining piece needs a migration:**
+  password reset (#49), TOTP MFA with backup codes, and the org require-MFA
+  policy. They wait on **database backups** (operator item), because A5–A8 each
+  add a live migration to a database with no backup and rollback restores the
+  image, never the data. The dead `requestPasswordReset()` stub in
+  `frontend/lib/auth.ts` was left in place as the contract the endpoint must
+  meet. Residual debt: #67 (no device fingerprint without a migration), #68
+  (stale active-org self-heals only on `/auth/me`), #69 (`/auth/me` N+1).
 
 ### P7.6 — Plans, subscriptions, quotas, credit ledger (stage A6)
 - **Goal:** plan catalog as data; Stripe subscription lifecycle; quota
   service enforced on submission paths; credit ledger seeded from existing
   `cost_usd`; terms text is a hard dependency (tech-debt #50 — operator/legal).
 - **Dependencies:** P7.1–P7.3; Stripe account (operator). · **Complexity:** L
-  · **Status:** todo
+  · **Status:** **partial** — corrected 2026-08-08 (session 24) after reading
+  the code. `todo` was wrong and wrong in the expensive direction: **the
+  foundation is built.** Migration `0015_billing` created `plans`,
+  `subscriptions`, `credit_ledger` and `usage_counters`; `0016_seed_plans`
+  seeds a five-tier catalog (free/starter/pro/business/enterprise) as data, in
+  a migration rather than a startup hook; and the quota + credit service
+  (`check_quota` / `consume_quota` / `reserve` / `settle` / `record_charge`)
+  is complete. **What is missing is enforcement, not machinery.** The three
+  live spend paths — analysis submit, checker, site-audit submit — carry no
+  quota check at all, and the only metered caller is the backlink refresh path,
+  which is dark behind `BACKLINKS_ENABLED`. No `Subscription` row is ever
+  created, so every org silently falls back to Free and **every plan tier is
+  decorative today**. Remaining: wire the gate onto the three spend paths
+  (`enforce-quota-on-spend-paths`), the Stripe lifecycle, and a billing
+  visibility API. The Stripe half stays blocked on the operator (account +
+  terms text, tech-debt #50); **the enforcement half is not blocked by
+  anything** and is the highest-value unblocked card in Phase 7.
+
+  **Enforcement half DONE 2026-08-09 (session 25, ADR-45).** Plan tiers are no
+  longer decorative. What shipped:
+
+  - **`POST /api/v1/analyses` now requires authentication** and `analysis:run`,
+    and stamps `org_id` on the row. It had been open since the MVP; session 21
+    moved the URL form behind sign-in and nobody closed the route, so **every
+    analysis a customer ran was attributed to no tenant**. That, not the missing
+    `consume_quota` call, was the real blocker — a quota needs a tenant.
+  - **`GET /api/v1/analyses/{id}` is scoped through `tenancy.readable_analysis`**,
+    which had zero call sites (tech-debt #63, partially repaid). Org-less rows
+    stay world-readable on their id; an org's rows are that org's alone.
+  - **Three allowances enforced**: `analyses` and `site_audits` as monthly flows,
+    `projects` as a **stock** (rows held, not rows created — a monthly counter
+    would let Free hold twelve projects by December). New
+    `billing.check_stock_quota`.
+  - **`PlanCatalogMissing`** separates "this deployment has no plan catalog"
+    (503) from "you are out of quota" (429). `limit_for` used to answer both
+    with `0`.
+  - **App-level exception handlers** in `api/main.py` map `QuotaExceeded` → 429
+    with `metric`/`used`/`limit`, `InsufficientCredit` → 402,
+    `PlanCatalogMissing` → 503, so no future metered route can forget.
+  - **The worker settles each run's real cost** into the credit ledger, on
+    success and on failure, idempotently. Per-org spend is visible for the first
+    time — the input P7.8's rollups need.
+  - **`QUOTA_ENFORCEMENT_ENABLED`** (default **on**) and
+    **`scripts/set_org_plan.py`**, because enforcement without a way to change a
+    tier is a cage with no key. There is no Stripe lifecycle and no back office.
+
+  **The checker is deliberately capped rather than metered** — it is anonymous,
+  so there is no org to charge, and billing a signed-in caller for the free
+  public tool would be wrong. Its bound stays global: `CHECKER_ENABLED`, the
+  IP/brand rate limits, and `CHECKER_DAILY_USD_CAP`. Recorded in ADR-45 rather
+  than left as an unexplained gap.
+
+  **Still open in A6:** the Stripe subscription lifecycle and the billing
+  visibility API (invoices, ledger, spend-by-workspace), both still blocked on
+  the operator's Stripe account + terms text; and granting each plan's
+  `monthly_credit_usd`, without which `reserve()`'s credit gate can never pass
+  and so is used nowhere but the dark backlink path.
 
 ### P7.7 — Platform back office (stage A7)
 - **Goal:** Super Admin/Support surface: org directory, plan overrides,
@@ -2358,12 +2441,98 @@ paragraph, as the record.*
   geo_mode/DRY_RUN visibility), health probes, usage analytics, error
   tracking wiring.
 - **Dependencies:** P7.3 (events), P7.6 (spend data). · **Complexity:** M ·
-  **Status:** todo
+  **Status:** **partial** — the *health* slice landed 2026-08-09 (session 25,
+  ADR-47), out of order, because it was also the last of the backlog's P0 band
+  and because it was a live defect rather than a missing page: `/healthz`
+  returned a hardcoded literal and **is the deploy gate**, so a release with an
+  unreachable database answered healthy and was recorded as `.last-good`. It is
+  now a readiness probe over six components (database, schema revision, plan
+  catalog, queue, worker, providers); only the database and — with quota
+  enforcement on — an empty plan catalog can fail it. Alongside it, the worker
+  gained a heartbeat and a compose healthcheck, so a `while True` that stops
+  looping is visible instead of silent.
+
+  What that leaves for A8 proper is the *pages*: the jobs/queues board with
+  retry and cancel, AI-provider status with spend rollups (now possible —
+  session 25's credit ledger is the first per-org spend data the platform has),
+  usage analytics, and error-tracking wiring. The health data this session
+  exposes is the input to the health page, not the page.
+
+  Residual: a wedged worker is detected and **not restarted** (tech-debt #81 —
+  Compose does not restart unhealthy containers), and `/healthz` re-queries on
+  every request (#82).
 
 ### P7.9 — Hardening + docs (stage A9, exit gate)
 - **Goal:** cross-tenant leakage suite (the merge gate for everything after),
   audit completeness review, ADRs, operator runbook, docs sync.
-- **Dependencies:** all of Phase 7. · **Complexity:** M · **Status:** todo
+- **Dependencies:** all of Phase 7. · **Complexity:** M · **Status:** **partial**
+  — the **audit completeness review is done** (2026-08-09, session 26, ADR-48),
+  pulled forward out of order because tech-debt #71 had been open for two
+  sessions and its sharpest case was a security event that recorded nothing:
+  refresh-token reuse detection revokes an entire sign-in family for suspected
+  theft, and wrote no row. Six mutating paths now emit, plus `billing:quota_denied`
+  for refusals, which ADR-45 made the likeliest thing to happen to a live user.
+
+  The review also **changed the standard the exit gate is measured against**.
+  "Every mutating action emits an audit event" is not a rule this system can
+  keep — a successful refresh rotation is a mutation, fires four times an hour
+  per device, and auditing it would bury the trail. The gate is now **every
+  mutation with a consequence emits, and every deliberate silence has a test
+  asserting the silence**; `tests/test_audit_coverage.py` is where both halves
+  are proven.
+
+  **The cross-tenant leakage suite is also done** (2026-08-09, session 26,
+  fourth loop) — `backend/tests/test_cross_tenant_leakage.py`, 34 tests, the
+  named M1 exit criterion. Built as a **census rather than a checklist**: every
+  operation is read out of the live OpenAPI schema and matched against an
+  explicit tenancy classification, so **an unclassified route fails the suite**
+  and the file cannot go stale as the surface grows. Every probe is a pair — the
+  owner must succeed *and* the stranger must get 404 — because a probe that only
+  checks the 404 passes just as happily against a route that is dark behind a
+  feature flag. It substantially repays tech-debt #63 and found #89 on the way
+  in (the quota kill switch does not cover the backlink refresh path).
+
+  It shipped **ahead of its stated dependency on `platform-back-office`**. That
+  dependency assumed A7 would land first; A7 is blocked on operator item B16,
+  and holding the milestone's central safety claim behind an operator decision
+  would have left "zero cross-tenant reads" unchecked indefinitely. When A7
+  lands, its routes will fail the census until they are classified — which is
+  the mechanism working as designed rather than a gap.
+
+  **CSV export on the audit log** (admin-panel-plan §6) shipped in the same
+  session's fifth loop: same filters as the list, a per-row integrity verdict,
+  a 5000-row ceiling, and an `audit:export` event recording who took a copy and
+  what they filtered to — never the contents.
+
+  **What A9 still owes:** the operator runbook, and the `audit-emit-no-outbox`
+  hardening — a deliberate trade rather than a defect (an audit write failure
+  must never 500 a request). Neither is a code-correctness gate.
+
+### P7.10 — Analysis history per organization
+- **Goal:** let a customer find the analyses their organization has run.
+- **Why now:** P7.6 gave `analyses` an `org_id` and nothing read it. The only
+  route back to a result was the URL the submitter was redirected to, so closing
+  the tab lost the run — the data claimed an owner and the product gave that
+  owner no way in (tech-debt #77). It is also the first screen that makes
+  session 25's metering visible to the person paying for it, which matters
+  directly after a change that put every organization on Free.
+- **Dependencies:** P7.6 (the `org_id` it reads). · **Complexity:** M ·
+  **Status: DONE** (2026-08-09, session 26, ADR-49).
+- **Deliverables:** `GET /api/v1/analyses` (`analysis:read`, org-scoped, paged,
+  status filter); `AnalysisSummaryOut`/`AnalysisListOut`; `services.analyses.
+  list_org_analyses`; the `/analyses` screen; a nav entry under AI Visibility;
+  14 backend and 13 frontend tests.
+- **Acceptance:** another tenant's runs are absent, an org-less context raises
+  rather than listing everything, pre-P7.6 and checker runs appear in nobody's
+  history, paging never repeats or skips a row, and an unmeasured run reports a
+  **null** score that the UI draws as an em dash.
+- **Two notes for whoever builds the next list route.** The route is
+  authenticated while its sibling `GET /analyses/{id}` is not, and that is the
+  design rather than an oversight: an unguessable id can be a capability, an
+  enumeration never can (ADR-49). And it is the **first application call site of
+  `tenancy.scoped()`** — the fail-closed seam three documents described as
+  shipped with zero callers. That does not close tech-debt #63; the A9 leakage
+  suite does. It does mean the seam now has a worked example to copy.
 
 ---
 
@@ -2373,7 +2542,10 @@ paragraph, as the record.*
 (scope authority) · stages B1–B8 → cards P8.1–P8.8, decomposed at build
 time. Gated on Phase 7's quota/credit foundation (P7.6) and the operator's
 vendor + budget decision (**A4**). Engine done and now reachable over HTTP
-(P8.1/P8.3-API/P8.4-delta/P8.5/P8.6/P8.7); no screens yet, as of 2026-08-05.*
+(P8.1/P8.3-API/P8.4-delta/P8.5/P8.6/P8.7), and **the screens shipped
+2026-08-06** (P8.3 complete). What M2 still lacks is a licensed index, not
+code: `BACKLINKS_ENABLED` stays off in production, so every route answers 404
+to a customer until P8.2's vendor adapter lands behind operator gate A4.*
 
 - **P8.1 — `BacklinkSource` seam + mock + schema v1** (S/M): protocol,
   deterministic mock, `backlink_profiles`/`backlinks`/`link_events`; $0
@@ -2408,10 +2580,10 @@ vendor + budget decision (**A4**). Engine done and now reachable over HTTP
   bearer-only and held in memory, so an `<a href>` would 401 as a page
   navigation. **Residual:** XLSX (CSV ships), and competitor management still
   has no screen — the API has it. Frontend suite 281 → **305**.
-  The earlier partial status, for the record — the **API half**: eleven routes
-  under
+  The earlier partial status, for the record — the **API half**: **twelve**
+  route handlers under
   `/api/v1/seo-projects/{id}/backlinks` (summary, inventory,
-  referring-domains, anchors, events, opportunities, competitors CRUD,
+  referring-domains, anchors, events, opportunities, competitors CRUD = 3,
   refresh, CSV + disavow export), registered in `app/api/main.py` and dark
   behind `BACKLINKS_ENABLED` as a router-level 404 rather than a 403.
   `app/services/backlinks.py` is the seam: it owns the one subject-key

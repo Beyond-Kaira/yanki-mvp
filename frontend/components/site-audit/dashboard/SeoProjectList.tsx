@@ -46,7 +46,8 @@ export default function SeoProjectList({
   onCreateProject,
 }: {
   projects: SeoProject[]
-  onCreateProject: () => void
+  /** Omitted when the enqueue feature is off — the list stays a read-only view. */
+  onCreateProject?: () => void
 }) {
   return (
     <section
@@ -65,9 +66,11 @@ export default function SeoProjectList({
             Your domains and their latest Site Audit results.
           </p>
         </div>
-        <Button onClick={onCreateProject} size="sm" className="self-start sm:self-auto">
-          New SEO project
-        </Button>
+        {onCreateProject ? (
+          <Button onClick={onCreateProject} size="sm" className="self-start sm:self-auto">
+            New SEO project
+          </Button>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto">

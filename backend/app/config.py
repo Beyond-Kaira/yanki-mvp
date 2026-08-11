@@ -77,6 +77,33 @@ class Settings(BaseSettings):
     worker_poll_seconds: int = 2
     stale_claim_seconds: int = 300
 
+    # Worker liveness (ADR-47). The worker owns no HTTP surface, so it proves it
+    # is alive by touching a file on a volume the api also mounts — the cheapest
+    # thing that works, since a heartbeat table would need a migration and a
+    # heartbeat endpoint would mean giving the worker a web server. `/healthz`
+    # reports its age and the compose healthcheck reads the same file.
+    #
+    # The beat is written on every poll AND at the start of every pipeline step,
+    # so an idle worker beats every WORKER_POLL_SECONDS (2s) and a busy one beats
+    # at each step boundary. The stale window has to exceed the longest single
+    # *step*, which is `execute` — up to MAX_RESPONSES_PER_JOB paid calls — so it
+    # is set well above it. Erring long is the cheap direction: this signal must
+    # mean "stopped", and a window that flags a slow-but-working job is a signal
+    # people learn to ignore.
+    worker_heartbeat_path: str = "/var/run/yanki/worker.heartbeat"
+    worker_heartbeat_stale_seconds: int = 1800
+
+    # Site Audit enqueue kill-switch (S24). OFF by default, same shape as
+    # backlinks_enabled above. Production runs exactly db/api/worker/searxng/web
+    # and NONE of them drains the site-audit queue — the GEO worker consumes the
+    # analyses queue, not this one — so a queued crawl sits `queued` forever. While
+    # False, the two routes that queue a crawl are refused 404 the same way the
+    # backlink module goes dark; reads of existing projects and audits stay open,
+    # so nobody loses access to data they already have. The operator flips this
+    # True only once a Chromium audit worker ships with egress and settings
+    # isolation (M3) — see docs/site-audit-integration.md.
+    site_audit_enabled: bool = False
+
     # Site Audit runs in a separate worker and queue. Browser crawls heartbeat
     # after every persisted page, so a longer stale window tolerates one slow
     # navigation without letting a crashed job remain running forever.
@@ -91,8 +118,22 @@ class Settings(BaseSettings):
     site_audit_max_html_chars: int = Field(default=2_000_000, ge=10_000)
     site_audit_max_queue_urls: int = Field(default=5_000, ge=10, le=50_000)
 
-    # Rate limiting (P5.0) — the LIVE POST /api/v1/analyses is public with real
-    # keys; these guard it before any row is created or money is spent.
+    # Plan quota enforcement (P7.6). ON by default: a plan tier that nothing
+    # enforces is decorative, which is what this flag exists to stop being true.
+    #
+    # It is a kill switch, not a feature gate — the difference matters. The
+    # other flags in this file (checker/backlinks/site_audit) default OFF and
+    # hide unfinished work; this one defaults ON and exists so the operator can
+    # turn enforcement OFF from `deploy/.env` without a code change, on a box
+    # that auto-deploys on merge and has no staging. Off means the quota is
+    # counted nowhere and never refuses; every other guard (per-IP rate limits,
+    # the checker's daily USD cap, RBAC) is untouched by it.
+    quota_enforcement_enabled: bool = True
+
+    # Rate limiting (P5.0) — POST /api/v1/analyses now requires authentication
+    # (ADR-45), but these stay as defence in depth: they bound one credential's
+    # burst before a row is created or money is spent, which a monthly plan
+    # quota does not.
     analyses_rate_limit_per_ip_hour: int = 5
     analyses_daily_cap: int = 100
     ip_hash_salt: str = ""

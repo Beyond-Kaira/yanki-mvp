@@ -28,7 +28,7 @@ import type {
   WaitlistSignupResponse,
 } from './contracts'
 import { getActiveOrgId } from './active-org'
-import { getAccessToken, refreshAccessToken } from './session'
+import { getAccessToken, notifySessionLost, refreshAccessToken } from './session'
 
 // Thin fetch wrapper. All paths are relative — Next rewrites proxy them to the
 // backend (see next.config.ts), so there is no CORS and no base URL to configure.
@@ -99,7 +99,12 @@ export async function authorizedFetch(
   if (res.status !== 401) return res
 
   const refreshed = await refreshAccessToken()
-  if (!refreshed) return res
+  if (!refreshed) {
+    // The 401 stood and the cookie could not buy a new token: the session is
+    // over. Say so, or the shell keeps rendering a signed-in user who is not.
+    notifySessionLost()
+    return res
+  }
 
   return fetch(path, withBearer(scoped, refreshed))
 }

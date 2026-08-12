@@ -9,6 +9,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api', () => ({
   getAnalysis: vi.fn(),
+  fetchAnalysisSlices: vi.fn(),
   joinWaitlist: vi.fn(),
   ApiError: class ApiError extends Error {
     status: number
@@ -21,9 +22,11 @@ vi.mock('@/lib/api', () => ({
 }))
 
 import AnalysisPage from '@/app/analyses/[id]/page'
-import { getAnalysis } from '@/lib/api'
+import { fetchAnalysisSlices, getAnalysis } from '@/lib/api'
+import { envelopeFrom, wireAnalysisPollMocks } from './analysisMocks'
 
 const mockedGet = vi.mocked(getAnalysis)
+const mockedFetchSlices = vi.mocked(fetchAnalysisSlices)
 
 // No cast: the fixture satisfies the generated wire types in full, so a
 // contract change fails the build here rather than passing silently.
@@ -63,11 +66,14 @@ function makeAnalysis(overrides: AnalysisOverrides = {}): Analysis {
 describe('AnalysisPage accessibility', () => {
   beforeEach(() => {
     mockedGet.mockReset()
+    mockedFetchSlices.mockReset()
   })
 
   it('has no axe violations while running', async () => {
     mockedGet.mockResolvedValue(
-      makeAnalysis({ status: 'running', progress: 30, current_step: 'prompts' }),
+      envelopeFrom(
+        makeAnalysis({ status: 'running', progress: 30, current_step: 'prompts' }),
+      ),
     )
     const { container } = render(<AnalysisPage />)
     await screen.findByRole('progressbar')
@@ -75,7 +81,9 @@ describe('AnalysisPage accessibility', () => {
   })
 
   it('announces the failure card as an alert with no axe violations', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis({
         status: 'failed',
         progress: 0,
@@ -95,7 +103,9 @@ describe('AnalysisPage accessibility', () => {
   })
 
   it('points the failure at the step that broke when there is one', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis({
         status: 'failed',
         progress: 45,
@@ -113,7 +123,9 @@ describe('AnalysisPage accessibility', () => {
   })
 
   it('has no axe violations on the results screen', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis({
         status: 'done',
         progress: 100,

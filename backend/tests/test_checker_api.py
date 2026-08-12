@@ -211,7 +211,7 @@ def test_mvp_submit_defaults_kind_to_mvp(client, db_session, signed_in):
     # section exists to keep visible.
     signed_in(email="mvp-kind@example.test")
 
-    resp = client.post("/api/v1/analyses", json={"url": "https://example.com"})
+    resp = client.post("/api/v1/analyses", json={"url": "https://acme.test"})
     assert resp.status_code == 202
     row = db_session.get(Analysis, uuid.UUID(resp.json()["id"]))
     assert row.kind == "mvp"
@@ -228,4 +228,5 @@ def test_checker_row_flows_through_get_unchanged(client):
     got = resp.json()
     assert got["url"] == "checker://nike/running shoes"
     assert got["status"] == "queued"
-    assert got["result"]["kyc"] is None
+    assert "result" not in got
+    assert client.get(f"/api/v1/analyses/{body['id']}/kyc").json()["kyc"] is None

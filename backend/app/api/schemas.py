@@ -1,8 +1,8 @@
 """Pydantic request/response schemas — the locked API contract.
 
-The GET response always carries a ``result`` envelope; its inner fields are
-null/empty until the pipeline produces them, so the frontend can render partial
-state (and failures keep their partial results queryable — FR-7).
+``GET /analyses/{id}`` returns a thin poll envelope; feature payloads live on
+slice routes (``/kyc``, ``/geo``, ``/serp``, …). ``ResultOut`` remains the
+internal merge shape for slice builders and OpenAPI parity tests.
 """
 
 from __future__ import annotations
@@ -464,7 +464,46 @@ class ResultOut(BaseModel):
     seo: SeoAuditOut | None
 
 
+class AnalysisKycOut(BaseModel):
+    """Company profile slice for ``GET /analyses/{id}/kyc``."""
+
+    kyc: dict[str, Any] | None
+
+
+class AnalysisPromptsOut(BaseModel):
+    """Generated prompt list for ``GET /analyses/{id}/prompts``."""
+
+    prompts: list[PromptOut]
+
+
+class GeoOut(BaseModel):
+    """Measured GEO slice for ``GET /analyses/{id}/geo``.
+
+    Matches ``ResultOut`` minus ``kyc``, ``prompts``, ``serp``, and ``seo``.
+    """
+
+    responses: list[ResponseOut]
+    geo_score: float | None
+    footprint_count: int | None
+    total_responses: int | None
+    reliability_score: float | None = None
+    interventions: list[dict[str, Any]] | dict[str, Any] | None = None
+    citation_summary: dict[str, Any] | None = None
+    geo_records: list[GeoRecordOut] = []
+    engine_presence: list[EnginePresence] | None = None
+    competitors_appeared: list[CompetitorMention] | None = None
+
+
 class AnalysisOut(BaseModel):
+    """Thin poll envelope for ``GET /analyses/{id}``.
+
+    Feature payloads live on slice routes (``/kyc``, ``/geo``, ``/serp``, …).
+    Summary columns mirror ``AnalysisSummaryOut`` plus SERP/SEO headlines so
+    list/detail headers can render without fetching slices.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     url: str
     status: str
@@ -473,18 +512,22 @@ class AnalysisOut(BaseModel):
     error: str | None
     created_at: datetime
     updated_at: datetime
-    result: ResultOut
+    geo_score: float | None = None
+    footprint_count: int | None = None
+    total_responses: int | None = None
+    reliability_score: float | None = None
+    serp_status: str | None = None
+    serp_score: float | None = None
+    seo_status: str | None = None
+    seo_score: float | None = None
+    seo_grade: str | None = None
 
 
 class AnalysisSummaryOut(BaseModel):
     """One row of an organization's analysis history.
 
-    Deliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``
-    carries the whole ``result`` envelope — every prompt, every raw engine
-    response, every SERP and SEO check — which is right for the one run a reader
-    opened and absurd for a table of twenty. A separate, flat schema also means
-    adding a field to the detail view cannot silently make the list twenty times
-    heavier.
+    Deliberately **not** ``AnalysisOut`` minus a few fields. Slice routes carry
+    feature payloads; this schema is flat so a history table stays lightweight.
     """
 
     model_config = ConfigDict(from_attributes=True)

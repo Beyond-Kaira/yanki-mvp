@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useParams } from 'next/navigation'
-import { getAnalysis, ApiError } from '@/lib/api'
+import {
+  fetchAnalysisSlices,
+  getAnalysis,
+  ApiError,
+} from '@/lib/api'
+import {
+  analysisFromEnvelope,
+  mergeAnalysis,
+} from '@/lib/analysis-bundle'
 import type { Analysis } from '@/lib/contracts'
 import {
   deriveEnginePresence,
@@ -48,12 +56,21 @@ export default function AnalysisPage() {
 
     async function poll() {
       try {
-        const data = await getAnalysis(id)
+        const envelope = await getAnalysis(id)
         if (cancelled) return
-        setAnalysisId(data.id)
-        setAnalysis(data)
+        setAnalysisId(envelope.id)
+
+        if (envelope.status === 'done' || envelope.status === 'failed') {
+          const slices = await fetchAnalysisSlices(envelope.id, 'full')
+          if (cancelled) return
+          setAnalysis(mergeAnalysis(envelope, slices))
+          setLoadError(null)
+          stop()
+          return
+        }
+
+        setAnalysis(analysisFromEnvelope(envelope))
         setLoadError(null)
-        if (data.status === 'done' || data.status === 'failed') stop()
       } catch (err) {
         if (cancelled) return
         setLoadError(err instanceof Error ? err.message : 'Something went wrong.')

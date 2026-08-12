@@ -12,6 +12,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/api', () => ({
   createCheckerAnalysis: vi.fn(),
   getAnalysis: vi.fn(),
+  fetchAnalysisSlices: vi.fn(),
   submitLead: vi.fn(),
   joinWaitlist: vi.fn(),
   ApiError: class ApiError extends Error {
@@ -26,9 +27,11 @@ vi.mock('@/lib/api', () => ({
 
 import CheckerPage from '@/app/checker/page'
 import CheckerResultsPage from '@/app/checker/[id]/page'
-import { getAnalysis } from '@/lib/api'
+import { fetchAnalysisSlices, getAnalysis } from '@/lib/api'
+import { envelopeFrom, wireAnalysisPollMocks } from './analysisMocks'
 
 const mockedGet = vi.mocked(getAnalysis)
+const mockedFetchSlices = vi.mocked(fetchAnalysisSlices)
 
 type AnalysisOverrides = Omit<Partial<Analysis>, 'result'> & {
   result?: Partial<Analysis['result']>
@@ -66,6 +69,7 @@ function makeAnalysis(overrides: AnalysisOverrides = {}): Analysis {
 describe('Checker screens accessibility', () => {
   beforeEach(() => {
     mockedGet.mockReset()
+    mockedFetchSlices.mockReset()
   })
 
   it('landing has no axe violations', async () => {
@@ -79,7 +83,9 @@ describe('Checker screens accessibility', () => {
 
   it('results screen has no axe violations while running', async () => {
     mockedGet.mockResolvedValue(
-      makeAnalysis({ status: 'running', progress: 30, current_step: 'prompts' }),
+      envelopeFrom(
+        makeAnalysis({ status: 'running', progress: 30, current_step: 'prompts' }),
+      ),
     )
     const { container } = render(<CheckerResultsPage />)
     await screen.findByRole('progressbar')
@@ -87,7 +93,9 @@ describe('Checker screens accessibility', () => {
   })
 
   it('results screen has no axe violations on the done screen', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis({
         status: 'done',
         progress: 100,
@@ -131,7 +139,9 @@ describe('Checker screens accessibility', () => {
   it('keeps the email gate primary: waitlist does not preempt it pre-reveal', async () => {
     // Two answers means one is gated, so EmailGate is the primary CTA. The
     // waitlist section must stay hidden until the gate is unlocked.
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis({
         status: 'done',
         progress: 100,

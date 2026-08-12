@@ -12,6 +12,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/api', () => ({
   createCheckerAnalysis: vi.fn(),
   getAnalysis: vi.fn(),
+  fetchAnalysisSlices: vi.fn(),
   submitLead: vi.fn(),
   joinWaitlist: vi.fn(),
   ApiError: class ApiError extends Error {
@@ -25,9 +26,11 @@ vi.mock('@/lib/api', () => ({
 }))
 
 import CheckerResultsPage from '@/app/checker/[id]/page'
-import { getAnalysis } from '@/lib/api'
+import { fetchAnalysisSlices, getAnalysis } from '@/lib/api'
+import { envelopeFrom, wireAnalysisPollMocks } from './analysisMocks'
 
 const mockedGet = vi.mocked(getAnalysis)
+const mockedFetchSlices = vi.mocked(fetchAnalysisSlices)
 
 // No casts: the fixture satisfies the generated wire types in full.
 type AnalysisOverrides = Omit<Partial<Analysis>, 'result'> & {
@@ -80,10 +83,13 @@ function response(overrides: Partial<AnalysisResponse>): AnalysisResponse {
 describe('Checker results screen', () => {
   beforeEach(() => {
     mockedGet.mockReset()
+    mockedFetchSlices.mockReset()
   })
 
   it('points at the step a failed check stopped on', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis({
         status: 'failed',
         current_step: 'execute',
@@ -103,7 +109,9 @@ describe('Checker results screen', () => {
   })
 
   it('draws no trail when the check failed before claiming a step', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis({
         status: 'failed',
         current_step: null,
@@ -121,7 +129,9 @@ describe('Checker results screen', () => {
   })
 
   it('reports the size of the run above the gated answers', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis({
         status: 'done',
         current_step: null,

@@ -9,7 +9,9 @@ a real Postgres.
 `POST /analyses` requires a bearer, and `GET /analyses/{id}` will only return a
 run to the organization that owns it — an analysis that carries an `org_id` is
 no longer a capability URL. Both halves of this check therefore run as a real
-account that this script creates on the throwaway stack.
+account that this script creates on the throwaway stack. When the run finishes,
+SERP evidence is read from ``GET /analyses/{id}/serp`` (the main GET is a thin
+poll envelope since the analysis API read split, phase 2).
 
 That also means this check now exercises something it never used to: sign-up,
 sign-in, the permission gate, and the plan quota, on a real Postgres. A fresh
@@ -62,10 +64,15 @@ def _post(path: str, payload: dict, token: str | None = None) -> dict:
         return json.load(response)
 
 
-def _get(path: str, token: str | None = None) -> dict:
+def _get(path: str, token: str | None = None) -> dict | None:
     request = urllib.request.Request(f"{API}{path}", headers=_headers(token), method="GET")
     with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
+        body = json.load(response)
+    if body is None:
+        return None
+    if not isinstance(body, dict):
+        fail(f"GET {path} returned unexpected JSON: {type(body).__name__!r}")
+    return body
 
 
 def fail(message: str, analysis: dict | None = None) -> None:
@@ -113,7 +120,10 @@ def main() -> int:
     deadline = time.monotonic() + TIMEOUT_SECONDS
     analysis: dict = {}
     while time.monotonic() < deadline:
-        analysis = _get(f"/analyses/{analysis_id}", token)
+        envelope = _get(f"/analyses/{analysis_id}", token)
+        if envelope is None:
+            fail(f"GET /analyses/{analysis_id} returned empty body")
+        analysis = envelope
         status = analysis["status"]
         if status == "done":
             break
@@ -124,7 +134,8 @@ def main() -> int:
     else:
         fail(f"the analysis never finished within {TIMEOUT_SECONDS}s", analysis)
 
-    serp = analysis["result"].get("serp")
+    # Phase 2: the poll envelope is thin; feature payloads live on slice routes.
+    serp = _get(f"/analyses/{analysis_id}/serp", token)
     if serp is None:
         fail("SERP_ENABLED=1 was set, but the run reported no SERP summary", analysis)
 
@@ -166,7 +177,8 @@ def main() -> int:
 
     # Queries are generated, so they must obey the invariant that they never name
     # the brand they measure (ADR-27/ADR-28).
-    company = (analysis["result"].get("kyc") or {}).get("company", "")
+    kyc_out = _get(f"/analyses/{analysis_id}/kyc", token) or {}
+    company = (kyc_out.get("kyc") or {}).get("company", "")
     if company:
         for check in serp["checks"]:
             if company.casefold() in check["query"].casefold():

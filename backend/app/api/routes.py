@@ -19,25 +19,28 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.api.analysis_slices import (
+    build_envelope,
+    build_geo_out,
+    build_kyc_out,
+    build_prompts_out,
+    build_seo_out,
+    build_serp_out,
+)
 from app.api.org_dependencies import get_optional_org_context, requires
 from app.api.schemas import (
+    AnalysisKycOut,
     AnalysisListOut,
     AnalysisOut,
+    AnalysisPromptsOut,
     AnalysisSummaryOut,
     CheckerLeadRequest,
     CheckerSubmitRequest,
     CheckerSubmitResponse,
-    CompetitorMention,
     CreateAnalysisRequest,
     CreateAnalysisResponse,
-    EnginePresence,
-    GeoRecordOut,
-    PromptOut,
-    ResponseOut,
-    ResultOut,
+    GeoOut,
     SeoAuditOut,
-    SeoCheckOut,
-    SerpCheckOut,
     SerpVisibilityOut,
     WaitlistRequest,
     WaitlistResponse,
@@ -54,7 +57,6 @@ from app.services.checker import (
     find_cached_checker_analysis,
     normalize_triple,
 )
-from app.services.checker_summary import summarize_checker
 from app.services.emailer import send_waitlist_emails
 from app.services.permissions import ANALYSIS_READ, ANALYSIS_RUN
 from app.services.rate_limit import (
@@ -74,68 +76,19 @@ router = APIRouter(prefix="/api/v1", tags=["analyses"])
 
 
 def _to_out(analysis: Analysis) -> AnalysisOut:
-    """Build the full GET envelope from an ORM row. ``result`` is always present."""
-    # Checker-only read-time aggregates (P5.3). Computed for kind='checker' rows
-    # from the stored responses; left null for MVP / legacy (kind NULL/'mvp').
-    engine_presence: list[EnginePresence] | None = None
-    competitors_appeared: list[CompetitorMention] | None = None
-    if analysis.kind == "checker":
-        summary = summarize_checker(analysis.responses, analysis.kyc)
-        engine_presence = [EnginePresence.model_validate(stat) for stat in summary.engine_presence]
-        competitors_appeared = [
-            CompetitorMention.model_validate(stat) for stat in summary.competitors_appeared
-        ]
+    """Build the thin GET envelope from an ORM row."""
+    return build_envelope(analysis)
 
-    # SERP visibility (ADR-28). Present only when the run actually measured it:
-    # a null summary says "we did not look", which must never render as a zero.
-    serp: SerpVisibilityOut | None = None
-    if analysis.serp_status is not None:
-        serp = SerpVisibilityOut(
-            status=analysis.serp_status,
-            source=analysis.serp_source,
-            score=analysis.serp_score,
-            hits=analysis.serp_hit_count or 0,
-            queries=analysis.serp_query_count or 0,
-            checks=[SerpCheckOut.model_validate(c) for c in analysis.serp_checks],
-        )
 
-    # SEO audit (ADR-31). Present only when the run actually audited a site.
-    seo: SeoAuditOut | None = None
-    if analysis.seo_status is not None:
-        seo = SeoAuditOut(
-            status=analysis.seo_status,
-            score=analysis.seo_score,
-            grade=analysis.seo_grade,
-            checks=[SeoCheckOut.model_validate(c) for c in analysis.seo_checks],
-        )
-
-    result = ResultOut(
-        kyc=analysis.kyc,
-        prompts=[PromptOut.model_validate(p) for p in analysis.prompts],
-        responses=[ResponseOut.model_validate(r) for r in analysis.responses],
-        geo_score=analysis.geo_score,
-        footprint_count=analysis.footprint_count,
-        total_responses=analysis.total_responses,
-        reliability_score=analysis.reliability_score,
-        interventions=analysis.interventions,
-        citation_summary=analysis.citation_summary,
-        geo_records=[GeoRecordOut.model_validate(r) for r in analysis.geo_records],
-        engine_presence=engine_presence,
-        competitors_appeared=competitors_appeared,
-        serp=serp,
-        seo=seo,
-    )
-    return AnalysisOut(
-        id=analysis.id,
-        url=analysis.url,
-        status=analysis.status,
-        progress=analysis.progress,
-        current_step=analysis.current_step,
-        error=analysis.error,
-        created_at=analysis.created_at,
-        updated_at=analysis.updated_at,
-        result=result,
-    )
+def _readable_or_404(
+    session: Session,
+    analysis_id: uuid.UUID,
+    org: OrgContext | None,
+) -> Analysis:
+    analysis = readable_analysis(session, analysis_id, org)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="analysis not found")
+    return analysis
 
 
 @router.post("/analyses", status_code=202, response_model=CreateAnalysisResponse)
@@ -395,7 +348,65 @@ def read_analysis(
     which is the whole value of an unguessable id.
     """
 
-    analysis = readable_analysis(session, analysis_id, org)
-    if analysis is None:
-        raise HTTPException(status_code=404, detail="analysis not found")
+    analysis = _readable_or_404(session, analysis_id, org)
     return _to_out(analysis)
+
+
+@router.get("/analyses/{analysis_id}/kyc", response_model=AnalysisKycOut)
+def read_analysis_kyc(
+    analysis_id: uuid.UUID,
+    org: OrgContext | None = Depends(get_optional_org_context),
+    session: Session = Depends(get_session),
+) -> AnalysisKycOut:
+    """Company profile (KYC) for one analysis — same ``result.kyc`` as the full GET."""
+
+    analysis = _readable_or_404(session, analysis_id, org)
+    return build_kyc_out(analysis)
+
+
+@router.get("/analyses/{analysis_id}/prompts", response_model=AnalysisPromptsOut)
+def read_analysis_prompts(
+    analysis_id: uuid.UUID,
+    org: OrgContext | None = Depends(get_optional_org_context),
+    session: Session = Depends(get_session),
+) -> AnalysisPromptsOut:
+    """Generated prompts for one analysis."""
+
+    analysis = _readable_or_404(session, analysis_id, org)
+    return build_prompts_out(analysis)
+
+
+@router.get("/analyses/{analysis_id}/geo", response_model=GeoOut)
+def read_analysis_geo(
+    analysis_id: uuid.UUID,
+    org: OrgContext | None = Depends(get_optional_org_context),
+    session: Session = Depends(get_session),
+) -> GeoOut:
+    """Measured GEO slice (responses, geo_records, scores, interventions)."""
+
+    analysis = _readable_or_404(session, analysis_id, org)
+    return build_geo_out(analysis)
+
+
+@router.get("/analyses/{analysis_id}/serp", response_model=SerpVisibilityOut | None)
+def read_analysis_serp(
+    analysis_id: uuid.UUID,
+    org: OrgContext | None = Depends(get_optional_org_context),
+    session: Session = Depends(get_session),
+) -> SerpVisibilityOut | None:
+    """SERP visibility when measured; ``null`` when the run did not look (ADR-28)."""
+
+    analysis = _readable_or_404(session, analysis_id, org)
+    return build_serp_out(analysis)
+
+
+@router.get("/analyses/{analysis_id}/seo", response_model=SeoAuditOut | None)
+def read_analysis_seo(
+    analysis_id: uuid.UUID,
+    org: OrgContext | None = Depends(get_optional_org_context),
+    session: Session = Depends(get_session),
+) -> SeoAuditOut | None:
+    """Homepage SEO audit when run; ``null`` when not audited (ADR-31). Not Site Audit."""
+
+    analysis = _readable_or_404(session, analysis_id, org)
+    return build_seo_out(analysis)

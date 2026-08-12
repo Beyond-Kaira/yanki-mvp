@@ -11,7 +11,7 @@ def test_submitting_an_analysis_requires_a_credential(client, db_session):
     session 21 moved the URL form behind sign-in (ADR-45). An endpoint that
     spends money at a paid vendor cannot be metered while anyone can call it."""
 
-    resp = client.post("/api/v1/analyses", json={"url": "https://example.com"})
+    resp = client.post("/api/v1/analyses", json={"url": "https://acme.test"})
 
     assert resp.status_code == 401
     assert resp.headers["www-authenticate"] == "Bearer"
@@ -20,7 +20,7 @@ def test_submitting_an_analysis_requires_a_credential(client, db_session):
 
 def test_submit_valid_url_returns_202_and_queued_row(client, db_session, signed_in):
     _, org = signed_in()
-    resp = client.post("/api/v1/analyses", json={"url": "https://example.com"})
+    resp = client.post("/api/v1/analyses", json={"url": "https://acme.test"})
 
     assert resp.status_code == 202
     body = resp.json()
@@ -67,7 +67,7 @@ def test_get_unknown_id_returns_404(client):
     assert resp.status_code == 404
 
 
-def test_get_returns_envelope_with_result_always_present(client, make_analysis):
+def test_get_returns_thin_envelope_without_nested_result(client, make_analysis):
     analysis = make_analysis(url="https://acme.test")
 
     resp = client.get(f"/api/v1/analyses/{analysis.id}")
@@ -80,21 +80,13 @@ def test_get_returns_envelope_with_result_always_present(client, make_analysis):
     assert body["progress"] == 0
     assert body["current_step"] is None
     assert body["error"] is None
-
-    # The result envelope is always present; inner fields are null/empty until produced.
-    assert "result" in body
-    result = body["result"]
-    assert result["kyc"] is None
-    assert result["prompts"] == []
-    assert result["responses"] == []
-    assert result["geo_score"] is None
-    assert result["footprint_count"] is None
-    assert result["total_responses"] is None
+    assert "result" not in body
+    assert body["geo_score"] is None
+    assert body["footprint_count"] is None
+    assert body["total_responses"] is None
 
 
-def test_get_done_analysis_serializes_full_result(client, db_session, make_analysis):
-    # FR-2 / Results acceptance: a done analysis returns nested KYC, prompts,
-    # responses and score, with cost_usd (Numeric) coerced to a float.
+def test_get_done_analysis_thin_envelope_carries_summary_columns(client, db_session, make_analysis):
     analysis = make_analysis(
         url="https://acme.test",
         status="done",
@@ -134,31 +126,27 @@ def test_get_done_analysis_serializes_full_result(client, db_session, make_analy
         ]
     )
     db_session.commit()
+    analysis_id = analysis.id
 
-    resp = client.get(f"/api/v1/analyses/{analysis.id}")
+    resp = client.get(f"/api/v1/analyses/{analysis_id}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "done"
+    assert "result" not in body
+    assert body["geo_score"] == 0.5
+    assert body["footprint_count"] == 1
+    assert body["total_responses"] == 2
 
-    result = body["result"]
-    assert result["kyc"] == {"company": "Acme", "industry": "Robotics"}
-    assert result["geo_score"] == 0.5
-    assert result["footprint_count"] == 1
-    assert result["total_responses"] == 2
-
-    assert len(result["prompts"]) == 1
-    assert result["prompts"][0]["id"] == str(prompt.id)
-    assert result["prompts"][0]["text"] == "Best warehouse robots?"
-    assert result["prompts"][0]["category"] == "recommendation"
-
-    assert len(result["responses"]) == 2
-    hit = next(r for r in result["responses"] if r["engine"] == "anthropic")
-    assert hit["prompt_id"] == str(prompt.id)
-    assert hit["model"] == "claude"
-    assert hit["raw_text"] == "Acme is a strong option."
-    assert hit["footprint"] is True
-    assert hit["matched_snippet"] == "Acme is a strong option."
-    assert isinstance(hit["cost_usd"], float)
+    assert client.get(f"/api/v1/analyses/{analysis_id}/kyc").json()["kyc"] == {
+        "company": "Acme",
+        "industry": "Robotics",
+    }
+    prompts = client.get(f"/api/v1/analyses/{analysis_id}/prompts").json()["prompts"]
+    assert len(prompts) == 1
+    assert prompts[0]["id"] == str(prompt.id)
+    geo = client.get(f"/api/v1/analyses/{analysis_id}/geo").json()
+    assert len(geo["responses"]) == 2
+    hit = next(r for r in geo["responses"] if r["engine"] == "anthropic")
     assert hit["cost_usd"] == 0.001234
 
 
@@ -168,7 +156,8 @@ def test_get_reports_no_serp_summary_when_the_run_never_measured_it(client, make
 
     body = client.get(f"/api/v1/analyses/{analysis.id}").json()
 
-    assert body["result"]["serp"] is None
+    assert body["serp_status"] is None
+    assert client.get(f"/api/v1/analyses/{analysis.id}/serp").json() is None
 
 
 def test_get_serializes_the_serp_summary_and_its_evidence(client, db_session, make_analysis):
@@ -206,7 +195,7 @@ def test_get_serializes_the_serp_summary_and_its_evidence(client, db_session, ma
     )
     db_session.commit()
 
-    serp = client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]["serp"]
+    serp = client.get(f"/api/v1/analyses/{analysis.id}/serp").json()
 
     assert serp["status"] == "ok"
     assert serp["source"] == "searxng"
@@ -228,7 +217,7 @@ def test_a_measured_but_unreadable_run_serializes_a_null_score(client, make_anal
         serp_query_count=0,
     )
 
-    serp = client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]["serp"]
+    serp = client.get(f"/api/v1/analyses/{analysis.id}/serp").json()
 
     assert serp["status"] == "unavailable"
     assert serp["score"] is None
@@ -239,7 +228,7 @@ def test_get_reports_no_seo_audit_when_the_run_never_audited(client, make_analys
     """ADR-31: a checker submission has no site, so there is nothing to grade."""
     analysis = make_analysis()
 
-    assert client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]["seo"] is None
+    assert client.get(f"/api/v1/analyses/{analysis.id}/seo").json() is None
 
 
 def test_get_serializes_the_seo_audit_and_its_checks(client, db_session, make_analysis):
@@ -269,7 +258,7 @@ def test_get_serializes_the_seo_audit_and_its_checks(client, db_session, make_an
     )
     db_session.commit()
 
-    seo = client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]["seo"]
+    seo = client.get(f"/api/v1/analyses/{analysis.id}/seo").json()
 
     assert seo["status"] == "ok"
     assert seo["grade"] == "C"

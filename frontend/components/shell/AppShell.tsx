@@ -21,6 +21,7 @@ import {
   SHELL_SECTIONS,
   flyoutItemActive,
   sectionFromPath,
+  showsAppShell,
   type ShellSection,
   type ShellSectionId,
 } from '@/lib/shell-nav'
@@ -196,6 +197,15 @@ export default function AppShell({ children }: AppShellProps) {
   }, [navOpen])
   const signedIn = status === 'authenticated' && Boolean(user?.email)
   const loadingAuth = status === 'loading'
+
+  // Every hook above runs unconditionally, so this early return is safe here
+  // and nowhere earlier. Standing down on a public route the visitor is reading
+  // signed-out hands the page to SiteHeader, which asks the same question and
+  // gets the opposite answer — so the page always has exactly one chrome.
+  if (!showsAppShell(pathname, status === 'authenticated')) {
+    return <>{children}</>
+  }
+
   const railExpanded = !isDesktop || railHovered || railFocused
   const panelOpen =
     railExpanded &&

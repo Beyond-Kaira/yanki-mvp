@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { LandingClosingCta, LandingHeroCta } from '@/components/LandingCta'
 
 /**
  * The front door.
@@ -7,9 +7,9 @@ import Link from 'next/link'
  * visitor's opening experience was a signed-out application with a URL box and
  * no explanation. That is a demo, not a landing page.
  *
- * Deliberately a SERVER component with no `AppShell`: nothing here needs a
- * session, so nothing here should wait for one. A marketing page that flickers
- * while it resolves auth reads as broken.
+ * Deliberately a SERVER component with no `AppShell`: the copy needs no session,
+ * so it should not wait for one. Only the calls to action differ by who is
+ * reading, and those are client islands that resolve on their own.
  */
 
 const PROOF = [
@@ -49,27 +49,7 @@ export default function LandingPage() {
           keeps every raw answer so you can check the working.
         </p>
 
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Link
-            href="/signup"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          >
-            Create an account
-          </Link>
-          <Link
-            href="/checker"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-surface-border px-5 text-sm font-medium transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            Try the free checker
-          </Link>
-        </div>
-        <p className="mt-3 text-sm text-surface-subtle">
-          Already have an account?{' '}
-          <Link href="/login" className="font-medium text-primary hover:underline">
-            Log in
-          </Link>
-          .
-        </p>
+        <LandingHeroCta />
       </section>
 
       <section className="mt-14 grid gap-6 sm:mt-20 sm:grid-cols-3">
@@ -106,29 +86,7 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      <section className="mt-14 rounded-lg border border-surface-border bg-surface p-6 sm:mt-20 sm:p-8">
-        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-          See your own numbers
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-surface-subtle">
-          Create an account to run a full analysis, track it over time, and invite your
-          team. Or try the free checker first — no account needed.
-        </p>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Link
-            href="/signup"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          >
-            Create an account
-          </Link>
-          <Link
-            href="/methodology"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-surface-border px-5 text-sm font-medium transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            Read the methodology
-          </Link>
-        </div>
-      </section>
+      <LandingClosingCta />
     </div>
   )
 }

@@ -24,6 +24,7 @@ vi.mock('@/lib/session', () => ({
   refreshAccessToken: vi.fn(),
   setAccessToken: vi.fn(),
   getAccessToken: vi.fn(() => null),
+  onSessionLost: vi.fn(() => () => {}),
 }))
 
 import AuthProvider, { useAuth } from '@/components/AuthProvider'

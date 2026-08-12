@@ -9,12 +9,11 @@ export type SiteAuditProjectState =
   | { kind: 'error'; message: string }
   | { kind: 'loaded'; project: SeoProjectDetail; audit: SiteAuditDetail | null }
 
-export function useSiteAuditProject(projectId: string, enabled: boolean) {
+export function useSiteAuditProject(projectId: string) {
   const [state, setState] = useState<SiteAuditProjectState>({ kind: 'loading' })
   const [requestVersion, setRequestVersion] = useState(0)
 
   useEffect(() => {
-    if (!enabled) return
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | null = null
     let cancelled = false
@@ -51,7 +50,7 @@ export function useSiteAuditProject(projectId: string, enabled: boolean) {
       controller.abort()
       if (timer) clearTimeout(timer)
     }
-  }, [enabled, projectId, requestVersion])
+  }, [projectId, requestVersion])
 
   return {
     state,

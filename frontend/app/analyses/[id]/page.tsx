@@ -18,6 +18,7 @@ import {
   groupByQuestion,
   runEngineIds,
 } from '@/lib/results'
+import PageContainer from '@/components/shell/PageContainer'
 import FailedState from '@/components/FailedState'
 import StepProgress from '@/components/StepProgress'
 import ScoreSummary from '@/components/ScoreSummary'
@@ -127,8 +128,8 @@ export default function AnalysisPage() {
     )
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-12 sm:px-8">
-      <div className="space-y-8">
+    <PageContainer>
+      <main className="space-y-8">
         <header className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
             Analysis
@@ -147,8 +148,8 @@ export default function AnalysisPage() {
             : ''}
         </p>
         {content}
-      </div>
-    </main>
+      </main>
+    </PageContainer>
   )
 }
 

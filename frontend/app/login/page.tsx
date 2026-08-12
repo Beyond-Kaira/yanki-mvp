@@ -9,6 +9,7 @@ import CustomFormError from '@/components/CustomFormError'
 import CustomFormField from '@/components/CustomFormField'
 import CustomPasswordField from '@/components/CustomPasswordField'
 import { useAuth } from '@/components/AuthProvider'
+import { safeNext } from '@/lib/auth-redirect'
 import { validateEmail, validateExistingPassword } from '@/lib/validation'
 
 const FORM_ERROR_ID = 'login-error'
@@ -16,20 +17,6 @@ const FORM_ERROR_ID = 'login-error'
 interface FieldErrors {
   email?: string | null
   password?: string | null
-}
-
-/**
- * Where to send someone after they authenticate.
- *
- * Only same-origin paths are honoured. A `next` of `https://evil.example` in
- * the query string would otherwise turn the login form into an open redirect —
- * the classic phishing primitive, made worse here because the victim has just
- * been asked to type a password.
- */
-function safeNext(raw: string | null): string {
-  if (!raw) return '/dashboard'
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/dashboard'
-  return raw
 }
 
 function LoginForm() {

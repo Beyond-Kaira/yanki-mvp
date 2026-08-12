@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.db.models import Prompt, Response, SerpCheck, SeoCheck
+from app.db.models import Prompt, Response, SeoCheck, SerpCheck
 
 
 @pytest.fixture()

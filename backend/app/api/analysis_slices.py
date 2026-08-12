@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from app.api.schemas import (
     AnalysisKycOut,
-    AnalysisPromptsOut,
     AnalysisOut,
+    AnalysisPromptsOut,
     CompetitorMention,
     EnginePresence,
     GeoOut,

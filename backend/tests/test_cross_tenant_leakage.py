@@ -75,11 +75,17 @@ PUBLIC = {
 #: Authenticated, and scoped to the *caller* rather than to an organization.
 #: There is no tenant dimension to leak across; the leak these could have is
 #: user-to-user, which their own suites cover (`test_auth_api`).
+#: Keyword preview routes are stateless compute (seed in, ideas out) — no
+#: org-owned row is read or written, so there is nothing for another tenant to
+#: enumerate.
 SELF = {
     ("GET", "/api/v1/auth/me"),
     ("GET", "/api/v1/auth/sessions"),
     ("POST", "/api/v1/auth/sessions/revoke-all"),
     ("DELETE", "/api/v1/auth/sessions/{session_id}"),
+    ("POST", "/api/v1/keywords/expand"),
+    ("POST", "/api/v1/keywords/overview"),
+    ("POST", "/api/v1/keywords/rank-check"),
 }
 
 #: Readable by anyone holding the id, **on purpose**. Exactly one operation, and

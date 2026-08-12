@@ -16,6 +16,8 @@
  * missing, without saying whether it was coming.
  */
 
+import { isPublicPath } from '@/lib/route-access'
+
 export type NavBadge = 'live' | 'soon' | null
 
 export type ShellSectionId =
@@ -227,4 +229,25 @@ export function isShellPath(pathname: string): boolean {
     pathname.startsWith('/methodology') ||
     pathname.startsWith('/analyses')
   )
+}
+
+/**
+ * Whether this visitor gets the product shell on this route.
+ *
+ * Two routes are public *and* wear the shell — `/methodology` and `/checker`,
+ * plus the capability URLs under `/checker/:id` and `/analyses/:id`. For a
+ * signed-out reader the rail there advertised a product they had no account
+ * for, ending in a "Not signed in" card where the account should be. So on a
+ * public route the shell is an upgrade the session earns, and the marketing
+ * header is the default.
+ *
+ * `signedIn` is false while the session is still resolving, which is
+ * deliberate: on a public route the anonymous chrome is the safe guess, and a
+ * rail that appears for one frame and then vanishes is the same wrong answer
+ * with a flicker attached. Gated routes are unaffected either way — they keep
+ * the shell while `RequireAuth` renders inside it.
+ */
+export function showsAppShell(pathname: string, signedIn: boolean): boolean {
+  if (!isShellPath(pathname)) return false
+  return signedIn || !isPublicPath(pathname)
 }

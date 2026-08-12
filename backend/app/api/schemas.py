@@ -464,6 +464,36 @@ class ResultOut(BaseModel):
     seo: SeoAuditOut | None
 
 
+class AnalysisKycOut(BaseModel):
+    """Company profile slice for ``GET /analyses/{id}/kyc``."""
+
+    kyc: dict[str, Any] | None
+
+
+class AnalysisPromptsOut(BaseModel):
+    """Generated prompt list for ``GET /analyses/{id}/prompts``."""
+
+    prompts: list[PromptOut]
+
+
+class GeoOut(BaseModel):
+    """Measured GEO slice for ``GET /analyses/{id}/geo``.
+
+    Matches ``ResultOut`` minus ``kyc``, ``prompts``, ``serp``, and ``seo``.
+    """
+
+    responses: list[ResponseOut]
+    geo_score: float | None
+    footprint_count: int | None
+    total_responses: int | None
+    reliability_score: float | None = None
+    interventions: list[dict[str, Any]] | dict[str, Any] | None = None
+    citation_summary: dict[str, Any] | None = None
+    geo_records: list[GeoRecordOut] = []
+    engine_presence: list[EnginePresence] | None = None
+    competitors_appeared: list[CompetitorMention] | None = None
+
+
 class AnalysisOut(BaseModel):
     id: uuid.UUID
     url: str

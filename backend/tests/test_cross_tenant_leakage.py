@@ -88,6 +88,11 @@ SELF = {
 #: alone. The probe below proves the second half.
 CAPABILITY = {
     ("GET", "/api/v1/analyses/{analysis_id}"),
+    ("GET", "/api/v1/analyses/{analysis_id}/geo"),
+    ("GET", "/api/v1/analyses/{analysis_id}/kyc"),
+    ("GET", "/api/v1/analyses/{analysis_id}/prompts"),
+    ("GET", "/api/v1/analyses/{analysis_id}/seo"),
+    ("GET", "/api/v1/analyses/{analysis_id}/serp"),
 }
 
 #: Everything else. Must answer 404 to another tenant.

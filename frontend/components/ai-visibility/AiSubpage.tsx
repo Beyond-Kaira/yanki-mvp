@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import AppShell from '@/components/shell/AppShell'
+import PageContainer from '@/components/shell/PageContainer'
 import Link from 'next/link'
 
 export default function AiSubpage({
@@ -13,7 +14,7 @@ export default function AiSubpage({
 }) {
   return (
     <AppShell>
-      <div className="mx-auto max-w-4xl px-6 py-8 sm:px-8">
+      <PageContainer>
         <p className="text-sm text-surface-subtle">
           <Link href="/ai-visibility" className="text-primary hover:text-primary-hover">
             AI Visibility
@@ -34,7 +35,7 @@ export default function AiSubpage({
             </p>
           )}
         </div>
-      </div>
+      </PageContainer>
     </AppShell>
   )
 }

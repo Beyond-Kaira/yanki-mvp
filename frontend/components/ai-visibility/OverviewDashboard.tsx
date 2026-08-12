@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import PageContainer from '@/components/shell/PageContainer'
 import {
   IconCheck,
   IconChevron,
@@ -93,7 +94,7 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
       : Math.round(model.reliability * 100) / 100
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8">
+    <PageContainer>
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
           AI Visibility
@@ -273,6 +274,6 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
         Data from measured GEO audit
         {model.analysisId ? ` · ${model.analysisId.slice(0, 8)}…` : ''}
       </p>
-    </div>
+    </PageContainer>
   )
 }

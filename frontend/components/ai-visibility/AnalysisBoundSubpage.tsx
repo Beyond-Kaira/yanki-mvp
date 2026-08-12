@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/shell/AppShell'
+import PageContainer from '@/components/shell/PageContainer'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
 import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
@@ -24,7 +25,7 @@ export default function AnalysisBoundSubpage({
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl px-6 py-8 sm:px-8">
+      <PageContainer>
         <p className="text-sm text-surface-subtle">
           <Link
             href={analysisHref('/ai-visibility', analysisId)}
@@ -79,7 +80,7 @@ export default function AnalysisBoundSubpage({
         {status === 'ready' && analysis ? (
           <div className="mt-6 space-y-6">{children(analysis)}</div>
         ) : null}
-      </div>
+      </PageContainer>
     </AppShell>
   )
 }

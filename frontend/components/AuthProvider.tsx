@@ -12,7 +12,7 @@ import {
 import type { AuthUser } from '@/lib/auth'
 import { acceptInvitation } from '@/lib/api'
 import { getActiveOrgId, setActiveOrgId } from '@/lib/active-org'
-import { refreshAccessToken, setAccessToken } from '@/lib/session'
+import { onSessionLost, refreshAccessToken, setAccessToken } from '@/lib/session'
 
 // Drop a stored active-org that the authoritative `/auth/me` list no longer
 // contains — a membership revoked while it was selected, or a value left behind
@@ -101,6 +101,20 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [])
+
+  // A session can end server-side mid-visit — revoked from another device, or a
+  // refresh family the backend invalidated. Only the fetch layer sees it, so it
+  // reports back here; the guard then does the rest and sends them to /login.
+  useEffect(
+    () =>
+      onSessionLost(() => {
+        setAccessToken(null)
+        setActiveOrgId(null)
+        setUser(null)
+        setStatus('anonymous')
+      }),
+    [],
+  )
 
   const signIn = useCallback(async (email: string, password: string) => {
     const session = await login({ email, password })

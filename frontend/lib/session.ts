@@ -33,6 +33,25 @@ export function setAccessToken(token: string | null): void {
   accessToken = token
 }
 
+// `authorizedFetch` is a plain fetch layer with no access to React context, so
+// it cannot flip auth state itself when a session turns out to be over. It
+// announces here instead and `AuthProvider` subscribes — the dependency has to
+// run this way round.
+type SessionLostListener = () => void
+
+const sessionLostListeners = new Set<SessionLostListener>()
+
+export function onSessionLost(listener: SessionLostListener): () => void {
+  sessionLostListeners.add(listener)
+  return () => {
+    sessionLostListeners.delete(listener)
+  }
+}
+
+export function notifySessionLost(): void {
+  for (const listener of sessionLostListeners) listener()
+}
+
 interface RefreshBody {
   access_token?: unknown
 }

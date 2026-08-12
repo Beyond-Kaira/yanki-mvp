@@ -24,12 +24,11 @@ export type BacklinkProfileState =
  * couple the UI to prose, and the prose is the one part of a 404 anybody may
  * reword at any time.
  */
-export function useBacklinkProfile(projectId: string, enabled: boolean) {
+export function useBacklinkProfile(projectId: string) {
   const [state, setState] = useState<BacklinkProfileState>({ kind: 'loading' })
   const [requestVersion, setRequestVersion] = useState(0)
 
   useEffect(() => {
-    if (!enabled) return
     const controller = new AbortController()
     let cancelled = false
     setState({ kind: 'loading' })
@@ -79,7 +78,7 @@ export function useBacklinkProfile(projectId: string, enabled: boolean) {
       cancelled = true
       controller.abort()
     }
-  }, [enabled, projectId, requestVersion])
+  }, [projectId, requestVersion])
 
   return {
     state,

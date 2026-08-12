@@ -3,7 +3,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
-import { getAnalysis, ApiError } from '@/lib/api'
+import {
+  fetchAnalysisSlices,
+  getAnalysis,
+  ApiError,
+} from '@/lib/api'
+import {
+  analysisFromEnvelope,
+  mergeAnalysis,
+  type AnalysisSliceMode,
+} from '@/lib/analysis-bundle'
 import type { Analysis } from '@/lib/contracts'
 
 export type AnalysisQueryStatus =
@@ -15,12 +24,15 @@ export type AnalysisQueryStatus =
 
 const POLL_MS = 2000
 
-export function useAnalysisQuery(): {
+export function useAnalysisQuery(options?: {
+  slices?: AnalysisSliceMode
+}): {
   analysisId: string | null
   status: AnalysisQueryStatus
   analysis: Analysis | null
   error: string | null
 } {
+  const sliceMode = options?.slices ?? 'full'
   const params = useSearchParams()
   const fromQuery = params.get('analysis')
   const { analysisId: sessionId, setAnalysisId } = useAnalysisSession()
@@ -59,22 +71,31 @@ export function useAnalysisQuery(): {
 
     async function poll() {
       try {
-        const row = await getAnalysis(analysisId!)
+        const envelope = await getAnalysis(analysisId!)
         if (cancelled) return
-        setAnalysisId(row.id)
-        setAnalysis(row)
+        setAnalysisId(envelope.id)
         setError(null)
-        if (row.status === 'done') {
+
+        if (envelope.status === 'done') {
+          const slices = await fetchAnalysisSlices(envelope.id, sliceMode)
+          if (cancelled) return
+          setAnalysis(mergeAnalysis(envelope, slices))
           setStatus('ready')
           stop()
           return
         }
-        if (row.status === 'failed') {
+
+        if (envelope.status === 'failed') {
+          const slices = await fetchAnalysisSlices(envelope.id, sliceMode)
+          if (cancelled) return
+          setAnalysis(mergeAnalysis(envelope, slices))
           setStatus('error')
-          setError(row.error ?? 'The analysis failed.')
+          setError(envelope.error ?? 'The analysis failed.')
           stop()
           return
         }
+
+        setAnalysis(analysisFromEnvelope(envelope))
         setStatus('running')
       } catch (err: unknown) {
         if (cancelled) return
@@ -94,7 +115,7 @@ export function useAnalysisQuery(): {
       cancelled = true
       stop()
     }
-  }, [analysisId, setAnalysisId])
+  }, [analysisId, setAnalysisId, sliceMode])
 
   return { analysisId, status, analysis, error }
 }

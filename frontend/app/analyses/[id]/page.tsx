@@ -3,13 +3,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useParams } from 'next/navigation'
-import { getAnalysis, ApiError } from '@/lib/api'
+import {
+  fetchAnalysisSlices,
+  getAnalysis,
+  ApiError,
+} from '@/lib/api'
+import {
+  analysisFromEnvelope,
+  mergeAnalysis,
+} from '@/lib/analysis-bundle'
 import type { Analysis } from '@/lib/contracts'
 import {
   deriveEnginePresence,
   groupByQuestion,
   runEngineIds,
 } from '@/lib/results'
+import PageContainer from '@/components/shell/PageContainer'
 import FailedState from '@/components/FailedState'
 import StepProgress from '@/components/StepProgress'
 import ScoreSummary from '@/components/ScoreSummary'
@@ -47,12 +56,21 @@ export default function AnalysisPage() {
 
     async function poll() {
       try {
-        const data = await getAnalysis(id)
+        const envelope = await getAnalysis(id)
         if (cancelled) return
-        setAnalysisId(data.id)
-        setAnalysis(data)
+        setAnalysisId(envelope.id)
+
+        if (envelope.status === 'done' || envelope.status === 'failed') {
+          const slices = await fetchAnalysisSlices(envelope.id, 'full')
+          if (cancelled) return
+          setAnalysis(mergeAnalysis(envelope, slices))
+          setLoadError(null)
+          stop()
+          return
+        }
+
+        setAnalysis(analysisFromEnvelope(envelope))
         setLoadError(null)
-        if (data.status === 'done' || data.status === 'failed') stop()
       } catch (err) {
         if (cancelled) return
         setLoadError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -110,8 +128,8 @@ export default function AnalysisPage() {
     )
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-12 sm:px-8">
-      <div className="space-y-8">
+    <PageContainer>
+      <main className="space-y-8">
         <header className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
             Analysis
@@ -130,8 +148,8 @@ export default function AnalysisPage() {
             : ''}
         </p>
         {content}
-      </div>
-    </main>
+      </main>
+    </PageContainer>
   )
 }
 

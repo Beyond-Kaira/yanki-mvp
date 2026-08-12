@@ -6,6 +6,7 @@ import type { Analysis } from '@/lib/contracts'
 vi.mock('@/lib/api', () => ({
   submitLead: vi.fn(),
   getAnalysis: vi.fn(),
+  fetchAnalysisSlices: vi.fn(),
   createCheckerAnalysis: vi.fn(),
   ApiError: class ApiError extends Error {
     status: number
@@ -25,10 +26,12 @@ vi.mock('next/navigation', () => ({
 
 import EmailGate from '@/components/EmailGate'
 import CheckerResultsPage from '@/app/checker/[id]/page'
-import { submitLead, getAnalysis, ApiError } from '@/lib/api'
+import { submitLead, fetchAnalysisSlices, getAnalysis, ApiError } from '@/lib/api'
+import { wireAnalysisPollMocks } from './analysisMocks'
 
 const mockedSubmit = vi.mocked(submitLead)
 const mockedGet = vi.mocked(getAnalysis)
+const mockedFetchSlices = vi.mocked(fetchAnalysisSlices)
 
 describe('EmailGate component', () => {
   beforeEach(() => {
@@ -178,11 +181,14 @@ function response(
 describe('checker results email gate wiring', () => {
   beforeEach(() => {
     mockedGet.mockReset()
+    mockedFetchSlices.mockReset()
     mockedSubmit.mockReset()
   })
 
   it('shows one free answer (the first that mentions the brand) and gates the rest', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis([
         response('r1', false, 'FIRST unrelated answer.'),
         response('r2', false, 'SECOND unrelated answer.'),
@@ -208,7 +214,9 @@ describe('checker results email gate wiring', () => {
   })
 
   it('falls back to the first answer when none mentions the brand', async () => {
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis([
         response('r1', false, 'FIRST unrelated answer.'),
         response('r2', false, 'SECOND unrelated answer.'),
@@ -226,7 +234,9 @@ describe('checker results email gate wiring', () => {
 
   it('reveals every answer in place after a valid email', async () => {
     mockedSubmit.mockResolvedValue(undefined)
-    mockedGet.mockResolvedValue(
+    wireAnalysisPollMocks(
+      mockedGet,
+      mockedFetchSlices,
       makeAnalysis([
         response('r1', true, 'FIRST names the brand.'),
         response('r2', false, 'SECOND unrelated answer.'),

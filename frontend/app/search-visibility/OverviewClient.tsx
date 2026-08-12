@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import AppShell from '@/components/shell/AppShell'
+import PageContainer from '@/components/shell/PageContainer'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
 import SerpVisibility from '@/components/SerpVisibility'
@@ -10,18 +11,22 @@ import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
 import { analysisDomain } from '@/lib/ai-visibility-data'
 
 export default function SearchVisibilityOverviewClient() {
-  const { analysisId, status, analysis, error } = useAnalysisQuery()
+  const { analysisId, status, analysis, error } = useAnalysisQuery({
+    slices: 'search',
+  })
 
   return (
     <AppShell>
       {status === 'loading' ? (
-        <p className="px-8 py-10 text-sm text-surface-subtle" role="status">
-          Loading analysis…
-        </p>
+        <PageContainer>
+          <p className="text-sm text-surface-subtle" role="status">
+            Loading analysis…
+          </p>
+        </PageContainer>
       ) : null}
 
       {status === 'running' && analysis ? (
-        <div className="mx-auto max-w-3xl px-6 py-10 sm:px-8">
+        <PageContainer>
           <h1 className="mb-6 text-2xl font-semibold tracking-tight">
             Running analysis…
           </h1>
@@ -35,16 +40,16 @@ export default function SearchVisibilityOverviewClient() {
             Search results visibility and the AI readiness audit appear here when
             this run finishes.
           </p>
-        </div>
+        </PageContainer>
       ) : null}
 
       {status === 'error' ? (
-        <div className="px-8 pt-6">
+        <PageContainer>
           <p className="mb-4 text-sm text-warning-strong" role="status">
             {error}
           </p>
           <StartAnalysisPanel title="Run a new analysis" />
-        </div>
+        </PageContainer>
       ) : null}
 
       {status === 'empty' ? (
@@ -55,7 +60,7 @@ export default function SearchVisibilityOverviewClient() {
       ) : null}
 
       {status === 'ready' && analysis ? (
-        <div className="mx-auto max-w-5xl px-6 py-8 sm:px-8">
+        <PageContainer>
           <header className="mb-8">
             <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
               Search Visibility
@@ -110,7 +115,7 @@ export default function SearchVisibilityOverviewClient() {
               </section>
             )}
           </div>
-        </div>
+        </PageContainer>
       ) : null}
     </AppShell>
   )

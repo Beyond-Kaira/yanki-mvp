@@ -80,18 +80,24 @@ export type SeoAudit = Schemas['SeoAuditOut']
 
 export type SeoCheck = Schemas['SeoCheckOut']
 
-export type AnalysisResult = Omit<Schemas['ResultOut'], 'kyc'> & {
+export type AnalysisResult = Schemas['GeoOut'] & {
   kyc: KYC | null
-  reliability_score?: number | null
-  interventions?: Array<Record<string, unknown>> | Record<string, unknown> | null
+  prompts: Prompt[]
+  serp: SerpVisibility | null
+  seo: SeoAudit | null
 }
 
-export type Analysis = Omit<
+/** Thin poll payload from ``GET /analyses/{id}`` (phase 2). */
+export type AnalysisEnvelope = Omit<
   Schemas['AnalysisOut'],
-  'status' | 'current_step' | 'result'
+  'status' | 'current_step'
 > & {
   status: AnalysisStatus
   current_step: PipelineStep | null
+}
+
+/** Full analysis for UI helpers — envelope plus merged ``result`` from slice GETs. */
+export type Analysis = AnalysisEnvelope & {
   result: AnalysisResult
 }
 

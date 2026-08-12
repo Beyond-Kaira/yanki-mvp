@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useAuth } from '@/components/AuthProvider'
-import { isShellPath } from '@/lib/shell-nav'
+import { showsAppShell } from '@/lib/shell-nav'
 
 // Quiet nav link. `order-*` only matters on a phone, where the nav is a 2x2
 // grid; at `sm` it returns to a single row in document order.
@@ -16,11 +16,13 @@ const QUIET =
 const ACCENT =
   'inline-flex min-h-[40px] items-center justify-self-end rounded-md bg-primary px-3 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 sm:order-none'
 
-// Marketing/auth header. Product routes use AppShell (vertical nav + ShellAuthBar)
-// so this returns null there. On login/signup only logo + auth actions remain.
+// Marketing/auth header. Where AppShell renders (vertical nav + ShellAuthBar)
+// this returns null, so the page never carries two chromes — and never none.
+// On login/signup only logo + auth actions remain.
 export default function SiteHeader() {
   const pathname = usePathname()
-  if (isShellPath(pathname)) return null
+  const { status } = useAuth()
+  if (showsAppShell(pathname, status === 'authenticated')) return null
 
   return (
     <header className="border-b border-surface-border bg-surface">

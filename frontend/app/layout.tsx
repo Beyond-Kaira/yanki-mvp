@@ -4,6 +4,7 @@ import { Sora, IBM_Plex_Mono } from 'next/font/google'
 import AuthProvider from '@/components/AuthProvider'
 import AnalysisSessionProvider from '@/components/AnalysisSessionProvider'
 import ShellStateProvider from '@/components/shell/ShellStateProvider'
+import RouteGuard from '@/components/RouteGuard'
 import SiteHeader from '@/components/SiteHeader'
 import './globals.css'
 
@@ -46,7 +47,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <AnalysisSessionProvider>
             <ShellStateProvider>
               <SiteHeader />
-              {children}
+              <RouteGuard>{children}</RouteGuard>
             </ShellStateProvider>
           </AnalysisSessionProvider>
         </AuthProvider>

@@ -168,9 +168,7 @@ def _rows_from_historical_metrics_response(
                 phrase=text,
                 avg_monthly_searches=int(avg) if avg is not None else None,
                 competition=str(competition) if competition else None,
-                competition_index=int(competition_index)
-                if competition_index is not None
-                else None,
+                competition_index=int(competition_index) if competition_index is not None else None,
                 low_top_of_page_bid_micros=int(low_bid) if low_bid is not None else None,
                 high_top_of_page_bid_micros=int(high_bid) if high_bid is not None else None,
                 metrics_estimated=False,

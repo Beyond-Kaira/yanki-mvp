@@ -6,6 +6,7 @@ import type {
   AdminMemberList,
   AdminOrganization,
   Analysis,
+  AnalysisEnvelope,
   AnalysisList,
   AuditEventList,
   AuditIntegrity,
@@ -31,10 +32,22 @@ import type {
     SeoProjectDetail,
   SessionRevokeAllResult,
     SiteAuditDetail,
+  SerpVisibility,
+  SeoAudit,
   WaitlistSignupResponse,
 } from './contracts'
+import {
+  analysisFromEnvelope,
+  mergeAnalysis,
+  type AnalysisGeoSlice,
+  type AnalysisKycSlice,
+  type AnalysisPromptsSlice,
+  type AnalysisSliceMode,
+  type FetchedAnalysisSlices,
+  slicePathsForMode,
+} from './analysis-bundle'
 import { getActiveOrgId } from './active-org'
-import { getAccessToken, refreshAccessToken } from './session'
+import { getAccessToken, notifySessionLost, refreshAccessToken } from './session'
 
 // Thin fetch wrapper. All paths are relative — Next rewrites proxy them to the
 // backend (see next.config.ts), so there is no CORS and no base URL to configure.
@@ -105,7 +118,12 @@ export async function authorizedFetch(
   if (res.status !== 401) return res
 
   const refreshed = await refreshAccessToken()
-  if (!refreshed) return res
+  if (!refreshed) {
+    // The 401 stood and the cookie could not buy a new token: the session is
+    // over. Say so, or the shell keeps rendering a signed-in user who is not.
+    notifySessionLost()
+    return res
+  }
 
   return fetch(path, withBearer(scoped, refreshed))
 }
@@ -224,6 +242,31 @@ export async function joinWaitlist(
   return (await res.json()) as WaitlistSignupResponse
 }
 
+async function readAnalysisJson<T>(res: Response): Promise<T> {
+  return (await res.json()) as T
+}
+
+async function analysisSliceFetch<T>(
+  id: string,
+  suffix: string,
+): Promise<T> {
+  const res = await authorizedFetch(
+    `/api/v1/analyses/${encodeURIComponent(id)}${suffix}`,
+    {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    },
+  )
+  if (!res.ok) {
+    const message =
+      res.status === 404 || res.status === 422
+        ? "We couldn't find that analysis."
+        : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+  return readAnalysisJson<T>(res)
+}
+
 // Reading an analysis stays open to anonymous callers — a run with no
 // organization is a capability URL, which is what every checker result and
 // every pre-P7.6 row is. But a run that belongs to an organization is only
@@ -231,7 +274,7 @@ export async function joinWaitlist(
 // the person who just started the analysis would be 404'd from their own
 // result. `authorizedFetch` sends nothing extra when nobody is signed in, so
 // the anonymous path is unchanged.
-export async function getAnalysis(id: string): Promise<Analysis> {
+export async function getAnalysis(id: string): Promise<AnalysisEnvelope> {
   const res = await authorizedFetch(`/api/v1/analyses/${encodeURIComponent(id)}`, {
     headers: { Accept: 'application/json' },
     cache: 'no-store',
@@ -245,7 +288,72 @@ export async function getAnalysis(id: string): Promise<Analysis> {
         : await readErrorMessage(res)
     throw new ApiError(message, res.status)
   }
-  return (await res.json()) as Analysis
+  return readAnalysisJson<AnalysisEnvelope>(res)
+}
+
+export async function getAnalysisKyc(id: string): Promise<AnalysisKycSlice> {
+  return analysisSliceFetch<AnalysisKycSlice>(id, '/kyc')
+}
+
+export async function getAnalysisPrompts(
+  id: string,
+): Promise<AnalysisPromptsSlice> {
+  return analysisSliceFetch<AnalysisPromptsSlice>(id, '/prompts')
+}
+
+export async function getAnalysisGeo(id: string): Promise<AnalysisGeoSlice> {
+  return analysisSliceFetch<AnalysisGeoSlice>(id, '/geo')
+}
+
+export async function getAnalysisSerp(id: string): Promise<SerpVisibility | null> {
+  return analysisSliceFetch<SerpVisibility | null>(id, '/serp')
+}
+
+export async function getAnalysisSeo(id: string): Promise<SeoAudit | null> {
+  return analysisSliceFetch<SeoAudit | null>(id, '/seo')
+}
+
+export async function fetchAnalysisSlices(
+  id: string,
+  mode: AnalysisSliceMode,
+): Promise<FetchedAnalysisSlices> {
+  const paths = slicePathsForMode(mode)
+  const slices: FetchedAnalysisSlices = {}
+  await Promise.all(
+    paths.map(async (path) => {
+      switch (path) {
+        case 'kyc':
+          slices.kyc = await getAnalysisKyc(id)
+          break
+        case 'prompts':
+          slices.prompts = await getAnalysisPrompts(id)
+          break
+        case 'geo':
+          slices.geo = await getAnalysisGeo(id)
+          break
+        case 'serp':
+          slices.serp = await getAnalysisSerp(id)
+          break
+        case 'seo':
+          slices.seo = await getAnalysisSeo(id)
+          break
+      }
+    }),
+  )
+  return slices
+}
+
+/** Thin GET plus slice routes merged into the legacy ``Analysis`` shape. */
+export async function getAnalysisWithSlices(
+  id: string,
+  mode: AnalysisSliceMode = 'full',
+): Promise<Analysis> {
+  const envelope = await getAnalysis(id)
+  if (envelope.status !== 'done' && envelope.status !== 'failed') {
+    return analysisFromEnvelope(envelope)
+  }
+  const slices = await fetchAnalysisSlices(id, mode)
+  return mergeAnalysis(envelope, slices)
 }
 
 export interface AnalysisHistoryQuery {

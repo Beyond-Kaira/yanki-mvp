@@ -362,6 +362,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyses/{analysis_id}/geo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Analysis Geo
+         * @description Measured GEO slice (responses, geo_records, scores, interventions).
+         */
+        get: operations["read_analysis_geo_api_v1_analyses__analysis_id__geo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyses/{analysis_id}/kyc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Analysis Kyc
+         * @description Company profile (KYC) for one analysis — same ``result.kyc`` as the full GET.
+         */
+        get: operations["read_analysis_kyc_api_v1_analyses__analysis_id__kyc_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyses/{analysis_id}/prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Analysis Prompts
+         * @description Generated prompts for one analysis.
+         */
+        get: operations["read_analysis_prompts_api_v1_analyses__analysis_id__prompts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyses/{analysis_id}/seo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Analysis Seo
+         * @description Homepage SEO audit when run; ``null`` when not audited (ADR-31). Not Site Audit.
+         */
+        get: operations["read_analysis_seo_api_v1_analyses__analysis_id__seo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyses/{analysis_id}/serp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Analysis Serp
+         * @description SERP visibility when measured; ``null`` when the run did not look (ADR-28).
+         */
+        get: operations["read_analysis_serp_api_v1_analyses__analysis_id__serp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -1224,6 +1324,16 @@ export interface components {
             total: number;
         };
         /**
+         * AnalysisKycOut
+         * @description Company profile slice for ``GET /analyses/{id}/kyc``.
+         */
+        AnalysisKycOut: {
+            /** Kyc */
+            kyc: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * AnalysisListOut
          * @description A page of the caller's organization's analyses, newest first.
          */
@@ -1237,7 +1347,14 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** AnalysisOut */
+        /**
+         * AnalysisOut
+         * @description Thin poll envelope for ``GET /analyses/{id}``.
+         *
+         *     Feature payloads live on slice routes (``/kyc``, ``/geo``, ``/serp``, …).
+         *     Summary columns mirror ``AnalysisSummaryOut`` plus SERP/SEO headlines so
+         *     list/detail headers can render without fetching slices.
+         */
         AnalysisOut: {
             /**
              * Created At
@@ -1248,6 +1365,10 @@ export interface components {
             current_step: string | null;
             /** Error */
             error: string | null;
+            /** Footprint Count */
+            footprint_count?: number | null;
+            /** Geo Score */
+            geo_score?: number | null;
             /**
              * Id
              * Format: uuid
@@ -1255,9 +1376,22 @@ export interface components {
             id: string;
             /** Progress */
             progress: number;
-            result: components["schemas"]["ResultOut"];
+            /** Reliability Score */
+            reliability_score?: number | null;
+            /** Seo Grade */
+            seo_grade?: string | null;
+            /** Seo Score */
+            seo_score?: number | null;
+            /** Seo Status */
+            seo_status?: string | null;
+            /** Serp Score */
+            serp_score?: number | null;
+            /** Serp Status */
+            serp_status?: string | null;
             /** Status */
             status: string;
+            /** Total Responses */
+            total_responses?: number | null;
             /**
              * Updated At
              * Format: date-time
@@ -1267,15 +1401,19 @@ export interface components {
             url: string;
         };
         /**
+         * AnalysisPromptsOut
+         * @description Generated prompt list for ``GET /analyses/{id}/prompts``.
+         */
+        AnalysisPromptsOut: {
+            /** Prompts */
+            prompts: components["schemas"]["PromptOut"][];
+        };
+        /**
          * AnalysisSummaryOut
          * @description One row of an organization's analysis history.
          *
-         *     Deliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``
-         *     carries the whole ``result`` envelope — every prompt, every raw engine
-         *     response, every SERP and SEO check — which is right for the one run a reader
-         *     opened and absurd for a table of twenty. A separate, flat schema also means
-         *     adding a field to the detail view cannot silently make the list twenty times
-         *     heavier.
+         *     Deliberately **not** ``AnalysisOut`` minus a few fields. Slice routes carry
+         *     feature payloads; this schema is flat so a history table stays lightweight.
          */
         AnalysisSummaryOut: {
             /**
@@ -1777,6 +1915,43 @@ export interface components {
             score: number;
         };
         /**
+         * GeoOut
+         * @description Measured GEO slice for ``GET /analyses/{id}/geo``.
+         *
+         *     Matches ``ResultOut`` minus ``kyc``, ``prompts``, ``serp``, and ``seo``.
+         */
+        GeoOut: {
+            /** Citation Summary */
+            citation_summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Competitors Appeared */
+            competitors_appeared?: components["schemas"]["CompetitorMention"][] | null;
+            /** Engine Presence */
+            engine_presence?: components["schemas"]["EnginePresence"][] | null;
+            /** Footprint Count */
+            footprint_count: number | null;
+            /**
+             * Geo Records
+             * @default []
+             */
+            geo_records: components["schemas"]["GeoRecordOut"][];
+            /** Geo Score */
+            geo_score: number | null;
+            /** Interventions */
+            interventions?: {
+                [key: string]: unknown;
+            }[] | {
+                [key: string]: unknown;
+            } | null;
+            /** Reliability Score */
+            reliability_score?: number | null;
+            /** Responses */
+            responses: components["schemas"]["ResponseOut"][];
+            /** Total Responses */
+            total_responses: number | null;
+        };
+        /**
          * GeoRecordOut
          * @description One Kaira-style audit record persisted columnar in ``geo_records``.
          */
@@ -2270,46 +2445,6 @@ export interface components {
             prompt_id: string;
             /** Raw Text */
             raw_text: string;
-        };
-        /** ResultOut */
-        ResultOut: {
-            /** Citation Summary */
-            citation_summary?: {
-                [key: string]: unknown;
-            } | null;
-            /** Competitors Appeared */
-            competitors_appeared: components["schemas"]["CompetitorMention"][] | null;
-            /** Engine Presence */
-            engine_presence: components["schemas"]["EnginePresence"][] | null;
-            /** Footprint Count */
-            footprint_count: number | null;
-            /**
-             * Geo Records
-             * @default []
-             */
-            geo_records: components["schemas"]["GeoRecordOut"][];
-            /** Geo Score */
-            geo_score: number | null;
-            /** Interventions */
-            interventions?: {
-                [key: string]: unknown;
-            }[] | {
-                [key: string]: unknown;
-            } | null;
-            /** Kyc */
-            kyc: {
-                [key: string]: unknown;
-            } | null;
-            /** Prompts */
-            prompts: components["schemas"]["PromptOut"][];
-            /** Reliability Score */
-            reliability_score?: number | null;
-            /** Responses */
-            responses: components["schemas"]["ResponseOut"][];
-            seo: components["schemas"]["SeoAuditOut"] | null;
-            serp: components["schemas"]["SerpVisibilityOut"] | null;
-            /** Total Responses */
-            total_responses: number | null;
         };
         /**
          * SeoAuditOut
@@ -3336,6 +3471,171 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalysisOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_analysis_geo_api_v1_analyses__analysis_id__geo_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_analysis_kyc_api_v1_analyses__analysis_id__kyc_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisKycOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_analysis_prompts_api_v1_analyses__analysis_id__prompts_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisPromptsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_analysis_seo_api_v1_analyses__analysis_id__seo_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeoAuditOut"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_analysis_serp_api_v1_analyses__analysis_id__serp_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SerpVisibilityOut"] | null;
                 };
             };
             /** @description Validation Error */

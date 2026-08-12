@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import { useAuth } from '@/components/AuthProvider'
 import SeoProjectList from './SeoProjectList'
 import SiteAuditProjectStart from './SiteAuditProjectStart'
 import SiteAuditSettingsDialog from './SiteAuditSettingsDialog'
@@ -16,7 +15,6 @@ type ProjectState =
   | { kind: 'error'; message: string }
 
 export default function SiteAuditDashboard() {
-  const { status } = useAuth()
   const [requestVersion, setRequestVersion] = useState(0)
   const [projectState, setProjectState] = useState<ProjectState>({
     kind: 'loading',
@@ -35,8 +33,6 @@ export default function SiteAuditDashboard() {
   const [featureDisabled, setFeatureDisabled] = useState(false)
 
   useEffect(() => {
-    if (status !== 'authenticated') return
-
     const controller = new AbortController()
     setProjectState({ kind: 'loading' })
 
@@ -60,7 +56,7 @@ export default function SiteAuditDashboard() {
     )
 
     return () => controller.abort()
-  }, [requestVersion, status])
+  }, [requestVersion])
 
   const hasActiveAudit =
     projectState.kind === 'loaded' &&
@@ -69,7 +65,7 @@ export default function SiteAuditDashboard() {
     )
 
   useEffect(() => {
-    if (status !== 'authenticated' || !hasActiveAudit) return
+    if (!hasActiveAudit) return
 
     let cancelled = false
     const timer = window.setInterval(() => {
@@ -88,7 +84,7 @@ export default function SiteAuditDashboard() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [hasActiveAudit, status])
+  }, [hasActiveAudit])
 
   const closeSettings = useCallback(() => {
     if (creatingProject) return
@@ -155,21 +151,17 @@ export default function SiteAuditDashboard() {
         </p>
       </header>
 
-      {status === 'loading' ? <SessionLoadingState /> : null}
-      {status === 'anonymous' ? <SignedOutState /> : null}
-      {status === 'authenticated' ? (
-        <ProjectContent
-          state={projectState}
-          featureDisabled={featureDisabled}
-          onRetry={() => setRequestVersion((version) => version + 1)}
-          showCreateForm={showCreateForm}
-          onShowCreateForm={() => setShowCreateForm(true)}
-          onConfigure={(domain) => {
-            setCreateError(null)
-            setPendingDomain(domain)
-          }}
-        />
-      ) : null}
+      <ProjectContent
+        state={projectState}
+        featureDisabled={featureDisabled}
+        onRetry={() => setRequestVersion((version) => version + 1)}
+        showCreateForm={showCreateForm}
+        onShowCreateForm={() => setShowCreateForm(true)}
+        onConfigure={(domain) => {
+          setCreateError(null)
+          setPendingDomain(domain)
+        }}
+      />
 
       {pendingDomain && !featureDisabled ? (
         <SiteAuditSettingsDialog
@@ -181,47 +173,6 @@ export default function SiteAuditDashboard() {
         />
       ) : null}
     </main>
-  )
-}
-
-function SessionLoadingState() {
-  return (
-    <section
-      role="status"
-      aria-live="polite"
-      className="rounded-xl border border-surface-border bg-surface p-8 shadow-sm"
-    >
-      <div
-        aria-hidden="true"
-        className="mb-4 h-2 w-28 animate-pulse rounded-full bg-primary-soft motion-reduce:animate-none"
-      />
-      <h2 className="text-xl font-semibold text-surface-foreground">
-        Checking your session
-      </h2>
-      <p className="mt-2 text-sm text-surface-subtle">
-        Your Site Audit workspace will be ready in a moment.
-      </p>
-    </section>
-  )
-}
-
-function SignedOutState() {
-  return (
-    <section className="rounded-xl border border-surface-border bg-surface p-8 shadow-sm">
-      <h2 className="text-2xl font-semibold text-surface-foreground">
-        Sign in to view Site Audit
-      </h2>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-surface-subtle">
-        SEO projects belong to your account, so you need an active session to view
-        their crawl status and results.
-      </p>
-      <Link
-        href="/login"
-        className="mt-6 inline-flex min-h-[44px] items-center rounded-md bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-      >
-        Sign in
-      </Link>
-    </section>
   )
 }
 

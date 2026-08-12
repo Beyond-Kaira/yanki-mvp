@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { LandingClosingCta, LandingHeroCta } from '@/components/LandingCta'
 
 /**
  * The front door.
@@ -7,9 +7,9 @@ import Link from 'next/link'
  * visitor's opening experience was a signed-out application with a URL box and
  * no explanation. That is a demo, not a landing page.
  *
- * Deliberately a SERVER component with no `AppShell`: nothing here needs a
- * session, so nothing here should wait for one. A marketing page that flickers
- * while it resolves auth reads as broken.
+ * Deliberately a SERVER component with no `AppShell`: the copy needs no session,
+ * so it should not wait for one. Only the calls to action differ by who is
+ * reading, and those are client islands that resolve on their own.
  */
 
 const PROOF = [
@@ -49,14 +49,7 @@ export default function LandingPage() {
           keeps every raw answer so you can check the working.
         </p>
 
-        <div className="mt-8">
-          <Link
-            href="/dashboard"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          >
-            Go to dashboard
-          </Link>
-        </div>
+        <LandingHeroCta />
       </section>
 
       <section className="mt-14 grid gap-6 sm:mt-20 sm:grid-cols-3">
@@ -93,6 +86,7 @@ export default function LandingPage() {
         </ol>
       </section>
 
+      <LandingClosingCta />
     </div>
   )
 }

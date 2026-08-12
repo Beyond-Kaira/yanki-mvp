@@ -4,7 +4,15 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { getAnalysis, ApiError } from '@/lib/api'
+import {
+  fetchAnalysisSlices,
+  getAnalysis,
+  ApiError,
+} from '@/lib/api'
+import {
+  analysisFromEnvelope,
+  mergeAnalysis,
+} from '@/lib/analysis-bundle'
 import type { Analysis, AnalysisResponse, Prompt } from '@/lib/contracts'
 import { deriveEnginePresence } from '@/lib/results'
 import FailedState from '@/components/FailedState'
@@ -41,11 +49,20 @@ function CheckerResults() {
 
     async function poll() {
       try {
-        const data = await getAnalysis(id)
+        const envelope = await getAnalysis(id)
         if (cancelled) return
-        setAnalysis(data)
+
+        if (envelope.status === 'done' || envelope.status === 'failed') {
+          const slices = await fetchAnalysisSlices(envelope.id, 'full')
+          if (cancelled) return
+          setAnalysis(mergeAnalysis(envelope, slices))
+          setLoadError(null)
+          stop()
+          return
+        }
+
+        setAnalysis(analysisFromEnvelope(envelope))
         setLoadError(null)
-        if (data.status === 'done' || data.status === 'failed') stop()
       } catch (err) {
         if (cancelled) return
         setLoadError(err instanceof Error ? err.message : 'Something went wrong.')

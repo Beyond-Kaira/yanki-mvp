@@ -87,47 +87,36 @@ def test_slice_routes_return_404_for_unknown_id(client):
         assert resp.status_code == 404, path
 
 
-def test_kyc_slice_matches_full_get(client, done_analysis):
-    full = client.get(f"/api/v1/analyses/{done_analysis.id}").json()
+def test_kyc_slice_returns_stored_profile(client, done_analysis):
     slice_body = client.get(f"/api/v1/analyses/{done_analysis.id}/kyc").json()
-    assert slice_body == {"kyc": full["result"]["kyc"]}
+    assert slice_body["kyc"]["company"] == "Acme"
+    assert slice_body["kyc"]["category"] == "warehouse robots"
 
 
-def test_prompts_slice_matches_full_get(client, done_analysis):
-    full = client.get(f"/api/v1/analyses/{done_analysis.id}").json()
+def test_prompts_slice_returns_generated_rows(client, done_analysis):
     slice_body = client.get(f"/api/v1/analyses/{done_analysis.id}/prompts").json()
-    assert slice_body["prompts"] == full["result"]["prompts"]
+    assert len(slice_body["prompts"]) == 1
+    assert slice_body["prompts"][0]["text"] == "Best warehouse robots?"
 
 
-def test_geo_slice_matches_full_get(client, done_analysis):
-    full = client.get(f"/api/v1/analyses/{done_analysis.id}").json()["result"]
+def test_geo_slice_returns_measured_payload(client, done_analysis):
     geo = client.get(f"/api/v1/analyses/{done_analysis.id}/geo").json()
-    for key in (
-        "responses",
-        "geo_score",
-        "footprint_count",
-        "total_responses",
-        "reliability_score",
-        "interventions",
-        "citation_summary",
-        "geo_records",
-        "engine_presence",
-        "competitors_appeared",
-    ):
-        assert geo[key] == full[key], key
+    assert geo["geo_score"] == 72.5
+    assert geo["footprint_count"] == 1
+    assert len(geo["responses"]) == 1
+    assert geo["responses"][0]["engine"] == "measured"
+    assert geo["interventions"][0]["id"] == "fix-meta"
 
 
-def test_serp_slice_matches_full_get(client, done_analysis):
-    full = client.get(f"/api/v1/analyses/{done_analysis.id}").json()["result"]["serp"]
+def test_serp_slice_returns_checks(client, done_analysis):
     serp = client.get(f"/api/v1/analyses/{done_analysis.id}/serp").json()
-    assert serp == full
+    assert serp["status"] == "ok"
     assert serp["checks"][0]["query"] == "best warehouse robots"
 
 
-def test_seo_slice_matches_full_get(client, done_analysis):
-    full = client.get(f"/api/v1/analyses/{done_analysis.id}").json()["result"]["seo"]
+def test_seo_slice_returns_checks(client, done_analysis):
     seo = client.get(f"/api/v1/analyses/{done_analysis.id}/seo").json()
-    assert seo == full
+    assert seo["grade"] == "A"
     assert seo["checks"][0]["check_id"] == "robots_txt"
 
 
@@ -137,14 +126,12 @@ def test_serp_and_seo_slices_are_null_when_not_measured(client, make_analysis):
     assert client.get(f"/api/v1/analyses/{analysis.id}/seo").json() is None
 
 
-def test_main_get_unchanged_after_slice_routes(client, make_analysis):
-    """Regression: full envelope shape is identical to pre-split behaviour."""
+def test_main_get_is_thin_after_slice_routes(client, make_analysis):
+    """Regression: poll envelope has summary columns only."""
     analysis = make_analysis(url="https://example.test")
 
-    resp = client.get(f"/api/v1/analyses/{analysis.id}")
-    body = resp.json()
-    assert "result" in body
-    assert body["result"]["kyc"] is None
-    assert body["result"]["prompts"] == []
-    assert body["result"]["serp"] is None
-    assert body["result"]["seo"] is None
+    body = client.get(f"/api/v1/analyses/{analysis.id}").json()
+    assert "result" not in body
+    assert body["geo_score"] is None
+    assert client.get(f"/api/v1/analyses/{analysis.id}/serp").json() is None
+    assert client.get(f"/api/v1/analyses/{analysis.id}/seo").json() is None

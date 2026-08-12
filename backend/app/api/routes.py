@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.analysis_slices import (
+    build_envelope,
     build_geo_out,
     build_kyc_out,
     build_prompts_out,
@@ -39,8 +40,6 @@ from app.api.schemas import (
     CreateAnalysisRequest,
     CreateAnalysisResponse,
     GeoOut,
-    PromptOut,
-    ResultOut,
     SeoAuditOut,
     SerpVisibilityOut,
     WaitlistRequest,
@@ -77,35 +76,8 @@ router = APIRouter(prefix="/api/v1", tags=["analyses"])
 
 
 def _to_out(analysis: Analysis) -> AnalysisOut:
-    """Build the full GET envelope from an ORM row. ``result`` is always present."""
-    geo = build_geo_out(analysis)
-    result = ResultOut(
-        kyc=analysis.kyc,
-        prompts=[PromptOut.model_validate(p) for p in analysis.prompts],
-        responses=geo.responses,
-        geo_score=geo.geo_score,
-        footprint_count=geo.footprint_count,
-        total_responses=geo.total_responses,
-        reliability_score=geo.reliability_score,
-        interventions=geo.interventions,
-        citation_summary=geo.citation_summary,
-        geo_records=geo.geo_records,
-        engine_presence=geo.engine_presence,
-        competitors_appeared=geo.competitors_appeared,
-        serp=build_serp_out(analysis),
-        seo=build_seo_out(analysis),
-    )
-    return AnalysisOut(
-        id=analysis.id,
-        url=analysis.url,
-        status=analysis.status,
-        progress=analysis.progress,
-        current_step=analysis.current_step,
-        error=analysis.error,
-        created_at=analysis.created_at,
-        updated_at=analysis.updated_at,
-        result=result,
-    )
+    """Build the thin GET envelope from an ORM row."""
+    return build_envelope(analysis)
 
 
 def _readable_or_404(

@@ -282,30 +282,30 @@ def test_checker_get_carries_presence_and_competitors(client, db_session):
 
     runner.run_pipeline(db_session, analysis.id, _dry_run_settings())
 
-    result = client.get(f"/api/v1/analyses/{analysis.id}").json()["result"]
+    geo = client.get(f"/api/v1/analyses/{analysis.id}/geo").json()
 
-    presence = result["engine_presence"]
+    presence = geo["engine_presence"]
     assert presence is not None
     # Measured path: one engine entry; totals match total_responses.
     assert len(presence) == 1
     assert presence[0]["engine"] == "measured"
-    assert sum(e["total"] for e in presence) == result["total_responses"] == 12
-    assert sum(e["mentioned"] for e in presence) == result["footprint_count"]
+    assert sum(e["total"] for e in presence) == geo["total_responses"] == 12
+    assert sum(e["mentioned"] for e in presence) == geo["footprint_count"]
 
-    competitors = result["competitors_appeared"]
+    competitors = geo["competitors_appeared"]
     assert competitors is not None
     # Measured mock answers name Acme/Globex; brand itself is excluded.
     names = {c["name"] for c in competitors}
     assert "Acme" in names or "Globex" in names
     assert not any("yanki" in c["name"].casefold() for c in competitors)
-    assert isinstance(result.get("interventions"), list)
+    assert isinstance(geo.get("interventions"), list)
 
 
 def test_mvp_get_has_null_checker_fields(client, signed_in):
     signed_in(email="mvp-summary@example.test")
-    resp = client.post("/api/v1/analyses", json={"url": "https://example.com"})
+    resp = client.post("/api/v1/analyses", json={"url": "https://acme.test"})
     assert resp.status_code == 202, resp.text
     analysis_id = resp.json()["id"]
-    result = client.get(f"/api/v1/analyses/{analysis_id}").json()["result"]
-    assert result["engine_presence"] is None
-    assert result["competitors_appeared"] is None
+    geo = client.get(f"/api/v1/analyses/{analysis_id}/geo").json()
+    assert geo["engine_presence"] is None
+    assert geo["competitors_appeared"] is None

@@ -1290,7 +1290,14 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** AnalysisOut */
+        /**
+         * AnalysisOut
+         * @description Thin poll envelope for ``GET /analyses/{id}``.
+         *
+         *     Feature payloads live on slice routes (``/kyc``, ``/geo``, ``/serp``, …).
+         *     Summary columns mirror ``AnalysisSummaryOut`` plus SERP/SEO headlines so
+         *     list/detail headers can render without fetching slices.
+         */
         AnalysisOut: {
             /**
              * Created At
@@ -1301,6 +1308,10 @@ export interface components {
             current_step: string | null;
             /** Error */
             error: string | null;
+            /** Footprint Count */
+            footprint_count?: number | null;
+            /** Geo Score */
+            geo_score?: number | null;
             /**
              * Id
              * Format: uuid
@@ -1308,9 +1319,22 @@ export interface components {
             id: string;
             /** Progress */
             progress: number;
-            result: components["schemas"]["ResultOut"];
+            /** Reliability Score */
+            reliability_score?: number | null;
+            /** Seo Grade */
+            seo_grade?: string | null;
+            /** Seo Score */
+            seo_score?: number | null;
+            /** Seo Status */
+            seo_status?: string | null;
+            /** Serp Score */
+            serp_score?: number | null;
+            /** Serp Status */
+            serp_status?: string | null;
             /** Status */
             status: string;
+            /** Total Responses */
+            total_responses?: number | null;
             /**
              * Updated At
              * Format: date-time
@@ -1331,12 +1355,8 @@ export interface components {
          * AnalysisSummaryOut
          * @description One row of an organization's analysis history.
          *
-         *     Deliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``
-         *     carries the whole ``result`` envelope — every prompt, every raw engine
-         *     response, every SERP and SEO check — which is right for the one run a reader
-         *     opened and absurd for a table of twenty. A separate, flat schema also means
-         *     adding a field to the detail view cannot silently make the list twenty times
-         *     heavier.
+         *     Deliberately **not** ``AnalysisOut`` minus a few fields. Slice routes carry
+         *     feature payloads; this schema is flat so a history table stays lightweight.
          */
         AnalysisSummaryOut: {
             /**
@@ -2255,46 +2275,6 @@ export interface components {
             prompt_id: string;
             /** Raw Text */
             raw_text: string;
-        };
-        /** ResultOut */
-        ResultOut: {
-            /** Citation Summary */
-            citation_summary?: {
-                [key: string]: unknown;
-            } | null;
-            /** Competitors Appeared */
-            competitors_appeared: components["schemas"]["CompetitorMention"][] | null;
-            /** Engine Presence */
-            engine_presence: components["schemas"]["EnginePresence"][] | null;
-            /** Footprint Count */
-            footprint_count: number | null;
-            /**
-             * Geo Records
-             * @default []
-             */
-            geo_records: components["schemas"]["GeoRecordOut"][];
-            /** Geo Score */
-            geo_score: number | null;
-            /** Interventions */
-            interventions?: {
-                [key: string]: unknown;
-            }[] | {
-                [key: string]: unknown;
-            } | null;
-            /** Kyc */
-            kyc: {
-                [key: string]: unknown;
-            } | null;
-            /** Prompts */
-            prompts: components["schemas"]["PromptOut"][];
-            /** Reliability Score */
-            reliability_score?: number | null;
-            /** Responses */
-            responses: components["schemas"]["ResponseOut"][];
-            seo: components["schemas"]["SeoAuditOut"] | null;
-            serp: components["schemas"]["SerpVisibilityOut"] | null;
-            /** Total Responses */
-            total_responses: number | null;
         };
         /**
          * SeoAuditOut

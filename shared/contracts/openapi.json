@@ -414,6 +414,7 @@
         "type": "object"
       },
       "AnalysisOut": {
+        "description": "Thin poll envelope for ``GET /analyses/{id}``.\n\nFeature payloads live on slice routes (``/kyc``, ``/geo``, ``/serp``, \u2026).\nSummary columns mirror ``AnalysisSummaryOut`` plus SERP/SEO headlines so\nlist/detail headers can render without fetching slices.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -442,6 +443,28 @@
             ],
             "title": "Error"
           },
+          "footprint_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Footprint Count"
+          },
+          "geo_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geo Score"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -451,12 +474,86 @@
             "title": "Progress",
             "type": "integer"
           },
-          "result": {
-            "$ref": "#/components/schemas/ResultOut"
+          "reliability_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reliability Score"
+          },
+          "seo_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Grade"
+          },
+          "seo_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Score"
+          },
+          "seo_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Status"
+          },
+          "serp_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serp Score"
+          },
+          "serp_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serp Status"
           },
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "total_responses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Responses"
           },
           "updated_at": {
             "format": "date-time",
@@ -476,8 +573,7 @@
           "current_step",
           "error",
           "created_at",
-          "updated_at",
-          "result"
+          "updated_at"
         ],
         "title": "AnalysisOut",
         "type": "object"
@@ -500,7 +596,7 @@
         "type": "object"
       },
       "AnalysisSummaryOut": {
-        "description": "One row of an organization's analysis history.\n\nDeliberately **not** ``AnalysisOut`` minus a few fields. ``AnalysisOut``\ncarries the whole ``result`` envelope \u2014 every prompt, every raw engine\nresponse, every SERP and SEO check \u2014 which is right for the one run a reader\nopened and absurd for a table of twenty. A separate, flat schema also means\nadding a field to the detail view cannot silently make the list twenty times\nheavier.",
+        "description": "One row of an organization's analysis history.\n\nDeliberately **not** ``AnalysisOut`` minus a few fields. Slice routes carry\nfeature payloads; this schema is flat so a history table stays lightweight.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -2849,181 +2945,6 @@
           "cost_usd"
         ],
         "title": "ResponseOut",
-        "type": "object"
-      },
-      "ResultOut": {
-        "properties": {
-          "citation_summary": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Citation Summary"
-          },
-          "competitors_appeared": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/CompetitorMention"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Competitors Appeared"
-          },
-          "engine_presence": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/EnginePresence"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Engine Presence"
-          },
-          "footprint_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Footprint Count"
-          },
-          "geo_records": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/GeoRecordOut"
-            },
-            "title": "Geo Records",
-            "type": "array"
-          },
-          "geo_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Geo Score"
-          },
-          "interventions": {
-            "anyOf": [
-              {
-                "items": {
-                  "additionalProperties": true,
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Interventions"
-          },
-          "kyc": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Kyc"
-          },
-          "prompts": {
-            "items": {
-              "$ref": "#/components/schemas/PromptOut"
-            },
-            "title": "Prompts",
-            "type": "array"
-          },
-          "reliability_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reliability Score"
-          },
-          "responses": {
-            "items": {
-              "$ref": "#/components/schemas/ResponseOut"
-            },
-            "title": "Responses",
-            "type": "array"
-          },
-          "seo": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SeoAuditOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "serp": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SerpVisibilityOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "total_responses": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Responses"
-          }
-        },
-        "required": [
-          "kyc",
-          "prompts",
-          "responses",
-          "geo_score",
-          "footprint_count",
-          "total_responses",
-          "engine_presence",
-          "competitors_appeared",
-          "serp",
-          "seo"
-        ],
-        "title": "ResultOut",
         "type": "object"
       },
       "SeoAuditOut": {

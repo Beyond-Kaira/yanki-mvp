@@ -10,7 +10,9 @@ import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
 import { analysisDomain } from '@/lib/ai-visibility-data'
 
 export default function SearchVisibilityOverviewClient() {
-  const { analysisId, status, analysis, error } = useAnalysisQuery()
+  const { analysisId, status, analysis, error } = useAnalysisQuery({
+    slices: 'search',
+  })
 
   return (
     <AppShell>

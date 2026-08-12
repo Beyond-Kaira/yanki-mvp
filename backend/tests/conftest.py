@@ -87,6 +87,33 @@ def settings():
     return Settings()
 
 
+@pytest.fixture(autouse=True)
+def resolve_test_domains(monkeypatch):
+    """Let ``*.test`` hosts through SSRF guard without live DNS (hermetic CI)."""
+
+    from urllib.parse import urlsplit
+
+    from app.api import routes, seo_project_routes
+
+    real_routes = routes.is_public_url
+    real_seo = seo_project_routes.is_public_url
+
+    def guard(url: str) -> bool:
+        host = urlsplit(url).hostname or ""
+        if host.endswith(".test"):
+            return True
+        return real_routes(url)
+
+    def seo_guard(url: str) -> bool:
+        host = urlsplit(url).hostname or ""
+        if host.endswith(".test"):
+            return True
+        return real_seo(url)
+
+    monkeypatch.setattr(routes, "is_public_url", guard)
+    monkeypatch.setattr(seo_project_routes, "is_public_url", seo_guard)
+
+
 @pytest.fixture()
 def client(session_factory):
     def override_get_session():

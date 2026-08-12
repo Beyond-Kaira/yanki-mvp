@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import AppShell from '@/components/shell/AppShell'
 import OverviewDashboard from '@/components/ai-visibility/OverviewDashboard'
+import PageContainer from '@/components/shell/PageContainer'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
@@ -100,12 +101,14 @@ export default function OverviewClient() {
   return (
     <AppShell>
       {status === 'loading' ? (
-        <p className="px-8 py-10 text-sm text-surface-subtle" role="status">
-          Loading analysis…
-        </p>
+        <PageContainer>
+          <p className="text-sm text-surface-subtle" role="status">
+            Loading analysis…
+          </p>
+        </PageContainer>
       ) : null}
       {status === 'running' && analysis ? (
-        <div className="mx-auto max-w-3xl px-6 py-10 sm:px-8">
+        <PageContainer>
           <h1 className="mb-6 text-2xl font-semibold tracking-tight">
             Running analysis…
           </h1>
@@ -119,15 +122,15 @@ export default function OverviewClient() {
             Prompts, Citations, and Drivers will fill with this same run when it
             finishes.
           </p>
-        </div>
+        </PageContainer>
       ) : null}
       {status === 'error' ? (
-        <div className="px-8 pt-6">
+        <PageContainer>
           <p className="mb-4 text-sm text-warning-strong" role="status">
             {error}
           </p>
           <StartAnalysisPanel title="Run a new analysis" />
-        </div>
+        </PageContainer>
       ) : null}
       {status === 'empty' ? (
         <StartAnalysisPanel

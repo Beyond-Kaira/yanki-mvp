@@ -6,6 +6,10 @@ import LandingPage from '@/app/page'
  * The operator's complaint was that a fresh session "navigates directly to the
  * search page". These assert the opposite property directly: `/` explains the
  * product and offers a way in, and does NOT render the signed-in application.
+ *
+ * The way in is now a single link to `/dashboard`. Signed out, the guard turns
+ * that into `/login?next=/dashboard`, so the front door still leads somewhere
+ * for a visitor without a session.
  */
 describe('Landing page', () => {
   it('explains what the product does', () => {
@@ -16,15 +20,19 @@ describe('Landing page', () => {
     ).toBeVisible()
   })
 
-  it('offers both a way in and a way to try it', () => {
+  it('offers one way in, and it points at the dashboard', () => {
     render(<LandingPage />)
 
-    expect(screen.getAllByRole('link', { name: /create an account/i }).length).toBeGreaterThan(0)
-    expect(screen.getByRole('link', { name: /log in/i })).toHaveAttribute('href', '/login')
-    expect(screen.getByRole('link', { name: /free checker/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /go to dashboard/i })).toHaveAttribute(
       'href',
-      '/checker',
+      '/dashboard',
     )
+  })
+
+  it('carries no other call to action', () => {
+    render(<LandingPage />)
+
+    expect(screen.getAllByRole('link')).toHaveLength(1)
   })
 
   it('does not render the signed-in application', () => {

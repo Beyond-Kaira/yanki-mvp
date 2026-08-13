@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo } from 'react'
-import AppShell from '@/components/shell/AppShell'
 import OverviewDashboard from '@/components/ai-visibility/OverviewDashboard'
 import PageContainer from '@/components/shell/PageContainer'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
@@ -12,12 +11,13 @@ import { overviewFromAnalysis } from '@/lib/ai-overview'
 export default function OverviewClient() {
   const { status, analysis, error } = useAnalysisQuery({ slices: 'ai' })
   const model = useMemo(
-    () => (status === 'ready' && analysis ? overviewFromAnalysis(analysis) : null),
+    () =>
+      status === 'ready' && analysis ? overviewFromAnalysis(analysis) : null,
     [status, analysis],
   )
 
   return (
-    <AppShell>
+    <>
       {status === 'loading' ? (
         <PageContainer>
           <p className="text-sm text-surface-subtle" role="status">
@@ -57,6 +57,6 @@ export default function OverviewClient() {
         />
       ) : null}
       {status === 'ready' && model ? <OverviewDashboard model={model} /> : null}
-    </AppShell>
+    </>
   )
 }

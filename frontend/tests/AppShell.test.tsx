@@ -212,6 +212,29 @@ describe('AppShell rail', () => {
     expect(expanded()).toBe(false)
   })
 
+  it('keeps the same shell mounted while routed content changes', () => {
+    const { rerender } = render(
+      <ShellStateProvider>
+        <AppShell>
+          <p>dashboard body</p>
+        </AppShell>
+      </ShellStateProvider>,
+    )
+    const mountedRail = rail()
+
+    pathname = '/ai-visibility'
+    rerender(
+      <ShellStateProvider>
+        <AppShell>
+          <p>AI visibility body</p>
+        </AppShell>
+      </ShellStateProvider>,
+    )
+
+    expect(rail()).toBe(mountedRail)
+    expect(screen.getByText('AI visibility body')).toBeInTheDocument()
+  })
+
   it('shows a submenu only for the section under the pointer', () => {
     pathname = '/ai-visibility'
     renderShell()

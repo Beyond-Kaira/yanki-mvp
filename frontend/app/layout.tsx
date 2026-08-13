@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Sora, IBM_Plex_Mono } from 'next/font/google'
 import AuthProvider from '@/components/AuthProvider'
 import AnalysisSessionProvider from '@/components/AnalysisSessionProvider'
+import AppShell from '@/components/shell/AppShell'
 import ShellStateProvider from '@/components/shell/ShellStateProvider'
 import RouteGuard from '@/components/RouteGuard'
 import SiteHeader from '@/components/SiteHeader'
@@ -33,7 +34,9 @@ export const metadata: Metadata = {
       { url: '/yanki-favicon.svg', type: 'image/svg+xml' },
       { url: '/favicon-32.png', sizes: '32x32', type: 'image/png' },
     ],
-    apple: [{ url: '/apple-touch-180.png', sizes: '180x180', type: 'image/png' }],
+    apple: [
+      { url: '/apple-touch-180.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
 }
 
@@ -46,8 +49,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AuthProvider>
           <AnalysisSessionProvider>
             <ShellStateProvider>
-              <SiteHeader />
-              <RouteGuard>{children}</RouteGuard>
+              <AppShell>
+                <RouteGuard>
+                  <SiteHeader />
+                  {children}
+                </RouteGuard>
+              </AppShell>
             </ShellStateProvider>
           </AnalysisSessionProvider>
         </AuthProvider>

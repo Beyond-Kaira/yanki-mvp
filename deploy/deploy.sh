@@ -37,7 +37,7 @@ GIT_SHA="$(git rev-parse --short HEAD)"
 export GIT_SHA
 echo ">> deploying yanki @ ${GIT_SHA}"
 
-echo ">> building images (yanki-api:${GIT_SHA}, yanki-web:${GIT_SHA})"
+echo ">> building images (yanki-api:${GIT_SHA}, yanki-audit:${GIT_SHA}, yanki-web:${GIT_SHA})"
 $COMPOSE build
 
 # Migrate BEFORE replacing any container (issue #16). The api no longer migrates

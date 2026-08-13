@@ -14,6 +14,13 @@
  *
  * "N/A" is gone entirely: it told the user nothing except that something was
  * missing, without saying whether it was coming.
+ *
+ * A second rule followed from the first: **the rail lists what the account can
+ * do.** Free checker and Methodology are not that. One is a demo aimed at a
+ * visitor who has no account, the other is a document explaining how the score
+ * is computed — neither is a place you work. They took two of eight rows here
+ * and now live in the marketing header and the shell's top bar instead, where a
+ * reference link belongs.
  */
 
 import { isPublicPath } from '@/lib/route-access'
@@ -24,8 +31,6 @@ export type ShellSectionId =
   | 'home'
   | 'search-visibility'
   | 'ai-visibility'
-  | 'free-checker'
-  | 'methodology'
   | 'backlinks'
   | 'admin'
   | 'settings'
@@ -127,20 +132,6 @@ export const SHELL_SECTIONS: ShellSection[] = [
     ],
   },
   {
-    id: 'free-checker',
-    label: 'Free checker',
-    href: '/checker',
-    flyoutTitle: null,
-    items: [],
-  },
-  {
-    id: 'methodology',
-    label: 'Methodology',
-    href: '/methodology',
-    flyoutTitle: null,
-    items: [],
-  },
-  {
     // Now a real destination. The engine shipped in session 21, the API in 23,
     // and these screens complete P8.3 — so the entry graduates from 'soon' to
     // 'live' under this file's own rule.
@@ -195,8 +186,6 @@ export const ADMIN_PANEL_TABS: { id: string; label: string; href: string }[] = [
 
 export function sectionFromPath(pathname: string): ShellSectionId {
   if (pathname === '/dashboard' || pathname === '/' || pathname === '') return 'home'
-  if (pathname.startsWith('/checker')) return 'free-checker'
-  if (pathname.startsWith('/methodology')) return 'methodology'
   if (pathname.startsWith('/search-visibility')) return 'search-visibility'
   if (pathname.startsWith('/site-audit')) return 'search-visibility'
   if (pathname.startsWith('/admin')) return 'admin'
@@ -232,7 +221,11 @@ export function flyoutItemActive(pathname: string, item: ShellFlyoutItem): boole
   return pathname === item.href || pathname.startsWith(`${item.href}/`)
 }
 
-/** Paths that use the product shell (vertical nav) instead of marketing header. */
+/** Paths that use the product shell (vertical nav) instead of marketing header.
+ *
+ * `/checker` and `/methodology` are deliberately absent. They are reachable
+ * from both chromes now — a link in the header and in the shell's top bar — and
+ * a page you reach by link does not need to carry the whole product rail. */
 export function isShellPath(pathname: string): boolean {
   if (pathname === '/dashboard') return true
   return (
@@ -243,8 +236,6 @@ export function isShellPath(pathname: string): boolean {
     pathname.startsWith('/backlinks') ||
     pathname.startsWith('/ai-visibility') ||
     pathname.startsWith('/search-visibility') ||
-    pathname.startsWith('/checker') ||
-    pathname.startsWith('/methodology') ||
     pathname.startsWith('/analyses')
   )
 }
@@ -252,12 +243,11 @@ export function isShellPath(pathname: string): boolean {
 /**
  * Whether this visitor gets the product shell on this route.
  *
- * Two routes are public *and* wear the shell — `/methodology` and `/checker`,
- * plus the capability URLs under `/checker/:id` and `/analyses/:id`. For a
- * signed-out reader the rail there advertised a product they had no account
- * for, ending in a "Not signed in" card where the account should be. So on a
- * public route the shell is an upgrade the session earns, and the marketing
- * header is the default.
+ * One route is public *and* wears the shell: `/analyses/:id`, the capability URL
+ * that makes a result shareable. For a signed-out reader the rail there
+ * advertised a product they had no account for, ending in a "Not signed in"
+ * card where the account should be. So on a public route the shell is an
+ * upgrade the session earns, and the marketing header is the default.
  *
  * `signedIn` is false while the session is still resolving, which is
  * deliberate: on a public route the anonymous chrome is the safe guess, and a

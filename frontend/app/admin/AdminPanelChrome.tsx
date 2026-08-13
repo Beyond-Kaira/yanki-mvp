@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
-import AppShell from '@/components/shell/AppShell'
 import { useAuth } from '@/components/AuthProvider'
 import { ADMIN_PANEL_TABS } from '@/lib/shell-nav'
 
@@ -25,11 +24,7 @@ const TAB_PERMISSION: Record<string, string> = {
 }
 
 export default function AdminPanelChrome({ children }: { children: ReactNode }) {
-  return (
-    <AppShell>
-      <PanelHeader>{children}</PanelHeader>
-    </AppShell>
-  )
+  return <PanelHeader>{children}</PanelHeader>
 }
 
 function PanelHeader({ children }: { children: ReactNode }) {

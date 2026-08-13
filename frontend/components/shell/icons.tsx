@@ -142,8 +142,6 @@ export const SECTION_ICONS = {
   home: IconHome,
   'search-visibility': IconSearch,
   'ai-visibility': IconSpark,
-  'free-checker': IconSearch,
-  methodology: IconFile,
   backlinks: IconLink,
   admin: IconShield,
   settings: IconSettings,

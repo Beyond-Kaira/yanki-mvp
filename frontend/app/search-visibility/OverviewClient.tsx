@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import AppShell from '@/components/shell/AppShell'
 import PageContainer from '@/components/shell/PageContainer'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
@@ -16,7 +15,7 @@ export default function SearchVisibilityOverviewClient() {
   })
 
   return (
-    <AppShell>
+    <>
       {status === 'loading' ? (
         <PageContainer>
           <p className="text-sm text-surface-subtle" role="status">
@@ -37,8 +36,8 @@ export default function SearchVisibilityOverviewClient() {
             createdAt={analysis.created_at}
           />
           <p className="mt-4 text-sm text-surface-subtle">
-            Search results visibility and the AI readiness audit appear here when
-            this run finishes.
+            Search results visibility and the AI readiness audit appear here
+            when this run finishes.
           </p>
         </PageContainer>
       ) : null}
@@ -96,8 +95,8 @@ export default function SearchVisibilityOverviewClient() {
                   Search results visibility
                 </h2>
                 <p className="mt-2 text-sm text-surface-subtle">
-                  No SERP measurement for this run. Enable SERP in deploy settings
-                  or re-run when search visibility is on.
+                  No SERP measurement for this run. Enable SERP in deploy
+                  settings or re-run when search visibility is on.
                 </p>
               </section>
             )}
@@ -117,6 +116,6 @@ export default function SearchVisibilityOverviewClient() {
           </div>
         </PageContainer>
       ) : null}
-    </AppShell>
+    </>
   )
 }

@@ -98,6 +98,36 @@ describe('SiteHeader', () => {
     expect(screen.getByRole('link', { name: 'Yanki' })).toBeInTheDocument()
   })
 
+  /**
+   * The two reference links left the product rail for the chrome. They are not
+   * account state, so they render whichever way the session resolves — and they
+   * open in a new tab, because reading the methodology is something you do while
+   * looking at a result you do not want to lose.
+   */
+  it('carries the reference links regardless of session', async () => {
+    mockedRefresh.mockResolvedValue(null)
+    renderHeader()
+
+    const methodology = await screen.findByRole('link', { name: 'Methodology' })
+    const checker = screen.getByRole('link', { name: 'Free checker' })
+    expect(methodology).toHaveAttribute('href', '/methodology')
+    expect(checker).toHaveAttribute('href', '/checker')
+    for (const link of [methodology, checker]) {
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
+    }
+  })
+
+  it('keeps the reference links once signed in', async () => {
+    mockedRefresh.mockResolvedValue('tok')
+    mockedMe.mockResolvedValue(USER)
+    renderHeader()
+
+    expect(await screen.findByText('ada@example.com')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Methodology' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Free checker' })).toBeInTheDocument()
+  })
+
   it('signs out and returns home', async () => {
     const user = userEvent.setup()
     mockedRefresh.mockResolvedValue('tok')

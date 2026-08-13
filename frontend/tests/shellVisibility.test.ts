@@ -14,17 +14,25 @@ describe('showsAppShell', () => {
   })
 
   it('drops the shell for a signed-out visitor on a public route', () => {
-    expect(showsAppShell('/methodology', false)).toBe(false)
-    expect(showsAppShell('/checker', false)).toBe(false)
-    expect(showsAppShell('/checker/abc123', false)).toBe(false)
     // A shared result is a capability URL, so its reader may well be anonymous.
     expect(showsAppShell('/analyses/abc123', false)).toBe(false)
   })
 
   it('gives the same public route its shell once signed in', () => {
-    expect(showsAppShell('/methodology', true)).toBe(true)
-    expect(showsAppShell('/checker', true)).toBe(true)
     expect(showsAppShell('/analyses/abc123', true)).toBe(true)
+  })
+
+  /**
+   * The free checker and the methodology are reference pages reached by a link
+   * in the chrome, not sections of the product. They wear the marketing header
+   * for everyone — being signed in no longer changes the answer.
+   */
+  it('never gives the reference pages a shell', () => {
+    expect(showsAppShell('/methodology', false)).toBe(false)
+    expect(showsAppShell('/methodology', true)).toBe(false)
+    expect(showsAppShell('/checker', false)).toBe(false)
+    expect(showsAppShell('/checker', true)).toBe(false)
+    expect(showsAppShell('/checker/abc123', true)).toBe(false)
   })
 
   /**

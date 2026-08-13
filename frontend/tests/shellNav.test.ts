@@ -100,6 +100,26 @@ describe('shell navigation', () => {
     expect(isShellPath('/backlinks/some-project-id')).toBe(true)
   })
 
+  /**
+   * The rail lists what the account can do. A document and a signed-out demo
+   * are neither, and they took two of its eight rows; they are reference links
+   * in the chrome now. The pages themselves still exist and stay public.
+   */
+  it('keeps the reference pages out of the rail entirely', () => {
+    const hrefs = SHELL_SECTIONS.flatMap((section) => [
+      section.href,
+      ...section.items.map((item) => item.href),
+    ])
+    expect(hrefs).not.toContain('/checker')
+    expect(hrefs).not.toContain('/methodology')
+    expect(isShellPath('/checker')).toBe(false)
+    expect(isShellPath('/checker/abc123')).toBe(false)
+    expect(isShellPath('/methodology')).toBe(false)
+    // With no section of their own they fall back to Home rather than lighting
+    // up a row that has nothing to do with the page.
+    expect(sectionFromPath('/methodology')).toBe('home')
+  })
+
   it('never advertises a live destination without a route', () => {
     for (const section of SHELL_SECTIONS) {
       for (const item of section.items) {

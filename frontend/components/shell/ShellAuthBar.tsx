@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useAuth } from '@/components/AuthProvider'
+import PublicNavLinks from '@/components/PublicNavLinks'
 
 const QUIET =
   'inline-flex min-h-[36px] items-center rounded px-2 text-sm font-medium text-surface-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
@@ -49,6 +50,10 @@ export default function ShellAuthBar({ onOpenNav, navOpen }: ShellAuthBarProps) 
       ) : null}
 
       <div className="flex-1" />
+      {/* The same pair the marketing header carries. They left the rail, and
+          without them here a signed-in reader would have no way back to the
+          methodology from inside the product. */}
+      <PublicNavLinks compact />
       {status === 'loading' ? (
         <span className="min-h-[36px] w-24" aria-hidden />
       ) : status === 'authenticated' && user ? (

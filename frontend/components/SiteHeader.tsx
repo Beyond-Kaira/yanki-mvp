@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useAuth } from '@/components/AuthProvider'
+import PublicNavLinks from '@/components/PublicNavLinks'
 import { showsAppShell } from '@/lib/shell-nav'
 
 // Quiet nav link. `order-*` only matters on a phone, where the nav is a 2x2
@@ -40,10 +41,13 @@ export default function SiteHeader() {
             className="h-8 w-auto"
           />
         </Link>
+        {/* No longer only the account: Methodology and the free checker sit
+            here too, so the label names the whole row. */}
         <nav
-          aria-label="Account"
+          aria-label="Site"
           className="flex items-center gap-x-2"
         >
+          <PublicNavLinks />
           <AuthNav />
         </nav>
       </div>

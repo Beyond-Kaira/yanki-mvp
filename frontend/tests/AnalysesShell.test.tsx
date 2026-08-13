@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ShellStateProvider from '@/components/shell/ShellStateProvider'
+import AppShell from '@/components/shell/AppShell'
 import ShellLayout from '@/app/analyses/layout'
 import AnalysisHistoryPage from '@/app/analyses/page'
 
@@ -64,9 +65,11 @@ describe('/analyses shell', () => {
   it('renders exactly one product navigation rail', () => {
     render(
       <ShellStateProvider>
-        <ShellLayout>
-          <AnalysisHistoryPage />
-        </ShellLayout>
+        <AppShell>
+          <ShellLayout>
+            <AnalysisHistoryPage />
+          </ShellLayout>
+        </AppShell>
       </ShellStateProvider>,
     )
 
@@ -76,9 +79,11 @@ describe('/analyses shell', () => {
   it('renders exactly one top bar', () => {
     render(
       <ShellStateProvider>
-        <ShellLayout>
-          <AnalysisHistoryPage />
-        </ShellLayout>
+        <AppShell>
+          <ShellLayout>
+            <AnalysisHistoryPage />
+          </ShellLayout>
+        </AppShell>
       </ShellStateProvider>,
     )
 

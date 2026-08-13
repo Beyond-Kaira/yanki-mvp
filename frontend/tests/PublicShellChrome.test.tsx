@@ -7,7 +7,7 @@ import SiteHeader from '@/components/SiteHeader'
 const authState = { status: 'anonymous' as string, user: null as unknown }
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/methodology',
+  usePathname: () => '/analyses/abc123',
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }))
 
@@ -44,17 +44,19 @@ function renderRoute() {
     <ShellStateProvider>
       <SiteHeader />
       <AppShell>
-        <p>methodology</p>
+        <p>analysis</p>
       </AppShell>
     </ShellStateProvider>,
   )
 }
 
 /**
- * `/methodology` is public and a shell route at once, so it is the one place
- * the two chromes could both claim the page — or, as shipped, the wrong one
- * could: a signed-out reader was given the full product rail, down to a
- * "Not signed in" card where the account should be.
+ * `/analyses/:id` is public and a shell route at once — the capability URL that
+ * makes a result shareable — so it is the one place the two chromes could both
+ * claim the page, or the wrong one could: a signed-out reader was given the
+ * full product rail, down to a "Not signed in" card where the account should
+ * be. It is the last such route; the free checker and the methodology left the
+ * shell entirely.
  */
 describe('public shell route chrome', () => {
   beforeEach(() => {
@@ -81,7 +83,7 @@ describe('public shell route chrome', () => {
     expect(screen.queryByLabelText('Product navigation')).not.toBeInTheDocument()
     expect(screen.queryByTestId('auth-bar')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sign up' })).toBeInTheDocument()
-    expect(screen.getByText('methodology')).toBeInTheDocument()
+    expect(screen.getByText('analysis')).toBeInTheDocument()
   })
 
   it('withholds the rail while the session is still unknown', () => {
@@ -101,6 +103,6 @@ describe('public shell route chrome', () => {
     expect(screen.getByLabelText('Product navigation')).toBeInTheDocument()
     expect(screen.getByTestId('auth-bar')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Sign up' })).not.toBeInTheDocument()
-    expect(screen.getByText('methodology')).toBeInTheDocument()
+    expect(screen.getByText('analysis')).toBeInTheDocument()
   })
 })

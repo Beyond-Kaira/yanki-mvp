@@ -266,8 +266,8 @@ describe('AppShell rail', () => {
       document.getElementById('shell-subnav-desktop-ai-visibility')
     expect(aiPanel()).not.toBeNull()
 
-    fireEvent.mouseEnter(row('Methodology'))
     fireEvent.mouseEnter(row('Backlinks'))
+    fireEvent.mouseEnter(row('Settings'))
     expect(aiPanel()).not.toBeNull()
 
     fireEvent.mouseEnter(row('Admin Panel'))
@@ -290,7 +290,7 @@ describe('AppShell rail', () => {
     expect(aiPanel()).not.toBeNull()
 
     fireEvent.mouseMove(rail(), { clientX: 90 })
-    fireEvent.mouseEnter(row('Methodology'), { clientX: 140 })
+    fireEvent.mouseEnter(row('Backlinks'), { clientX: 140 })
 
     act(() => void vi.advanceTimersByTime(300))
     expect(aiPanel()).not.toBeNull()
@@ -311,7 +311,7 @@ describe('AppShell rail', () => {
     const panel = document.getElementById('shell-subnav-desktop-ai-visibility')!
     expect(panel).not.toBeNull()
 
-    fireEvent.mouseEnter(row('Methodology'))
+    fireEvent.mouseEnter(row('Backlinks'))
     fireEvent.mouseEnter(panel)
     act(() => void vi.advanceTimersByTime(1000))
 

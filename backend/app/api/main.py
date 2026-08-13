@@ -8,6 +8,7 @@ from app.api.admin_routes import router as admin_router
 from app.api.auth_routes import router as auth_router
 from app.api.backlink_routes import router as backlink_router
 from app.api.invitation_routes import router as invitation_router
+from app.api.keyword_routes import router as keyword_router
 from app.api.routes import router
 from app.api.seo_project_routes import router as seo_project_router
 from app.config import Settings, get_settings
@@ -29,6 +30,7 @@ app.include_router(seo_project_router)
 # Before the SEO project router would also work — the paths do not collide —
 # but keeping it after keeps `/api/v1/seo-projects/{id}` reading as one block.
 app.include_router(backlink_router)
+app.include_router(keyword_router)
 app.include_router(admin_router)
 app.include_router(invitation_router)
 

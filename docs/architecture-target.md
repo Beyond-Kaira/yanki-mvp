@@ -111,7 +111,7 @@ to per-module feature flags managed in the admin panel.
 | `SerpSource` | SearXNG, mock | localized retrieval (gl/hl, coordinates) via a licensed SERP vendor adapter (M4-local/M6); multi-vendor failover |
 | Search/grounding | Tavily (measured path) | cost tagging into ledger; fallback vendor |
 | `BacklinkSource` | mock (session 21) | M2: licensed index adapters (DataForSEO-class first) + mock + liveness verifier |
-| `KeywordSource` | — | M6: licensed keyword data adapter + mock |
+| `KeywordSource` | — (OSS preview: SearXNG discovery; Ads volume policy in [keyword-preview-oss.md](keyword-preview-oss.md)) | Ads Keyword Planning metrics adapter (`KEYWORD_ADS_ENABLED`); mock only for DRY_RUN/CI |
 | Integrations | Resend (email) | GBP OAuth (M5), GSC/GA4 read (M3/M6), Slack (M4), Stripe (M1), Zapier/Looker (M7) |
 
 Every adapter call is **cost-tagged at the callsite** so gross margin per

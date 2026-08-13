@@ -105,6 +105,55 @@ def _unresponsive(payload: dict[str, Any]) -> list[str]:
     return names
 
 
+def _suggestions(payload: dict[str, Any]) -> list[str]:
+    """Autocomplete-style suggestions from a SearXNG JSON payload."""
+    raw = payload.get("suggestions")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in raw:
+        text = _text(entry, MAX_TITLE_CHARS)
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
+
+
+def _answers(payload: dict[str, Any]) -> list[str]:
+    """PAA / instant-answer style strings from a SearXNG JSON payload.
+
+    Live shapes vary: bare strings, or objects with ``answer`` / ``title`` /
+    ``content``. Only short, human-readable lines are kept — long HTML blobs
+    are not keyword ideas.
+    """
+    raw = payload.get("answers")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in raw:
+        text = ""
+        if isinstance(entry, str):
+            text = _text(entry, MAX_TITLE_CHARS)
+        elif isinstance(entry, dict):
+            for key in ("answer", "title", "content", "text"):
+                text = _text(entry.get(key), MAX_TITLE_CHARS)
+                if text:
+                    break
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        # Instant answers are often prose; keep only query-like short lines.
+        if len(text) > 80 or text.endswith("."):
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
+
+
 class SearxngSource:
     """Reads one SERP per query from a SearXNG instance's JSON API."""
 
@@ -204,4 +253,6 @@ class SearxngSource:
             query=query,
             results=tuple(self._results(payload)),
             unresponsive_engines=tuple(_unresponsive(payload)),
+            suggestions=tuple(_suggestions(payload)),
+            answers=tuple(_answers(payload)),
         )

@@ -6,11 +6,11 @@ import { usePathname } from 'next/navigation'
 import AppShell from '@/components/shell/AppShell'
 
 const LOCALES = [
-  { value: 'en', label: 'English (en)' },
-  { value: 'en-GB', label: 'English UK (en-GB)' },
-  { value: 'tr', label: 'Turkish (tr)' },
-  { value: 'de', label: 'German (de)' },
-  { value: 'fr', label: 'French (fr)' },
+  { value: 'en', label: '🇺🇸 English (en)' },
+  { value: 'en-GB', label: '🇬🇧 English UK (en-GB)' },
+  { value: 'tr', label: '🇹🇷 Turkish (tr)' },
+  { value: 'de', label: '🇩🇪 German (de)' },
+  { value: 'fr', label: '🇫🇷 French (fr)' },
 ] as const
 
 const TABS = [

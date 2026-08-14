@@ -9,15 +9,21 @@ import {
 } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+// The package's own index.d.ts declares a named `countries` export, but its
+// index.js exports the array itself — the JSON is the honest entry point.
+import countries from 'countries-list-json/countries.json'
 import AppShell from '@/components/shell/AppShell'
 
-const LOCALES = [
-  { value: 'en', flag: '🇺🇸', name: 'English' },
-  { value: 'en-GB', flag: '🇬🇧', name: 'English UK' },
-  { value: 'tr', flag: '🇹🇷', name: 'Turkish' },
-  { value: 'de', flag: '🇩🇪', name: 'German' },
-  { value: 'fr', flag: '🇫🇷', name: 'French' },
-] as const
+/** Every country the package ships, as `{ value: 'tr', flag: '🇹🇷', name: 'Turkey' }`.
+ *
+ * The locale we send is the lowercased ISO-3166 code. Only the codes listed in
+ * the API's `locale_map` resolve to a real Google Ads language/geo pair — the
+ * rest fall back to English/US there. */
+const LOCALES = countries.map((country) => ({
+  value: country.code.toLowerCase(),
+  flag: country.flag,
+  name: country.name,
+}))
 
 const TABS = [
   { href: '/search-visibility/keywords', label: 'Overview', match: 'exact' as const },

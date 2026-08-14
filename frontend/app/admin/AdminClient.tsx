@@ -9,6 +9,7 @@ import {
   fetchMembers,
   fetchOrganization,
   removeMember,
+  updateMember,
   type MemberQuery,
 } from '@/lib/api'
 import type { AdminMember, AdminMemberList, AdminOrganization } from '@/lib/contracts'
@@ -46,9 +47,9 @@ function formatDate(value: string | null | undefined): string {
 /**
  * Members and roles for the caller's organization.
  *
- * The list is a reading surface: a row shows who someone is and what they may
- * do, and clicking it opens that member's history. The only edit left in the
- * table is removal, and it asks first.
+ * The list is mostly a reading surface: a row shows who someone is and what
+ * they may do, and clicking it opens that member's history. Two icon buttons
+ * are the exception — disable and remove — and the irreversible one asks first.
  *
  * The server owns the rules. The role filter's options come from
  * `assignable_roles` in the list response rather than a constant here, so the
@@ -111,6 +112,34 @@ export default function AdminClient() {
     const timer = setTimeout(load, 250)
     return () => clearTimeout(timer)
   }, [load])
+
+  // Reconciled against the server's answer rather than flipped optimistically:
+  // silently showing someone as disabled who is still logged in is how an admin
+  // comes to trust a lie.
+  async function toggleStatus(member: AdminMember) {
+    const status = member.status === 'active' ? 'disabled' : 'active'
+    setSavingId(member.id)
+    setNotice(null)
+    setError(null)
+    try {
+      const updated = await updateMember(member.id, { status })
+      setList((current) =>
+        current
+          ? {
+              ...current,
+              members: current.members.map((m) => (m.id === updated.id ? updated : m)),
+            }
+          : current,
+      )
+      setNotice(`${updated.email} is now ${updated.status}.`)
+    } catch (err) {
+      // The server's own words: "an organization must keep at least one active
+      // owner" is more useful than anything this component could invent.
+      setError(err instanceof Error ? err.message : 'That change could not be saved.')
+    } finally {
+      setSavingId(null)
+    }
+  }
 
   // Removal is the one irreversible action on this screen — the seat and its
   // role are gone, and getting the person back means inviting them again. It
@@ -304,7 +333,45 @@ export default function AdminClient() {
                       {formatDate(member.created_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          disabled={busy || isSelf}
+                          aria-label={`${member.status === 'active' ? 'Disable' : 'Enable'} ${member.email}`}
+                          title={
+                            isSelf
+                              ? 'You cannot disable your own seat'
+                              : member.status === 'active'
+                                ? 'Disable'
+                                : 'Enable'
+                          }
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            toggleStatus(member)
+                          }}
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-md text-surface-subtle transition-colors hover:bg-surface-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          {/* A barred circle for "disable", a ticked one for
+                              "enable": the icon says what the click does, not
+                              what the member currently is. */}
+                          <svg
+                            viewBox="0 0 20 20"
+                            aria-hidden="true"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-[18px] w-[18px]"
+                          >
+                            <circle cx="10" cy="10" r="7" />
+                            {member.status === 'active' ? (
+                              <path d="m5 5 10 10" />
+                            ) : (
+                              <path d="m6.5 10.2 2.4 2.4 4.6-5" />
+                            )}
+                          </svg>
+                        </button>
                         <button
                           type="button"
                           disabled={busy || isSelf}

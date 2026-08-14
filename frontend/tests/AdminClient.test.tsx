@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api'
 const fetchMembers = vi.fn()
 const fetchOrganization = vi.fn()
 const removeMember = vi.fn()
+const updateMember = vi.fn()
 const push = vi.fn()
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -16,6 +17,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     fetchMembers: (...args: unknown[]) => fetchMembers(...args),
     fetchOrganization: (...args: unknown[]) => fetchOrganization(...args),
     removeMember: (...args: unknown[]) => removeMember(...args),
+    updateMember: (...args: unknown[]) => updateMember(...args),
   }
 })
 
@@ -78,6 +80,9 @@ describe('AdminClient', () => {
     fetchOrganization.mockResolvedValue(ORG)
     fetchMembers.mockResolvedValue(listOf([member(), member({ id: 'me', email: 'owner@acme.test', role: 'owner' })]))
     removeMember.mockResolvedValue(undefined)
+    updateMember.mockImplementation(async (id: string, changes: Record<string, string>) =>
+      member({ id, ...changes }),
+    )
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
@@ -161,12 +166,29 @@ describe('AdminClient', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/no longer has a seat/i)
   })
 
+  it('disables and re-enables a member from the row icon', async () => {
+    const user = userEvent.setup()
+    render(<AdminClient />)
+    const row = (await screen.findByText('editor@acme.test')).closest('tr')!
+
+    await user.click(within(row).getByRole('button', { name: /disable editor@acme.test/i }))
+
+    await waitFor(() => expect(updateMember).toHaveBeenCalledWith('u-1', { status: 'disabled' }))
+    // The icon now offers the opposite action, which is how the row reports
+    // that the change actually landed.
+    expect(await screen.findByRole('button', { name: /enable editor@acme.test/i })).toBeVisible()
+    expect(push).not.toHaveBeenCalled()
+  })
+
   it('cannot edit your own row', async () => {
     render(<AdminClient />)
     const row = (await screen.findByText('owner@acme.test')).closest('tr')!
 
     expect(within(row).getByText(/that's you/i)).toBeVisible()
-    // The only control left that could change your own seat.
+    // Every control that could change your own seat.
+    expect(
+      within(row).getByRole('button', { name: /disable owner@acme.test/i }),
+    ).toBeDisabled()
     expect(
       within(row).getByRole('button', { name: /remove owner@acme.test/i }),
     ).toBeDisabled()

@@ -21,6 +21,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
       }],
     }),
     removeMember: async () => undefined,
+    updateMember: async () => ({}),
   }
 })
 
@@ -44,7 +45,8 @@ describe('Admin panel accessibility', () => {
     render(<AdminClient />)
     await screen.findByText('someone@acme.test')
 
-    // Without this the remove button is announced only as "✕".
+    // Without these the row's two icons are announced only as their glyphs.
+    expect(screen.getByRole('button', { name: /disable someone@acme.test/i })).toBeVisible()
     expect(screen.getByRole('button', { name: /remove someone@acme.test/i })).toBeVisible()
   })
 

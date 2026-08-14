@@ -98,6 +98,7 @@ scenario('the admin panel lists members and locks your own row', async ({ page }
   // footer and the top bar, so an unscoped locator is ambiguous.
   const row = page.locator('tbody tr', { hasText: email })
   await expect(row).toBeVisible({ timeout: 15_000 })
+  await expect(row.getByRole('button', { name: new RegExp(`disable ${email}`, 'i') })).toBeDisabled()
   await expect(row.getByRole('button', { name: new RegExp(`remove ${email}`, 'i') })).toBeDisabled()
 
   // And the role filter never offers a platform role.

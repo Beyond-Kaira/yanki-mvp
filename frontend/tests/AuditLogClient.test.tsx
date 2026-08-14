@@ -101,8 +101,8 @@ describe('AuditLogClient', () => {
 
     expect(await screen.findByText('role: "viewer" → "editor"')).toBeVisible()
     expect(screen.getByText('req-123')).toBeVisible()
-    // Truncated for readability, and never the raw address — there isn't one.
-    expect(screen.getByText(/^a{16}…$/)).toBeVisible()
+    // The whole hash, and never the raw address — there isn't one.
+    expect(screen.getByText('a'.repeat(64))).toBeVisible()
   })
 
   it('narrows by action, outcome and date in one query', async () => {

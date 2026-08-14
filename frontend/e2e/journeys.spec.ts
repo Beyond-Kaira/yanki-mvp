@@ -86,7 +86,7 @@ scenario('an organization account shows its name and role in the shell', async (
   await expect(page.getByText(/Owner/).first()).toBeVisible()
 })
 
-scenario('the admin panel lists members and can change a role', async ({ page }) => {
+scenario('the admin panel lists members and locks your own row', async ({ page }) => {
   const email = unique('admin')
   await signUp(page, email, { organization: 'Admin Co' })
 
@@ -98,11 +98,10 @@ scenario('the admin panel lists members and can change a role', async ({ page })
   // footer and the top bar, so an unscoped locator is ambiguous.
   const row = page.locator('tbody tr', { hasText: email })
   await expect(row).toBeVisible({ timeout: 15_000 })
-  await expect(row.getByRole('combobox')).toBeDisabled()
-  await expect(row.getByRole('button', { name: 'Disable' })).toBeDisabled()
-  await expect(row.getByRole('button', { name: 'Remove' })).toBeDisabled()
+  await expect(row.getByRole('button', { name: new RegExp(`disable ${email}`, 'i') })).toBeDisabled()
+  await expect(row.getByRole('button', { name: new RegExp(`remove ${email}`, 'i') })).toBeDisabled()
 
-  // And the picker never offers a platform role.
+  // And the role filter never offers a platform role.
   await expect(page.getByRole('option', { name: /super admin/i })).toHaveCount(0)
 })
 
@@ -167,7 +166,7 @@ scenario('inviting a colleague seats them with the invited role', async ({ page 
   await page.goto('/admin')
   const memberRow = page.locator('tbody tr', { hasText: invitee })
   await expect(memberRow).toBeVisible({ timeout: 15_000 })
-  await expect(memberRow.getByRole('combobox')).toHaveValue('editor')
+  await expect(memberRow.getByRole('cell', { name: 'Editor', exact: true })).toBeVisible()
 })
 
 scenario('a used invitation link cannot be used twice', async ({ page }) => {
@@ -215,8 +214,9 @@ scenario('the audit log records what the admin did, with before and after', asyn
   await expect(row).toBeVisible({ timeout: 15_000 })
 
   await row.getByRole('button', { name: 'Show' }).click()
-  // Every event carries the request that produced it.
-  await expect(row.getByText(/^Request$/)).toBeVisible()
+  // The detail opens as its own row below, and only one can be open at a time,
+  // so this is scoped to the table rather than to the event row.
+  await expect(page.getByText(/^Request$/)).toBeVisible()
 
   // And the integrity sweep reports a clean log.
   await expect(page.getByText(/recent entries verified against their stored hash/i)).toBeVisible()
@@ -229,7 +229,7 @@ scenario('a member row links to that record\'s own history', async ({ page }) =>
   await page.goto('/admin')
   const row = page.locator('tbody tr', { hasText: owner })
   await expect(row).toBeVisible({ timeout: 15_000 })
-  await row.getByRole('link', { name: 'History' }).click()
+  await row.getByRole('link', { name: owner }).click()
 
   await expect(page).toHaveURL(/\/admin\/audit\?entity_type=user&entity_id=/)
   await expect(page.getByRole('heading', { name: 'Change history' })).toBeVisible()

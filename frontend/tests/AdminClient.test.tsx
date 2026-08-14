@@ -6,7 +6,9 @@ import { ApiError } from '@/lib/api'
 
 const fetchMembers = vi.fn()
 const fetchOrganization = vi.fn()
+const removeMember = vi.fn()
 const updateMember = vi.fn()
+const push = vi.fn()
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
@@ -14,9 +16,12 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     fetchMembers: (...args: unknown[]) => fetchMembers(...args),
     fetchOrganization: (...args: unknown[]) => fetchOrganization(...args),
+    removeMember: (...args: unknown[]) => removeMember(...args),
     updateMember: (...args: unknown[]) => updateMember(...args),
   }
 })
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
 
 vi.mock('@/components/AuthProvider', () => ({
   useAuth: () => ({
@@ -74,9 +79,11 @@ describe('AdminClient', () => {
     vi.clearAllMocks()
     fetchOrganization.mockResolvedValue(ORG)
     fetchMembers.mockResolvedValue(listOf([member(), member({ id: 'me', email: 'owner@acme.test', role: 'owner' })]))
+    removeMember.mockResolvedValue(undefined)
     updateMember.mockImplementation(async (id: string, changes: Record<string, string>) =>
       member({ id, ...changes }),
     )
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
   it('shows the organization and its members', async () => {
@@ -90,8 +97,8 @@ describe('AdminClient', () => {
   it('offers only the roles the server said are assignable', async () => {
     render(<AdminClient />)
 
-    const row = (await screen.findByText('editor@acme.test')).closest('tr')!
-    const select = within(row).getByRole('combobox')
+    await screen.findByText('editor@acme.test')
+    const select = screen.getByLabelText(/^role$/i)
     const options = within(select).getAllByRole('option').map((o) => o.textContent)
 
     expect(options).toContain('Editor')
@@ -130,27 +137,47 @@ describe('AdminClient', () => {
     )
   })
 
-  it('changes a role and confirms it', async () => {
+  it('opens that member\u2019s history from the row', async () => {
     const user = userEvent.setup()
     render(<AdminClient />)
     const row = (await screen.findByText('editor@acme.test')).closest('tr')!
 
-    await user.selectOptions(within(row).getByRole('combobox'), 'viewer')
+    // The email is the row's keyboard-reachable link; the row itself carries
+    // the same destination for a click anywhere on it.
+    expect(within(row).getByRole('link', { name: 'editor@acme.test' })).toHaveAttribute(
+      'href',
+      '/admin/audit?entity_type=user&entity_id=u-1',
+    )
 
-    await waitFor(() => expect(updateMember).toHaveBeenCalledWith('u-1', { role: 'viewer' }))
-    expect(await screen.findByRole('status')).toHaveTextContent(/Viewer/)
+    await user.click(within(row).getByText(/Editor/))
+    expect(push).toHaveBeenCalledWith('/admin/audit?entity_type=user&entity_id=u-1')
   })
 
-  it('disables and re-enables a member', async () => {
+  it('removes a member after asking', async () => {
     const user = userEvent.setup()
     render(<AdminClient />)
     const row = (await screen.findByText('editor@acme.test')).closest('tr')!
 
-    await user.click(within(row).getByRole('button', { name: 'Disable' }))
-    await waitFor(() =>
-      expect(updateMember).toHaveBeenCalledWith('u-1', { status: 'disabled' }),
-    )
-    expect(await screen.findByRole('button', { name: 'Enable' })).toBeVisible()
+    await user.click(within(row).getByRole('button', { name: /remove editor@acme.test/i }))
+
+    await waitFor(() => expect(removeMember).toHaveBeenCalledWith('u-1'))
+    // Removing must not also navigate: the row's click handler sits underneath.
+    expect(push).not.toHaveBeenCalled()
+    expect(await screen.findByRole('status')).toHaveTextContent(/no longer has a seat/i)
+  })
+
+  it('disables and re-enables a member from the row icon', async () => {
+    const user = userEvent.setup()
+    render(<AdminClient />)
+    const row = (await screen.findByText('editor@acme.test')).closest('tr')!
+
+    await user.click(within(row).getByRole('button', { name: /disable editor@acme.test/i }))
+
+    await waitFor(() => expect(updateMember).toHaveBeenCalledWith('u-1', { status: 'disabled' }))
+    // The icon now offers the opposite action, which is how the row reports
+    // that the change actually landed.
+    expect(await screen.findByRole('button', { name: /enable editor@acme.test/i })).toBeVisible()
+    expect(push).not.toHaveBeenCalled()
   })
 
   it('cannot edit your own row', async () => {
@@ -158,29 +185,30 @@ describe('AdminClient', () => {
     const row = (await screen.findByText('owner@acme.test')).closest('tr')!
 
     expect(within(row).getByText(/that's you/i)).toBeVisible()
-    expect(within(row).getByRole('combobox')).toBeDisabled()
-    // Every control that could change your own seat: the role picker above, and
-    // both destructive buttons. Asserted by name rather than as "the button",
-    // because the row now carries more than one.
-    expect(within(row).getByRole('button', { name: 'Disable' })).toBeDisabled()
-    expect(within(row).getByRole('button', { name: 'Remove' })).toBeDisabled()
+    // Every control that could change your own seat.
+    expect(
+      within(row).getByRole('button', { name: /disable owner@acme.test/i }),
+    ).toBeDisabled()
+    expect(
+      within(row).getByRole('button', { name: /remove owner@acme.test/i }),
+    ).toBeDisabled()
   })
 
   it("surfaces the server's refusal rather than inventing one", async () => {
     const user = userEvent.setup()
-    updateMember.mockRejectedValue(
+    removeMember.mockRejectedValue(
       new ApiError('an organization must keep at least one active owner', 409),
     )
     render(<AdminClient />)
     const row = (await screen.findByText('editor@acme.test')).closest('tr')!
 
-    await user.click(within(row).getByRole('button', { name: 'Disable' }))
+    await user.click(within(row).getByRole('button', { name: /remove editor@acme.test/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /at least one active owner/i,
     )
     // The row must NOT show the change as applied.
-    expect(within(row).getByRole('button', { name: 'Disable' })).toBeVisible()
+    expect(within(row).getByText('editor@acme.test')).toBeVisible()
   })
 
   it('explains a permission refusal instead of showing an empty table', async () => {

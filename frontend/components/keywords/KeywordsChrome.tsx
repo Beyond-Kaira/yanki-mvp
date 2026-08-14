@@ -41,8 +41,9 @@ export function KeywordLocaleSelect({
   onChange: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
-  const listRef = useRef<HTMLUListElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
@@ -63,26 +64,44 @@ export function KeywordLocaleSelect({
   }, [open])
 
   const active = LOCALES.find((locale) => locale.value === value) ?? LOCALES[0]
+  const needle = query.trim().toLowerCase()
+  const matches = needle
+    ? LOCALES.filter(
+        (locale) =>
+          locale.name.toLowerCase().includes(needle) ||
+          locale.value.toLowerCase().includes(needle),
+      )
+    : LOCALES
+
+  function choose(next: string) {
+    onChange(next)
+    setOpen(false)
+    setQuery('')
+  }
 
   // Arrow keys walk the options, the way the native select did.
-  function onListKeyDown(event: ReactKeyboardEvent<HTMLUListElement>) {
+  function onPopupKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
     event.preventDefault()
-    const buttons = Array.from(listRef.current?.querySelectorAll('button') ?? [])
+    const buttons = Array.from(popupRef.current?.querySelectorAll('li button') ?? [])
+    if (buttons.length === 0) return
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
     const next = event.key === 'ArrowDown' ? index + 1 : index - 1
-    buttons[(next + buttons.length) % buttons.length]?.focus()
+    ;(buttons[(next + buttons.length) % buttons.length] as HTMLButtonElement).focus()
   }
 
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          setQuery('')
+          setOpen((current) => !current)
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Locale: ${active.name}`}
-        className="flex w-full items-center gap-2 rounded-lg border border-surface-border bg-surface-elevated px-3 py-2 text-left text-sm text-surface-foreground transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="flex w-full items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-2 text-left text-sm text-surface-foreground transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         <span className="text-base leading-none">{active.flag}</span>
         <span className="min-w-0 flex-1 truncate font-medium">{active.name}</span>
@@ -102,37 +121,60 @@ export function KeywordLocaleSelect({
       </button>
 
       {open ? (
-        <ul
-          ref={listRef}
-          role="listbox"
-          aria-label="Locale"
-          onKeyDown={onListKeyDown}
-          className="absolute left-0 top-full z-40 mt-1 w-full overflow-hidden rounded-lg border border-surface-border bg-surface-elevated py-1 shadow-lg"
+        <div
+          ref={popupRef}
+          onKeyDown={onPopupKeyDown}
+          className="absolute left-0 top-full z-40 mt-1 w-full overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg"
         >
-          {LOCALES.map((locale) => {
-            const selected = locale.value === active.value
-            return (
-              <li key={locale.value} role="option" aria-selected={selected}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(locale.value)
-                    setOpen(false)
-                  }}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
-                    selected
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-surface-foreground hover:bg-surface-border/40'
-                  }`}
-                >
-                  <span className="text-base leading-none">{locale.flag}</span>
-                  <span className="min-w-0 flex-1 truncate">{locale.name}</span>
-                  <span className="shrink-0 text-xs text-surface-subtle">{locale.value}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+          <div className="border-b border-surface-border p-2">
+            <input
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- the popup only exists once the user opened it
+              autoFocus
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              // The picker sits inside the analyze form: Enter must take the top
+              // match, not submit the form underneath.
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return
+                event.preventDefault()
+                if (matches.length > 0) choose(matches[0].value)
+              }}
+              placeholder="Search language…"
+              aria-label="Search language"
+              className="w-full rounded-md border border-surface-border bg-surface-muted px-2 py-1.5 text-sm text-surface-foreground placeholder:text-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            />
+          </div>
+          <ul
+            role="listbox"
+            aria-label="Locale"
+            className="max-h-64 overflow-y-auto py-1"
+          >
+            {matches.map((locale) => {
+              const selected = locale.value === active.value
+              return (
+                <li key={locale.value} role="option" aria-selected={selected}>
+                  <button
+                    type="button"
+                    onClick={() => choose(locale.value)}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                      selected
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-surface-foreground hover:bg-surface-border/40'
+                    }`}
+                  >
+                    <span className="text-base leading-none">{locale.flag}</span>
+                    <span className="min-w-0 flex-1 truncate">{locale.name}</span>
+                    <span className="shrink-0 text-xs text-surface-subtle">{locale.value}</span>
+                  </button>
+                </li>
+              )
+            })}
+            {matches.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-surface-subtle">No match</li>
+            ) : null}
+          </ul>
+        </div>
       ) : null}
     </div>
   )

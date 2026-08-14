@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/components/AuthProvider'
 import {
@@ -8,7 +9,6 @@ import {
   fetchMembers,
   fetchOrganization,
   removeMember,
-  updateMember,
   type MemberQuery,
 } from '@/lib/api'
 import type { AdminMember, AdminMemberList, AdminOrganization } from '@/lib/contracts'
@@ -30,6 +30,10 @@ function roleLabel(role: string): string {
   return ROLE_LABELS[role] ?? role
 }
 
+function historyHref(memberId: string): string {
+  return `/admin/audit?entity_type=user&entity_id=${encodeURIComponent(memberId)}`
+}
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—'
   return new Date(value).toLocaleDateString(undefined, {
@@ -42,22 +46,20 @@ function formatDate(value: string | null | undefined): string {
 /**
  * Members and roles for the caller's organization.
  *
- * Two things shape this screen more than layout does.
+ * The list is a reading surface: a row shows who someone is and what they may
+ * do, and clicking it opens that member's history. The only edit left in the
+ * table is removal, and it asks first.
  *
- * **The server owns the rules.** The role options come from
+ * The server owns the rules. The role filter's options come from
  * `assignable_roles` in the list response rather than a constant here, so the
- * picker can never offer something the API would refuse — including the
- * platform roles a customer must never be able to grant. Likewise the two
- * lockout guards (last owner, self-edit) live in the backend; this UI surfaces
- * their 409 as a readable message rather than trying to predict them.
- *
- * **A failed change must not look like a successful one.** Every row edit is
- * optimistic in appearance but reconciled against the server's response, and a
- * rejection restores the previous value and says why. Silently reverting is how
- * an admin comes to believe they disabled someone who is still logged in.
+ * screen can never name a role the API does not recognize — including the
+ * platform roles a customer must never see. The lockout guards (last owner,
+ * self-edit) live in the backend; this UI surfaces their 409 as a readable
+ * message rather than trying to predict them.
  */
 export default function AdminClient() {
   const { user } = useAuth()
+  const router = useRouter()
   const [org, setOrg] = useState<AdminOrganization | null>(null)
   const [list, setList] = useState<AdminMemberList | null>(null)
   const [loading, setLoading] = useState(true)
@@ -109,34 +111,6 @@ export default function AdminClient() {
     const timer = setTimeout(load, 250)
     return () => clearTimeout(timer)
   }, [load])
-
-  async function applyChange(member: AdminMember, changes: { role?: string; status?: string }) {
-    setSavingId(member.id)
-    setNotice(null)
-    setError(null)
-    try {
-      const updated = await updateMember(member.id, changes)
-      setList((current) =>
-        current
-          ? {
-              ...current,
-              members: current.members.map((m) => (m.id === updated.id ? updated : m)),
-            }
-          : current,
-      )
-      setNotice(
-        changes.status
-          ? `${updated.email} is now ${updated.status}.`
-          : `${updated.email} is now ${roleLabel(updated.role)}.`,
-      )
-    } catch (err) {
-      // The server's own words: "an organization must keep at least one active
-      // owner" is more useful than anything this component could invent.
-      setError(err instanceof Error ? err.message : 'That change could not be saved.')
-    } finally {
-      setSavingId(null)
-    }
-  }
 
   // Removal is the one irreversible action on this screen — the seat and its
   // role are gone, and getting the person back means inviting them again. It
@@ -294,33 +268,27 @@ export default function AdminClient() {
                 const isSelf = member.id === user?.id
                 const busy = savingId === member.id
                 return (
-                  <tr key={member.id} className="border-b border-surface-border last:border-0">
+                  <tr
+                    key={member.id}
+                    onClick={() => router.push(historyHref(member.id))}
+                    className="cursor-pointer border-b border-surface-border transition-colors last:border-0 hover:bg-surface-muted"
+                  >
                     <td className="px-4 py-3">
-                      <span className="block font-medium">{member.email}</span>
+                      {/* The whole row is clickable for the mouse; this link is
+                          what makes the same destination reachable by keyboard
+                          and announced by a screen reader. */}
+                      <Link
+                        href={historyHref(member.id)}
+                        onClick={(event) => event.stopPropagation()}
+                        className="block font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        {member.email}
+                      </Link>
                       {isSelf ? (
                         <span className="text-xs text-surface-subtle">That&apos;s you</span>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3">
-                      <label className="sr-only" htmlFor={`role-${member.id}`}>
-                        Role for {member.email}
-                      </label>
-                      <select
-                        id={`role-${member.id}`}
-                        value={member.role}
-                        disabled={busy || isSelf}
-                        onChange={(event) =>
-                          applyChange(member, { role: event.target.value })
-                        }
-                        className="h-11 rounded-md border border-surface-border bg-surface px-2 text-sm disabled:opacity-60"
-                      >
-                        {roles.map((role) => (
-                          <option key={role} value={role}>
-                            {roleLabel(role)}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
+                    <td className="px-4 py-3">{roleLabel(member.role)}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -336,36 +304,28 @@ export default function AdminClient() {
                       {formatDate(member.created_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <Link
-                          href={`/admin/audit?entity_type=user&entity_id=${encodeURIComponent(member.id)}`}
-                          className="inline-flex min-h-[44px] items-center rounded-md px-2 text-sm text-surface-subtle underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        >
-                          History
-                        </Link>
+                      <div className="flex items-center justify-end">
                         <button
                           type="button"
                           disabled={busy || isSelf}
-                          onClick={() =>
-                            applyChange(member, {
-                              status: member.status === 'active' ? 'disabled' : 'active',
-                            })
+                          aria-label={`Remove ${member.email}`}
+                          // An icon-only button that silently does nothing reads
+                          // as broken; the tooltip says which of the two reasons
+                          // it is.
+                          title={
+                            isSelf
+                              ? 'You cannot remove your own seat'
+                              : busy
+                                ? 'Working…'
+                                : 'Remove'
                           }
-                          className="inline-flex min-h-[44px] items-center rounded-md border border-surface-border px-3 text-sm font-medium transition-colors hover:border-primary hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            confirmRemove(member)
+                          }}
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-md text-lg font-semibold leading-none text-surface-subtle transition-colors hover:bg-danger-soft hover:text-danger-strong disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-border"
                         >
-                          {busy
-                            ? 'Saving…'
-                            : member.status === 'active'
-                              ? 'Disable'
-                              : 'Enable'}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy || isSelf}
-                          onClick={() => confirmRemove(member)}
-                          className="inline-flex min-h-[44px] items-center rounded-md border border-surface-border px-3 text-sm font-medium text-danger-strong transition-colors hover:border-danger-border hover:bg-danger-soft disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        >
-                          Remove
+                          ✕
                         </button>
                       </div>
                     </td>

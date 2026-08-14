@@ -20,9 +20,11 @@ vi.mock('@/lib/api', async (importOriginal) => {
         role: 'editor', membership_status: 'active', membership_id: 'm1',
       }],
     }),
-    updateMember: async () => ({}),
+    removeMember: async () => undefined,
   }
 })
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
 vi.mock('@/components/AuthProvider', () => ({
   useAuth: () => ({ status: 'authenticated', user: { id: 'me', email: 'me@acme.test' } }),
@@ -42,8 +44,8 @@ describe('Admin panel accessibility', () => {
     render(<AdminClient />)
     await screen.findByText('someone@acme.test')
 
-    // Without this the role picker is announced only as "combobox".
-    expect(screen.getByLabelText(/role for someone@acme.test/i)).toBeVisible()
+    // Without this the remove button is announced only as "✕".
+    expect(screen.getByRole('button', { name: /remove someone@acme.test/i })).toBeVisible()
   })
 
   it('gives the table a caption', async () => {

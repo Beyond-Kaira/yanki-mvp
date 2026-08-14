@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   ApiError,
@@ -419,7 +419,11 @@ export default function AuditLogClient() {
               <th scope="col" className="px-4 py-3 font-medium">Action</th>
               <th scope="col" className="px-4 py-3 font-medium">Entity</th>
               <th scope="col" className="px-4 py-3 font-medium">Outcome</th>
-              <th scope="col" className="px-4 py-3 text-right font-medium">Detail</th>
+              {/* The column is the chevron alone; the header still names it
+                  for a screen reader reading the table's columns. */}
+              <th scope="col" className="px-4 py-3 text-right font-medium">
+                <span className="sr-only">Detail</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -440,7 +444,8 @@ export default function AuditLogClient() {
                 const lines = changeLines(event)
                 const open = expanded === event.id
                 return (
-                  <tr key={event.id} className="border-b border-surface-border align-top last:border-0">
+                  <Fragment key={event.id}>
+                  <tr className="border-b border-surface-border align-top last:border-0">
                     <td className="whitespace-nowrap px-4 py-3 text-surface-subtle">
                       {formatMoment(event.occurred_at)}
                       {event.integrity !== 'ok' ? (
@@ -477,14 +482,37 @@ export default function AuditLogClient() {
                         <button
                           type="button"
                           aria-expanded={open}
+                          aria-controls={`detail-${event.id}`}
+                          aria-label={open ? 'Hide' : 'Show'}
                           onClick={() => setExpanded(open ? null : event.id)}
-                          className="inline-flex min-h-[44px] items-center rounded-md border border-surface-border px-3 text-sm transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-md text-surface-subtle transition-colors hover:bg-surface-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         >
-                          {open ? 'Hide' : 'Show'}
+                          <svg
+                            viewBox="0 0 20 20"
+                            aria-hidden="true"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`}
+                          >
+                            <path d="M5 7.5 10 12.5 15 7.5" />
+                          </svg>
                         </button>
                       </div>
-                      {open ? (
-                        <dl className="mt-3 space-y-2 text-xs">
+                    </td>
+                  </tr>
+                  {/* The detail is its own full-width row rather than a cramped
+                      column: `before`/`after` are JSON, and the last column is
+                      the narrowest place on the table to read them. */}
+                  {open ? (
+                    <tr
+                      id={`detail-${event.id}`}
+                      className="border-b border-surface-border last:border-0"
+                    >
+                      <td colSpan={6} className="bg-surface-muted px-4 py-3">
+                        <dl className="space-y-2 text-xs">
                           {lines.length > 0 ? (
                             <div>
                               <dt className="font-medium">Changed</dt>
@@ -506,14 +534,14 @@ export default function AuditLogClient() {
                           <div>
                             <dt className="font-medium">IP (hashed)</dt>
                             <dd className="font-mono break-all">
-                              {event.ip_hash ? `${event.ip_hash.slice(0, 16)}…` : '—'}
+                              {event.ip_hash ?? '—'}
                             </dd>
                           </div>
                           {event.before ? (
                             <div>
                               <dt className="font-medium">Before</dt>
                               <dd>
-                                <pre className="mt-1 overflow-x-auto rounded bg-surface-muted p-2">
+                                <pre className="mt-1 overflow-x-auto rounded bg-surface p-2">
                                   {JSON.stringify(event.before, null, 2)}
                                 </pre>
                               </dd>
@@ -523,16 +551,17 @@ export default function AuditLogClient() {
                             <div>
                               <dt className="font-medium">After</dt>
                               <dd>
-                                <pre className="mt-1 overflow-x-auto rounded bg-surface-muted p-2">
+                                <pre className="mt-1 overflow-x-auto rounded bg-surface p-2">
                                   {JSON.stringify(event.after, null, 2)}
                                 </pre>
                               </dd>
                             </div>
                           ) : null}
                         </dl>
-                      ) : null}
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 )
               })
             )}

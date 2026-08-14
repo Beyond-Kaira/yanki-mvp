@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { listSeoProjects } from '@/lib/api'
+import PageContainer from '@/components/shell/PageContainer'
 import type { SeoProject } from '@/lib/contracts'
 
 /** Project picker for backlinks.
@@ -50,7 +51,7 @@ export default function BacklinksDashboard() {
         <h1 className="text-3xl font-semibold text-surface-foreground">
           Backlinks
         </h1>
-        <p className="mt-2 max-w-2xl text-sm text-surface-subtle">
+        <p className="mt-2 text-sm text-surface-subtle">
           Who links to your domain, what changed since last time, and which
           domains your competitors have that you do not.
         </p>
@@ -111,8 +112,8 @@ export default function BacklinksDashboard() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-7 pt-4 sm:px-8 sm:pb-8 sm:pt-5">
+    <PageContainer>
       {children}
-    </main>
+    </PageContainer>
   )
 }

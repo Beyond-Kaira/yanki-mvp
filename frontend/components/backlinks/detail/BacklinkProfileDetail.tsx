@@ -9,6 +9,7 @@ import LinkEventsPanel from '@/components/backlinks/events/LinkEventsPanel'
 import OpportunitiesPanel from '@/components/backlinks/opportunities/OpportunitiesPanel'
 import BacklinkOverview from '@/components/backlinks/overview/BacklinkOverview'
 import BacklinksDisabledNotice from '@/components/backlinks/shared/BacklinksDisabledNotice'
+import PageContainer from '@/components/shell/PageContainer'
 import { useBacklinkProfile } from '@/components/backlinks/hooks/useBacklinkProfile'
 import BacklinkProfileHeader from './BacklinkProfileHeader'
 import BacklinkTabs from './BacklinkTabs'
@@ -91,9 +92,9 @@ export default function BacklinkProfileDetail() {
 
 function DetailShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-7 pt-4 sm:px-8 sm:pb-8 sm:pt-5">
+    <PageContainer>
       {children}
-    </main>
+    </PageContainer>
   )
 }
 

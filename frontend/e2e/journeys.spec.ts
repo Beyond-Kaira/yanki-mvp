@@ -166,7 +166,7 @@ scenario('inviting a colleague seats them with the invited role', async ({ page 
   await page.goto('/admin')
   const memberRow = page.locator('tbody tr', { hasText: invitee })
   await expect(memberRow).toBeVisible({ timeout: 15_000 })
-  await expect(memberRow.getByRole('combobox')).toHaveValue('editor')
+  await expect(memberRow.getByRole('cell', { name: 'Editor', exact: true })).toBeVisible()
 })
 
 scenario('a used invitation link cannot be used twice', async ({ page }) => {
@@ -214,8 +214,9 @@ scenario('the audit log records what the admin did, with before and after', asyn
   await expect(row).toBeVisible({ timeout: 15_000 })
 
   await row.getByRole('button', { name: 'Show' }).click()
-  // Every event carries the request that produced it.
-  await expect(row.getByText(/^Request$/)).toBeVisible()
+  // The detail opens as its own row below, and only one can be open at a time,
+  // so this is scoped to the table rather than to the event row.
+  await expect(page.getByText(/^Request$/)).toBeVisible()
 
   // And the integrity sweep reports a clean log.
   await expect(page.getByText(/recent entries verified against their stored hash/i)).toBeVisible()

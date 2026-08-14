@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { ApiError, expandKeywords, checkKeywordRanks } from '@/lib/api'
 import type { KeywordRankHit } from '@/lib/contracts'
 import {
-  KeywordLocaleOptions,
+  KeywordLocaleSelect,
   signalNumber,
   signalText,
 } from '@/components/keywords/KeywordsChrome'
@@ -114,16 +114,10 @@ export default function KeywordsMagicClient() {
             className="w-full rounded-lg border border-surface-border bg-surface-elevated px-3 py-2 text-surface-foreground"
           />
         </label>
-        <label className="text-sm sm:w-44">
+        <div className="text-sm sm:w-44">
           <span className="mb-1 block text-surface-subtle">Locale</span>
-          <select
-            value={locale}
-            onChange={(e) => setLocale(e.target.value)}
-            className="w-full rounded-lg border border-surface-border bg-surface-elevated px-3 py-2 text-surface-foreground"
-          >
-            <KeywordLocaleOptions />
-          </select>
-        </label>
+          <KeywordLocaleSelect value={locale} onChange={setLocale} />
+        </div>
         <button
           type="submit"
           disabled={magicLoading || !magicQuery.trim()}

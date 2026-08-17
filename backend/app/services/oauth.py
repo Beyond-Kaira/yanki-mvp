@@ -46,11 +46,19 @@ _SPECS: dict[str, _ProviderSpec] = {
 
 @dataclass(frozen=True, slots=True)
 class OAuthIdentity:
-    """Who the provider says the caller is."""
+    """Who the provider says the caller is.
+
+    The email is optional because Apple's is. Apple sends the address when the
+    user first authorises the application and may omit it from every id token
+    afterwards — the subject is the only claim that is always there. Requiring
+    an email here would therefore turn a returning Apple user into a rejected
+    one, which is why identity is keyed on the subject and the email is
+    treated as extra information that may or may not arrive.
+    """
 
     provider: str
     subject: str
-    email: str
+    email: str | None
 
 
 class OAuthConfigurationError(RuntimeError):
@@ -68,9 +76,14 @@ def _jwk_client(jwks_uri: str) -> PyJWKClient:
     Fetching the key set on every sign-in would put the provider's availability
     in the path of every login. The client refreshes on an unknown key id, which
     is exactly when a provider has rotated.
+
+    The timeout is short on purpose. This route is synchronous, so a fetch that
+    hangs holds a worker thread for its whole duration — the library's own
+    30-second default would let a slow provider degrade the rest of the API,
+    not just its own sign-ins. Five seconds fails fast into a 503 instead.
     """
 
-    return PyJWKClient(jwks_uri, cache_keys=True)
+    return PyJWKClient(jwks_uri, cache_keys=True, timeout=5)
 
 
 def verify_id_token(
@@ -109,14 +122,14 @@ def verify_id_token(
     except InvalidTokenError as exc:
         raise OAuthTokenError("invalid identity token") from exc
 
-    email = str(claims.get("email") or "").strip().lower()
-    if not email:
-        raise OAuthTokenError("identity token carries no email")
+    email = str(claims.get("email") or "").strip().lower() or None
 
     # Apple sends this as the string "true"; Google as a boolean. An address the
     # provider has not verified is an address anyone could have typed, and we
-    # match accounts on it — so an unverified one is an account takeover.
-    if claims.get("email_verified") not in (True, "true"):
+    # match accounts on it — so an unverified one is an account takeover. An
+    # address that is absent is a different thing from one that is unverified:
+    # it is simply not offered, and the caller decides whether it was needed.
+    if email is not None and claims.get("email_verified") not in (True, "true"):
         raise OAuthTokenError("identity token email is not verified")
 
     return OAuthIdentity(provider=provider, subject=str(claims["sub"]), email=email)

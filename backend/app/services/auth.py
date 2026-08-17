@@ -167,16 +167,29 @@ def authenticate_with_identity(
     already created with a password, instead of failing on the unique email or
     stranding them beside their own data.
 
-    Returns ``None`` for a disabled account, matching ``authenticate_user`` — an
+    A registration needs an email and a sign-in does not, which is why the
+    subject lookup comes first and the email is only consulted after it misses.
+    Apple omits the address on later sign-ins, so a returning user arrives with
+    nothing but their subject — and that is enough.
+
+    Returns ``None`` for a disabled account and for a token that names nobody we
+    know and carries no address to register, both of which the caller reports as
+    a rejected sign-in. Disabled matches ``authenticate_user`` deliberately: an
     administrator's disable switch has to hold on every door, not just the one
     with a password behind it.
     """
 
-    user = get_user_by_subject(
-        session, provider=identity.provider, subject=identity.subject
-    ) or get_user_by_email(session, identity.email)
+    user = get_user_by_subject(session, provider=identity.provider, subject=identity.subject)
+    if user is None and identity.email is not None:
+        user = get_user_by_email(session, identity.email)
 
     if user is None:
+        if identity.email is None:
+            # An unknown subject with no address: there is nothing to create an
+            # account from, and inventing a placeholder address would create an
+            # account nobody can ever be contacted at or recover.
+            return None
+
         return create_user(
             session,
             email=identity.email,
@@ -202,14 +215,20 @@ def authenticate_with_identity(
         session.commit()
         return None
 
+    linked_password: bool = False
     if user.auth_subject is None:
         user.auth_provider = identity.provider
         user.auth_subject = identity.subject
+        linked_password = _retire_password_on_link(session, user)
 
     # Follow an address change at the provider, unless the new address already
     # belongs to somebody else here — the unique email would reject the write,
     # and a stale address is a far smaller problem than a failed sign-in.
-    if user.email != identity.email and get_user_by_email(session, identity.email) is None:
+    if (
+        identity.email is not None
+        and user.email != identity.email
+        and get_user_by_email(session, identity.email) is None
+    ):
         user.email = identity.email
 
     user.last_active_at = datetime.now(UTC)
@@ -223,11 +242,49 @@ def authenticate_with_identity(
         actor_label=user.email,
         entity_type="user",
         entity_id=user.id,
-        detail={"auth_provider": identity.provider},
+        detail={"auth_provider": identity.provider, "retired_password": linked_password},
     )
     session.commit()
 
     return user
+
+
+def _retire_password_on_link(session: Session, user: User) -> bool:
+    """Close the password door the first time a provider is linked to an account.
+
+    Signup does not verify the address it is given, so anybody can register an
+    address that is not theirs and wait. If the real owner later signs in with
+    the provider, the two meet on the same email and the squatter is sitting
+    inside the account with a working password — the pre-hijacking attack, and
+    the one real risk of linking on a verified email.
+
+    Retiring the password closes it: after the link, the account is reachable
+    only through the identity the provider actually verified. The live sessions
+    go with it, because a password the squatter can no longer use is no comfort
+    while the session they opened with it is still valid.
+
+    The cost is real and falls on the honest user too — they signed up with a
+    password, pressed the provider button once, and now that password is gone
+    with no reset flow to bring it back. They keep the provider, which is the
+    door they just chose. A password reset flow is what makes this free, and
+    until it exists this is the safe side to err on.
+
+    Returns whether a password was actually retired, so the audit trail can say
+    so. Does not commit — the caller's commit covers this and the event together.
+    """
+
+    if user.password_hash is None:
+        return False
+
+    # Imported here because `auth_sessions` imports this module: the cycle is
+    # real, and one function-local import is a smaller price than splitting a
+    # service in two to satisfy it.
+    from app.services.auth_sessions import revoke_other_sessions_for_user
+
+    user.password_hash = None
+    revoke_other_sessions_for_user(session, user_id=user.id, keep_family_id=None)
+
+    return True
 
 
 def authenticate_user(

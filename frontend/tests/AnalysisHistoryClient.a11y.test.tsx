@@ -9,6 +9,13 @@ vi.mock('@/lib/api', async (importOriginal) => {
   return { ...actual, listAnalyses: mockedListAnalyses }
 })
 
+vi.mock('@/components/ai-visibility/useAnalysisBinding', () => ({
+  useAnalysisBinding: () => ({
+    clearBinding: vi.fn(),
+    notifyQuotaChanged: vi.fn(),
+  }),
+}))
+
 import AnalysisHistoryClient from '@/app/analyses/AnalysisHistoryClient'
 
 const ROW = {

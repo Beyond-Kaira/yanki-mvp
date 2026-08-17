@@ -826,7 +826,25 @@ export interface paths {
         get: operations["read_seo_project_api_v1_seo_projects__project_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Seo Project
+         * @description Stop tracking a domain and remove everything recorded against it.
+         *
+         *     ``project:delete`` — Manager and above, per the matrix. Editor and Analyst
+         *     can create a project and run a crawl but not destroy the history; that is
+         *     the same line the matrix draws for every other resource, and this route
+         *     does not redraw it.
+         *
+         *     Deliberately **not** behind ``require_site_audit_enabled``. The kill switch
+         *     exists to stop work being *queued* that nothing will drain — it must never
+         *     stop a customer removing a row. Gating this would trap every project
+         *     created while the flag was off, which is precisely the deployment state the
+         *     flag describes.
+         *
+         *     A cross-tenant id 404s exactly like a nonexistent one, so the response
+         *     cannot be used to probe another organization's projects.
+         */
+        delete: operations["delete_seo_project_api_v1_seo_projects__project_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4173,6 +4191,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SeoProjectDetailOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_seo_project_api_v1_seo_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

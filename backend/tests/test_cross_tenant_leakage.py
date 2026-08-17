@@ -121,6 +121,7 @@ ORG = {
     ("GET", "/api/v1/seo-projects"),
     ("POST", "/api/v1/seo-projects"),
     ("GET", "/api/v1/seo-projects/{project_id}"),
+    ("DELETE", "/api/v1/seo-projects/{project_id}"),
     ("POST", "/api/v1/seo-projects/{project_id}/audits"),
     ("GET", "/api/v1/seo-projects/{project_id}/audits/{audit_id}"),
     ("GET", "/api/v1/seo-projects/{project_id}/backlinks"),
@@ -411,6 +412,26 @@ def test_a_competitor_cannot_be_deleted_across_the_boundary(client, tenants) -> 
     assert client.delete(mixed, headers=alpha.headers).status_code == 404
 
     mine = f"/api/v1/seo-projects/{alpha.project_id}/backlinks/competitors/{alpha.competitor_id}"
+    assert client.delete(mine, headers=alpha.headers).status_code == 204
+
+
+def test_a_project_cannot_be_deleted_across_the_boundary(client, db_session, tenants) -> None:
+    """The most destructive operation on the surface, so the worst one to leak.
+
+    A hit here would not merely read another tenant's data — it would erase
+    their tracked domain, every crawl recorded against it, and their backlink
+    profile with it. The owner's 204 comes last, because it takes the project
+    it is proving the route works on.
+    """
+
+    alpha, bravo = tenants
+
+    theirs = f"/api/v1/seo-projects/{bravo.project_id}"
+    assert client.delete(theirs, headers=alpha.headers).status_code == 404
+    # Refused, not partially applied: their project is still there.
+    assert db_session.get(SeoProject, bravo.project_id) is not None
+
+    mine = f"/api/v1/seo-projects/{alpha.project_id}"
     assert client.delete(mine, headers=alpha.headers).status_code == 204
 
 

@@ -11,10 +11,6 @@ _LOCALE_TARGETS: dict[str, tuple[str, str]] = {
     "tr": ("languageConstants/1037", "geoTargetConstants/2792"),  # Turkish, Turkey
     "de": ("languageConstants/1001", "geoTargetConstants/2276"),  # German, Germany
     "fr": ("languageConstants/1002", "geoTargetConstants/2250"),  # French, France
-    # The picker now sends ISO-3166 country codes. "tr"/"de"/"fr" already collide
-    # with the language codes above; these two are the ones that would not.
-    "us": ("languageConstants/1000", "geoTargetConstants/2840"),  # United States
-    "gb": ("languageConstants/1000", "geoTargetConstants/2826"),  # United Kingdom
 }
 
 

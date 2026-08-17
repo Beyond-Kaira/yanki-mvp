@@ -1,0 +1,48 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import { KeywordLocaleSelect } from '@/components/keywords/KeywordsChrome'
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/search-visibility/keywords',
+}))
+
+describe('KeywordLocaleSelect', () => {
+  it('lists every ISO 639-1 language once opened', async () => {
+    render(<KeywordLocaleSelect value="en" onChange={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /^Locale:/ }))
+    expect(screen.getAllByRole('option').length).toBeGreaterThan(150)
+  })
+
+  it('filters on the native name, not just the English one', async () => {
+    render(<KeywordLocaleSelect value="en" onChange={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /^Locale:/ }))
+    await userEvent.type(screen.getByLabelText('Search language'), 'Türkçe')
+    const options = screen.getAllByRole('option')
+    expect(options).toHaveLength(1)
+    expect(options[0]).toHaveTextContent('Turkish')
+  })
+
+  it('reports the code, not the name, when an option is picked', async () => {
+    const onChange = vi.fn()
+    render(<KeywordLocaleSelect value="en" onChange={onChange} />)
+    await userEvent.click(screen.getByRole('button', { name: /^Locale:/ }))
+    await userEvent.type(screen.getByLabelText('Search language'), 'german')
+    await userEvent.click(within(screen.getByRole('option')).getByRole('button'))
+    expect(onChange).toHaveBeenCalledWith('de')
+  })
+
+  it('takes the first match on Enter instead of submitting the form around it', async () => {
+    const onChange = vi.fn()
+    const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault())
+    render(
+      <form onSubmit={onSubmit}>
+        <KeywordLocaleSelect value="en" onChange={onChange} />
+      </form>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Locale:/ }))
+    await userEvent.type(screen.getByLabelText('Search language'), 'turkish{Enter}')
+    expect(onChange).toHaveBeenCalledWith('tr')
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+})

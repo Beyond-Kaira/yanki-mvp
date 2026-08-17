@@ -68,8 +68,8 @@ export default function KeywordsSessionProvider({
 }) {
   const [overviewQuery, setOverviewQuery] = useState('')
   const [magicQuery, setMagicQuery] = useState('')
-  // ISO-3166 country code, matching the locale picker's values.
-  const [locale, setLocale] = useState('us')
+  // ISO 639-1 code, matching the locale picker's values.
+  const [locale, setLocale] = useState('en')
   const [domain, setDomain] = useState('')
 
   const [overviewLoading, setOverviewLoading] = useState(false)

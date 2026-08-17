@@ -9,21 +9,15 @@ import {
 } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-// The package's own index.d.ts declares a named `countries` export, but its
-// index.js exports the array itself — the JSON is the honest entry point.
-import countries from 'countries-list-json/countries.json'
+import ISO6391 from 'iso-639-1'
 import AppShell from '@/components/shell/AppShell'
 
-/** Every country the package ships, as `{ value: 'tr', flag: '🇹🇷', name: 'Turkey' }`.
+/** Every ISO 639-1 language, as `{ code: 'tr', name: 'Turkish', nativeName: 'Türkçe' }`.
  *
- * The locale we send is the lowercased ISO-3166 code. Only the codes listed in
- * the API's `locale_map` resolve to a real Google Ads language/geo pair — the
- * rest fall back to English/US there. */
-const LOCALES = countries.map((country) => ({
-  value: country.code.toLowerCase(),
-  flag: country.flag,
-  name: country.name,
-}))
+ * The code is what we send as the locale: SearXNG takes it as the search
+ * language, and the API's `locale_map` turns it into a Google Ads language/geo
+ * pair — codes missing from that map fall back to English/US there. */
+const LOCALES = ISO6391.getLanguages(ISO6391.getAllCodes())
 
 const TABS = [
   { href: '/search-visibility/keywords', label: 'Overview', match: 'exact' as const },
@@ -36,9 +30,9 @@ const TABS = [
 
 /** Locale picker for Overview + Magic.
  *
- * A native `<select>` cannot style its own option list — the flags landed in a
- * plain OS dropdown. This is the same button + `role="listbox"` shape the org
- * switcher already uses, so the two dropdowns in the app behave alike. */
+ * A native `<select>` cannot style its own option list, and 183 languages need a
+ * search box. This is the same button + `role="listbox"` shape the org switcher
+ * already uses, so the two dropdowns in the app behave alike. */
 export function KeywordLocaleSelect({
   value,
   onChange,
@@ -69,13 +63,15 @@ export function KeywordLocaleSelect({
     }
   }, [open])
 
-  const active = LOCALES.find((locale) => locale.value === value) ?? LOCALES[0]
+  const active = LOCALES.find((locale) => locale.code === value) ?? LOCALES[0]
   const needle = query.trim().toLowerCase()
+  // Native name included so "Türkçe" and "Deutsch" find their own language.
   const matches = needle
     ? LOCALES.filter(
         (locale) =>
           locale.name.toLowerCase().includes(needle) ||
-          locale.value.toLowerCase().includes(needle),
+          locale.nativeName.toLowerCase().includes(needle) ||
+          locale.code.includes(needle),
       )
     : LOCALES
 
@@ -109,9 +105,8 @@ export function KeywordLocaleSelect({
         aria-label={`Locale: ${active.name}`}
         className="flex w-full items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-2 text-left text-sm text-surface-foreground transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
-        <span className="text-base leading-none">{active.flag}</span>
         <span className="min-w-0 flex-1 truncate font-medium">{active.name}</span>
-        <span className="shrink-0 text-xs text-surface-subtle">{active.value}</span>
+        <span className="shrink-0 text-xs text-surface-subtle">{active.code}</span>
         <svg
           viewBox="0 0 24 24"
           className={`h-4 w-4 shrink-0 text-surface-subtle transition-transform ${open ? 'rotate-180' : ''}`}
@@ -144,7 +139,7 @@ export function KeywordLocaleSelect({
               onKeyDown={(event) => {
                 if (event.key !== 'Enter') return
                 event.preventDefault()
-                if (matches.length > 0) choose(matches[0].value)
+                if (matches.length > 0) choose(matches[0].code)
               }}
               placeholder="Search language…"
               aria-label="Search language"
@@ -157,21 +152,25 @@ export function KeywordLocaleSelect({
             className="max-h-64 overflow-y-auto py-1"
           >
             {matches.map((locale) => {
-              const selected = locale.value === active.value
+              const selected = locale.code === active.code
               return (
-                <li key={locale.value} role="option" aria-selected={selected}>
+                <li key={locale.code} role="option" aria-selected={selected}>
                   <button
                     type="button"
-                    onClick={() => choose(locale.value)}
+                    onClick={() => choose(locale.code)}
                     className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
                       selected
                         ? 'bg-primary/10 text-primary'
                         : 'text-surface-foreground hover:bg-surface-border/40'
                     }`}
                   >
-                    <span className="text-base leading-none">{locale.flag}</span>
-                    <span className="min-w-0 flex-1 truncate">{locale.name}</span>
-                    <span className="shrink-0 text-xs text-surface-subtle">{locale.value}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {locale.name}
+                      {locale.nativeName !== locale.name ? (
+                        <span className="text-surface-subtle"> · {locale.nativeName}</span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-xs text-surface-subtle">{locale.code}</span>
                   </button>
                 </li>
               )

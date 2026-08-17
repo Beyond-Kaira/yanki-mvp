@@ -23,6 +23,17 @@ describe('KeywordLocaleSelect', () => {
     expect(options[0]).toHaveTextContent('Turkish')
   })
 
+  it('falls back to a globe for a language with no region of its own', async () => {
+    render(<KeywordLocaleSelect value="en" onChange={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /^Locale:/ }))
+    const search = screen.getByLabelText('Search language')
+    await userEvent.type(search, 'turkish')
+    expect(screen.getByRole('option')).toHaveTextContent('🇹🇷')
+    await userEvent.clear(search)
+    await userEvent.type(search, 'esperanto')
+    expect(screen.getByRole('option')).toHaveTextContent('🌐')
+  })
+
   it('reports the code, not the name, when an option is picked', async () => {
     const onChange = vi.fn()
     render(<KeywordLocaleSelect value="en" onChange={onChange} />)

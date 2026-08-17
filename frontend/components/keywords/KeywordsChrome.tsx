@@ -10,14 +10,22 @@ import {
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import ISO6391 from 'iso-639-1'
+import localeEmoji from 'locale-emoji'
 import AppShell from '@/components/shell/AppShell'
 
 /** Every ISO 639-1 language, as `{ code: 'tr', name: 'Turkish', nativeName: 'Türkçe' }`.
  *
  * The code is what we send as the locale: SearXNG takes it as the search
  * language, and the API's `locale_map` turns it into a Google Ads language/geo
- * pair — codes missing from that map fall back to English/US there. */
-const LOCALES = ISO6391.getLanguages(ISO6391.getAllCodes())
+ * pair — codes missing from that map fall back to English/US there.
+ *
+ * The flag is the language's CLDR default region, so it is a hint and not a
+ * claim: Arabic shows 🇪🇬, and the ten languages with no region at all (Esperanto
+ * and friends) fall back to a globe. */
+const LOCALES = ISO6391.getLanguages(ISO6391.getAllCodes()).map((language) => ({
+  ...language,
+  flag: localeEmoji(language.code) || '🌐',
+}))
 
 const TABS = [
   { href: '/search-visibility/keywords', label: 'Overview', match: 'exact' as const },
@@ -105,6 +113,7 @@ export function KeywordLocaleSelect({
         aria-label={`Locale: ${active.name}`}
         className="flex w-full items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-2 text-left text-sm text-surface-foreground transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
+        <span className="text-base leading-none">{active.flag}</span>
         <span className="min-w-0 flex-1 truncate font-medium">{active.name}</span>
         <span className="shrink-0 text-xs text-surface-subtle">{active.code}</span>
         <svg
@@ -164,6 +173,7 @@ export function KeywordLocaleSelect({
                         : 'text-surface-foreground hover:bg-surface-border/40'
                     }`}
                   >
+                    <span className="text-base leading-none">{locale.flag}</span>
                     <span className="min-w-0 flex-1 truncate">
                       {locale.name}
                       {locale.nativeName !== locale.name ? (

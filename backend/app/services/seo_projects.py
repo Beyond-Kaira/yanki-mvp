@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import SeoProject, SiteAudit
+from app.db.models import Project, SeoProject, SiteAudit
 from app.services import audit as audit_service
 from app.services.tenancy import OrgContext, create_project
 
@@ -260,6 +260,72 @@ def get_org_project(
         )
         .options(selectinload(SeoProject.audits))
     )
+
+
+def delete_project(
+    session: Session,
+    *,
+    project: SeoProject,
+    context: OrgContext | None = None,
+) -> None:
+    """Stop tracking a domain, and remove everything recorded against it.
+
+    **Both** rows go: the ``seo_projects`` row the customer sees, and the
+    tenancy ``projects`` mirror it was created with. Deleting only the first
+    looks tidier and is wrong twice over:
+
+    * ``projects`` carries ``uq_projects_org_domain_key``, so the orphan would
+      collide the next time the same domain was added — and the collision
+      surfaces as ``DuplicateSeoProject``, which the route reports as "an SEO
+      project for this domain already exists". The customer would be told a
+      project exists that they had just deleted and cannot see.
+    * Everything hanging off ``projects`` — the backlink profile, its imports,
+      link events and rollups — is reachable only through
+      ``/seo-projects/{id}/backlinks``, which resolves the ``seo_projects`` row
+      first. Without its mirror those rows are unreadable and undeletable, so
+      "keeping" them preserves nothing and leaks storage.
+
+    The two are written together in :func:`create_project_with_audit`; they are
+    removed together here for the same reason. Audits and crawled pages follow
+    by cascade (ORM relationship *and* ``ON DELETE CASCADE``).
+
+    Deliberately **not** guarded on an active crawl. A queued or running audit
+    can be deleted, and the worker tolerates it: the in-flight run fails on the
+    vanished rows, rolls back, and ``worker.run_once`` finds no audit to mark
+    failed, logs, and moves on. The alternative — refusing while an audit is
+    ``queued`` — would mean a job nobody drains (which is the state of every
+    deployment with ``SITE_AUDIT_ENABLED=0``) pins a project in the list
+    permanently. Losing one crawl's work is the cheaper failure.
+
+    The project allowance is a stock counted from the rows that exist
+    (:func:`count_org_projects`), so deleting one frees a slot with no counter
+    to decrement.
+    """
+
+    tracked_project_id = project.project_id
+
+    audit_service.emit(
+        session,
+        action="project:delete",
+        context=context,
+        actor_type="user",
+        actor_id=project.user_id,
+        entity_type="seo_project",
+        entity_id=project.id,
+        before={
+            "name": project.name,
+            "domain": project.domain,
+            "domain_key": project.domain_key,
+        },
+        after=None,
+    )
+
+    session.delete(project)
+    if tracked_project_id is not None:
+        tracked = session.get(Project, tracked_project_id)
+        if tracked is not None:
+            session.delete(tracked)
+    session.commit()
 
 
 def queue_site_audit(

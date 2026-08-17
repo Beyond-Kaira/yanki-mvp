@@ -10,10 +10,10 @@ role model this milestone claims to enforce.
 
 Each route now names the permission it needs, like the Admin Panel's do. The
 mapping is the obvious one and follows the matrix rather than inventing grants:
-reading is ``project:read``, creating a project is ``project:create``, and
-starting a crawl is ``site_audit:run`` — which Analyst and above hold and Guest
-and Viewer do not, because a crawl spends real resources against a third-party
-site.
+reading is ``project:read``, creating a project is ``project:create``, deleting
+one is ``project:delete``, and starting a crawl is ``site_audit:run`` — which
+Analyst and above hold and Guest and Viewer do not, because a crawl spends real
+resources against a third-party site.
 
 On top of the permission check, the *crawl* is gated by a feature flag
 (``config.site_audit_enabled``). No deployed service drains the site-audit
@@ -38,7 +38,7 @@ Reads stay open throughout so existing projects and audits remain viewable.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.org_dependencies import requires
@@ -56,7 +56,7 @@ from app.db.models import SeoProject, SiteAudit
 from app.db.session import get_session
 from app.net_guard import is_public_url
 from app.services import billing, quota
-from app.services.permissions import AUDIT_RUN, PROJECT_CREATE, PROJECT_READ
+from app.services.permissions import AUDIT_RUN, PROJECT_CREATE, PROJECT_DELETE, PROJECT_READ
 from app.services.seo_projects import (
     DuplicateSeoProject,
     InvalidProjectDomain,
@@ -64,6 +64,7 @@ from app.services.seo_projects import (
     already_tracked,
     count_org_projects,
     create_project_with_audit,
+    delete_project,
     get_org_audit,
     get_org_project,
     list_org_projects,
@@ -236,6 +237,37 @@ def read_seo_project(
     if project is None:
         raise HTTPException(status_code=404, detail="SEO project not found")
     return _project_detail(project)
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_seo_project(
+    project_id: uuid.UUID,
+    org: OrgContext = Depends(requires(PROJECT_DELETE)),
+    session: Session = Depends(get_session),
+) -> Response:
+    """Stop tracking a domain and remove everything recorded against it.
+
+    ``project:delete`` — Manager and above, per the matrix. Editor and Analyst
+    can create a project and run a crawl but not destroy the history; that is
+    the same line the matrix draws for every other resource, and this route
+    does not redraw it.
+
+    Deliberately **not** behind ``require_site_audit_enabled``. The kill switch
+    exists to stop work being *queued* that nothing will drain — it must never
+    stop a customer removing a row. Gating this would trap every project
+    created while the flag was off, which is precisely the deployment state the
+    flag describes.
+
+    A cross-tenant id 404s exactly like a nonexistent one, so the response
+    cannot be used to probe another organization's projects.
+    """
+
+    project = get_org_project(session, org_id=org.require_org_id, project_id=project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="SEO project not found")
+
+    delete_project(session, project=project, context=org)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

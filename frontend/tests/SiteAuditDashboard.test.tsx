@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SeoProject } from '@/lib/contracts'
@@ -6,6 +6,7 @@ import type { SeoProject } from '@/lib/contracts'
 const mockedUseAuth = vi.hoisted(() => vi.fn())
 const mockedListSeoProjects = vi.hoisted(() => vi.fn())
 const mockedCreateSeoProject = vi.hoisted(() => vi.fn())
+const mockedDeleteSeoProject = vi.hoisted(() => vi.fn())
 
 vi.mock('@/components/AuthProvider', () => ({
   useAuth: mockedUseAuth,
@@ -24,6 +25,7 @@ vi.mock('@/lib/api', () => ({
     }
   },
   createSeoProject: mockedCreateSeoProject,
+  deleteSeoProject: mockedDeleteSeoProject,
   listSeoProjects: mockedListSeoProjects,
 }))
 
@@ -287,5 +289,92 @@ describe('SiteAuditDashboard', () => {
     expect(screen.getByText('2 errors')).toBeInTheDocument()
     expect(screen.getByText('7 warnings')).toBeInTheDocument()
     expect(screen.getByText('Complete')).toBeInTheDocument()
+  })
+
+  // Deleting takes the domain's whole crawl history with it, for the whole
+  // organization. These cover the part that makes that safe: it asks first, and
+  // a "no" — or a refusal from the server — leaves the row exactly where it was.
+  describe('deleting a project', () => {
+    it('asks before deleting, then removes the row', async () => {
+      const user = userEvent.setup()
+      mockedListSeoProjects.mockResolvedValue([PROJECT])
+      mockedDeleteSeoProject.mockResolvedValue(undefined)
+
+      render(<SiteAuditDashboard />)
+      await user.click(await screen.findByRole('button', { name: 'Delete Dream Games' }))
+
+      // Nothing is requested on the icon click alone — the dialog is the gate.
+      expect(mockedDeleteSeoProject).not.toHaveBeenCalled()
+      const dialog = screen.getByRole('dialog', { name: 'Delete Dream Games?' })
+      // The question names the domain and the loss, rather than "are you sure?".
+      expect(dialog).toHaveTextContent('https://www.dreamgames.com/')
+      expect(dialog).toHaveTextContent(/cannot be undone/i)
+
+      await user.click(
+        within(dialog).getByRole('button', { name: /^delete project$/i }),
+      )
+
+      expect(mockedDeleteSeoProject).toHaveBeenCalledWith(PROJECT.id)
+      await waitFor(() =>
+        expect(screen.queryByText('Dream Games')).not.toBeInTheDocument(),
+      )
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('opens with Cancel focused, so a stray Enter cannot delete', async () => {
+      const user = userEvent.setup()
+      mockedListSeoProjects.mockResolvedValue([PROJECT])
+
+      render(<SiteAuditDashboard />)
+      await user.click(await screen.findByRole('button', { name: 'Delete Dream Games' }))
+
+      expect(screen.getByRole('button', { name: /^cancel$/i })).toHaveFocus()
+    })
+
+    it('deletes nothing when the confirmation is dismissed', async () => {
+      const user = userEvent.setup()
+      mockedListSeoProjects.mockResolvedValue([PROJECT])
+
+      render(<SiteAuditDashboard />)
+      await user.click(await screen.findByRole('button', { name: 'Delete Dream Games' }))
+      await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+
+      expect(mockedDeleteSeoProject).not.toHaveBeenCalled()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(screen.getByText('Dream Games')).toBeInTheDocument()
+    })
+
+    it('closes on Escape without deleting', async () => {
+      const user = userEvent.setup()
+      mockedListSeoProjects.mockResolvedValue([PROJECT])
+
+      render(<SiteAuditDashboard />)
+      await user.click(await screen.findByRole('button', { name: 'Delete Dream Games' }))
+      await user.keyboard('{Escape}')
+
+      expect(mockedDeleteSeoProject).not.toHaveBeenCalled()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('keeps the dialog open and explains when the server refuses', async () => {
+      const user = userEvent.setup()
+      mockedListSeoProjects.mockResolvedValue([PROJECT])
+      mockedDeleteSeoProject.mockRejectedValue(
+        new ApiError('Your role cannot delete SEO projects.', 403),
+      )
+
+      render(<SiteAuditDashboard />)
+      await user.click(await screen.findByRole('button', { name: 'Delete Dream Games' }))
+      await user.click(screen.getByRole('button', { name: /^delete project$/i }))
+
+      // The refusal appears where the action was taken, not on a surface the
+      // user has already navigated away from.
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Your role cannot delete SEO projects.',
+      )
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      // A failed delete must not optimistically drop the row.
+      expect(screen.getByText('Dream Games')).toBeInTheDocument()
+    })
   })
 })

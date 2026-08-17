@@ -6966,6 +6966,62 @@
       }
     },
     "/api/v1/seo-projects/{project_id}": {
+      "delete": {
+        "description": "Stop tracking a domain and remove everything recorded against it.\n\n``project:delete`` \u2014 Manager and above, per the matrix. Editor and Analyst\ncan create a project and run a crawl but not destroy the history; that is\nthe same line the matrix draws for every other resource, and this route\ndoes not redraw it.\n\nDeliberately **not** behind ``require_site_audit_enabled``. The kill switch\nexists to stop work being *queued* that nothing will drain \u2014 it must never\nstop a customer removing a row. Gating this would trap every project\ncreated while the flag was off, which is precisely the deployment state the\nflag describes.\n\nA cross-tenant id 404s exactly like a nonexistent one, so the response\ncannot be used to probe another organization's projects.",
+        "operationId": "delete_seo_project_api_v1_seo_projects__project_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Seo Project",
+        "tags": [
+          "seo-projects"
+        ]
+      },
       "get": {
         "operationId": "read_seo_project_api_v1_seo_projects__project_id__get",
         "parameters": [

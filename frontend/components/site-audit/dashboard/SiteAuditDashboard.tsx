@@ -2,11 +2,17 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import SeoProjectList from './SeoProjectList'
 import SiteAuditProjectStart from './SiteAuditProjectStart'
 import SiteAuditSettingsDialog from './SiteAuditSettingsDialog'
 import type { SiteAuditSettings } from './SiteAuditSettingsDialog'
-import { ApiError, createSeoProject, listSeoProjects } from '@/lib/api'
+import {
+  ApiError,
+  createSeoProject,
+  deleteSeoProject,
+  listSeoProjects,
+} from '@/lib/api'
 import type { SeoProject } from '@/lib/contracts'
 
 type ProjectState =
@@ -31,6 +37,12 @@ export default function SiteAuditDashboard() {
   // the start CTA with a notice rather than imply a crawl is running. (We still
   // treat a 404 as the same signal for older deployments / the rerun route.)
   const [featureDisabled, setFeatureDisabled] = useState(false)
+  // The project the confirmation is currently asking about. Holding the whole
+  // row rather than an id keeps its name and domain available to the dialog
+  // after the list has moved on.
+  const [pendingDelete, setPendingDelete] = useState<SeoProject | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -136,8 +148,50 @@ export default function SiteAuditDashboard() {
     }
   }
 
+  const closeDeleteDialog = useCallback(() => {
+    if (deleting) return
+    setPendingDelete(null)
+    setDeleteError(null)
+  }, [deleting])
+
+  // Deleting a project is the one irreversible action on this screen, and it
+  // takes more than the row: every crawl recorded against the domain goes with
+  // it, for everyone in the organization. The dialog stays open until the
+  // request comes back, so a refusal has somewhere to appear.
+  async function runDelete() {
+    if (!pendingDelete) return
+
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteSeoProject(pendingDelete.id)
+      setProjectState((current) =>
+        current.kind === 'loaded'
+          ? {
+              kind: 'loaded',
+              projects: current.projects.filter(
+                (item) => item.id !== pendingDelete.id,
+              ),
+            }
+          : current,
+      )
+      setPendingDelete(null)
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error ? error.message : 'That project could not be deleted.',
+      )
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10 sm:px-8 sm:py-12">
+    // Wider than the 4xl this started at, and it matches the project detail
+    // page. The projects table gained an actions column and no longer fits in
+    // 4xl: it stayed horizontally scrollable, which put the delete button
+    // off-screen until you scrolled sideways to find it. The header keeps its
+    // own narrower measure so the prose does not stretch with the table.
+    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-8 sm:py-12">
       <header className="mb-7 max-w-3xl">
         <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-primary-strong">
           Technical SEO
@@ -161,6 +215,11 @@ export default function SiteAuditDashboard() {
           setCreateError(null)
           setPendingDomain(domain)
         }}
+        onDeleteProject={(project) => {
+          setDeleteError(null)
+          setPendingDelete(project)
+        }}
+        deletingId={deleting ? (pendingDelete?.id ?? null) : null}
       />
 
       {pendingDomain && !featureDisabled ? (
@@ -170,6 +229,32 @@ export default function SiteAuditDashboard() {
           submitError={createError}
           onClose={closeSettings}
           onStart={startAudit}
+        />
+      ) : null}
+
+      {pendingDelete ? (
+        <ConfirmDialog
+          title={`Delete ${pendingDelete.name}?`}
+          description={
+            <>
+              <p>
+                Every Site Audit recorded for{' '}
+                <span className="font-medium text-surface-foreground">
+                  {pendingDelete.domain}
+                </span>{' '}
+                — crawled pages, issues and health history — is deleted for
+                everyone in this organization.
+              </p>
+              <p>This cannot be undone.</p>
+            </>
+          }
+          confirmLabel="Delete project"
+          pendingLabel="Deleting"
+          tone="danger"
+          pending={deleting}
+          error={deleteError}
+          onConfirm={runDelete}
+          onCancel={closeDeleteDialog}
         />
       ) : null}
     </main>
@@ -183,6 +268,8 @@ function ProjectContent({
   showCreateForm,
   onShowCreateForm,
   onConfigure,
+  onDeleteProject,
+  deletingId,
 }: {
   state: ProjectState
   featureDisabled: boolean
@@ -190,6 +277,8 @@ function ProjectContent({
   showCreateForm: boolean
   onShowCreateForm: () => void
   onConfigure: (domain: string) => void
+  onDeleteProject: (project: SeoProject) => void
+  deletingId: string | null
 }) {
   if (state.kind === 'loading') {
     return (
@@ -241,7 +330,13 @@ function ProjectContent({
     return (
       <div className="space-y-6">
         <SiteAuditUnavailable />
-        <SeoProjectList projects={state.projects} />
+        {/* Only the enqueue CTA is withdrawn while the feature is dark. A
+            project created in this state must still be removable. */}
+        <SeoProjectList
+          projects={state.projects}
+          onDeleteProject={onDeleteProject}
+          deletingId={deletingId}
+        />
       </div>
     )
   }
@@ -260,7 +355,12 @@ function ProjectContent({
           ? 'A Site Audit is in progress. Project status updates automatically.'
           : ''}
       </p>
-      <SeoProjectList projects={state.projects} onCreateProject={onShowCreateForm} />
+      <SeoProjectList
+        projects={state.projects}
+        onCreateProject={onShowCreateForm}
+        onDeleteProject={onDeleteProject}
+        deletingId={deletingId}
+      />
     </div>
   )
 }

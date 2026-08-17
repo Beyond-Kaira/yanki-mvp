@@ -25,6 +25,7 @@ def create_analysis(
     ip_hash: str | None = None,
     *,
     org_id: uuid.UUID | None = None,
+    created_by_user_id: uuid.UUID | None = None,
     commit: bool = True,
 ) -> Analysis:
     """Insert a new queued analysis and return it.
@@ -36,12 +37,20 @@ def create_analysis(
     historical "public" scope — every row created before P7.6 has it, and
     ``tenancy.readable_analysis`` is the one place that means world-readable.
 
+    ``created_by_user_id`` records which authenticated user queued the run.
+    ``None`` on legacy rows written before the column existed.
+
     ``commit=False`` hands the transaction boundary back to the caller. The
     metered route needs that: the quota counter and the row it pays for have to
     land together, and a commit in here would leave a charged customer with a
     row that a later failure rolls back — or the reverse.
     """
-    analysis = Analysis(url=url, ip_hash=ip_hash, org_id=org_id)
+    analysis = Analysis(
+        url=url,
+        ip_hash=ip_hash,
+        org_id=org_id,
+        created_by_user_id=created_by_user_id,
+    )
     session.add(analysis)
     if commit:
         session.commit()

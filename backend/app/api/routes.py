@@ -136,7 +136,12 @@ def submit_analysis(
     org_id = org.require_org_id
     quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_ANALYSES, context=org)
     analysis = create_analysis(
-        session, str(payload.url), ip_hash=ip_hash, org_id=org_id, commit=False
+        session,
+        str(payload.url),
+        ip_hash=ip_hash,
+        org_id=org_id,
+        created_by_user_id=org.user_id,
+        commit=False,
     )
 
     audit.emit(

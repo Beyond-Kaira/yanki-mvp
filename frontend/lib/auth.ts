@@ -38,6 +38,16 @@ export interface Session {
   accessToken: string
 }
 
+// The provider token was valid, but its email already belongs to a password
+// account. The UI catches this distinct condition to ask for that password and
+// resubmit the same short-lived token; ordinary API errors remain ordinary.
+export class AccountLinkRequiredError extends ApiError {
+  constructor() {
+    super('Enter your current password to connect this sign-in method.', 428)
+    this.name = 'AccountLinkRequiredError'
+  }
+}
+
 const LOGIN_PATH = '/api/v1/auth/login'
 const OAUTH_PATH = '/api/v1/auth/oauth'
 const PROVIDERS_PATH = '/api/v1/auth/providers'
@@ -120,8 +130,11 @@ export async function signInWithProvider(
 ): Promise<Session> {
   const res = await postJson(OAUTH_PATH, credentials)
   if (!res.ok) {
+    if (res.status === 428) throw new AccountLinkRequiredError()
     const message =
-      res.status === 401
+      res.status === 401 && credentials.password
+        ? 'That password is incorrect.'
+        : res.status === 401
         ? 'That sign-in could not be verified. Try again.'
         : res.status === 503
           ? 'Sign-in is unavailable right now. Try again shortly.'

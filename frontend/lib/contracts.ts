@@ -178,7 +178,7 @@ export type OAuthProvider = Schemas['OAuthSignInRequest']['provider']
 // server-side, so a caller that has nothing to say about them may say nothing.
 type OAuthWire = Schemas['OAuthSignInRequest']
 export type OAuthCredentials = Pick<OAuthWire, 'provider' | 'id_token'> &
-  Partial<Pick<OAuthWire, 'account_type' | 'organization_name'>>
+  Partial<Pick<OAuthWire, 'account_type' | 'organization_name' | 'password'>>
 
 // Independent Site Audit projects. These aliases stay deliberately thin: the
 // backend OpenAPI schema is the source of truth for every field rendered by the

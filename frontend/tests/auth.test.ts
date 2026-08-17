@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
+  AccountLinkRequiredError,
   fetchCurrentUser,
   login,
   logout,
   requestPasswordReset,
+  signInWithProvider,
   signup,
 } from '@/lib/auth'
 import { ApiError } from '@/lib/api'
@@ -120,6 +122,35 @@ describe('signup', () => {
     await expect(
       signup({ email: 'ada@example.com', password: 'hunter2!pass' }),
     ).rejects.toThrow(/already exists/i)
+  })
+})
+
+describe('provider account linking', () => {
+  it('turns the password precondition into a distinct UI signal', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(428, {
+          detail: 'current password required to connect this sign-in method',
+        }),
+      ),
+    )
+
+    await expect(
+      signInWithProvider({ provider: 'google', id_token: 'google-token' }),
+    ).rejects.toBeInstanceOf(AccountLinkRequiredError)
+  })
+
+  it('explains a rejected linking password specifically', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(401, {})))
+
+    await expect(
+      signInWithProvider({
+        provider: 'google',
+        id_token: 'google-token',
+        password: 'wrong-password',
+      }),
+    ).rejects.toThrow(/password is incorrect/i)
   })
 })
 

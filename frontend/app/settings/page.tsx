@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import SessionsSection from '@/components/settings/SessionsSection'
+import PageContainer from '@/components/shell/PageContainer'
 import { useAuth } from '@/components/AuthProvider'
 
 const ROLE_LABELS: Record<string, string> = {
@@ -26,7 +27,7 @@ export default function SettingsPage() {
   const { user } = useAuth()
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer>
       <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
         Profile
       </h1>
@@ -107,6 +108,6 @@ export default function SettingsPage() {
           <SessionsSection />
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

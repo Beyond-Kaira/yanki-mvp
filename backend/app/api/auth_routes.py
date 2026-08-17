@@ -31,6 +31,9 @@ from app.db.models import AuthSession, Organization, User
 from app.db.session import get_session
 from app.services import audit
 from app.services.auth import (
+    AccountLinkPasswordError,
+    AccountLinkRequiredError,
+    IdentityAlreadyLinkedError,
     audit_context,
     authenticate_user,
     authenticate_with_identity,
@@ -188,7 +191,9 @@ def oauth_sign_in(
     ``/login``: the provider flow has a single button behind it, and which of the
     two happened is something only the server can know. Everything after the
     token is verified — the session family, the rotating refresh cookie, the
-    access token — is the machinery ``/login`` already uses, unchanged.
+    access token — is the machinery ``/login`` already uses, unchanged. When a
+    provider email meets an existing password account, the first request asks
+    the client for that password and a confirmed retry links both methods.
     """
 
     try:
@@ -213,7 +218,23 @@ def oauth_sign_in(
             identity,
             account_type=payload.account_type,
             organization_name=payload.organization_name,
+            linking_password=payload.password,
         )
+    except AccountLinkRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="current password required to connect this sign-in method",
+        ) from exc
+    except AccountLinkPasswordError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid account password",
+        ) from exc
+    except IdentityAlreadyLinkedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="account is already connected to another sign-in method",
+        ) from exc
     except IntegrityError as exc:
         # The race where two sign-ins register the same identity at once, the
         # same one ``/signup`` guards against on the email.

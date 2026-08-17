@@ -185,14 +185,21 @@ def test_second_sign_in_reuses_the_same_account(
     assert db_session.scalar(select(func.count()).select_from(User)) == 1
 
 
-def test_sign_in_links_an_existing_password_account_by_email(
+def test_sign_in_requires_password_before_linking_an_existing_account(
     client: TestClient,
     db_session: Session,
     id_token: Any,
 ) -> None:
     existing = create_user(db_session, email="ali@example.com", password="hunter2hunter2")
 
-    response = _sign_in(client, id_token())
+    confirmation = _sign_in(client, id_token())
+
+    assert confirmation.status_code == 428
+    db_session.refresh(existing)
+    assert existing.auth_subject is None
+    assert existing.password_hash is not None
+
+    response = _sign_in(client, id_token(), password="hunter2hunter2")
 
     assert response.status_code == 200
     assert response.json()["user"]["id"] == str(existing.id)
@@ -201,9 +208,31 @@ def test_sign_in_links_an_existing_password_account_by_email(
     assert linked is not None
     assert linked.auth_subject == "104829371829301827364"
     assert db_session.scalar(select(func.count()).select_from(User)) == 1
-    # Signup never verified that address, so whoever set that password may not
-    # be the person the provider just vouched for. The password goes.
-    assert linked.password_hash is None
+    # Linking adds a second way in; it must not remove the method the user just
+    # proved they control.
+    assert linked.password_hash is not None
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "ali@example.com", "password": "hunter2hunter2"},
+        ).status_code
+        == 200
+    )
+
+
+def test_wrong_password_cannot_link_a_provider_identity(
+    client: TestClient,
+    db_session: Session,
+    id_token: Any,
+) -> None:
+    existing = create_user(db_session, email="ali@example.com", password="hunter2hunter2")
+
+    response = _sign_in(client, id_token(), password="wrong-password")
+
+    assert response.status_code == 401
+    db_session.refresh(existing)
+    assert existing.auth_subject is None
+    assert existing.password_hash is not None
 
 
 def test_sign_in_follows_an_email_change_at_the_provider(
@@ -393,14 +422,21 @@ def test_a_google_token_replayed_as_an_apple_one_is_rejected(
     assert _apple_sign_in(client, apple_token(iss=GOOGLE_ISSUER)).status_code == 401
 
 
-def test_apple_links_an_existing_password_account_and_retires_the_password(
+def test_apple_links_an_existing_password_account_after_confirmation(
     client: TestClient,
     db_session: Session,
     apple_token: Any,
 ) -> None:
     existing = create_user(db_session, email="ali@example.com", password="hunter2hunter2")
 
-    response = _apple_sign_in(client, apple_token(email="ali@example.com"))
+    confirmation = _apple_sign_in(client, apple_token(email="ali@example.com"))
+    assert confirmation.status_code == 428
+
+    response = _apple_sign_in(
+        client,
+        apple_token(email="ali@example.com"),
+        password="hunter2hunter2",
+    )
 
     assert response.status_code == 200
     assert response.json()["user"]["id"] == str(existing.id)
@@ -408,39 +444,34 @@ def test_apple_links_an_existing_password_account_and_retires_the_password(
     linked = db_session.get(User, existing.id)
     assert linked is not None
     assert linked.auth_provider == "apple"
-    assert linked.password_hash is None
+    assert linked.password_hash is not None
 
 
-def test_linking_signs_out_whoever_held_the_password(
+def test_linking_keeps_existing_password_sessions_active(
     client: TestClient,
     db_session: Session,
     id_token: Any,
 ) -> None:
-    """The pre-hijacking case, end to end.
-
-    Somebody registers an address that is not theirs — signup never verified it
-    — and is signed in when the real owner arrives with a provider token. The
-    link must take the account back: the squatter's password stops working and
-    the session they are holding stops refreshing.
-    """
+    """A confirmed link adds a method without silently logging out devices."""
 
     create_user(db_session, email="ali@example.com", password="hunter2hunter2")
-    squatter = TestClient(app)
-    squatter_login = squatter.post(
+    password_client = TestClient(app)
+    password_login = password_client.post(
         "/api/v1/auth/login",
         json={"email": "ali@example.com", "password": "hunter2hunter2"},
     )
-    assert squatter_login.status_code == 200
+    assert password_login.status_code == 200
 
-    _sign_in(client, id_token())
+    linked = _sign_in(client, id_token(), password="hunter2hunter2")
 
-    assert squatter.post("/api/v1/auth/refresh").status_code == 401
+    assert linked.status_code == 200
+    assert password_client.post("/api/v1/auth/refresh").status_code == 200
     assert (
-        squatter.post(
+        password_client.post(
             "/api/v1/auth/login",
             json={"email": "ali@example.com", "password": "hunter2hunter2"},
         ).status_code
-        == 401
+        == 200
     )
 
 
@@ -490,16 +521,12 @@ def test_a_second_provider_does_not_split_the_account(
     apple_token: Any,
     id_token: Any,
 ) -> None:
-    """Signed up with Apple, later presses the Google button on the same address.
-
-    One person, one account. The first provider identity stays recorded — this
-    build stores one per user — and the second signs in on the verified email.
-    """
+    """Email equality cannot authenticate an account linked to another provider."""
 
     _apple_sign_in(client, apple_token(email="ali@example.com"))
     google = _sign_in(client, id_token())
 
-    assert google.status_code == 200
+    assert google.status_code == 409
     assert db_session.scalar(select(func.count()).select_from(User)) == 1
     user = db_session.scalar(select(User))
     assert user is not None

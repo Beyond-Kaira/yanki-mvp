@@ -2350,6 +2350,8 @@ export interface components {
             id_token: string;
             /** Organization Name */
             organization_name?: string | null;
+            /** Password */
+            password?: string | null;
             /**
              * Provider
              * @enum {string}

@@ -2863,6 +2863,19 @@
             ],
             "title": "Organization Name"
           },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
           "provider": {
             "enum": [
               "google",

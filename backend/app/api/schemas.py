@@ -136,6 +136,10 @@ class OAuthSignInRequest(BaseModel):
 
     provider: Literal["google", "apple"]
     id_token: str = Field(min_length=1, max_length=8192)
+    # Supplied only when the provider email already belongs to a password
+    # account. Requiring that password before linking prevents an identity
+    # token from silently replacing an existing sign-in method.
+    password: str | None = Field(default=None, min_length=1, max_length=128)
     account_type: Literal["individual", "organization"] = "individual"
     organization_name: str | None = Field(default=None, max_length=120)
 

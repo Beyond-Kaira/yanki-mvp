@@ -17,6 +17,18 @@ _password_hash = PasswordHash.recommended()
 _DUMMY_HASH = _password_hash.hash("dummy-password-for-timing-equalization")
 
 
+class AccountLinkRequiredError(Exception):
+    """A provider identity matched a password account that must be confirmed."""
+
+
+class AccountLinkPasswordError(Exception):
+    """The password supplied to confirm an account link was not valid."""
+
+
+class IdentityAlreadyLinkedError(Exception):
+    """An email belongs to an account linked to a different identity."""
+
+
 def normalize_email(email: str) -> str:
     """Normalize an email before storing or querying it."""
 
@@ -158,14 +170,15 @@ def authenticate_with_identity(
     *,
     account_type: str = "individual",
     organization_name: str | None = None,
+    linking_password: str | None = None,
 ) -> User | None:
     """Sign in — or register — the user a verified provider identity names.
 
     Looked up by subject first and by email second. The subject is the provider's
-    permanent id, so a user who changed their address at Google is still found;
-    the email lookup is what attaches a provider sign-in to the account somebody
-    already created with a password, instead of failing on the unique email or
-    stranding them beside their own data.
+    permanent id, so a user who changed their address at Google is still found.
+    An email lookup can discover a password account, but never authenticates it
+    by itself: the existing password must also be supplied before the provider
+    identity is attached.
 
     A registration needs an email and a sign-in does not, which is why the
     subject lookup comes first and the email is only consulted after it misses.
@@ -180,7 +193,8 @@ def authenticate_with_identity(
     """
 
     user = get_user_by_subject(session, provider=identity.provider, subject=identity.subject)
-    if user is None and identity.email is not None:
+    matched_by_subject = user is not None
+    if not matched_by_subject and identity.email is not None:
         user = get_user_by_email(session, identity.email)
 
     if user is None:
@@ -215,11 +229,49 @@ def authenticate_with_identity(
         session.commit()
         return None
 
-    linked_password: bool = False
-    if user.auth_subject is None:
+    linked_identity = False
+    if not matched_by_subject:
+        # Email equality alone must never authenticate an account that already
+        # belongs to another provider identity. A Google token for the same
+        # address as an Apple account is not proof of control of that Apple
+        # identity (and this schema currently stores one provider per user).
+        if user.auth_subject is not None:
+            raise IdentityAlreadyLinkedError
+
+        if user.password_hash is None:
+            raise IdentityAlreadyLinkedError
+
+        # Password signups do not verify ownership of their email. Requiring
+        # the existing password prevents both silent credential replacement
+        # and the classic pre-hijacking case, while allowing the honest owner
+        # to keep password login after the provider is connected.
+        if linking_password is None:
+            raise AccountLinkRequiredError
+
+        valid, updated_hash = verify_and_update_password(
+            linking_password,
+            user.password_hash,
+        )
+        if not valid:
+            audit.emit(
+                session,
+                action="auth:link",
+                context=audit_context(session, user),
+                actor_type="anonymous",
+                actor_label=user.email,
+                entity_type="user",
+                entity_id=user.id,
+                outcome="denied",
+                detail={"reason": "invalid_password", "auth_provider": identity.provider},
+            )
+            session.commit()
+            raise AccountLinkPasswordError
+
+        if updated_hash is not None:
+            user.password_hash = updated_hash
         user.auth_provider = identity.provider
         user.auth_subject = identity.subject
-        linked_password = _retire_password_on_link(session, user)
+        linked_identity = True
 
     # Follow an address change at the provider, unless the new address already
     # belongs to somebody else here — the unique email would reject the write,
@@ -242,49 +294,11 @@ def authenticate_with_identity(
         actor_label=user.email,
         entity_type="user",
         entity_id=user.id,
-        detail={"auth_provider": identity.provider, "retired_password": linked_password},
+        detail={"auth_provider": identity.provider, "linked_identity": linked_identity},
     )
     session.commit()
 
     return user
-
-
-def _retire_password_on_link(session: Session, user: User) -> bool:
-    """Close the password door the first time a provider is linked to an account.
-
-    Signup does not verify the address it is given, so anybody can register an
-    address that is not theirs and wait. If the real owner later signs in with
-    the provider, the two meet on the same email and the squatter is sitting
-    inside the account with a working password — the pre-hijacking attack, and
-    the one real risk of linking on a verified email.
-
-    Retiring the password closes it: after the link, the account is reachable
-    only through the identity the provider actually verified. The live sessions
-    go with it, because a password the squatter can no longer use is no comfort
-    while the session they opened with it is still valid.
-
-    The cost is real and falls on the honest user too — they signed up with a
-    password, pressed the provider button once, and now that password is gone
-    with no reset flow to bring it back. They keep the provider, which is the
-    door they just chose. A password reset flow is what makes this free, and
-    until it exists this is the safe side to err on.
-
-    Returns whether a password was actually retired, so the audit trail can say
-    so. Does not commit — the caller's commit covers this and the event together.
-    """
-
-    if user.password_hash is None:
-        return False
-
-    # Imported here because `auth_sessions` imports this module: the cycle is
-    # real, and one function-local import is a smaller price than splitting a
-    # service in two to satisfy it.
-    from app.services.auth_sessions import revoke_other_sessions_for_user
-
-    user.password_hash = None
-    revoke_other_sessions_for_user(session, user_id=user.id, keep_family_id=None)
-
-    return True
 
 
 def authenticate_user(

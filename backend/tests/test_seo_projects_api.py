@@ -122,10 +122,15 @@ def _create_project(
 def test_projects_require_authentication(client: TestClient) -> None:
     list_response = client.get(PROJECTS_URL)
     create_response = client.post(PROJECTS_URL, json={"domain": "example.test"})
+    # Delete is the destructive one, so its bearer requirement is stated here
+    # rather than left implied by the shared dependency.
+    delete_response = client.delete(f"{PROJECTS_URL}/{uuid.uuid4()}")
 
     assert list_response.status_code == 401
     assert create_response.status_code == 401
+    assert delete_response.status_code == 401
     assert list_response.headers["www-authenticate"] == "Bearer"
+    assert delete_response.headers["www-authenticate"] == "Bearer"
 
 
 def test_create_project_normalizes_domain_and_queues_first_audit(

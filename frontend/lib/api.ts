@@ -504,6 +504,34 @@ export async function getSeoProject(
   return (await res.json()) as SeoProjectDetail
 }
 
+export async function deleteSeoProject(projectId: string): Promise<void> {
+  let res: Response
+  try {
+    res = await authorizedFetch(`/api/v1/seo-projects/${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+    })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to manage your Site Audit projects.'
+        : res.status === 403
+          ? // project:delete is Manager and above. Naming the reason beats a
+            // bare "Forbidden" for someone who can plainly create projects.
+            'Your role cannot delete SEO projects. Ask an organization manager or owner.'
+          : res.status === 404 || res.status === 422
+            ? "We couldn't find that SEO project."
+            : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+}
+
 export async function getSiteAudit(
   projectId: string,
   auditId: string,

@@ -166,6 +166,20 @@ export type SignupCredentials = Pick<SignupWire, 'email' | 'password'> &
 
 export type LoginResponse = Schemas['LoginResponse']
 
+// Which provider sign-ins this deployment can complete, and the client id each
+// one needs. Served rather than built in, so a provider configured after the
+// build still appears — and one that is not configured stays absent instead of
+// offering a button that cannot work.
+export type AuthProviders = Schemas['AuthProvidersOut']
+
+export type OAuthProvider = Schemas['OAuthSignInRequest']['provider']
+
+// Same correction as SignupCredentials above: the account fields carry defaults
+// server-side, so a caller that has nothing to say about them may say nothing.
+type OAuthWire = Schemas['OAuthSignInRequest']
+export type OAuthCredentials = Pick<OAuthWire, 'provider' | 'id_token'> &
+  Partial<Pick<OAuthWire, 'account_type' | 'organization_name' | 'password'>>
+
 // Independent Site Audit projects. These aliases stay deliberately thin: the
 // backend OpenAPI schema is the source of truth for every field rendered by the
 // project dashboard.

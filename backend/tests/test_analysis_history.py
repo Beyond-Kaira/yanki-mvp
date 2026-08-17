@@ -51,12 +51,20 @@ def unmetered():
 
 
 def _seed(
-    session: Session, *, org_id: uuid.UUID | None, count: int = 1, **kwargs
+    session: Session,
+    *,
+    org_id: uuid.UUID | None,
+    created_by_user_id: uuid.UUID | None = None,
+    count: int = 1,
+    **kwargs,
 ) -> list[Analysis]:
     rows = []
     for index in range(count):
         row = Analysis(
-            url=f"https://example.com/{uuid.uuid4().hex[:8]}/{index}", org_id=org_id, **kwargs
+            url=f"https://example.com/{uuid.uuid4().hex[:8]}/{index}",
+            org_id=org_id,
+            created_by_user_id=created_by_user_id,
+            **kwargs,
         )
         session.add(row)
         rows.append(row)
@@ -70,8 +78,8 @@ def _seed(
 
 
 def test_the_history_lists_this_organizations_runs(client, db_session, signed_in) -> None:
-    _user, org = signed_in()
-    _seed(db_session, org_id=org.id, count=3)
+    user, org = signed_in()
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=3)
 
     response = client.get(ANALYSES_URL)
 
@@ -85,9 +93,9 @@ def test_another_tenants_runs_are_absent(client, db_session, signed_in) -> None:
     """The leakage case. Not a 403 or an error — simply not there, which is what
     org scoping means when it works."""
 
-    _user, org = signed_in()
-    _seed(db_session, org_id=org.id, count=2)
-    _seed(db_session, org_id=uuid.uuid4(), count=5)
+    user, org = signed_in()
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=2)
+    _seed(db_session, org_id=uuid.uuid4(), created_by_user_id=uuid.uuid4(), count=5)
 
     body = client.get(ANALYSES_URL).json()
 
@@ -145,9 +153,9 @@ def test_runs_from_before_the_tenancy_change_belong_to_nobody(
     organization's history, because inventing an owner for them would be a worse
     answer than omitting them."""
 
-    _user, org = signed_in()
+    user, org = signed_in()
     _seed(db_session, org_id=None, count=4)
-    _seed(db_session, org_id=org.id, count=1)
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=1)
 
     body = client.get(ANALYSES_URL).json()
 
@@ -162,12 +170,12 @@ def test_a_checker_run_never_appears_in_an_organizations_history(
     `LISTABLE_KINDS`. If the anonymous funnel ever gained an organization, the
     second reason would still hold."""
 
-    _user, org = signed_in()
+    user, org = signed_in()
     db_session.add(
         Analysis(url="checker://acme/widgets", kind="checker", brand="acme", org_id=org.id)
     )
     db_session.commit()
-    _seed(db_session, org_id=org.id, count=1)
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=1)
 
     body = client.get(ANALYSES_URL).json()
 
@@ -180,9 +188,9 @@ def test_status_narrows_the_list_and_the_total_together(client, db_session, sign
     what a reader assumes. A total taken from the unfiltered table is the bug
     that makes a paginator offer pages that are always empty."""
 
-    _user, org = signed_in()
-    _seed(db_session, org_id=org.id, count=2, status="done")
-    _seed(db_session, org_id=org.id, count=3, status="failed")
+    user, org = signed_in()
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=2, status="done")
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=3, status="failed")
 
     body = client.get(ANALYSES_URL, params={"status": "done"}).json()
 
@@ -201,8 +209,8 @@ def test_paging_never_repeats_or_skips_a_run(client, db_session, signed_in) -> N
     sort without a tiebreaker lets page 2 repeat a row from page 1 and drop
     another — and a customer hunting for a missing run would never find it."""
 
-    _user, org = signed_in()
-    _seed(db_session, org_id=org.id, count=7)
+    user, org = signed_in()
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=7)
 
     first = client.get(ANALYSES_URL, params={"limit": 3, "offset": 0}).json()
     second = client.get(ANALYSES_URL, params={"limit": 3, "offset": 3}).json()
@@ -226,8 +234,8 @@ def test_the_page_size_is_bounded(client, db_session, signed_in) -> None:
 
 
 def test_newest_first(client, db_session, signed_in) -> None:
-    _user, org = signed_in()
-    _seed(db_session, org_id=org.id, count=5)
+    user, org = signed_in()
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=5)
 
     body = client.get(ANALYSES_URL).json()
     timestamps = [row["created_at"] for row in body["analyses"]]
@@ -245,8 +253,8 @@ def test_an_unfinished_run_reports_a_null_score_not_a_zero(client, db_session, s
     facts, and the second is far worse news. The API must not conflate them —
     the UI renders null as an em dash and can only do that if null arrives."""
 
-    _user, org = signed_in()
-    _seed(db_session, org_id=org.id, count=1, status="queued")
+    user, org = signed_in()
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=1, status="queued")
 
     row = client.get(ANALYSES_URL).json()["analyses"][0]
 
@@ -259,8 +267,8 @@ def test_a_summary_row_carries_no_result_envelope(client, db_session, signed_in)
     for every row would make a twenty-row page thousands of records deep, to
     render a table of URLs and scores. The detail route is one click away."""
 
-    _user, org = signed_in()
-    _seed(db_session, org_id=org.id, count=1, status="done", geo_score=61.5)
+    user, org = signed_in()
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=1, status="done", geo_score=61.5)
 
     row = client.get(ANALYSES_URL).json()["analyses"][0]
 
@@ -274,4 +282,63 @@ def test_an_empty_history_is_an_empty_page_not_an_error(client, signed_in) -> No
 
     body = client.get(ANALYSES_URL).json()
 
-    assert body == {"total": 0, "limit": 20, "offset": 0, "analyses": []}
+    assert body == {
+        "total": 0,
+        "limit": 20,
+        "offset": 0,
+        "analyses": [],
+        "user_analyses_used": 0,
+        "user_analyses_limit": 5,
+    }
+
+
+def test_a_teammates_run_is_absent_from_my_history(client, db_session, signed_in) -> None:
+    """User scoping within one organization. Org membership alone does not share
+    analysis history — each person sees only what they queued."""
+
+    from app.db.models import Membership, User
+    from app.services.auth import hash_password
+
+    owner, org = signed_in(email="owner@example.test")
+    teammate = User(email="teammate@example.test", password_hash=hash_password("correct-horse"))
+    db_session.add(teammate)
+    db_session.flush()
+    db_session.add(
+        Membership(org_id=org.id, user_id=teammate.id, role="viewer", status="active")
+    )
+    _seed(db_session, org_id=org.id, created_by_user_id=teammate.id, count=2)
+    _seed(db_session, org_id=org.id, created_by_user_id=owner.id, count=1)
+
+    body = client.get(ANALYSES_URL).json()
+
+    assert body["total"] == 1
+    assert len(body["analyses"]) == 1
+
+
+def test_a_teammates_run_returns_404_on_detail(client, db_session, signed_in) -> None:
+    from app.db.models import Membership, User
+    from app.services.auth import hash_password
+
+    owner, org = signed_in(email="owner@example.test")
+    teammate = User(email="teammate@example.test", password_hash=hash_password("correct-horse"))
+    db_session.add(teammate)
+    db_session.flush()
+    db_session.add(
+        Membership(org_id=org.id, user_id=teammate.id, role="viewer", status="active")
+    )
+    rows = _seed(db_session, org_id=org.id, created_by_user_id=teammate.id, count=1, status="done")
+    theirs = rows[0].id
+
+    assert client.get(f"/api/v1/analyses/{theirs}").status_code == 404
+
+
+def test_legacy_org_rows_without_a_creator_stay_out_of_history(
+    client, db_session, signed_in
+) -> None:
+    user, org = signed_in()
+    _seed(db_session, org_id=org.id, created_by_user_id=None, count=3, status="done")
+    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=1)
+
+    body = client.get(ANALYSES_URL).json()
+
+    assert body["total"] == 1

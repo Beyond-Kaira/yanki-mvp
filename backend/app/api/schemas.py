@@ -548,12 +548,14 @@ class AnalysisSummaryOut(BaseModel):
 
 
 class AnalysisListOut(BaseModel):
-    """A page of the caller's organization's analyses, newest first."""
+    """A page of the caller's own analyses, newest first."""
 
     total: int
     limit: int
     offset: int
     analyses: list[AnalysisSummaryOut]
+    user_analyses_used: int
+    user_analyses_limit: int
 
 
 class AdminMemberOut(BaseModel):

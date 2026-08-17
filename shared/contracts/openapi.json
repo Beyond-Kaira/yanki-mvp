@@ -2804,6 +2804,52 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "OAuthSignInRequest": {
+        "description": "A provider identity token, plus what to call the org if this is a signup.\n\nOne request for both sign-up and sign-in, because the provider flow does not\ndistinguish them: the user presses one button and the server discovers\nwhether the account already exists. ``account_type`` and\n``organization_name`` are therefore only consulted when an account is\nactually created, and ignored for a returning user.",
+        "properties": {
+          "account_type": {
+            "default": "individual",
+            "enum": [
+              "individual",
+              "organization"
+            ],
+            "title": "Account Type",
+            "type": "string"
+          },
+          "id_token": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "title": "Id Token",
+            "type": "string"
+          },
+          "organization_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Name"
+          },
+          "provider": {
+            "enum": [
+              "google",
+              "apple"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "id_token"
+        ],
+        "title": "OAuthSignInRequest",
+        "type": "object"
+      },
       "OpportunitiesOut": {
         "properties": {
           "link_gap": {
@@ -6349,6 +6395,48 @@
           }
         ],
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth": {
+      "post": {
+        "description": "Sign in with a Google or Apple identity token, registering on first use.\n\nDeliberately one endpoint rather than an OAuth twin of ``/signup`` and\n``/login``: the provider flow has a single button behind it, and which of the\ntwo happened is something only the server can know. Everything after the\ntoken is verified \u2014 the session family, the rotating refresh cookie, the\naccess token \u2014 is the machinery ``/login`` already uses, unchanged.",
+        "operationId": "oauth_sign_in_api_v1_auth_oauth_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthSignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oauth Sign In",
         "tags": [
           "auth"
         ]

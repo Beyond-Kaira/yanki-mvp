@@ -534,6 +534,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/oauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Oauth Sign In
+         * @description Sign in with a Google or Apple identity token, registering on first use.
+         *
+         *     Deliberately one endpoint rather than an OAuth twin of ``/signup`` and
+         *     ``/login``: the provider flow has a single button behind it, and which of the
+         *     two happened is something only the server can know. Everything after the
+         *     token is verified — the session family, the rotating refresh cookie, the
+         *     access token — is the machinery ``/login`` already uses, unchanged.
+         */
+        post: operations["oauth_sign_in_api_v1_auth_oauth_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -2261,6 +2287,33 @@ export interface components {
             token_type: "bearer";
             user: components["schemas"]["UserOut"];
         };
+        /**
+         * OAuthSignInRequest
+         * @description A provider identity token, plus what to call the org if this is a signup.
+         *
+         *     One request for both sign-up and sign-in, because the provider flow does not
+         *     distinguish them: the user presses one button and the server discovers
+         *     whether the account already exists. ``account_type`` and
+         *     ``organization_name`` are therefore only consulted when an account is
+         *     actually created, and ignored for a returning user.
+         */
+        OAuthSignInRequest: {
+            /**
+             * Account Type
+             * @default individual
+             * @enum {string}
+             */
+            account_type: "individual" | "organization";
+            /** Id Token */
+            id_token: string;
+            /** Organization Name */
+            organization_name?: string | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "google" | "apple";
+        };
         /** OpportunitiesOut */
         OpportunitiesOut: {
             /** Link Gap */
@@ -3718,6 +3771,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_sign_in_api_v1_auth_oauth_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
                 };
             };
             /** @description Validation Error */

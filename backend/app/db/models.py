@@ -408,10 +408,18 @@ class User(Base):
         nullable=False,
         unique=True,
     )
-    password_hash: Mapped[str] = mapped_column(
+    # Absent for an account created through Google or Apple: there is no
+    # password to hash, and storing an unusable placeholder would make
+    # "can this account sign in with a password?" unanswerable.
+    password_hash: Mapped[str | None] = mapped_column(
         sa.Text,
-        nullable=False,
+        nullable=True,
     )
+    # The identity provider and its immutable id for this account. Kept because
+    # an email can change at the provider while the subject cannot, so the
+    # subject is what keeps the returning user attached to their own data.
+    auth_provider: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    auth_subject: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     # 'active' | 'disabled'. An administrator disabling an account must stop it
     # logging in, which is a different thing from deleting it: the history, the
     # audit trail and the org membership all survive, and re-enabling restores
@@ -426,6 +434,9 @@ class User(Base):
         sa.DateTime(timezone=True),
         nullable=False,
         default=_utcnow,
+    )
+    __table_args__ = (
+        sa.UniqueConstraint("auth_provider", "auth_subject", name="uq_users_auth_provider_subject"),
     )
 
 

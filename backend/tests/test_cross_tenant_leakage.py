@@ -60,6 +60,9 @@ PUBLIC = {
     ("GET", "/healthz"),  # the deploy gate polls it; detail is withheld publicly
     ("POST", "/api/v1/auth/signup"),
     ("POST", "/api/v1/auth/login"),
+    # The provider's signed id_token IS the credential, and it is verified
+    # against the provider's own keys before anything is read or written.
+    ("POST", "/api/v1/auth/oauth"),
     ("POST", "/api/v1/auth/logout"),  # idempotent; discloses nothing about a token
     ("POST", "/api/v1/auth/refresh"),  # the cookie is the credential
     ("POST", "/api/v1/checker"),  # the anonymous funnel, capped not metered
@@ -190,7 +193,7 @@ def test_the_public_surface_has_not_grown() -> None:
     and should require editing a number that says so, not just appending a line
     to a set that nobody re-reads."""
 
-    assert len(PUBLIC) == 10
+    assert len(PUBLIC) == 11
 
 
 # ---------------------------------------------------------------------------

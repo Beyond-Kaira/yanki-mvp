@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Membership, User
 from app.services import audit
+from app.services.oauth import OAuthIdentity
 from app.services.tenancy import OrgContext, provision_org
 
 _password_hash = PasswordHash.recommended()
@@ -80,9 +81,11 @@ def create_user(
     session: Session,
     *,
     email: str,
-    password: str,
+    password: str | None = None,
     account_type: str = "individual",
     organization_name: str | None = None,
+    auth_provider: str | None = None,
+    auth_subject: str | None = None,
 ) -> User:
     """Create and persist a user, with the personal organization that holds
     their data.
@@ -97,7 +100,12 @@ def create_user(
 
     user = User(
         email=normalize_email(email),
-        password_hash=hash_password(password),
+        # No password for an account that signs in through a provider. The
+        # column is nullable rather than filled with an unusable placeholder so
+        # that "this account has no password" stays a fact the code can read.
+        password_hash=hash_password(password) if password is not None else None,
+        auth_provider=auth_provider,
+        auth_subject=auth_subject,
     )
 
     session.add(user)
@@ -127,10 +135,97 @@ def create_user(
             "org_id": str(org.id),
             "org_slug": org.slug,
             "org_kind": org.kind,
+            "auth_provider": auth_provider or "password",
         },
     )
     session.commit()
     session.refresh(user)
+
+    return user
+
+
+def get_user_by_subject(session: Session, *, provider: str, subject: str) -> User | None:
+    """Return the user holding this provider identity, if one exists."""
+
+    return session.scalar(
+        select(User).where(User.auth_provider == provider, User.auth_subject == subject)
+    )
+
+
+def authenticate_with_identity(
+    session: Session,
+    identity: OAuthIdentity,
+    *,
+    account_type: str = "individual",
+    organization_name: str | None = None,
+) -> User | None:
+    """Sign in — or register — the user a verified provider identity names.
+
+    Looked up by subject first and by email second. The subject is the provider's
+    permanent id, so a user who changed their address at Google is still found;
+    the email lookup is what attaches a provider sign-in to the account somebody
+    already created with a password, instead of failing on the unique email or
+    stranding them beside their own data.
+
+    Returns ``None`` for a disabled account, matching ``authenticate_user`` — an
+    administrator's disable switch has to hold on every door, not just the one
+    with a password behind it.
+    """
+
+    user = get_user_by_subject(
+        session, provider=identity.provider, subject=identity.subject
+    ) or get_user_by_email(session, identity.email)
+
+    if user is None:
+        return create_user(
+            session,
+            email=identity.email,
+            account_type=account_type,
+            organization_name=organization_name,
+            auth_provider=identity.provider,
+            auth_subject=identity.subject,
+        )
+
+    if user.status != "active":
+        audit.emit(
+            session,
+            action="auth:login",
+            context=audit_context(session, user),
+            actor_type="user",
+            actor_id=user.id,
+            actor_label=user.email,
+            entity_type="user",
+            entity_id=user.id,
+            outcome="denied",
+            detail={"reason": "account_disabled", "auth_provider": identity.provider},
+        )
+        session.commit()
+        return None
+
+    if user.auth_subject is None:
+        user.auth_provider = identity.provider
+        user.auth_subject = identity.subject
+
+    # Follow an address change at the provider, unless the new address already
+    # belongs to somebody else here — the unique email would reject the write,
+    # and a stale address is a far smaller problem than a failed sign-in.
+    if user.email != identity.email and get_user_by_email(session, identity.email) is None:
+        user.email = identity.email
+
+    user.last_active_at = datetime.now(UTC)
+
+    audit.emit(
+        session,
+        action="auth:login",
+        context=audit_context(session, user),
+        actor_type="user",
+        actor_id=user.id,
+        actor_label=user.email,
+        entity_type="user",
+        entity_id=user.id,
+        detail={"auth_provider": identity.provider},
+    )
+    session.commit()
 
     return user
 
@@ -145,10 +240,13 @@ def authenticate_user(
 
     user = get_user_by_email(session, email)
 
-    password_hash = user.password_hash if user is not None else _DUMMY_HASH
+    # A provider account has no password hash, and it is compared against the
+    # dummy for the same reason an unknown address is: so that "no password set"
+    # costs the same time as "wrong password" and cannot be told apart from it.
+    password_hash = user.password_hash if user is not None and user.password_hash else _DUMMY_HASH
     valid, updated_hash = verify_and_update_password(password, password_hash)
 
-    if user is None or not valid:
+    if user is None or user.password_hash is None or not valid:
         # A failed login is the event most worth having. Recorded with the
         # attempted address, never the attempted password.
         audit.emit(

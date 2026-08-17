@@ -7,6 +7,7 @@ import { axeCheck } from './a11y'
 const mockedUseAuth = vi.hoisted(() => vi.fn())
 const mockedListSeoProjects = vi.hoisted(() => vi.fn())
 const mockedCreateSeoProject = vi.hoisted(() => vi.fn())
+const mockedDeleteSeoProject = vi.hoisted(() => vi.fn())
 
 vi.mock('@/components/AuthProvider', () => ({
   useAuth: mockedUseAuth,
@@ -14,6 +15,7 @@ vi.mock('@/components/AuthProvider', () => ({
 
 vi.mock('@/lib/api', () => ({
   createSeoProject: mockedCreateSeoProject,
+  deleteSeoProject: mockedDeleteSeoProject,
   listSeoProjects: mockedListSeoProjects,
 }))
 
@@ -64,6 +66,20 @@ describe('SiteAuditDashboard accessibility', () => {
     const { container } = render(<SiteAuditDashboard />)
 
     await screen.findByText('Dream Games')
+    expect(await axeCheck(container)).toHaveNoViolations()
+  })
+
+  it('has no axe violations in the delete confirmation', async () => {
+    const user = userEvent.setup()
+    mockedListSeoProjects.mockResolvedValue([PROJECT])
+    const { container } = render(<SiteAuditDashboard />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete Dream Games' }))
+
+    // The dialog names itself by the heading the user reads, and describes
+    // itself by the consequence — neither duplicated into an aria- string.
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Dream Games?' })
+    expect(dialog).toHaveAccessibleDescription(/cannot be undone/i)
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 

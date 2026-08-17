@@ -1,13 +1,20 @@
 import type { ButtonHTMLAttributes } from 'react'
 
-type Variant = 'primary' | 'secondary' | 'ghost'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type Size = 'sm' | 'md'
 
+// The focus ring lives here rather than in the shared classes below because
+// `danger` needs its own: a teal ring around a red destructive button reads as
+// a rendering bug. Every other variant keeps the primary ring it always had.
 const VARIANT_CLASSES: Record<Variant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary-hover',
+  primary: 'bg-primary text-white hover:bg-primary-hover focus-visible:ring-primary',
   secondary:
-    'bg-white border border-surface-border text-surface-foreground hover:bg-surface-muted',
-  ghost: 'bg-transparent text-primary hover:bg-primary-soft',
+    'bg-white border border-surface-border text-surface-foreground hover:bg-surface-muted focus-visible:ring-primary',
+  ghost: 'bg-transparent text-primary hover:bg-primary-soft focus-visible:ring-primary',
+  // Reserved for irreversible actions — deleting, removing, revoking. Using it
+  // for an ordinary submit spends the one signal the user has for "this one is
+  // different".
+  danger: 'bg-danger text-white hover:bg-danger-strong focus-visible:ring-danger',
 }
 
 // Heights keep interactive targets at least 40px tall (accessibility baseline §7).
@@ -39,7 +46,7 @@ export default function Button({
       aria-busy={loading || undefined}
       className={[
         'inline-flex items-center justify-center gap-2 rounded-md font-medium',
-        'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
         'disabled:cursor-not-allowed disabled:opacity-50',
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],

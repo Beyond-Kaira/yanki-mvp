@@ -21,14 +21,17 @@
 
 import { ApiError, authorizedFetch, readErrorMessage } from './api'
 import type {
+  AuthProviders,
   AuthUser,
   Credentials,
   LoginResponse,
+  OAuthCredentials,
+  OAuthProvider,
   SignupCredentials,
 } from './contracts'
 import { setAccessToken } from './session'
 
-export type { AuthUser, Credentials, SignupCredentials }
+export type { AuthProviders, AuthUser, Credentials, OAuthCredentials, OAuthProvider, SignupCredentials }
 
 export interface Session {
   user: AuthUser
@@ -36,6 +39,8 @@ export interface Session {
 }
 
 const LOGIN_PATH = '/api/v1/auth/login'
+const OAUTH_PATH = '/api/v1/auth/oauth'
+const PROVIDERS_PATH = '/api/v1/auth/providers'
 const SIGNUP_PATH = '/api/v1/auth/signup'
 const LOGOUT_PATH = '/api/v1/auth/logout'
 const ME_PATH = '/api/v1/auth/me'
@@ -82,6 +87,42 @@ export async function login(credentials: Credentials): Promise<Session> {
     const message =
       res.status === 401
         ? 'That email and password do not match an account.'
+        : res.status === 503
+          ? 'Sign-in is unavailable right now. Try again shortly.'
+          : await failureMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  const body = (await res.json()) as LoginResponse
+  setAccessToken(body.access_token)
+  return { user: body.user, accessToken: body.access_token }
+}
+
+// Which provider buttons this deployment can honour. A failure is not an error
+// worth showing anyone: the page still has an email and password form, so an
+// unreachable endpoint costs the visitor the extra buttons and nothing else.
+export async function fetchAuthProviders(): Promise<AuthProviders> {
+  try {
+    const res = await fetch(PROVIDERS_PATH, { credentials: 'same-origin' })
+    if (!res.ok) return { google: null, apple: null }
+    return (await res.json()) as AuthProviders
+  } catch {
+    return { google: null, apple: null }
+  }
+}
+
+// One call for both signing up and signing in: which of the two happened is the
+// server's to know (it holds the accounts), and the person pressed one button.
+// The response is `login`'s exactly — same session envelope, same refresh
+// cookie — so everything downstream of a sign-in is unchanged.
+export async function signInWithProvider(
+  credentials: OAuthCredentials,
+): Promise<Session> {
+  const res = await postJson(OAUTH_PATH, credentials)
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'That sign-in could not be verified. Try again.'
         : res.status === 503
           ? 'Sign-in is unavailable right now. Try again shortly.'
           : await failureMessage(res)

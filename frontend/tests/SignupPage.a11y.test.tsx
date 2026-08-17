@@ -13,6 +13,10 @@ vi.mock('@/lib/auth', () => ({
   logout: vi.fn(),
   fetchCurrentUser: vi.fn(),
   requestPasswordReset: vi.fn(),
+  // The provider buttons ask the API which providers exist; none configured
+  // means they render nothing, which is what these password-form tests assume.
+  fetchAuthProviders: vi.fn().mockResolvedValue({ google: null, apple: null }),
+  signInWithProvider: vi.fn(),
   SignedUpButNotSignedInError: class SignedUpButNotSignedInError extends Error {},
 }))
 

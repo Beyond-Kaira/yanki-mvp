@@ -560,6 +560,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth Providers
+         * @description Which provider sign-ins this deployment can actually complete.
+         *
+         *     Public because the sign-in form is: the page that needs this is the one
+         *     nobody has signed into yet. It discloses only client ids, which the browser
+         *     hands to the provider on every sign-in anyway.
+         */
+        get: operations["auth_providers_api_v1_auth_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -1589,6 +1613,24 @@ export interface components {
             ok: boolean;
             /** Unverifiable */
             unverifiable: number;
+        };
+        /**
+         * AuthProvidersOut
+         * @description The client ids the browser needs to offer provider sign-in.
+         *
+         *     Served rather than baked into the frontend build so that configuring a
+         *     provider is an environment change instead of a rebuild, and so the UI can
+         *     offer exactly the buttons that will work: a provider with no client id is
+         *     ``null`` here and gets no button, instead of one that fails on click.
+         *
+         *     A client id is not a secret — the browser presents it to the provider on
+         *     every sign-in, and it is visible in any client's source.
+         */
+        AuthProvidersOut: {
+            /** Apple */
+            apple?: string | null;
+            /** Google */
+            google?: string | null;
         };
         /**
          * AuthSessionListOut
@@ -3813,6 +3855,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_providers_api_v1_auth_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthProvidersOut"];
                 };
             };
         };

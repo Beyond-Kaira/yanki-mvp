@@ -973,6 +973,35 @@
         "title": "AuditIntegrityOut",
         "type": "object"
       },
+      "AuthProvidersOut": {
+        "description": "The client ids the browser needs to offer provider sign-in.\n\nServed rather than baked into the frontend build so that configuring a\nprovider is an environment change instead of a rebuild, and so the UI can\noffer exactly the buttons that will work: a provider with no client id is\n``null`` here and gets no button, instead of one that fails on click.\n\nA client id is not a secret \u2014 the browser presents it to the provider on\nevery sign-in, and it is visible in any client's source.",
+        "properties": {
+          "apple": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apple"
+          },
+          "google": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google"
+          }
+        },
+        "title": "AuthProvidersOut",
+        "type": "object"
+      },
       "AuthSessionListOut": {
         "description": "Every active session the caller holds, most-recently-used first.",
         "properties": {
@@ -6437,6 +6466,28 @@
           }
         },
         "summary": "Oauth Sign In",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/providers": {
+      "get": {
+        "description": "Which provider sign-ins this deployment can actually complete.\n\nPublic because the sign-in form is: the page that needs this is the one\nnobody has signed into yet. It discloses only client ids, which the browser\nhands to the provider on every sign-in anyway.",
+        "operationId": "auth_providers_api_v1_auth_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthProvidersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Providers",
         "tags": [
           "auth"
         ]

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_cookies import clear_refresh_cookie, set_refresh_cookie
 from app.api.auth_dependencies import get_current_user
 from app.api.schemas import (
+    AuthProvidersOut,
     AuthSessionListOut,
     AuthSessionOut,
     CurrentUserOut,
@@ -148,6 +149,26 @@ def login(
     return LoginResponse(
         user=UserOut.model_validate(user),
         access_token=tokens.access_token.value,
+    )
+
+
+@router.get(
+    "/providers",
+    response_model=AuthProvidersOut,
+)
+def auth_providers(
+    settings: Settings = Depends(get_settings),
+) -> AuthProvidersOut:
+    """Which provider sign-ins this deployment can actually complete.
+
+    Public because the sign-in form is: the page that needs this is the one
+    nobody has signed into yet. It discloses only client ids, which the browser
+    hands to the provider on every sign-in anyway.
+    """
+
+    return AuthProvidersOut(
+        google=settings.google_client_id.strip() or None,
+        apple=settings.apple_client_id.strip() or None,
     )
 
 

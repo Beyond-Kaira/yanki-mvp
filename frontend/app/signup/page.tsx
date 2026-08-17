@@ -8,6 +8,7 @@ import Button from '@/components/Button'
 import CustomFormError from '@/components/CustomFormError'
 import CustomFormField from '@/components/CustomFormField'
 import CustomPasswordField from '@/components/CustomPasswordField'
+import SocialSignIn from '@/components/SocialSignIn'
 import { useAuth } from '@/components/AuthProvider'
 import { SignedUpButNotSignedInError } from '@/lib/auth'
 import {
@@ -228,6 +229,18 @@ export default function SignupPage() {
             Sign up
           </Button>
         </form>
+
+        {/* The account-type choice above rides along: it is what decides whether
+            a brand new provider account gets a personal org or a named company
+            one, and it is ignored for somebody who already has an account. */}
+        <SocialSignIn
+          accountType={accountType}
+          organizationName={
+            accountType === 'organization' ? organizationName.trim() || null : null
+          }
+          onSignedIn={() => router.push('/dashboard')}
+          disabled={submitting}
+        />
 
         <p className="text-sm text-surface-subtle">
           {'Already have an account? '}

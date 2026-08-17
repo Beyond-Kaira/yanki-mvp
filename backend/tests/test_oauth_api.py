@@ -302,6 +302,22 @@ def test_password_login_still_requires_a_password_account(
     assert response.status_code == 401
 
 
+def test_providers_lists_only_what_is_configured(
+    client: TestClient,
+    oauth_settings: Settings,
+) -> None:
+    """A provider with no client id must not be offered a button."""
+
+    app.dependency_overrides[get_settings] = lambda: oauth_settings.model_copy(
+        update={"apple_client_id": ""}
+    )
+
+    response = client.get("/api/v1/auth/providers")
+
+    assert response.status_code == 200
+    assert response.json() == {"google": GOOGLE_CLIENT_ID, "apple": None}
+
+
 def test_apple_first_sign_in_accepts_a_hide_my_email_address(
     client: TestClient,
     db_session: Session,

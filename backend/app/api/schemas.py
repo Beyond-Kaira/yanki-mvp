@@ -108,6 +108,22 @@ class WaitlistResponse(BaseModel):
     ok: bool
 
 
+class AuthProvidersOut(BaseModel):
+    """The client ids the browser needs to offer provider sign-in.
+
+    Served rather than baked into the frontend build so that configuring a
+    provider is an environment change instead of a rebuild, and so the UI can
+    offer exactly the buttons that will work: a provider with no client id is
+    ``null`` here and gets no button, instead of one that fails on click.
+
+    A client id is not a secret — the browser presents it to the provider on
+    every sign-in, and it is visible in any client's source.
+    """
+
+    google: str | None = None
+    apple: str | None = None
+
+
 class OAuthSignInRequest(BaseModel):
     """A provider identity token, plus what to call the org if this is a signup.
 

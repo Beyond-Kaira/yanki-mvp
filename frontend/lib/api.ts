@@ -407,6 +407,37 @@ export async function listAnalyses(
   return (await res.json()) as AnalysisList
 }
 
+/** Remove one finished analysis the caller queued. Frees a stock-limit slot. */
+export async function deleteAnalysis(id: string): Promise<void> {
+  let res: Response
+  try {
+    res = await authorizedFetch(`/api/v1/analyses/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    let message: string
+    if (res.status === 401) {
+      message = 'Your session has expired. Sign in again to manage your analyses.'
+    } else if (res.status === 404) {
+      message = "We couldn't find that analysis."
+    } else if (res.status === 409) {
+      message = 'Only finished analyses can be deleted. Wait for this run to complete.'
+    } else if (res.status === 403) {
+      message = 'Your role cannot delete analyses. Ask an Analyst or above.'
+    } else {
+      message = await readErrorMessage(res)
+    }
+    throw new ApiError(message, res.status)
+  }
+}
+
 export async function listSeoProjects(signal?: AbortSignal): Promise<SeoProject[]> {
   let res: Response
   try {

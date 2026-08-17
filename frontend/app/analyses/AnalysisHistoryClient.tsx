@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import AnalysisQuotaChip from '@/components/ai-visibility/AnalysisQuotaChip'
 import PageContainer from '@/components/shell/PageContainer'
-import { ApiError, listAnalyses } from '@/lib/api'
+import IconRemoveButton from '@/components/shell/IconRemoveButton'
+import { useAnalysisBinding } from '@/components/ai-visibility/useAnalysisBinding'
+import { ApiError, deleteAnalysis, listAnalyses } from '@/lib/api'
 import type { AnalysisList, AnalysisSummary } from '@/lib/contracts'
 
 const PAGE_SIZE = 20
@@ -39,7 +42,7 @@ function readableTarget(url: string): string {
 }
 
 /**
- * The organization's analysis history.
+ * The caller's own analysis history.
  *
  * **The screen exists because the data started belonging to someone.** Runs have
  * carried an `org_id` since P7.6, and until now the only way back to a result
@@ -62,6 +65,9 @@ export default function AnalysisHistoryClient() {
   const [offset, setOffset] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const { clearBinding, notifyQuotaChanged } = useAnalysisBinding()
 
   const load = useCallback(
     (signal?: AbortSignal) => {
@@ -91,6 +97,32 @@ export default function AnalysisHistoryClient() {
     return () => controller.abort()
   }, [load])
 
+  async function handleDelete(row: AnalysisSummary) {
+    if (row.status !== 'done') return
+    const target = readableTarget(row.url)
+    const ok = window.confirm(
+      `Delete the analysis for ${target}?\n\nThis frees one active slot and cannot be undone.`,
+    )
+    if (!ok) return
+
+    setActionError(null)
+    setDeletingId(row.id)
+    try {
+      await deleteAnalysis(row.id)
+      clearBinding(row.id)
+      notifyQuotaChanged()
+      load()
+    } catch (cause: unknown) {
+      setActionError(
+        cause instanceof ApiError
+          ? cause.message
+          : "We couldn't delete that analysis.",
+      )
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const rows: AnalysisSummary[] = page?.analyses ?? []
   const total = page?.total ?? 0
   const showingFrom = total === 0 ? 0 : offset + 1
@@ -104,10 +136,29 @@ export default function AnalysisHistoryClient() {
             Your analyses
           </h1>
           <p className="mt-1 text-sm text-surface-subtle">
-            Every GEO analysis your organization has run. Open one to see the prompts,
-            the raw engine answers and the score behind it.
+            Every GEO analysis you have run. Open one to see the prompts, the raw
+            engine answers and the score behind it.
           </p>
+          {page ? (
+            <div className="mt-3">
+              <AnalysisQuotaChip
+                quota={{
+                  used: page.user_analyses_used,
+                  limit: page.user_analyses_limit,
+                }}
+              />
+            </div>
+          ) : null}
         </header>
+
+        {actionError ? (
+          <p
+            role="alert"
+            className="mb-4 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger-strong"
+          >
+            {actionError}
+          </p>
+        ) : null}
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">Status</span>
@@ -169,7 +220,7 @@ export default function AnalysisHistoryClient() {
           <div className="overflow-x-auto rounded-2xl border border-surface-border bg-surface">
             <table className="w-full text-left text-sm">
               <caption className="sr-only">
-                Your organization&rsquo;s analyses, newest first
+                Your analyses, newest first
               </caption>
               <thead className="border-b border-surface-border text-surface-subtle">
                 <tr>
@@ -184,6 +235,9 @@ export default function AnalysisHistoryClient() {
                   </th>
                   <th scope="col" className="px-4 py-3 font-medium">
                     Started
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-medium">
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
@@ -225,6 +279,19 @@ export default function AnalysisHistoryClient() {
                     </td>
                     <td className="px-4 py-3 text-surface-subtle">
                       {formatMoment(row.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {row.status === 'done' ? (
+                        <IconRemoveButton
+                          label={`Delete analysis for ${readableTarget(row.url)}`}
+                          title="Delete analysis"
+                          busy={deletingId === row.id}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void handleDelete(row)
+                          }}
+                        />
+                      ) : null}
                     </td>
                   </tr>
                 ))}

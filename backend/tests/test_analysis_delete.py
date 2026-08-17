@@ -73,6 +73,19 @@ def test_deleting_a_done_analysis_frees_a_stock_slot(client, db_session, signed_
     assert _submit(client).status_code == 202
 
 
+def test_list_reports_freed_active_slot_after_delete(client, db_session, signed_in) -> None:
+    user, org = signed_in()
+    rows = _seed_done(db_session, org_id=org.id, user_id=user.id, count=USER_ANALYSIS_LIMIT)
+
+    before = client.get("/api/v1/analyses").json()
+    assert before["user_analyses_used"] == USER_ANALYSIS_LIMIT
+
+    assert client.delete(f"/api/v1/analyses/{rows[0].id}").status_code == 204
+
+    after = client.get("/api/v1/analyses").json()
+    assert after["user_analyses_used"] == USER_ANALYSIS_LIMIT - 1
+
+
 def test_another_users_done_analysis_returns_404(client, db_session, signed_in) -> None:
     from app.db.models import Membership, User
     from app.services.auth import hash_password

@@ -2,7 +2,10 @@
 
 import { useMemo } from 'react'
 import OverviewDashboard from '@/components/ai-visibility/OverviewDashboard'
+import RecentAnalysesPanel from '@/components/ai-visibility/RecentAnalysesPanel'
+import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
 import PageContainer from '@/components/shell/PageContainer'
+import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
 import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
@@ -27,9 +30,11 @@ export default function OverviewClient() {
       ) : null}
       {status === 'running' && analysis ? (
         <PageContainer>
-          <h1 className="mb-6 text-2xl font-semibold tracking-tight">
-            Running analysis…
-          </h1>
+          <PageHeaderRow className="mb-6" action={<NewAnalysisButton />}>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Running analysis…
+            </h1>
+          </PageHeaderRow>
           <StepProgress
             status={analysis.status}
             progress={analysis.progress}
@@ -43,20 +48,39 @@ export default function OverviewClient() {
         </PageContainer>
       ) : null}
       {status === 'error' ? (
-        <PageContainer>
-          <p className="mb-4 text-sm text-warning-strong" role="status">
-            {error}
-          </p>
+        <>
+          <PageContainer>
+            <PageHeaderRow className="mb-4" action={<NewAnalysisButton />}>
+              <p className="text-sm text-warning-strong" role="alert">
+                {error}
+              </p>
+            </PageHeaderRow>
+          </PageContainer>
           <StartAnalysisPanel title="Run a new analysis" />
-        </PageContainer>
+          <PageContainer className="pb-12 pt-0">
+            <RecentAnalysesPanel />
+          </PageContainer>
+        </>
       ) : null}
       {status === 'empty' ? (
-        <StartAnalysisPanel
-          title="AI Visibility"
-          description="Enter a domain to start a measured GEO analysis. Overview and every AI Visibility tab will use this same run."
-        />
+        <>
+          <StartAnalysisPanel
+            title="AI Visibility"
+            description="Enter a domain to start a measured GEO analysis. Overview and every AI Visibility tab will use this same run."
+          />
+          <PageContainer className="pb-12 pt-0">
+            <RecentAnalysesPanel />
+          </PageContainer>
+        </>
       ) : null}
-      {status === 'ready' && model ? <OverviewDashboard model={model} /> : null}
+      {status === 'ready' && model ? (
+        <>
+          <OverviewDashboard model={model} />
+          <PageContainer className="pb-12 pt-0">
+            <RecentAnalysesPanel />
+          </PageContainer>
+        </>
+      ) : null}
     </>
   )
 }

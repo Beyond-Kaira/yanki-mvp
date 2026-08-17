@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   useEffect,
   useRef,
@@ -12,11 +12,12 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from '@/components/AuthProvider'
-import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { SECTION_ICONS } from '@/components/shell/icons'
 import OrgSwitcher from '@/components/shell/OrgSwitcher'
 import ShellAuthBar from '@/components/shell/ShellAuthBar'
+import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { useShellState } from '@/components/shell/ShellStateProvider'
+import { resolveBoundAnalysisId } from '@/lib/analysis-route'
 import {
   SHELL_SECTIONS,
   flyoutItemActive,
@@ -85,11 +86,8 @@ const SWAP_DELAY_MS = 120
  * panel quickly when the pointer is not travelling toward it. */
 const AIMING_DELAY_MS = 500
 
-function withRememberedAnalysis(
-  href: string,
-  analysisId: string | null,
-): string {
-  if (!analysisId) return href
+function withBoundAnalysis(href: string, boundAnalysisId: string | null): string {
+  if (!boundAnalysisId) return href
   if (
     !href.startsWith('/ai-visibility') &&
     !href.startsWith('/search-visibility')
@@ -97,14 +95,20 @@ function withRememberedAnalysis(
     return href
   }
   if (href.includes('analysis=')) return href
-  return `${href}${href.includes('?') ? '&' : '?'}analysis=${analysisId}`
+  return `${href}${href.includes('?') ? '&' : '?'}analysis=${boundAnalysisId}`
 }
 
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { analysisId: sessionAnalysisId } = useAnalysisSession()
+  const boundAnalysisId = resolveBoundAnalysisId(
+    searchParams.get('analysis'),
+    pathname,
+    sessionAnalysisId,
+  )
   const { status, user } = useAuth()
-  const { analysisId: rememberedAnalysisId } = useAnalysisSession()
   const { railHovered, setRailHovered, hoveredSection, setHoveredSection } =
     useShellState()
   const pathSection = sectionFromPath(pathname)
@@ -242,7 +246,7 @@ export default function AppShell({ children }: AppShellProps) {
     cancelExpand()
     cancelSwap()
     setRailFocused(false)
-    router.push(withRememberedAnalysis(href, rememberedAnalysisId))
+    router.push(withBoundAnalysis(href, boundAnalysisId))
   }
 
   function onRailBlur(event: FocusEvent<HTMLElement>) {
@@ -380,10 +384,7 @@ export default function AppShell({ children }: AppShellProps) {
                       item.href ? (
                         <Link
                           key={item.id}
-                          href={withRememberedAnalysis(
-                            item.href,
-                            rememberedAnalysisId,
-                          )}
+                          href={withBoundAnalysis(item.href, boundAnalysisId)}
                           className="flex min-h-[44px] items-center rounded-md px-2 text-sm text-ink-foreground/80 hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
                         >
                           {item.label}
@@ -426,10 +427,7 @@ export default function AppShell({ children }: AppShellProps) {
                       return item.href ? (
                         <Link
                           key={item.id}
-                          href={withRememberedAnalysis(
-                            item.href,
-                            rememberedAnalysisId,
-                          )}
+                          href={withBoundAnalysis(item.href, boundAnalysisId)}
                           className={`flex min-h-[36px] items-center justify-between rounded-md px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal ${
                             active
                               ? 'bg-white/10 font-medium text-signal'

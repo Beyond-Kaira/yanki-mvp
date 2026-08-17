@@ -108,6 +108,54 @@ class WaitlistResponse(BaseModel):
     ok: bool
 
 
+class AuthProvidersOut(BaseModel):
+    """The client ids the browser needs to offer provider sign-in.
+
+    Served rather than baked into the frontend build so that configuring a
+    provider is an environment change instead of a rebuild, and so the UI can
+    offer exactly the buttons that will work: a provider with no client id is
+    ``null`` here and gets no button, instead of one that fails on click.
+
+    A client id is not a secret — the browser presents it to the provider on
+    every sign-in, and it is visible in any client's source.
+    """
+
+    google: str | None = None
+    apple: str | None = None
+
+
+class OAuthSignInRequest(BaseModel):
+    """A provider identity token, plus what to call the org if this is a signup.
+
+    One request for both sign-up and sign-in, because the provider flow does not
+    distinguish them: the user presses one button and the server discovers
+    whether the account already exists. ``account_type`` and
+    ``organization_name`` are therefore only consulted when an account is
+    actually created, and ignored for a returning user.
+    """
+
+    provider: Literal["google", "apple"]
+    id_token: str = Field(min_length=1, max_length=8192)
+    # Supplied only when the provider email already belongs to a password
+    # account. Requiring that password before linking prevents an identity
+    # token from silently replacing an existing sign-in method.
+    password: str | None = Field(default=None, min_length=1, max_length=128)
+    account_type: Literal["individual", "organization"] = "individual"
+    organization_name: str | None = Field(default=None, max_length=120)
+
+    @field_validator("organization_name")
+    @classmethod
+    def _strip_oauth_org_name(cls, value: str | None) -> str | None:
+        return value.strip() if value else None
+
+    @model_validator(mode="after")
+    def _oauth_organization_needs_a_name(self) -> OAuthSignInRequest:
+        if self.account_type == "organization" and not self.organization_name:
+            raise ValueError("organization_name is required for an organization account")
+
+        return self
+
+
 class SignupRequest(BaseModel):
     """Credentials required to create a user account.
 

@@ -9,11 +9,24 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Membership, User
 from app.services import audit
+from app.services.oauth import OAuthIdentity
 from app.services.tenancy import OrgContext, provision_org
 
 _password_hash = PasswordHash.recommended()
 
 _DUMMY_HASH = _password_hash.hash("dummy-password-for-timing-equalization")
+
+
+class AccountLinkRequiredError(Exception):
+    """A provider identity matched a password account that must be confirmed."""
+
+
+class AccountLinkPasswordError(Exception):
+    """The password supplied to confirm an account link was not valid."""
+
+
+class IdentityAlreadyLinkedError(Exception):
+    """An email belongs to an account linked to a different identity."""
 
 
 def normalize_email(email: str) -> str:
@@ -80,9 +93,11 @@ def create_user(
     session: Session,
     *,
     email: str,
-    password: str,
+    password: str | None = None,
     account_type: str = "individual",
     organization_name: str | None = None,
+    auth_provider: str | None = None,
+    auth_subject: str | None = None,
 ) -> User:
     """Create and persist a user, with the personal organization that holds
     their data.
@@ -97,7 +112,12 @@ def create_user(
 
     user = User(
         email=normalize_email(email),
-        password_hash=hash_password(password),
+        # No password for an account that signs in through a provider. The
+        # column is nullable rather than filled with an unusable placeholder so
+        # that "this account has no password" stays a fact the code can read.
+        password_hash=hash_password(password) if password is not None else None,
+        auth_provider=auth_provider,
+        auth_subject=auth_subject,
     )
 
     session.add(user)
@@ -127,10 +147,156 @@ def create_user(
             "org_id": str(org.id),
             "org_slug": org.slug,
             "org_kind": org.kind,
+            "auth_provider": auth_provider or "password",
         },
     )
     session.commit()
     session.refresh(user)
+
+    return user
+
+
+def get_user_by_subject(session: Session, *, provider: str, subject: str) -> User | None:
+    """Return the user holding this provider identity, if one exists."""
+
+    return session.scalar(
+        select(User).where(User.auth_provider == provider, User.auth_subject == subject)
+    )
+
+
+def authenticate_with_identity(
+    session: Session,
+    identity: OAuthIdentity,
+    *,
+    account_type: str = "individual",
+    organization_name: str | None = None,
+    linking_password: str | None = None,
+) -> User | None:
+    """Sign in — or register — the user a verified provider identity names.
+
+    Looked up by subject first and by email second. The subject is the provider's
+    permanent id, so a user who changed their address at Google is still found.
+    An email lookup can discover a password account, but never authenticates it
+    by itself: the existing password must also be supplied before the provider
+    identity is attached.
+
+    A registration needs an email and a sign-in does not, which is why the
+    subject lookup comes first and the email is only consulted after it misses.
+    Apple omits the address on later sign-ins, so a returning user arrives with
+    nothing but their subject — and that is enough.
+
+    Returns ``None`` for a disabled account and for a token that names nobody we
+    know and carries no address to register, both of which the caller reports as
+    a rejected sign-in. Disabled matches ``authenticate_user`` deliberately: an
+    administrator's disable switch has to hold on every door, not just the one
+    with a password behind it.
+    """
+
+    user = get_user_by_subject(session, provider=identity.provider, subject=identity.subject)
+    matched_by_subject = user is not None
+    if not matched_by_subject and identity.email is not None:
+        user = get_user_by_email(session, identity.email)
+
+    if user is None:
+        if identity.email is None:
+            # An unknown subject with no address: there is nothing to create an
+            # account from, and inventing a placeholder address would create an
+            # account nobody can ever be contacted at or recover.
+            return None
+
+        return create_user(
+            session,
+            email=identity.email,
+            account_type=account_type,
+            organization_name=organization_name,
+            auth_provider=identity.provider,
+            auth_subject=identity.subject,
+        )
+
+    if user.status != "active":
+        audit.emit(
+            session,
+            action="auth:login",
+            context=audit_context(session, user),
+            actor_type="user",
+            actor_id=user.id,
+            actor_label=user.email,
+            entity_type="user",
+            entity_id=user.id,
+            outcome="denied",
+            detail={"reason": "account_disabled", "auth_provider": identity.provider},
+        )
+        session.commit()
+        return None
+
+    linked_identity = False
+    if not matched_by_subject:
+        # Email equality alone must never authenticate an account that already
+        # belongs to another provider identity. A Google token for the same
+        # address as an Apple account is not proof of control of that Apple
+        # identity (and this schema currently stores one provider per user).
+        if user.auth_subject is not None:
+            raise IdentityAlreadyLinkedError
+
+        if user.password_hash is None:
+            raise IdentityAlreadyLinkedError
+
+        # Password signups do not verify ownership of their email. Requiring
+        # the existing password prevents both silent credential replacement
+        # and the classic pre-hijacking case, while allowing the honest owner
+        # to keep password login after the provider is connected.
+        if linking_password is None:
+            raise AccountLinkRequiredError
+
+        valid, updated_hash = verify_and_update_password(
+            linking_password,
+            user.password_hash,
+        )
+        if not valid:
+            audit.emit(
+                session,
+                action="auth:link",
+                context=audit_context(session, user),
+                actor_type="anonymous",
+                actor_label=user.email,
+                entity_type="user",
+                entity_id=user.id,
+                outcome="denied",
+                detail={"reason": "invalid_password", "auth_provider": identity.provider},
+            )
+            session.commit()
+            raise AccountLinkPasswordError
+
+        if updated_hash is not None:
+            user.password_hash = updated_hash
+        user.auth_provider = identity.provider
+        user.auth_subject = identity.subject
+        linked_identity = True
+
+    # Follow an address change at the provider, unless the new address already
+    # belongs to somebody else here — the unique email would reject the write,
+    # and a stale address is a far smaller problem than a failed sign-in.
+    if (
+        identity.email is not None
+        and user.email != identity.email
+        and get_user_by_email(session, identity.email) is None
+    ):
+        user.email = identity.email
+
+    user.last_active_at = datetime.now(UTC)
+
+    audit.emit(
+        session,
+        action="auth:login",
+        context=audit_context(session, user),
+        actor_type="user",
+        actor_id=user.id,
+        actor_label=user.email,
+        entity_type="user",
+        entity_id=user.id,
+        detail={"auth_provider": identity.provider, "linked_identity": linked_identity},
+    )
+    session.commit()
 
     return user
 
@@ -145,10 +311,13 @@ def authenticate_user(
 
     user = get_user_by_email(session, email)
 
-    password_hash = user.password_hash if user is not None else _DUMMY_HASH
+    # A provider account has no password hash, and it is compared against the
+    # dummy for the same reason an unknown address is: so that "no password set"
+    # costs the same time as "wrong password" and cannot be told apart from it.
+    password_hash = user.password_hash if user is not None and user.password_hash else _DUMMY_HASH
     valid, updated_hash = verify_and_update_password(password, password_hash)
 
-    if user is None or not valid:
+    if user is None or user.password_hash is None or not valid:
         # A failed login is the event most worth having. Recorded with the
         # attempted address, never the attempted password.
         audit.emit(

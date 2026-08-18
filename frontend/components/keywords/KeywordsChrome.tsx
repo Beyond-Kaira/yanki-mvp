@@ -21,7 +21,7 @@ import localeEmoji from 'locale-emoji'
  * The flag is the language's CLDR default region, so it is a hint and not a
  * claim: Arabic shows 🇪🇬, and the ten languages with no region at all (Esperanto
  * and friends) fall back to a globe. */
-const LOCALES = ISO6391.getLanguages(ISO6391.getAllCodes()).map((language) => ({
+const LANGUAGES = ISO6391.getLanguages(ISO6391.getAllCodes()).map((language) => ({
   ...language,
   flag: localeEmoji(language.code) || '🌐',
 }))
@@ -35,12 +35,12 @@ const TABS = [
   },
 ]
 
-/** Locale picker for Overview + Magic.
+/** Language picker for Overview + Magic.
  *
  * A native `<select>` cannot style its own option list, and 183 languages need a
  * search box. This is the same button + `role="listbox"` shape the org switcher
  * already uses, so the two dropdowns in the app behave alike. */
-export function KeywordLocaleSelect({
+export function KeywordLanguageSelect({
   value,
   onChange,
 }: {
@@ -70,17 +70,17 @@ export function KeywordLocaleSelect({
     }
   }, [open])
 
-  const active = LOCALES.find((locale) => locale.code === value) ?? LOCALES[0]
+  const activeLanguage = LANGUAGES.find((language) => language.code === value) ?? LANGUAGES[0]
   const needle = query.trim().toLowerCase()
   // Native name included so "Türkçe" and "Deutsch" find their own language.
   const matches = needle
-    ? LOCALES.filter(
-        (locale) =>
-          locale.name.toLowerCase().includes(needle) ||
-          locale.nativeName.toLowerCase().includes(needle) ||
-          locale.code.includes(needle),
+    ? LANGUAGES.filter(
+        (language) =>
+          language.name.toLowerCase().includes(needle) ||
+          language.nativeName.toLowerCase().includes(needle) ||
+          language.code.includes(needle),
       )
-    : LOCALES
+    : LANGUAGES
 
   function choose(next: string) {
     onChange(next)
@@ -109,12 +109,12 @@ export function KeywordLocaleSelect({
         }}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Locale: ${active.name}`}
+        aria-label={`Language: ${activeLanguage.name}`}
         className="flex w-full items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-2 text-left text-sm text-surface-foreground transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
-        <span className="text-base leading-none">{active.flag}</span>
-        <span className="min-w-0 flex-1 truncate font-medium">{active.name}</span>
-        <span className="shrink-0 text-xs text-surface-subtle">{active.code}</span>
+        <span className="text-base leading-none">{activeLanguage.flag}</span>
+        <span className="min-w-0 flex-1 truncate font-medium">{activeLanguage.name}</span>
+        <span className="shrink-0 text-xs text-surface-subtle">{activeLanguage.code}</span>
         <svg
           viewBox="0 0 24 24"
           className={`h-4 w-4 shrink-0 text-surface-subtle transition-transform ${open ? 'rotate-180' : ''}`}
@@ -156,30 +156,30 @@ export function KeywordLocaleSelect({
           </div>
           <ul
             role="listbox"
-            aria-label="Locale"
+            aria-label="Language"
             className="max-h-64 overflow-y-auto py-1"
           >
-            {matches.map((locale) => {
-              const selected = locale.code === active.code
+            {matches.map((language) => {
+              const selected = language.code === activeLanguage.code
               return (
-                <li key={locale.code} role="option" aria-selected={selected}>
+                <li key={language.code} role="option" aria-selected={selected}>
                   <button
                     type="button"
-                    onClick={() => choose(locale.code)}
+                    onClick={() => choose(language.code)}
                     className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
                       selected
                         ? 'bg-primary/10 text-primary'
                         : 'text-surface-foreground hover:bg-surface-border/40'
                     }`}
                   >
-                    <span className="text-base leading-none">{locale.flag}</span>
+                    <span className="text-base leading-none">{language.flag}</span>
                     <span className="min-w-0 flex-1 truncate">
-                      {locale.name}
-                      {locale.nativeName !== locale.name ? (
-                        <span className="text-surface-subtle"> · {locale.nativeName}</span>
+                      {language.name}
+                      {language.nativeName !== language.name ? (
+                        <span className="text-surface-subtle"> · {language.nativeName}</span>
                       ) : null}
                     </span>
-                    <span className="shrink-0 text-xs text-surface-subtle">{locale.code}</span>
+                    <span className="shrink-0 text-xs text-surface-subtle">{language.code}</span>
                   </button>
                 </li>
               )

@@ -2,7 +2,7 @@
 
 import { ApiError, overviewKeyword } from '@/lib/api'
 import {
-  KeywordLocaleSelect,
+  KeywordLanguageSelect,
   signalNumber,
   signalText,
 } from '@/components/keywords/KeywordsChrome'
@@ -12,8 +12,8 @@ export default function KeywordsOverviewClient() {
   const {
     overviewQuery,
     setOverviewQuery,
-    locale,
-    setLocale,
+    language,
+    setLanguage,
     overviewLoading,
     setOverviewLoading,
     overviewError,
@@ -28,7 +28,7 @@ export default function KeywordsOverviewClient() {
     try {
       const data = await overviewKeyword({
         keyword: overviewQuery.trim(),
-        locale,
+        locale: language,
       })
       setOverviewResult(data)
     } catch (err) {
@@ -62,8 +62,8 @@ export default function KeywordsOverviewClient() {
           />
         </label>
         <div className="text-sm sm:w-44">
-          <span className="mb-1 block text-surface-subtle">Locale</span>
-          <KeywordLocaleSelect value={locale} onChange={setLocale} />
+          <span className="mb-1 block text-surface-subtle">Language</span>
+          <KeywordLanguageSelect value={language} onChange={setLanguage} />
         </div>
         <button
           type="submit"

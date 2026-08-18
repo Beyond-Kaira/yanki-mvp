@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { ApiError, expandKeywords, checkKeywordRanks } from '@/lib/api'
 import type { KeywordRankHit } from '@/lib/contracts'
 import {
-  KeywordLocaleSelect,
+  KeywordLanguageSelect,
   signalNumber,
   signalText,
 } from '@/components/keywords/KeywordsChrome'
@@ -16,8 +16,8 @@ export default function KeywordsMagicClient() {
   const {
     magicQuery,
     setMagicQuery,
-    locale,
-    setLocale,
+    language,
+    setLanguage,
     domain,
     setDomain,
     magicLoading,
@@ -48,7 +48,7 @@ export default function KeywordsMagicClient() {
     try {
       const data = await expandKeywords({
         seed: magicQuery.trim(),
-        locale,
+        locale: language,
         max_ideas: 50,
       })
       setMagicResult(data)
@@ -70,7 +70,7 @@ export default function KeywordsMagicClient() {
       const data = await checkKeywordRanks({
         domain: domain.trim(),
         queries: Array.from(selected),
-        locale,
+        locale: language,
       })
       const next: RankByQuery = {}
       for (const row of data.results) {
@@ -115,8 +115,8 @@ export default function KeywordsMagicClient() {
           />
         </label>
         <div className="text-sm sm:w-44">
-          <span className="mb-1 block text-surface-subtle">Locale</span>
-          <KeywordLocaleSelect value={locale} onChange={setLocale} />
+          <span className="mb-1 block text-surface-subtle">Language</span>
+          <KeywordLanguageSelect value={language} onChange={setLanguage} />
         </div>
         <button
           type="submit"

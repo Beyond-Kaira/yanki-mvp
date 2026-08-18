@@ -293,9 +293,7 @@ def test_robots_network_and_overflow_fail_conservatively() -> None:
         )
 
     with httpx.Client(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, content=b"x" * 513)
-        )
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"x" * 513))
     ) as client:
         overflow = _read_robots(
             client,

@@ -115,8 +115,7 @@ def _normalize_http_url(value: str, *, exclude_binary: bool) -> str | None:
     query_pairs = [
         (key, item)
         for key, item in parse_qsl(parsed.query, keep_blank_values=True)
-        if key.lower() not in _TRACKING_QUERY_KEYS
-        and not key.lower().startswith("utm_")
+        if key.lower() not in _TRACKING_QUERY_KEYS and not key.lower().startswith("utm_")
     ]
     query = urlencode(sorted(query_pairs))
     return urlunsplit((scheme, f"{formatted_host}{port_suffix}", path, query, ""))
@@ -131,9 +130,7 @@ def _scope_key(url: str) -> tuple[str, int | None]:
     host = (parsed.hostname or "").lower().rstrip(".")
     host = host[4:] if host.startswith("www.") else host
     default_port = 443 if parsed.scheme.lower() == "https" else 80
-    custom_port = (
-        parsed.port if parsed.port is not None and parsed.port != default_port else None
-    )
+    custom_port = parsed.port if parsed.port is not None and parsed.port != default_port else None
     return host, custom_port
 
 
@@ -489,9 +486,7 @@ class _HostAllowCache:
         cache = self.allowed_until if allowed else self.denied_until
         if len(cache) >= _HOST_CACHE_MAX_ENTRIES:
             cache.clear()
-        cache[host] = now + (
-            _HOST_ALLOW_TTL_SECONDS if allowed else _HOST_DENY_TTL_SECONDS
-        )
+        cache[host] = now + (_HOST_ALLOW_TTL_SECONDS if allowed else _HOST_DENY_TTL_SECONDS)
         return allowed
 
 
@@ -514,9 +509,7 @@ def _route_browser_request(
         route.abort("blockedbyclient")
         return
 
-    is_main_navigation = request.is_navigation_request() and (
-        request.frame.parent_frame is None
-    )
+    is_main_navigation = request.is_navigation_request() and (request.frame.parent_frame is None)
     if is_main_navigation and not _same_scope(request.url, scope_key):
         route.abort("blockedbyclient")
         return

@@ -32,6 +32,8 @@ import type {
     SeoProjectDetail,
   SessionRevokeAllResult,
     SiteAuditDetail,
+    SiteAuditRunSettings,
+    SiteAuditRunSummary,
   SerpVisibility,
   SeoAudit,
   WaitlistSignupResponse,
@@ -502,6 +504,61 @@ export async function getSeoProject(
   }
 
   return (await res.json()) as SeoProjectDetail
+}
+
+// Re-crawl a project that already exists. Deliberately separate from
+// `createSeoProject`: that one starts tracking a domain, this one asks for a
+// fresh look at a domain already tracked, and only the second is something a
+// customer does repeatedly. The backend allows one active audit per project, so
+// asking again while a crawl is queued or running is a 409 rather than a silent
+// duplicate — the message below is what the caller should read out.
+export async function startSiteAudit(
+  projectId: string,
+  settings: SiteAuditRunSettings,
+): Promise<SiteAuditRunSummary> {
+  let res: Response
+  try {
+    res = await authorizedFetch(
+      `/api/v1/seo-projects/${encodeURIComponent(projectId)}/audits`,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+      },
+    )
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to start a Site Audit.'
+        : res.status === 403
+          ? // site_audit:run is Analyst and above, because a crawl spends real
+            // resources against a third-party site. Name the reason, the way
+            // deleteSeoProject does for its own role gate.
+            'Your role cannot start a Site Audit. Ask an organization analyst or above.'
+          : res.status === 409
+            ? 'This project already has an audit queued or running.'
+            : res.status === 404
+              ? // Two different refusals answer 404 on purpose: a project that
+                // is not this organization's, and the enqueue route while the
+                // crawl is switched off (config.site_audit_enabled). The caller
+                // cannot tell them apart and neither can we, so say the honest
+                // thing that covers both rather than guess.
+                'Site Audit is not available for this project right now.'
+              : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+
+  return (await res.json()) as SiteAuditRunSummary
 }
 
 export async function deleteSeoProject(projectId: string): Promise<void> {

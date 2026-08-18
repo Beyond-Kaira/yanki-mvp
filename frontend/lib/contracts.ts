@@ -185,6 +185,10 @@ export type SiteAuditSchema = Schemas['SiteAuditSchemaOut']
 
 export type CreateSeoProjectInput = Schemas['CreateSeoProjectRequest']
 
+// The crawl settings on their own, without the domain a new project needs.
+// Re-running an audit reuses exactly these three.
+export type SiteAuditRunSettings = Schemas['SiteAuditSettingsRequest']
+
 // --- Administration -------------------------------------------------------
 
 export type AdminMember = Schemas['AdminMemberOut']

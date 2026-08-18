@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
 import PageContainer from '@/components/shell/PageContainer'
+import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import {
   IconCheck,
   IconChevron,
@@ -95,7 +97,7 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
 
   return (
     <PageContainer>
-      <header className="mb-8">
+      <PageHeaderRow action={<NewAnalysisButton />}>
         <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
           AI Visibility
         </h1>
@@ -108,7 +110,7 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
             </span>
           ) : null}
         </p>
-      </header>
+      </PageHeaderRow>
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard label="GEO score">

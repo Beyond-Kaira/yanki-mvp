@@ -21,7 +21,7 @@ from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import SessionLocal
 from app.jobs.queue import claim_next
-from app.services.analyses import settle_cost
+from app.services.analyses import purge_analysis, settle_cost, should_auto_purge_failed
 from app.services.emailer import send_run_alert
 
 logger = logging.getLogger("yanki.worker")
@@ -85,6 +85,8 @@ def run_once(settings: Settings) -> bool:
                 session.commit()
                 _settle(session, failed)
                 _alert(failed, settings)
+                if should_auto_purge_failed(failed):
+                    purge_analysis(session, failed)
             logger.exception("analysis %s failed", analysis_id)
             return True
 

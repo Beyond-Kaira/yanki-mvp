@@ -407,6 +407,37 @@ export async function listAnalyses(
   return (await res.json()) as AnalysisList
 }
 
+/** Remove one finished analysis the caller queued. Frees a stock-limit slot. */
+export async function deleteAnalysis(id: string): Promise<void> {
+  let res: Response
+  try {
+    res = await authorizedFetch(`/api/v1/analyses/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    let message: string
+    if (res.status === 401) {
+      message = 'Your session has expired. Sign in again to manage your analyses.'
+    } else if (res.status === 404) {
+      message = "We couldn't find that analysis."
+    } else if (res.status === 409) {
+      message = 'Only finished analyses can be deleted. Wait for this run to complete.'
+    } else if (res.status === 403) {
+      message = 'Your role cannot delete analyses. Ask an Analyst or above.'
+    } else {
+      message = await readErrorMessage(res)
+    }
+    throw new ApiError(message, res.status)
+  }
+}
+
 export async function listSeoProjects(signal?: AbortSignal): Promise<SeoProject[]> {
   let res: Response
   try {
@@ -502,6 +533,34 @@ export async function getSeoProject(
   }
 
   return (await res.json()) as SeoProjectDetail
+}
+
+export async function deleteSeoProject(projectId: string): Promise<void> {
+  let res: Response
+  try {
+    res = await authorizedFetch(`/api/v1/seo-projects/${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+    })
+  } catch {
+    throw new ApiError(
+      "We couldn't reach the server. Check your connection and try again.",
+      0,
+    )
+  }
+
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? 'Your session has expired. Sign in again to manage your Site Audit projects.'
+        : res.status === 403
+          ? // project:delete is Manager and above. Naming the reason beats a
+            // bare "Forbidden" for someone who can plainly create projects.
+            'Your role cannot delete SEO projects. Ask an organization manager or owner.'
+          : res.status === 404 || res.status === 422
+            ? "We couldn't find that SEO project."
+            : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
 }
 
 export async function getSiteAudit(

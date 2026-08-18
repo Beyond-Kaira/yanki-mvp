@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Button from '@/components/Button'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { createAnalysis } from '@/lib/api'
+import { notifyAnalysisQuotaChanged } from '@/lib/analysis-quota-events'
 
 function looksLikeUrl(value: string): boolean {
   try {
@@ -43,6 +44,7 @@ export default function UrlForm() {
     setSubmitting(true)
     try {
       const { id } = await createAnalysis(trimmed)
+      notifyAnalysisQuotaChanged()
       // One shared analysis for the whole AI Visibility shell (and later tabs).
       setAnalysisId(id)
       if (pathname.startsWith('/search-visibility')) {

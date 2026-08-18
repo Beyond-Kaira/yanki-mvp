@@ -1,5 +1,4 @@
-'use client'
-
+import { Suspense } from 'react'
 import AnalysisHistoryClient from './AnalysisHistoryClient'
 
 /**
@@ -13,5 +12,15 @@ import AnalysisHistoryClient from './AnalysisHistoryClient'
  * rendering another one here stacked a second nav rail under the first.
  */
 export default function AnalysisHistoryPage() {
-  return <AnalysisHistoryClient />
+  return (
+    <Suspense
+      fallback={
+        <p className="px-8 py-10 text-sm text-surface-subtle" role="status">
+          Loading your analyses…
+        </p>
+      }
+    >
+      <AnalysisHistoryClient />
+    </Suspense>
+  )
 }

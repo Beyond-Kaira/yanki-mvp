@@ -45,6 +45,7 @@ class Analysis(Base):
             "lang",
             "created_at",
         ),
+        sa.Index("ix_analyses_created_by_user_id", "created_by_user_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
@@ -68,6 +69,10 @@ class Analysis(Base):
     # NULL: a btree over one repeated value earns nothing and an FK validation
     # scan would take ACCESS EXCLUSIVE on the shared box for no benefit.
     org_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    # The authenticated user who queued this run (user-scoped history + limits).
+    # NULL on pre-backfill rows and any future non-user callers. No FK yet — see
+    # org_id note above; user plan / org billing may replace this interim gate.
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
     url: Mapped[str] = mapped_column(sa.Text, nullable=False)
     status: Mapped[str] = mapped_column(sa.Text, nullable=False, default="queued")
     progress: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)

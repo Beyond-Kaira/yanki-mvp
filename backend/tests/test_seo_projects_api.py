@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from urllib.parse import urlsplit
 
@@ -13,7 +14,15 @@ from sqlalchemy.orm import Session
 from app.api.auth_dependencies import get_current_user
 from app.api.main import app
 from app.config import Settings, get_settings
-from app.db.models import SeoProject, SiteAudit, SiteAuditPage, User
+from app.db.models import (
+    AuditEvent,
+    Membership,
+    Project,
+    SeoProject,
+    SiteAudit,
+    SiteAuditPage,
+    User,
+)
 from app.services.auth import hash_password
 
 PROJECTS_URL = "/api/v1/seo-projects"
@@ -113,10 +122,15 @@ def _create_project(
 def test_projects_require_authentication(client: TestClient) -> None:
     list_response = client.get(PROJECTS_URL)
     create_response = client.post(PROJECTS_URL, json={"domain": "example.test"})
+    # Delete is the destructive one, so its bearer requirement is stated here
+    # rather than left implied by the shared dependency.
+    delete_response = client.delete(f"{PROJECTS_URL}/{uuid.uuid4()}")
 
     assert list_response.status_code == 401
     assert create_response.status_code == 401
+    assert delete_response.status_code == 401
     assert list_response.headers["www-authenticate"] == "Bearer"
+    assert delete_response.headers["www-authenticate"] == "Bearer"
 
 
 def test_create_project_normalizes_domain_and_queues_first_audit(
@@ -462,3 +476,156 @@ def test_the_enqueue_flag_on_queues_a_crawl_exactly_as_before(
     assert body["latest_audit"]["status"] == "queued"
     assert body["latest_audit"]["page_limit"] == 15
     assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 1
+
+
+# --------------------------------------------------------------------------
+# Deletion
+# --------------------------------------------------------------------------
+
+
+def _set_role(db_session: Session, user: User, role: str) -> None:
+    """Change the role this user holds in their (only) organization."""
+
+    membership = db_session.scalar(select(Membership).where(Membership.user_id == user.id))
+    assert membership is not None
+    membership.role = role
+    db_session.commit()
+
+
+def test_deleting_a_project_takes_its_audits_pages_and_tenancy_mirror_with_it(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    user = make_user("owner@example.com")
+    _authenticate_as(user)
+    project_body = _create_project(client, domain="example.test")
+
+    audit = db_session.scalar(select(SiteAudit))
+    assert audit is not None
+    db_session.add(
+        SiteAuditPage(
+            audit_id=audit.id,
+            requested_url="https://example.test/",
+            final_url="https://example.test/",
+            status_code=200,
+            title="Example",
+            h1_count=1,
+            issues=[],
+            schemas=[],
+        )
+    )
+    db_session.commit()
+
+    response = client.delete(f"{PROJECTS_URL}/{project_body['id']}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 0
+    # Audits and their crawled pages follow by cascade rather than being left
+    # pointing at a project that no longer exists.
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0
+    assert db_session.scalar(select(func.count()).select_from(SiteAuditPage)) == 0
+    # And the tenancy mirror, which is the row Backlinks hangs off. Leaving it
+    # would strand backlink data nothing can read and block the domain from
+    # ever being added again.
+    assert db_session.scalar(select(func.count()).select_from(Project)) == 0
+    # Governance sees it: deleting a customer's crawl history is exactly the
+    # kind of action the audit trail exists for.
+    event = db_session.scalar(select(AuditEvent).where(AuditEvent.action == "project:delete"))
+    assert event is not None
+    assert event.entity_id == uuid.UUID(project_body["id"])
+
+
+def test_a_deleted_domain_can_be_tracked_again(
+    client: TestClient,
+    make_user: Callable[[str], User],
+) -> None:
+    # The point of removing the tenancy mirror. With it left behind, this second
+    # create hits uq_projects_org_domain_key and is reported as "an SEO project
+    # for this domain already exists" — about a project the customer just
+    # deleted and can no longer see.
+    _authenticate_as(make_user("owner@example.com"))
+    first = _create_project(client, domain="example.test")
+
+    assert client.delete(f"{PROJECTS_URL}/{first['id']}").status_code == 204
+
+    second = _create_project(client, domain="example.test")
+    assert second["id"] != first["id"]
+    assert second["domain"] == "https://example.test/"
+
+
+def test_deleting_another_organizations_project_is_404_and_removes_nothing(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    owner = make_user("owner@example.com")
+    stranger = make_user("stranger@example.com")
+
+    _authenticate_as(owner)
+    owned = _create_project(client, domain="owned.test")
+
+    _authenticate_as(stranger)
+    response = client.delete(f"{PROJECTS_URL}/{owned['id']}")
+
+    # The same 404 a nonexistent id gets, so this cannot be used to probe
+    # whether another tenant tracks a domain.
+    assert response.status_code == 404
+    assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 1
+
+
+def test_an_editor_may_create_a_project_but_not_delete_one(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    # The matrix line this route follows rather than redraws: project:create is
+    # Editor and above, project:delete is Manager and above.
+    user = make_user("editor@example.com")
+    _authenticate_as(user)
+    project_body = _create_project(client, domain="example.test")
+    _set_role(db_session, user, "editor")
+
+    response = client.delete(f"{PROJECTS_URL}/{project_body['id']}")
+
+    assert response.status_code == 403
+    assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 1
+
+
+def test_a_project_stays_deletable_while_the_enqueue_flag_is_off(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    # Projects can be created while the crawl is dark, so they must be
+    # removable while it is dark too — otherwise every one of them is stuck in
+    # the list until a worker ships.
+    _authenticate_as(make_user("owner@example.com"))
+    project_body = _create_project(client, domain="dark.test")
+    _set_site_audit_enabled(False)
+
+    response = client.delete(f"{PROJECTS_URL}/{project_body['id']}")
+
+    assert response.status_code == 204
+    assert db_session.scalar(select(func.count()).select_from(SeoProject)) == 0
+
+
+def test_a_queued_audit_does_not_pin_its_project(
+    client: TestClient,
+    db_session: Session,
+    make_user: Callable[[str], User],
+) -> None:
+    # Refusing while an audit is active would mean a job nobody drains keeps
+    # the project forever. The worker tolerates the vanished rows instead.
+    _authenticate_as(make_user("owner@example.com"))
+    project_body = _create_project(client, domain="busy.test")
+    audit = db_session.scalar(select(SiteAudit))
+    assert audit is not None
+    audit.status = "running"
+    db_session.commit()
+
+    response = client.delete(f"{PROJECTS_URL}/{project_body['id']}")
+
+    assert response.status_code == 204
+    assert db_session.scalar(select(func.count()).select_from(SiteAudit)) == 0

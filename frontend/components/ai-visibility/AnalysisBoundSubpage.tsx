@@ -5,7 +5,10 @@ import Link from 'next/link'
 import PageContainer from '@/components/shell/PageContainer'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
+import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
+import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
+import { analysisDomain } from '@/lib/ai-visibility-data'
 import type { Analysis } from '@/lib/contracts'
 
 function analysisHref(path: string, analysisId: string | null): string {
@@ -34,7 +37,21 @@ export default function AnalysisBoundSubpage({
         <span className="mx-1.5">/</span>
         {title}
       </p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight">{title}</h1>
+      <PageHeaderRow className="mt-2 mb-0" action={analysisId ? <NewAnalysisButton /> : null}>
+        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        {analysis ? (
+          <p className="mt-1 text-sm text-surface-subtle">
+            {title} ·{' '}
+            <span className="font-medium text-primary">
+              {analysisDomain(analysis)}
+            </span>
+          </p>
+        ) : analysisId ? (
+          <p className="mt-1 text-sm text-surface-subtle" role="status">
+            Loading domain…
+          </p>
+        ) : null}
+      </PageHeaderRow>
 
       {status === 'loading' ? (
         <p className="mt-6 text-sm text-surface-subtle" role="status">

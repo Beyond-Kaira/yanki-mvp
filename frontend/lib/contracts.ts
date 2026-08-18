@@ -112,8 +112,14 @@ export type AnalysisSummary = Omit<
   current_step: PipelineStep | null
 }
 
-export type AnalysisList = Omit<Schemas['AnalysisListOut'], 'analyses'> & {
+export type AnalysisList = Omit<
+  Schemas['AnalysisListOut'],
+  'analyses'
+> & {
   analyses: AnalysisSummary[]
+  /** Interim per-user stock limit metadata from ``GET /analyses``. */
+  user_analyses_used: number
+  user_analyses_limit: number
 }
 
 // Accounts (PR #9). Login answers with the user plus a bearer token while

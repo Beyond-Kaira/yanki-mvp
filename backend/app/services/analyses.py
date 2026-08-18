@@ -6,10 +6,18 @@ import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Analysis, CreditLedgerEntry, Response
+from app.db.models import (
+    Analysis,
+    CreditLedgerEntry,
+    GeoRecord,
+    Prompt,
+    Response,
+    SeoCheck,
+    SerpCheck,
+)
 from app.services import billing
 from app.services.tenancy import OrgContext, scoped
 
@@ -19,12 +27,66 @@ from app.services.tenancy import OrgContext, scoped
 ANALYSIS_SOURCE_TYPE = "analysis"
 
 
+class AnalysisDeleteConflictError(Exception):
+    """The analysis exists but is not in a state that may be deleted manually."""
+
+    def __init__(self, status: str) -> None:
+        self.status = status
+        super().__init__(f"analysis in status {status!r} cannot be deleted")
+
+
+def delete_analysis_children(session: Session, analysis_id: uuid.UUID) -> None:
+    """Remove every row owned by one analysis. Shared by re-runs, manual delete,
+    and the failed-run auto-purge."""
+
+    session.execute(delete(GeoRecord).where(GeoRecord.analysis_id == analysis_id))
+    session.execute(delete(Response).where(Response.analysis_id == analysis_id))
+    session.execute(delete(Prompt).where(Prompt.analysis_id == analysis_id))
+    session.execute(delete(SerpCheck).where(SerpCheck.analysis_id == analysis_id))
+    session.execute(delete(SeoCheck).where(SeoCheck.analysis_id == analysis_id))
+
+
+def purge_analysis(session: Session, analysis: Analysis, *, commit: bool = True) -> None:
+    """Delete an analysis and every child row it owns."""
+
+    delete_analysis_children(session, analysis.id)
+    session.delete(analysis)
+    if commit:
+        session.commit()
+
+
+def should_auto_purge_failed(analysis: Analysis) -> bool:
+    """Whether a failed run should be removed automatically after settle.
+
+    User-owned MVP runs are ephemeral errors for the interim stock limit — they
+    never appear in history and must not hold a slot. Legacy and checker runs
+    keep the failed envelope (FR-7).
+    """
+
+    return analysis.created_by_user_id is not None and (analysis.kind or "mvp") in LISTABLE_KINDS
+
+
+def delete_user_analysis(session: Session, analysis: Analysis, user_id: uuid.UUID) -> None:
+    """Remove one finished analysis queued by this user.
+
+    Only ``done`` rows may be deleted manually. ``queued`` and ``running`` are
+    in-flight work; ``failed`` rows are removed by the worker auto-purge.
+    """
+
+    if analysis.created_by_user_id != user_id:
+        raise ValueError("analysis is not owned by this user")
+    if analysis.status != "done":
+        raise AnalysisDeleteConflictError(analysis.status)
+    purge_analysis(session, analysis, commit=False)
+
+
 def create_analysis(
     session: Session,
     url: str,
     ip_hash: str | None = None,
     *,
     org_id: uuid.UUID | None = None,
+    created_by_user_id: uuid.UUID | None = None,
     commit: bool = True,
 ) -> Analysis:
     """Insert a new queued analysis and return it.
@@ -36,12 +98,20 @@ def create_analysis(
     historical "public" scope — every row created before P7.6 has it, and
     ``tenancy.readable_analysis`` is the one place that means world-readable.
 
+    ``created_by_user_id`` records which authenticated user queued the run.
+    ``None`` on legacy rows written before the column existed.
+
     ``commit=False`` hands the transaction boundary back to the caller. The
     metered route needs that: the quota counter and the row it pays for have to
     land together, and a commit in here would leave a charged customer with a
     row that a later failure rolls back — or the reverse.
     """
-    analysis = Analysis(url=url, ip_hash=ip_hash, org_id=org_id)
+    analysis = Analysis(
+        url=url,
+        ip_hash=ip_hash,
+        org_id=org_id,
+        created_by_user_id=created_by_user_id,
+    )
     session.add(analysis)
     if commit:
         session.commit()
@@ -78,13 +148,21 @@ class AnalysisPage:
     analyses: list[Analysis]
 
 
-def _history_statement(statement: Select, context: OrgContext, status: str | None) -> Select:
+def _history_statement(
+    statement: Select,
+    context: OrgContext,
+    status: str | None,
+    *,
+    user_id: uuid.UUID | None = None,
+) -> Select:
     # `scoped` rather than a hand-written `where`: it raises on a missing or
     # org-less context instead of quietly returning every tenant's rows, which
     # is the difference between a filter you can forget and one you cannot.
     # This is its first call site in the application (tech-debt #63).
     statement = scoped(statement, Analysis.org_id, context)
     statement = statement.where(Analysis.kind.in_(LISTABLE_KINDS))
+    if user_id is not None:
+        statement = statement.where(Analysis.created_by_user_id == user_id)
     if status:
         statement = statement.where(Analysis.status == status)
     return statement
@@ -129,6 +207,42 @@ def list_org_analyses(
     rows = list(
         session.scalars(
             _history_statement(select(Analysis), context, status)
+            .order_by(Analysis.created_at.desc(), Analysis.id.desc())
+            .limit(max(1, min(limit, MAX_PAGE)))
+            .offset(max(0, offset))
+        )
+    )
+    return AnalysisPage(total=total, analyses=rows)
+
+
+def list_user_analyses(
+    session: Session,
+    context: OrgContext,
+    user_id: uuid.UUID,
+    *,
+    status: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> AnalysisPage:
+    """The caller's own analyses within their organization, newest first.
+
+    Org scoping still applies — another tenant's row is absent — and within an
+    organization only rows the user queued appear. Legacy rows with no
+    ``created_by_user_id`` belong to nobody's history and are excluded here.
+    """
+
+    total = int(
+        session.scalar(
+            select(func.count()).select_from(
+                _history_statement(select(Analysis.id), context, status, user_id=user_id).subquery()
+            )
+        )
+        or 0
+    )
+
+    rows = list(
+        session.scalars(
+            _history_statement(select(Analysis), context, status, user_id=user_id)
             .order_by(Analysis.created_at.desc(), Analysis.id.desc())
             .limit(max(1, min(limit, MAX_PAGE)))
             .offset(max(0, offset))

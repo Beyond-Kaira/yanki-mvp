@@ -2,8 +2,10 @@
 
 import Link from 'next/link'
 import PageContainer from '@/components/shell/PageContainer'
+import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
+import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
 import SerpVisibility from '@/components/SerpVisibility'
 import SeoAudit from '@/components/SeoAudit'
 import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
@@ -26,9 +28,11 @@ export default function SearchVisibilityOverviewClient() {
 
       {status === 'running' && analysis ? (
         <PageContainer>
-          <h1 className="mb-6 text-2xl font-semibold tracking-tight">
-            Running analysis…
-          </h1>
+          <PageHeaderRow className="mb-6" action={<NewAnalysisButton path="/search-visibility" />}>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Running analysis…
+            </h1>
+          </PageHeaderRow>
           <StepProgress
             status={analysis.status}
             progress={analysis.progress}
@@ -44,9 +48,11 @@ export default function SearchVisibilityOverviewClient() {
 
       {status === 'error' ? (
         <PageContainer>
-          <p className="mb-4 text-sm text-warning-strong" role="status">
-            {error}
-          </p>
+          <PageHeaderRow className="mb-4" action={<NewAnalysisButton path="/search-visibility" />}>
+            <p className="text-sm text-warning-strong" role="alert">
+              {error}
+            </p>
+          </PageHeaderRow>
           <StartAnalysisPanel title="Run a new analysis" />
         </PageContainer>
       ) : null}
@@ -60,7 +66,7 @@ export default function SearchVisibilityOverviewClient() {
 
       {status === 'ready' && analysis ? (
         <PageContainer>
-          <header className="mb-8">
+          <PageHeaderRow action={<NewAnalysisButton path="/search-visibility" />}>
             <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
               Search Visibility
             </h1>
@@ -84,7 +90,7 @@ export default function SearchVisibilityOverviewClient() {
               </Link>{' '}
               for GEO score, citations, and drivers.
             </p>
-          </header>
+          </PageHeaderRow>
 
           <div className="space-y-8">
             {analysis.result.serp ? (

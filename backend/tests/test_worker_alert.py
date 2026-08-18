@@ -51,15 +51,17 @@ def _seed_queued(factory) -> uuid.UUID:
 def _no_network_discovery(monkeypatch):
     from app.pipeline import discovery
 
-    monkeypatch.setattr(discovery, "discover", lambda url: "Acme builds robots.")
+    monkeypatch.setattr(
+        discovery,
+        "discover_detailed",
+        lambda url: discovery.CrawlResult(text="Acme builds robots."),
+    )
 
 
 def test_alert_fires_on_done_terminal_status(worker_session_factory, monkeypatch):
     _no_network_discovery(monkeypatch)
     seen: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        worker, "send_run_alert", lambda a, s: seen.append((a.status, str(a.id)))
-    )
+    monkeypatch.setattr(worker, "send_run_alert", lambda a, s: seen.append((a.status, str(a.id))))
     analysis_id = _seed_queued(worker_session_factory)
 
     assert worker.run_once(Settings(dry_run=True)) is True

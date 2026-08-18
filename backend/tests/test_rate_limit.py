@@ -35,8 +35,17 @@ def _submit(client, ip: str | None = None):
 
 def _override_settings(**kwargs):
     """Pin route settings for a test (cleared by the client fixture teardown)."""
-    settings = Settings(**kwargs)
+    defaults: dict[str, object] = {"user_analysis_limit": 0}
+    defaults.update(kwargs)
+    settings = Settings(**defaults)
     app.dependency_overrides[get_settings] = lambda: settings
+
+
+@pytest.fixture(autouse=True)
+def lift_user_stock_limit():
+    _override_settings()
+    yield
+    app.dependency_overrides.pop(get_settings, None)
 
 
 def test_sixth_submit_from_one_ip_returns_429_with_retry_after(client, db_session):

@@ -22,10 +22,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from app import health
-from app.db.models import Analysis, GeoRecord, Prompt, Response, SeoCheck, SerpCheck
+from app.db.models import Analysis, Prompt, Response
 from app.pipeline import checker_prompts, discovery
 from app.pipeline import execute_measured as execute_step
 from app.pipeline import geo_records as geo_records_step
@@ -38,6 +38,7 @@ from app.pipeline import seo_audit as seo_step
 from app.pipeline import serp_visibility as serp_step
 from app.providers import registry
 from app.serp import registry as serp_registry
+from app.services.analyses import delete_analysis_children
 
 # progress % set when each step COMPLETES (see the master SPEC).
 _DISCOVERY_DONE = 15
@@ -73,11 +74,7 @@ def _complete_step(session, analysis: Analysis, progress: int) -> None:
 def run_pipeline(session, analysis_id, settings) -> Analysis:
     analysis = session.execute(select(Analysis).where(Analysis.id == analysis_id)).scalar_one()
 
-    session.execute(delete(GeoRecord).where(GeoRecord.analysis_id == analysis.id))
-    session.execute(delete(Response).where(Response.analysis_id == analysis.id))
-    session.execute(delete(Prompt).where(Prompt.analysis_id == analysis.id))
-    session.execute(delete(SerpCheck).where(SerpCheck.analysis_id == analysis.id))
-    session.execute(delete(SeoCheck).where(SeoCheck.analysis_id == analysis.id))
+    delete_analysis_children(session, analysis.id)
     # The SERP summary is cleared with the evidence it summarises, not alongside
     # the code that writes it. Otherwise a re-run with SERP switched off since
     # the last attempt drops the ``serp_checks`` rows and keeps the old score —

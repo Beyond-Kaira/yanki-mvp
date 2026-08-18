@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import {
   fetchAnalysisSlices,
@@ -13,7 +13,9 @@ import {
   mergeAnalysis,
   type AnalysisSliceMode,
 } from '@/lib/analysis-bundle'
+import { resolveBoundAnalysisId } from '@/lib/analysis-route'
 import type { Analysis } from '@/lib/contracts'
+import { useAnalysisBinding } from '@/components/ai-visibility/useAnalysisBinding'
 
 export type AnalysisQueryStatus =
   | 'empty'
@@ -34,9 +36,13 @@ export function useAnalysisQuery(options?: {
 } {
   const sliceMode = options?.slices ?? 'full'
   const params = useSearchParams()
+  const pathname = usePathname()
   const fromQuery = params.get('analysis')
   const { analysisId: sessionId, setAnalysisId } = useAnalysisSession()
-  const analysisId = fromQuery ?? sessionId
+  // Overview without `?analysis=` stays empty so "New analysis" can start fresh.
+  // Subpages and nav links fall back to the remembered run for tab binding.
+  const analysisId = resolveBoundAnalysisId(fromQuery, pathname, sessionId)
+  const { clearBinding } = useAnalysisBinding()
   const [status, setStatus] = useState<AnalysisQueryStatus>(
     analysisId ? 'loading' : 'empty',
   )
@@ -45,10 +51,10 @@ export function useAnalysisQuery(options?: {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    if (fromQuery && fromQuery !== sessionId) {
+    if (fromQuery) {
       setAnalysisId(fromQuery)
     }
-  }, [fromQuery, sessionId, setAnalysisId])
+  }, [fromQuery, setAnalysisId])
 
   useEffect(() => {
     function stop() {
@@ -104,6 +110,7 @@ export function useAnalysisQuery(options?: {
         setError(err instanceof Error ? err.message : 'Could not load analysis')
         if (err instanceof ApiError && (err.status === 404 || err.status === 422)) {
           stop()
+          clearBinding(analysisId!)
         }
       }
     }
@@ -115,7 +122,7 @@ export function useAnalysisQuery(options?: {
       cancelled = true
       stop()
     }
-  }, [analysisId, setAnalysisId, sliceMode])
+  }, [analysisId, clearBinding, setAnalysisId, sliceMode])
 
   return { analysisId, status, analysis, error }
 }

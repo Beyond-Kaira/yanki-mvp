@@ -5,12 +5,20 @@ import AnalysisHistoryClient from '@/app/analyses/AnalysisHistoryClient'
 import { ApiError } from '@/lib/api'
 
 const listAnalyses = vi.fn()
+const deleteAnalysis = vi.fn()
+const clearBinding = vi.fn()
+const notifyQuotaChanged = vi.fn()
+
+vi.mock('@/components/ai-visibility/useAnalysisBinding', () => ({
+  useAnalysisBinding: () => ({ clearBinding, notifyQuotaChanged }),
+}))
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return {
     ...actual,
     listAnalyses: (...args: unknown[]) => listAnalyses(...args),
+    deleteAnalysis: (...args: unknown[]) => deleteAnalysis(...args),
   }
 })
 
@@ -31,11 +39,21 @@ function row(overrides: Record<string, unknown> = {}) {
 }
 
 function page(rows: Record<string, unknown>[], total = rows.length, offset = 0) {
-  return { total, limit: 20, offset, analyses: rows }
+  return {
+    total,
+    limit: 20,
+    offset,
+    analyses: rows,
+    user_analyses_used: rows.length,
+    user_analyses_limit: 5,
+  }
 }
 
 beforeEach(() => {
   listAnalyses.mockReset()
+  deleteAnalysis.mockReset()
+  clearBinding.mockReset()
+  notifyQuotaChanged.mockReset()
 })
 
 describe('Analysis history', () => {
@@ -165,5 +183,36 @@ describe('Analysis history', () => {
     render(<AnalysisHistoryClient />)
 
     expect(await screen.findByText('discovery timed out')).toBeInTheDocument()
+  })
+
+  it('deletes a finished run and reloads the list', async () => {
+    listAnalyses.mockResolvedValue(page([row()]))
+    deleteAnalysis.mockResolvedValue(undefined)
+
+    render(<AnalysisHistoryClient />)
+    await screen.findByRole('table')
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Delete analysis for acme.test' }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Delete analysis' }))
+
+    await waitFor(() => expect(deleteAnalysis).toHaveBeenCalledWith('an-1'))
+    expect(clearBinding).toHaveBeenCalledWith('an-1')
+    expect(notifyQuotaChanged).toHaveBeenCalled()
+    await waitFor(() => expect(listAnalyses).toHaveBeenCalledTimes(2))
+  })
+
+  it('offers delete only on finished runs', async () => {
+    listAnalyses.mockResolvedValue(
+      page([row({ status: 'running', progress: 40 }), row({ id: 'an-2', status: 'done' })]),
+    )
+
+    render(<AnalysisHistoryClient />)
+
+    const table = await screen.findByRole('table')
+    expect(
+      within(table).getAllByRole('button', { name: 'Delete analysis for acme.test' }),
+    ).toHaveLength(1)
   })
 })

@@ -137,6 +137,11 @@ class Settings(BaseSettings):
     # the checker's daily USD cap, RBAC) is untouched by it.
     quota_enforcement_enabled: bool = True
 
+    # Interim per-user analysis stock (queued/running/done). Default 5 matches
+    # the hardcoded MVP gate; 0 disables so org quota / rate-limit tests can
+    # isolate the guard they mean to exercise.
+    user_analysis_limit: int = 5
+
     # Rate limiting (P5.0) — POST /api/v1/analyses now requires authentication
     # (ADR-45), but these stay as defence in depth: they bound one credential's
     # burst before a row is created or money is spent, which a monthly plan

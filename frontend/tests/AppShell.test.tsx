@@ -9,6 +9,7 @@ let pathname = '/dashboard'
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
   useRouter: () => ({ push }),
+  useSearchParams: () => new URLSearchParams(''),
 }))
 
 vi.mock('next/image', () => ({

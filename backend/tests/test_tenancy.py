@@ -440,7 +440,12 @@ def test_a_null_org_analysis_is_readable_by_everyone(db_session, two_orgs):
 
 
 def test_an_owned_analysis_is_hidden_from_everyone_else(db_session, two_orgs):
-    analysis = Analysis(url="https://owned.example", status="done", org_id=two_orgs["a"].org_id)
+    analysis = Analysis(
+        url="https://owned.example",
+        status="done",
+        org_id=two_orgs["a"].org_id,
+        created_by_user_id=two_orgs["a"].user_id,
+    )
     db_session.add(analysis)
     db_session.commit()
 
@@ -450,6 +455,41 @@ def test_an_owned_analysis_is_hidden_from_everyone_else(db_session, two_orgs):
     assert readable_analysis(db_session, analysis.id, two_orgs["b"]) is None
     assert readable_analysis(db_session, analysis.id, OrgContext.public()) is None
     assert readable_analysis(db_session, analysis.id, None) is None
+
+
+def test_an_owned_analysis_is_hidden_from_a_teammate_in_the_same_org(db_session, two_orgs):
+    """User ownership within one org — org membership alone is not enough."""
+
+    analysis = Analysis(
+        url="https://teammate.example",
+        status="done",
+        org_id=two_orgs["a"].org_id,
+        created_by_user_id=two_orgs["a"].user_id,
+    )
+    db_session.add(analysis)
+    db_session.commit()
+
+    teammate = OrgContext(
+        org_id=two_orgs["a"].org_id,
+        user_id=uuid.uuid4(),
+        role="viewer",
+        is_system=False,
+    )
+    assert readable_analysis(db_session, analysis.id, teammate) is None
+
+
+def test_a_legacy_org_analysis_without_a_creator_stays_org_readable(db_session, two_orgs):
+    analysis = Analysis(
+        url="https://legacy-owned.example",
+        status="done",
+        org_id=two_orgs["a"].org_id,
+        created_by_user_id=None,
+    )
+    db_session.add(analysis)
+    db_session.commit()
+
+    assert readable_analysis(db_session, analysis.id, two_orgs["a"]) is not None
+    assert readable_analysis(db_session, analysis.id, two_orgs["b"]) is None
 
 
 def test_readable_analysis_returns_none_for_a_missing_row(db_session):

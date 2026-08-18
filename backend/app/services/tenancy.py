@@ -374,6 +374,11 @@ def readable_analysis(
     if context.is_system:
         return analysis
     if context.org_id is not None and analysis.org_id == context.org_id:
+        if (
+            analysis.created_by_user_id is not None
+            and analysis.created_by_user_id != context.user_id
+        ):
+            return None
         return analysis
     return None
 

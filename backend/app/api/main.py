@@ -16,6 +16,7 @@ from app.db.session import get_session
 from app.health import health_report
 from app.request_context import RequestContextMiddleware
 from app.services.billing import InsufficientCredit, PlanCatalogMissing, QuotaExceeded
+from app.services.user_analysis_limits import UserAnalysisLimitExceeded
 
 app = FastAPI(title="Yanki API", version="0.1.0")
 
@@ -51,6 +52,21 @@ app.include_router(invitation_router)
 #   503 — the deployment has no plan catalog. Nobody's fault but ours.
 # A client that sees one status for all three cannot tell the customer which of
 # those three things to do.
+
+
+@app.exception_handler(UserAnalysisLimitExceeded)
+def _user_analysis_limit_exceeded(request: Request, exc: UserAnalysisLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={
+            "detail": (
+                f"you may hold up to {exc.limit} analyses at a time and {exc.used} are active"
+            ),
+            "metric": exc.metric,
+            "used": exc.used,
+            "limit": exc.limit,
+        },
+    )
 
 
 @app.exception_handler(QuotaExceeded)

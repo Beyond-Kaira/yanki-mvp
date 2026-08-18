@@ -9,6 +9,7 @@ const authState = { status: 'anonymous' as string, user: null as unknown }
 vi.mock('next/navigation', () => ({
   usePathname: () => '/analyses/abc123',
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(''),
 }))
 
 vi.mock('next/image', () => ({
@@ -27,7 +28,7 @@ vi.mock('@/components/AuthProvider', () => ({
 }))
 
 vi.mock('@/components/AnalysisSessionProvider', () => ({
-  useAnalysisSession: () => ({ analysisId: null }),
+  useAnalysisSession: () => ({ analysisId: null, setAnalysisId: vi.fn() }),
 }))
 
 const SIGNED_IN = {

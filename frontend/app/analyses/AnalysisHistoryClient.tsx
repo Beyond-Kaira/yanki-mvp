@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import AnalysisQuotaChip from '@/components/ai-visibility/AnalysisQuotaChip'
 import PageContainer from '@/components/shell/PageContainer'
-import { ApiError, listAnalyses } from '@/lib/api'
+import IconRemoveButton from '@/components/shell/IconRemoveButton'
+import { useAnalysisBinding } from '@/components/ai-visibility/useAnalysisBinding'
+import { ApiError, deleteAnalysis, listAnalyses } from '@/lib/api'
 import type { AnalysisList, AnalysisSummary } from '@/lib/contracts'
 
 const PAGE_SIZE = 20
@@ -39,7 +43,7 @@ function readableTarget(url: string): string {
 }
 
 /**
- * The organization's analysis history.
+ * The caller's own analysis history.
  *
  * **The screen exists because the data started belonging to someone.** Runs have
  * carried an `org_id` since P7.6, and until now the only way back to a result
@@ -62,6 +66,10 @@ export default function AnalysisHistoryClient() {
   const [offset, setOffset] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pendingDelete, setPendingDelete] = useState<AnalysisSummary | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const { clearBinding, notifyQuotaChanged } = useAnalysisBinding()
 
   const load = useCallback(
     (signal?: AbortSignal) => {
@@ -91,6 +99,40 @@ export default function AnalysisHistoryClient() {
     return () => controller.abort()
   }, [load])
 
+  function openDeleteDialog(row: AnalysisSummary) {
+    if (row.status !== 'done') return
+    setDeleteError(null)
+    setPendingDelete(row)
+  }
+
+  function closeDeleteDialog() {
+    if (deleting) return
+    setPendingDelete(null)
+    setDeleteError(null)
+  }
+
+  async function runDelete() {
+    if (!pendingDelete) return
+
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteAnalysis(pendingDelete.id)
+      clearBinding(pendingDelete.id)
+      notifyQuotaChanged()
+      setPendingDelete(null)
+      load()
+    } catch (cause: unknown) {
+      setDeleteError(
+        cause instanceof ApiError
+          ? cause.message
+          : "We couldn't delete that analysis.",
+      )
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const rows: AnalysisSummary[] = page?.analyses ?? []
   const total = page?.total ?? 0
   const showingFrom = total === 0 ? 0 : offset + 1
@@ -104,9 +146,19 @@ export default function AnalysisHistoryClient() {
             Your analyses
           </h1>
           <p className="mt-1 text-sm text-surface-subtle">
-            Every GEO analysis your organization has run. Open one to see the prompts,
-            the raw engine answers and the score behind it.
+            Every GEO analysis you have run. Open one to see the prompts, the raw
+            engine answers and the score behind it.
           </p>
+          {page ? (
+            <div className="mt-3">
+              <AnalysisQuotaChip
+                quota={{
+                  used: page.user_analyses_used,
+                  limit: page.user_analyses_limit,
+                }}
+              />
+            </div>
+          ) : null}
         </header>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -169,7 +221,7 @@ export default function AnalysisHistoryClient() {
           <div className="overflow-x-auto rounded-2xl border border-surface-border bg-surface">
             <table className="w-full text-left text-sm">
               <caption className="sr-only">
-                Your organization&rsquo;s analyses, newest first
+                Your analyses, newest first
               </caption>
               <thead className="border-b border-surface-border text-surface-subtle">
                 <tr>
@@ -184,6 +236,9 @@ export default function AnalysisHistoryClient() {
                   </th>
                   <th scope="col" className="px-4 py-3 font-medium">
                     Started
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-medium">
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
@@ -226,6 +281,19 @@ export default function AnalysisHistoryClient() {
                     <td className="px-4 py-3 text-surface-subtle">
                       {formatMoment(row.created_at)}
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      {row.status === 'done' ? (
+                        <IconRemoveButton
+                          label={`Delete analysis for ${readableTarget(row.url)}`}
+                          title="Delete analysis"
+                          busy={deleting && pendingDelete?.id === row.id}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openDeleteDialog(row)
+                          }}
+                        />
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -259,6 +327,31 @@ export default function AnalysisHistoryClient() {
           </nav>
         ) : null}
       </section>
+
+      {pendingDelete ? (
+        <ConfirmDialog
+          title={`Delete analysis for ${readableTarget(pendingDelete.url)}?`}
+          description={
+            <>
+              <p>
+                This removes the run for{' '}
+                <span className="font-medium text-surface-foreground">
+                  {readableTarget(pendingDelete.url)}
+                </span>{' '}
+                and frees one active slot.
+              </p>
+              <p>This cannot be undone.</p>
+            </>
+          }
+          confirmLabel="Delete analysis"
+          pendingLabel="Deleting"
+          tone="danger"
+          pending={deleting}
+          error={deleteError}
+          onConfirm={() => void runDelete()}
+          onCancel={closeDeleteDialog}
+        />
+      ) : null}
     </PageContainer>
   )
 }

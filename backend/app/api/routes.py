@@ -142,7 +142,8 @@ def submit_analysis(
             headers={"Retry-After": str(exc.retry_after)},
         ) from exc
 
-    enforce_user_analysis_limit(session, org.user_id)
+    user_id = org.require_user_id
+    enforce_user_analysis_limit(session, user_id)
 
     # The counter and the row it pays for commit together, or neither does.
     # `create_analysis(commit=False)` exists for exactly this: a commit inside it
@@ -154,7 +155,7 @@ def submit_analysis(
         str(payload.url),
         ip_hash=ip_hash,
         org_id=org_id,
-        created_by_user_id=org.user_id,
+        created_by_user_id=user_id,
         commit=False,
     )
 

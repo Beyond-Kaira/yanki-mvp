@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SeoProjectDetail, SiteAuditDetail } from '@/lib/contracts'
@@ -6,14 +6,29 @@ import type { SeoProjectDetail, SiteAuditDetail } from '@/lib/contracts'
 const mockedUseAuth = vi.hoisted(() => vi.fn())
 const mockedGetSeoProject = vi.hoisted(() => vi.fn())
 const mockedGetSiteAudit = vi.hoisted(() => vi.fn())
+const mockedStartSiteAudit = vi.hoisted(() => vi.fn())
+// Mirrors the real class closely enough for `instanceof` plus `.status`, which
+// is all the component asks of it.
+const MockApiError = vi.hoisted(
+  () =>
+    class ApiError extends Error {
+      status: number
+      constructor(message: string, status: number) {
+        super(message)
+        this.status = status
+      }
+    },
+)
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ projectId: 'project-1' }),
 }))
 vi.mock('@/components/AuthProvider', () => ({ useAuth: mockedUseAuth }))
 vi.mock('@/lib/api', () => ({
+  ApiError: MockApiError,
   getSeoProject: mockedGetSeoProject,
   getSiteAudit: mockedGetSiteAudit,
+  startSiteAudit: mockedStartSiteAudit,
 }))
 
 import SiteAuditProjectDetail from '@/components/site-audit/detail/SiteAuditProjectDetail'
@@ -50,6 +65,75 @@ describe('SiteAuditProjectDetail', () => {
     mockedUseAuth.mockReturnValue({ status: 'authenticated', user: null })
     mockedGetSeoProject.mockResolvedValue(PROJECT)
     mockedGetSiteAudit.mockResolvedValue(AUDIT)
+    mockedStartSiteAudit.mockResolvedValue({ ...AUDIT, id: 'audit-2', status: 'queued' })
+  })
+
+  it('re-runs the crawl with the settings the last run used', async () => {
+    const user = userEvent.setup()
+    render(<SiteAuditProjectDetail />)
+    await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 })
+
+    await user.click(screen.getByRole('button', { name: 'Run audit again' }))
+
+    // Prefilled from the completed run, not reset to the create-flow defaults.
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText(/limit per audit/i)).toHaveValue(10)
+    expect(within(dialog).getByRole('radio', { name: /mobile crawler/i })).toBeChecked()
+
+    await user.click(within(dialog).getByRole('button', { name: /start audit/i }))
+
+    expect(mockedStartSiteAudit).toHaveBeenCalledWith('project-1', {
+      page_limit: 10,
+      profile_id: 'site_audit_mobile',
+      js_rendering: true,
+    })
+    // The queued run has to come from a refetch, or the poller never follows it.
+    await waitFor(() => expect(mockedGetSeoProject).toHaveBeenCalledTimes(2))
+  })
+
+  it('will not queue a second run while one is already in flight', async () => {
+    const running: SiteAuditDetail = { ...AUDIT, status: 'running', progress: 40 }
+    mockedGetSeoProject.mockResolvedValue({ ...PROJECT, latest_audit: running })
+    mockedGetSiteAudit.mockResolvedValue(running)
+    render(<SiteAuditProjectDetail />)
+    await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 })
+
+    expect(screen.getByRole('button', { name: 'Audit in progress' })).toBeDisabled()
+    expect(mockedStartSiteAudit).not.toHaveBeenCalled()
+  })
+
+  it('withdraws the button when the deployment has crawling switched off', async () => {
+    const user = userEvent.setup()
+    mockedStartSiteAudit.mockRejectedValueOnce(new MockApiError('Not Found', 404))
+    render(<SiteAuditProjectDetail />)
+    await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 })
+
+    await user.click(screen.getByRole('button', { name: 'Run audit again' }))
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: /start audit/i,
+      }),
+    )
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/turned off/i)
+    expect(screen.queryByRole('button', { name: /run audit/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the dialog open and explains a refused duplicate run', async () => {
+    const user = userEvent.setup()
+    mockedStartSiteAudit.mockRejectedValueOnce(
+      new MockApiError('This project already has an audit queued or running.', 409),
+    )
+    render(<SiteAuditProjectDetail />)
+    await screen.findByRole('heading', { name: 'Site Audit: Example', level: 1 })
+
+    await user.click(screen.getByRole('button', { name: 'Run audit again' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /start audit/i }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      /already has an audit queued or running/i,
+    )
   })
 
   it('loads the project and renders only backend audit values', async () => {

@@ -74,6 +74,12 @@ class SiteAuditPageOut(BaseModel):
     html_lang: str | None
     issues: list[SiteAuditIssueOut]
     schemas: list[SiteAuditSchemaOut]
+    # When this page was persisted, which is the only per-page timing the API
+    # exposes. Consecutive values give the wall time a page actually cost —
+    # the difference between a crawl that is healthy and one that is crawling
+    # through treacle is per-page, and the audit-level start/finish pair hides
+    # it. Read from the row the crawler already wrote; no new column.
+    created_at: datetime
 
 
 class SiteAuditSummaryOut(BaseModel):

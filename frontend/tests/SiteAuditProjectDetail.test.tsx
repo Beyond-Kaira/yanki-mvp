@@ -45,6 +45,7 @@ const AUDIT: SiteAuditDetail = {
     id: 'page-1', requested_url: 'https://example.com/',
     final_url: 'https://example.com/', status_code: 200, title: 'Example',
     meta_description: 'Example page', h1_count: 1, html_lang: 'en',
+    created_at: '2026-08-04T09:00:05Z',
     issues: [
       { code: 'missing_canonical', severity: 'error', message: 'Canonical link is missing.', details: {} },
       { code: 'short_title', severity: 'warning', message: 'Title is too short.', details: {} },

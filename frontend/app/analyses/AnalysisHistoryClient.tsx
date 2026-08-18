@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import AnalysisQuotaChip from '@/components/ai-visibility/AnalysisQuotaChip'
 import PageContainer from '@/components/shell/PageContainer'
 import IconRemoveButton from '@/components/shell/IconRemoveButton'
@@ -65,8 +66,9 @@ export default function AnalysisHistoryClient() {
   const [offset, setOffset] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<AnalysisSummary | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { clearBinding, notifyQuotaChanged } = useAnalysisBinding()
 
   const load = useCallback(
@@ -97,29 +99,37 @@ export default function AnalysisHistoryClient() {
     return () => controller.abort()
   }, [load])
 
-  async function handleDelete(row: AnalysisSummary) {
+  function openDeleteDialog(row: AnalysisSummary) {
     if (row.status !== 'done') return
-    const target = readableTarget(row.url)
-    const ok = window.confirm(
-      `Delete the analysis for ${target}?\n\nThis frees one active slot and cannot be undone.`,
-    )
-    if (!ok) return
+    setDeleteError(null)
+    setPendingDelete(row)
+  }
 
-    setActionError(null)
-    setDeletingId(row.id)
+  function closeDeleteDialog() {
+    if (deleting) return
+    setPendingDelete(null)
+    setDeleteError(null)
+  }
+
+  async function runDelete() {
+    if (!pendingDelete) return
+
+    setDeleting(true)
+    setDeleteError(null)
     try {
-      await deleteAnalysis(row.id)
-      clearBinding(row.id)
+      await deleteAnalysis(pendingDelete.id)
+      clearBinding(pendingDelete.id)
       notifyQuotaChanged()
+      setPendingDelete(null)
       load()
     } catch (cause: unknown) {
-      setActionError(
+      setDeleteError(
         cause instanceof ApiError
           ? cause.message
           : "We couldn't delete that analysis.",
       )
     } finally {
-      setDeletingId(null)
+      setDeleting(false)
     }
   }
 
@@ -150,15 +160,6 @@ export default function AnalysisHistoryClient() {
             </div>
           ) : null}
         </header>
-
-        {actionError ? (
-          <p
-            role="alert"
-            className="mb-4 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger-strong"
-          >
-            {actionError}
-          </p>
-        ) : null}
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">Status</span>
@@ -285,10 +286,10 @@ export default function AnalysisHistoryClient() {
                         <IconRemoveButton
                           label={`Delete analysis for ${readableTarget(row.url)}`}
                           title="Delete analysis"
-                          busy={deletingId === row.id}
+                          busy={deleting && pendingDelete?.id === row.id}
                           onClick={(event) => {
                             event.stopPropagation()
-                            void handleDelete(row)
+                            openDeleteDialog(row)
                           }}
                         />
                       ) : null}
@@ -326,6 +327,31 @@ export default function AnalysisHistoryClient() {
           </nav>
         ) : null}
       </section>
+
+      {pendingDelete ? (
+        <ConfirmDialog
+          title={`Delete analysis for ${readableTarget(pendingDelete.url)}?`}
+          description={
+            <>
+              <p>
+                This removes the run for{' '}
+                <span className="font-medium text-surface-foreground">
+                  {readableTarget(pendingDelete.url)}
+                </span>{' '}
+                and frees one active slot.
+              </p>
+              <p>This cannot be undone.</p>
+            </>
+          }
+          confirmLabel="Delete analysis"
+          pendingLabel="Deleting"
+          tone="danger"
+          pending={deleting}
+          error={deleteError}
+          onConfirm={() => void runDelete()}
+          onCancel={closeDeleteDialog}
+        />
+      ) : null}
     </PageContainer>
   )
 }

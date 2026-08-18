@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -29,6 +30,47 @@ import {
 
 interface AppShellProps {
   children: ReactNode
+}
+
+type AppShellChromeProps = AppShellProps & {
+  boundAnalysisId: string | null
+}
+
+function AppShellBound({ children }: AppShellProps) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const { analysisId: sessionAnalysisId } = useAnalysisSession()
+  const boundAnalysisId = resolveBoundAnalysisId(
+    searchParams.get('analysis'),
+    pathname,
+    sessionAnalysisId,
+  )
+
+  return (
+    <AppShellChrome boundAnalysisId={boundAnalysisId}>{children}</AppShellChrome>
+  )
+}
+
+export default function AppShell({ children }: AppShellProps) {
+  const pathname = usePathname()
+  const { status } = useAuth()
+  const { analysisId: sessionAnalysisId } = useAnalysisSession()
+
+  if (!showsAppShell(pathname, status === 'authenticated')) {
+    return <>{children}</>
+  }
+
+  const fallbackBound = resolveBoundAnalysisId(null, pathname, sessionAnalysisId)
+
+  return (
+    <Suspense
+      fallback={
+        <AppShellChrome boundAnalysisId={fallbackBound}>{children}</AppShellChrome>
+      }
+    >
+      <AppShellBound>{children}</AppShellBound>
+    </Suspense>
+  )
 }
 
 /** Human labels for the stored role strings. */
@@ -98,16 +140,9 @@ function withBoundAnalysis(href: string, boundAnalysisId: string | null): string
   return `${href}${href.includes('?') ? '&' : '?'}analysis=${boundAnalysisId}`
 }
 
-export default function AppShell({ children }: AppShellProps) {
+function AppShellChrome({ children, boundAnalysisId }: AppShellChromeProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const { analysisId: sessionAnalysisId } = useAnalysisSession()
-  const boundAnalysisId = resolveBoundAnalysisId(
-    searchParams.get('analysis'),
-    pathname,
-    sessionAnalysisId,
-  )
   const { status, user } = useAuth()
   const { railHovered, setRailHovered, hoveredSection, setHoveredSection } =
     useShellState()
@@ -201,14 +236,6 @@ export default function AppShell({ children }: AppShellProps) {
   }, [navOpen])
   const signedIn = status === 'authenticated' && Boolean(user?.email)
   const loadingAuth = status === 'loading'
-
-  // Every hook above runs unconditionally, so this early return is safe here
-  // and nowhere earlier. Standing down on a public route the visitor is reading
-  // signed-out hands the page to SiteHeader, which asks the same question and
-  // gets the opposite answer — so the page always has exactly one chrome.
-  if (!showsAppShell(pathname, status === 'authenticated')) {
-    return <>{children}</>
-  }
 
   const railExpanded = !isDesktop || railHovered || railFocused
   const panelOpen =

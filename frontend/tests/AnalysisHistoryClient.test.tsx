@@ -188,7 +188,6 @@ describe('Analysis history', () => {
   it('deletes a finished run and reloads the list', async () => {
     listAnalyses.mockResolvedValue(page([row()]))
     deleteAnalysis.mockResolvedValue(undefined)
-    vi.stubGlobal('confirm', vi.fn(() => true))
 
     render(<AnalysisHistoryClient />)
     await screen.findByRole('table')
@@ -196,12 +195,12 @@ describe('Analysis history', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Delete analysis for acme.test' }),
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Delete analysis' }))
 
     await waitFor(() => expect(deleteAnalysis).toHaveBeenCalledWith('an-1'))
     expect(clearBinding).toHaveBeenCalledWith('an-1')
     expect(notifyQuotaChanged).toHaveBeenCalled()
     await waitFor(() => expect(listAnalyses).toHaveBeenCalledTimes(2))
-    vi.unstubAllGlobals()
   })
 
   it('offers delete only on finished runs', async () => {

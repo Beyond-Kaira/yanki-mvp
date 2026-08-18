@@ -143,7 +143,7 @@ def submit_analysis(
         ) from exc
 
     user_id = org.require_user_id
-    enforce_user_analysis_limit(session, user_id)
+    enforce_user_analysis_limit(session, user_id, limit=settings.user_analysis_limit)
 
     # The counter and the row it pays for commit together, or neither does.
     # `create_analysis(commit=False)` exists for exactly this: a commit inside it

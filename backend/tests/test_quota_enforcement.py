@@ -52,6 +52,7 @@ def _pin_settings(**overrides) -> None:
         "site_audit_enabled": True,
         "analyses_rate_limit_per_ip_hour": 1000,
         "analyses_daily_cap": 1000,
+        "user_analysis_limit": 0,
     }
     defaults.update(overrides)
     settings = Settings(**defaults)

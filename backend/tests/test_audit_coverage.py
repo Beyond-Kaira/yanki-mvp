@@ -419,6 +419,7 @@ def _pin(**overrides) -> None:
     defaults: dict[str, object] = {
         "analyses_rate_limit_per_ip_hour": 1000,
         "analyses_daily_cap": 1000,
+        "user_analysis_limit": 0,
     }
     defaults.update(overrides)
     app.dependency_overrides[get_settings] = lambda: Settings(**defaults)

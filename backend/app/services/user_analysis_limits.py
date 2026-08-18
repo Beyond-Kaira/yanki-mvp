@@ -50,9 +50,17 @@ def count_active_user_analyses(session: Session, user_id: uuid.UUID) -> int:
     )
 
 
-def enforce_user_analysis_limit(session: Session, user_id: uuid.UUID) -> None:
-    """Refuse when the user already holds USER_ANALYSIS_LIMIT active analyses."""
+def enforce_user_analysis_limit(
+    session: Session,
+    user_id: uuid.UUID,
+    *,
+    limit: int = USER_ANALYSIS_LIMIT,
+) -> None:
+    """Refuse when the user already holds ``limit`` active analyses."""
+
+    if limit <= 0:
+        return
 
     used = count_active_user_analyses(session, user_id)
-    if used >= USER_ANALYSIS_LIMIT:
-        raise UserAnalysisLimitExceeded(used)
+    if used >= limit:
+        raise UserAnalysisLimitExceeded(used, limit=limit)

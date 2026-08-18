@@ -51,8 +51,8 @@ from app.db.session import get_session
 from app.net_guard import is_public_url
 from app.services import audit, billing, quota
 from app.services.analyses import (
-    AnalysisDeleteConflictError,
     MAX_PAGE,
+    AnalysisDeleteConflictError,
     create_analysis,
     delete_user_analysis,
     list_user_analyses,
@@ -342,9 +342,7 @@ def list_analyses(
     """
 
     user_id = org.require_user_id
-    page = list_user_analyses(
-        session, org, user_id, status=status, limit=limit, offset=offset
-    )
+    page = list_user_analyses(session, org, user_id, status=status, limit=limit, offset=offset)
     used = count_active_user_analyses(session, user_id)
     return AnalysisListOut(
         total=page.total,

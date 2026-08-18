@@ -94,9 +94,7 @@ def test_another_users_done_analysis_returns_404(client, db_session, signed_in) 
     teammate = User(email="teammate@example.test", password_hash=hash_password("correct-horse"))
     db_session.add(teammate)
     db_session.flush()
-    db_session.add(
-        Membership(org_id=org.id, user_id=teammate.id, role="viewer", status="active")
-    )
+    db_session.add(Membership(org_id=org.id, user_id=teammate.id, role="viewer", status="active"))
     rows = _seed_done(db_session, org_id=org.id, user_id=teammate.id)
     theirs = rows[0].id
 

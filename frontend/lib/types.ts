@@ -301,20 +301,16 @@ export interface paths {
         };
         /**
          * List Analyses
-         * @description The caller's organization's analyses, newest first.
+         * @description The caller's own analyses, newest first.
          *
-         *     Signed-in and org-scoped, unlike the sibling detail route. That asymmetry is
-         *     deliberate and worth stating, because the two look like they should match:
-         *     ``GET /analyses/{id}`` still serves an org-less run to anyone holding its id
-         *     (a capability URL — the product's entire pre-P7.6 surface, and every row in
-         *     production today), while a *list* has no capability to hold. There is no
-         *     id to know, so the only possible answer to "whose analyses?" is the caller's
-         *     organization, and an unauthenticated version of this route could only ever
-         *     mean "everyone's".
+         *     Signed-in and scoped to the caller's organization and user id. Another
+         *     member of the same organization does not see your runs here, and you do
+         *     not see theirs — the interim per-user stock limit is per person, not per
+         *     org.
          *
          *     Runs from before P7.6 carry no ``org_id`` and therefore appear in nobody's
-         *     history. That is the honest rendering: they belong to no tenant, and
-         *     inventing an owner for them would be a worse answer than omitting them.
+         *     history. Legacy org rows with no ``created_by_user_id`` are omitted for the
+         *     same reason: they belong to no user's history.
          */
         get: operations["list_analyses_api_v1_analyses_get"];
         put?: never;
@@ -326,10 +322,11 @@ export interface paths {
          *     the next has any effect:
          *
          *     1. **SSRF** — 422, and no row, so a rejected target never counts anywhere.
-         *     2. **Per-credential burst** — the P5.0 IP limit, unchanged. A monthly plan
-         *        quota does not bound a burst; five hundred runs on the first of the month
-         *        is inside a Business allowance and still a stampede at the vendor.
-         *     3. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+         *     2. **Per-credential burst** — the P5.0 IP limit, unchanged.
+         *     3. **User stock limit** — 429 when the caller already holds five active
+         *        analyses (``queued``/``running``/``done``). Interim hardcoded gate until
+         *        user plans and org billing replace it.
+         *     4. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
          */
         post: operations["submit_analysis_api_v1_analyses_post"];
         delete?: never;
@@ -356,7 +353,15 @@ export interface paths {
         get: operations["read_analysis_api_v1_analyses__analysis_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Analysis
+         * @description Remove one finished analysis the caller queued.
+         *
+         *     Only ``done`` rows may be deleted. ``queued`` and ``running`` are refused
+         *     with 409; ``failed`` rows are removed by the worker auto-purge and are not
+         *     deletable here. Deleting frees one slot on the interim per-user stock limit.
+         */
+        delete: operations["delete_analysis_api_v1_analyses__analysis_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1353,7 +1358,7 @@ export interface components {
         };
         /**
          * AnalysisListOut
-         * @description A page of the caller's organization's analyses, newest first.
+         * @description A page of the caller's own analyses, newest first.
          */
         AnalysisListOut: {
             /** Analyses */
@@ -1364,6 +1369,10 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+            /** User Analyses Limit */
+            user_analyses_limit: number;
+            /** User Analyses Used */
+            user_analyses_used: number;
         };
         /**
          * AnalysisOut
@@ -3490,6 +3499,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AnalysisOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_analysis_api_v1_analyses__analysis_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -36,9 +36,7 @@ def worker_session_factory(monkeypatch):
     engine.dispose()
 
 
-def test_failed_job_marks_failed_and_keeps_partial_results(
-    worker_session_factory, monkeypatch
-):
+def test_failed_job_marks_failed_and_keeps_partial_results(worker_session_factory, monkeypatch):
     import app.worker as worker
     from app.pipeline import discovery, scoring
     from app.pipeline.errors import PipelineError
@@ -76,9 +74,7 @@ def test_failed_job_marks_failed_and_keeps_partial_results(
         # Partial results from the steps that DID complete survive (FR-7).
         assert row.kyc is not None
         prompts = (
-            check.execute(select(Prompt).where(Prompt.analysis_id == analysis_id))
-            .scalars()
-            .all()
+            check.execute(select(Prompt).where(Prompt.analysis_id == analysis_id)).scalars().all()
         )
         responses = (
             check.execute(select(Response).where(Response.analysis_id == analysis_id))

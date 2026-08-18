@@ -382,7 +382,7 @@
         "type": "object"
       },
       "AnalysisListOut": {
-        "description": "A page of the caller's organization's analyses, newest first.",
+        "description": "A page of the caller's own analyses, newest first.",
         "properties": {
           "analyses": {
             "items": {
@@ -402,13 +402,23 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "user_analyses_limit": {
+            "title": "User Analyses Limit",
+            "type": "integer"
+          },
+          "user_analyses_used": {
+            "title": "User Analyses Used",
+            "type": "integer"
           }
         },
         "required": [
           "total",
           "limit",
           "offset",
-          "analyses"
+          "analyses",
+          "user_analyses_used",
+          "user_analyses_limit"
         ],
         "title": "AnalysisListOut",
         "type": "object"
@@ -5680,7 +5690,7 @@
     },
     "/api/v1/analyses": {
       "get": {
-        "description": "The caller's organization's analyses, newest first.\n\nSigned-in and org-scoped, unlike the sibling detail route. That asymmetry is\ndeliberate and worth stating, because the two look like they should match:\n``GET /analyses/{id}`` still serves an org-less run to anyone holding its id\n(a capability URL \u2014 the product's entire pre-P7.6 surface, and every row in\nproduction today), while a *list* has no capability to hold. There is no\nid to know, so the only possible answer to \"whose analyses?\" is the caller's\norganization, and an unauthenticated version of this route could only ever\nmean \"everyone's\".\n\nRuns from before P7.6 carry no ``org_id`` and therefore appear in nobody's\nhistory. That is the honest rendering: they belong to no tenant, and\ninventing an owner for them would be a worse answer than omitting them.",
+        "description": "The caller's own analyses, newest first.\n\nSigned-in and scoped to the caller's organization and user id. Another\nmember of the same organization does not see your runs here, and you do\nnot see theirs \u2014 the interim per-user stock limit is per person, not per\norg.\n\nRuns from before P7.6 carry no ``org_id`` and therefore appear in nobody's\nhistory. Legacy org rows with no ``created_by_user_id`` are omitted for the\nsame reason: they belong to no user's history.",
         "operationId": "list_analyses_api_v1_analyses_get",
         "parameters": [
           {
@@ -5773,7 +5783,7 @@
         ]
       },
       "post": {
-        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged. A monthly plan\n   quota does not bound a burst; five hundred runs on the first of the month\n   is inside a Business allowance and still a stampede at the vendor.\n3. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.",
+        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged.\n3. **User stock limit** \u2014 429 when the caller already holds five active\n   analyses (``queued``/``running``/``done``). Interim hardcoded gate until\n   user plans and org billing replace it.\n4. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.",
         "operationId": "submit_analysis_api_v1_analyses_post",
         "parameters": [
           {
@@ -5837,6 +5847,62 @@
       }
     },
     "/api/v1/analyses/{analysis_id}": {
+      "delete": {
+        "description": "Remove one finished analysis the caller queued.\n\nOnly ``done`` rows may be deleted. ``queued`` and ``running`` are refused\nwith 409; ``failed`` rows are removed by the worker auto-purge and are not\ndeletable here. Deleting frees one slot on the interim per-user stock limit.",
+        "operationId": "delete_analysis_api_v1_analyses__analysis_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Analysis",
+        "tags": [
+          "analyses"
+        ]
+      },
       "get": {
         "description": "One analysis, if this caller may see it.\n\n404 covers both \"no such analysis\" and \"not yours\" on purpose. Splitting\nthem would turn this route into an oracle for which analysis ids exist,\nwhich is the whole value of an unguessable id.",
         "operationId": "read_analysis_api_v1_analyses__analysis_id__get",

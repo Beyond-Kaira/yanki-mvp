@@ -55,15 +55,12 @@ app.include_router(invitation_router)
 
 
 @app.exception_handler(UserAnalysisLimitExceeded)
-def _user_analysis_limit_exceeded(
-    request: Request, exc: UserAnalysisLimitExceeded
-) -> JSONResponse:
+def _user_analysis_limit_exceeded(request: Request, exc: UserAnalysisLimitExceeded) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={
             "detail": (
-                f"you may hold up to {exc.limit} analyses at a time "
-                f"and {exc.used} are active"
+                f"you may hold up to {exc.limit} analyses at a time and {exc.used} are active"
             ),
             "metric": exc.metric,
             "used": exc.used,

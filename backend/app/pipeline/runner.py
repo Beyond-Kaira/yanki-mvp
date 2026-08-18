@@ -25,8 +25,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app import health
-from app.db.models import Analysis, GeoRecord, Prompt, Response, SeoCheck, SerpCheck
-from app.services.analyses import delete_analysis_children
+from app.db.models import Analysis, Prompt, Response
 from app.pipeline import checker_prompts, discovery
 from app.pipeline import execute_measured as execute_step
 from app.pipeline import geo_records as geo_records_step
@@ -39,6 +38,7 @@ from app.pipeline import seo_audit as seo_step
 from app.pipeline import serp_visibility as serp_step
 from app.providers import registry
 from app.serp import registry as serp_registry
+from app.services.analyses import delete_analysis_children
 
 # progress % set when each step COMPLETES (see the master SPEC).
 _DISCOVERY_DONE = 15

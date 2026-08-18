@@ -9,7 +9,15 @@ from decimal import Decimal
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Analysis, CreditLedgerEntry, GeoRecord, Prompt, Response, SeoCheck, SerpCheck
+from app.db.models import (
+    Analysis,
+    CreditLedgerEntry,
+    GeoRecord,
+    Prompt,
+    Response,
+    SeoCheck,
+    SerpCheck,
+)
 from app.services import billing
 from app.services.tenancy import OrgContext, scoped
 
@@ -55,10 +63,7 @@ def should_auto_purge_failed(analysis: Analysis) -> bool:
     keep the failed envelope (FR-7).
     """
 
-    return (
-        analysis.created_by_user_id is not None
-        and (analysis.kind or "mvp") in LISTABLE_KINDS
-    )
+    return analysis.created_by_user_id is not None and (analysis.kind or "mvp") in LISTABLE_KINDS
 
 
 def delete_user_analysis(session: Session, analysis: Analysis, user_id: uuid.UUID) -> None:
@@ -229,9 +234,7 @@ def list_user_analyses(
     total = int(
         session.scalar(
             select(func.count()).select_from(
-                _history_statement(
-                    select(Analysis.id), context, status, user_id=user_id
-                ).subquery()
+                _history_statement(select(Analysis.id), context, status, user_id=user_id).subquery()
             )
         )
         or 0

@@ -268,7 +268,14 @@ def test_a_summary_row_carries_no_result_envelope(client, db_session, signed_in)
     render a table of URLs and scores. The detail route is one click away."""
 
     user, org = signed_in()
-    _seed(db_session, org_id=org.id, created_by_user_id=user.id, count=1, status="done", geo_score=61.5)
+    _seed(
+        db_session,
+        org_id=org.id,
+        created_by_user_id=user.id,
+        count=1,
+        status="done",
+        geo_score=61.5,
+    )
 
     row = client.get(ANALYSES_URL).json()["analyses"][0]
 
@@ -303,9 +310,7 @@ def test_a_teammates_run_is_absent_from_my_history(client, db_session, signed_in
     teammate = User(email="teammate@example.test", password_hash=hash_password("correct-horse"))
     db_session.add(teammate)
     db_session.flush()
-    db_session.add(
-        Membership(org_id=org.id, user_id=teammate.id, role="viewer", status="active")
-    )
+    db_session.add(Membership(org_id=org.id, user_id=teammate.id, role="viewer", status="active"))
     _seed(db_session, org_id=org.id, created_by_user_id=teammate.id, count=2)
     _seed(db_session, org_id=org.id, created_by_user_id=owner.id, count=1)
 
@@ -323,9 +328,7 @@ def test_a_teammates_run_returns_404_on_detail(client, db_session, signed_in) ->
     teammate = User(email="teammate@example.test", password_hash=hash_password("correct-horse"))
     db_session.add(teammate)
     db_session.flush()
-    db_session.add(
-        Membership(org_id=org.id, user_id=teammate.id, role="viewer", status="active")
-    )
+    db_session.add(Membership(org_id=org.id, user_id=teammate.id, role="viewer", status="active"))
     rows = _seed(db_session, org_id=org.id, created_by_user_id=teammate.id, count=1, status="done")
     theirs = rows[0].id
 

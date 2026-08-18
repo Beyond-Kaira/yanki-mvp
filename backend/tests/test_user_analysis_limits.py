@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
-
 import pytest
 import sqlalchemy as sa
 
@@ -49,8 +47,7 @@ def test_user_may_hold_five_analyses_and_the_sixth_is_refused(
     assert body["used"] == USER_ANALYSIS_LIMIT
 
     assert (
-        db_session.scalar(sa.select(sa.func.count()).select_from(Analysis))
-        == USER_ANALYSIS_LIMIT
+        db_session.scalar(sa.select(sa.func.count()).select_from(Analysis)) == USER_ANALYSIS_LIMIT
     )
     rows = db_session.scalars(
         sa.select(Analysis).where(Analysis.created_by_user_id == user.id)
@@ -58,9 +55,7 @@ def test_user_may_hold_five_analyses_and_the_sixth_is_refused(
     assert len(rows) == USER_ANALYSIS_LIMIT
 
 
-def test_failed_analyses_do_not_count_toward_the_user_limit(
-    client, db_session, signed_in
-) -> None:
+def test_failed_analyses_do_not_count_toward_the_user_limit(client, db_session, signed_in) -> None:
     user, org = signed_in()
     for index in range(USER_ANALYSIS_LIMIT):
         db_session.add(
@@ -79,9 +74,7 @@ def test_failed_analyses_do_not_count_toward_the_user_limit(
     assert _submit(client).status_code == 429
 
 
-def test_legacy_rows_without_created_by_user_id_do_not_count(
-    client, db_session, signed_in
-) -> None:
+def test_legacy_rows_without_created_by_user_id_do_not_count(client, db_session, signed_in) -> None:
     _user, org = signed_in()
     for index in range(USER_ANALYSIS_LIMIT):
         db_session.add(

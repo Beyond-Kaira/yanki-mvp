@@ -4,6 +4,7 @@ import type { Analysis } from '@/lib/contracts'
 import { axeCheck } from './a11y'
 
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({ id: 'test-id' }),
 }))
 

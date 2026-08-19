@@ -65,5 +65,4 @@ class Provider(Protocol):
     name: str
     model: str
 
-    def generate(self, prompt: str) -> ProviderResult:
-        ...
+    def generate(self, prompt: str) -> ProviderResult: ...

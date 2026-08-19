@@ -260,9 +260,7 @@ def spend_on(session: Session, analysis_id: uuid.UUID) -> Decimal:
             Response.analysis_id == analysis_id
         )
     )
-    kyc_cost = session.scalar(
-        select(Analysis.kyc_cost_usd).where(Analysis.id == analysis_id)
-    )
+    kyc_cost = session.scalar(select(Analysis.kyc_cost_usd).where(Analysis.id == analysis_id))
     return Decimal(str(total or 0)) + Decimal(str(kyc_cost or 0))
 
 
@@ -275,11 +273,7 @@ def cost_breakdown(session: Session, analysis: Analysis) -> dict[str, Any]:
     converting accounting decimals back to binary floats would add fake digits.
     """
 
-    rows = list(
-        session.scalars(
-            select(Response).where(Response.analysis_id == analysis.id)
-        )
-    )
+    rows = list(session.scalars(select(Response).where(Response.analysis_id == analysis.id)))
     groups: dict[tuple[str, str], dict[str, Any]] = {}
 
     def add(

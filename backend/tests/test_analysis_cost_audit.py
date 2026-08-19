@@ -82,9 +82,7 @@ def test_terminal_event_keeps_cost_detail_after_the_analysis_finishes(db_session
 
     _record_terminal_event(db_session, analysis)
 
-    event = db_session.scalar(
-        select(AuditEvent).where(AuditEvent.action == "analysis:complete")
-    )
+    event = db_session.scalar(select(AuditEvent).where(AuditEvent.action == "analysis:complete"))
     assert event is not None
     assert event.entity_id == analysis.id
     assert event.after["url"] == "https://acme.test"

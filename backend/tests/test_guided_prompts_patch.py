@@ -71,9 +71,7 @@ def _awaiting_with_prompts(db_session, user_id, org_id, *, settings) -> Analysis
     return analysis
 
 
-def test_patch_prompts_edits_generated_and_adds_custom(
-    client, db_session, signed_in, settings
-):
+def test_patch_prompts_edits_generated_and_adds_custom(client, db_session, signed_in, settings):
     user, org = signed_in()
     analysis = _awaiting_with_prompts(db_session, user.id, org.id, settings=settings)
     prompts = list(analysis.prompts)
@@ -128,17 +126,14 @@ def test_patch_prompts_rejects_brand_leak_in_category_prompt(
     assert resp.status_code == 422
 
 
-def test_patch_prompts_rejects_more_than_three_new_prompts(
-    client, db_session, signed_in, settings
-):
+def test_patch_prompts_rejects_more_than_three_new_prompts(client, db_session, signed_in, settings):
     user, org = signed_in()
     analysis = _awaiting_with_prompts(db_session, user.id, org.id, settings=settings)
     resp = client.patch(
         PROMPTS_URL.format(id=analysis.id),
         json={
             "prompts": [
-                {"text": f"Custom question {index}?", "category": "custom"}
-                for index in range(4)
+                {"text": f"Custom question {index}?", "category": "custom"} for index in range(4)
             ]
         },
     )

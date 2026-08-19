@@ -173,9 +173,7 @@ def run_execute_prompts_and_score(session, analysis_id, settings) -> Analysis:
     kyc_step.require_usable(kyc)
 
     prompt_rows = (
-        session.execute(select(Prompt).where(Prompt.analysis_id == analysis.id))
-        .scalars()
-        .all()
+        session.execute(select(Prompt).where(Prompt.analysis_id == analysis.id)).scalars().all()
     )
     if not prompt_rows:
         raise kyc_step.PipelineError("no prompts to execute")

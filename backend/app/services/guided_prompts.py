@@ -53,9 +53,7 @@ def _validate_prompt_item(item: PromptPatchItem, *, brand_keys: list[str]) -> tu
         raise GuidedProfileValidationError("prompt text is too short")
     if not category or category not in ALLOWED_PROMPT_CATEGORIES:
         allowed = ", ".join(sorted(ALLOWED_PROMPT_CATEGORIES))
-        raise GuidedProfileValidationError(
-            f"prompt category must be one of: {allowed}"
-        )
+        raise GuidedProfileValidationError(f"prompt category must be one of: {allowed}")
     if category != BRAND_PROBE and prompts_step.leaks_brand(text, brand_keys):
         raise GuidedProfileValidationError(
             "category prompts must not name the brand being measured"
@@ -96,9 +94,7 @@ def patch_analysis_prompts(
 
     new_items = [item for item in items if item.id is None]
     if len(new_items) > USER_PROMPT_EXTRA:
-        raise GuidedProfileValidationError(
-            f"at most {USER_PROMPT_EXTRA} new prompts may be added"
-        )
+        raise GuidedProfileValidationError(f"at most {USER_PROMPT_EXTRA} new prompts may be added")
 
     kyc = KYC.model_validate(analysis.kyc or {})
     brand_keys = prompts_step.brand_keys(kyc)
@@ -143,13 +139,9 @@ def patch_analysis_prompts(
 
     for locked_id, locked_row in locked.items():
         if locked_id not in kept_ids:
-            raise GuidedProfileValidationError(
-                "locked prompts must be included unchanged"
-            )
+            raise GuidedProfileValidationError("locked prompts must be included unchanged")
         if locked_row.text.casefold() not in seen_text:
-            raise GuidedProfileValidationError(
-                "locked prompts must be included unchanged"
-            )
+            raise GuidedProfileValidationError("locked prompts must be included unchanged")
 
     for prompt_id, prompt in existing.items():
         if prompt_id not in kept_ids and not prompt.locked:

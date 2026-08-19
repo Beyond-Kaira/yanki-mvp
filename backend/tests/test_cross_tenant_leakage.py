@@ -112,6 +112,7 @@ ORG = {
     ("GET", "/api/v1/analyses"),
     ("POST", "/api/v1/analyses"),
     ("DELETE", "/api/v1/analyses/{analysis_id}"),
+    ("PATCH", "/api/v1/analyses/{analysis_id}/kyc"),
     ("GET", "/api/v1/admin/organization"),
     ("GET", "/api/v1/admin/members"),
     ("GET", "/api/v1/admin/members/{user_id}"),

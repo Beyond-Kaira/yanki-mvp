@@ -23,17 +23,17 @@ pause before the expensive execute step.
 - **Measure** (later PR) will not re-charge the monthly flow quota; it only resumes
   the same analysis id.
 
-## API (shipped in phase 1)
+## API (shipped)
 
 | Change | Notes |
 |--------|--------|
 | `CreateAnalysisRequest.mode` | `quick` \| `guided`, default `quick` |
 | `AnalysisOut.run_mode` | Echo on thin GET |
 | `status=awaiting_review` | Guided pause; KYC/prompt slices available |
+| `PATCH /analyses/{id}/kyc` | Allowlisted KYC fields; regen prompts; 409 if not awaiting review |
 
 ## Not yet shipped
 
-- `PATCH /analyses/{id}/kyc` + prompt regen
 - `PATCH /analyses/{id}/prompts` (custom edit)
 - `POST /analyses/{id}/measure`
 - Guided wizard UI

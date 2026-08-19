@@ -593,6 +593,36 @@
         "title": "AnalysisOut",
         "type": "object"
       },
+      "AnalysisProfileOut": {
+        "description": "Updated KYC and regenerated prompts after a guided profile edit.",
+        "properties": {
+          "kyc": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kyc"
+          },
+          "prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PromptOut"
+            },
+            "title": "Prompts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kyc",
+          "prompts"
+        ],
+        "title": "AnalysisProfileOut",
+        "type": "object"
+      },
       "AnalysisPromptsOut": {
         "description": "Generated prompt list for ``GET /analyses/{id}/prompts``.",
         "properties": {
@@ -3021,6 +3051,156 @@
           "status"
         ],
         "title": "OrganizationOut",
+        "type": "object"
+      },
+      "PatchAnalysisKycRequest": {
+        "additionalProperties": false,
+        "description": "Partial KYC edit while a guided run awaits review (ADR-50).",
+        "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "competitors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competitors"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          },
+          "locations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locations"
+          },
+          "products": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Products"
+          },
+          "services": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Services"
+          },
+          "use_cases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Cases"
+          }
+        },
+        "title": "PatchAnalysisKycRequest",
         "type": "object"
       },
       "PromptOut": {
@@ -5885,7 +6065,7 @@
         ]
       },
       "post": {
-        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged.\n3. **User stock limit** \u2014 429 when the caller already holds five active\n   analyses (``queued``/``running``/``done``). Interim hardcoded gate until\n   user plans and org billing replace it.\n4. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.",
+        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged.\n3. **User stock limit** \u2014 429 when the caller already holds five active\n   analyses (``queued``/``running``/``done``). Interim hardcoded gate until\n   user plans and org billing replace it.\n4. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.\n\n``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses\nafter prompts with ``status=awaiting_review`` until ``POST \u2026/measure`` (ADR-50).",
         "operationId": "submit_analysis_api_v1_analyses_post",
         "parameters": [
           {
@@ -6194,6 +6374,79 @@
           }
         ],
         "summary": "Read Analysis Kyc",
+        "tags": [
+          "analyses"
+        ]
+      },
+      "patch": {
+        "description": "Edit the company profile on a guided run and regenerate prompts.\n\nOnly ``status='awaiting_review'`` guided analyses accept edits. Execute has\nnot started, so there are no response rows to invalidate.",
+        "operationId": "patch_analysis_kyc_api_v1_analyses__analysis_id__kyc_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchAnalysisKycRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Analysis Kyc",
         "tags": [
           "analyses"
         ]

@@ -519,6 +519,31 @@ class AnalysisKycOut(BaseModel):
     kyc: dict[str, Any] | None
 
 
+class PatchAnalysisKycRequest(BaseModel):
+    """Partial KYC edit while a guided run awaits review (ADR-50)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    company: str | None = None
+    description: str | None = None
+    industry: str | None = None
+    category: str | None = None
+    aliases: list[str] | None = None
+    products: list[str] | None = None
+    services: list[str] | None = None
+    keywords: list[str] | None = None
+    use_cases: list[str] | None = None
+    locations: list[str] | None = None
+    competitors: list[str] | None = None
+
+
+class AnalysisProfileOut(BaseModel):
+    """Updated KYC and regenerated prompts after a guided profile edit."""
+
+    kyc: dict[str, Any] | None
+    prompts: list[PromptOut]
+
+
 class AnalysisPromptsOut(BaseModel):
     """Generated prompt list for ``GET /analyses/{id}/prompts``."""
 

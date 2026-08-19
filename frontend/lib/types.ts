@@ -327,6 +327,9 @@ export interface paths {
          *        analyses (``queued``/``running``/``done``). Interim hardcoded gate until
          *        user plans and org billing replace it.
          *     4. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+         *
+         *     ``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses
+         *     after prompts with ``status=awaiting_review`` until ``POST …/measure`` (ADR-50).
          */
         post: operations["submit_analysis_api_v1_analyses_post"];
         delete?: never;
@@ -404,7 +407,14 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Analysis Kyc
+         * @description Edit the company profile on a guided run and regenerate prompts.
+         *
+         *     Only ``status='awaiting_review'`` guided analyses accept edits. Execute has
+         *     not started, so there are no response rows to invalidate.
+         */
+        patch: operations["patch_analysis_kyc_api_v1_analyses__analysis_id__kyc_patch"];
         trace?: never;
     };
     "/api/v1/analyses/{analysis_id}/prompts": {
@@ -1485,6 +1495,18 @@ export interface components {
             url: string;
         };
         /**
+         * AnalysisProfileOut
+         * @description Updated KYC and regenerated prompts after a guided profile edit.
+         */
+        AnalysisProfileOut: {
+            /** Kyc */
+            kyc: {
+                [key: string]: unknown;
+            } | null;
+            /** Prompts */
+            prompts: components["schemas"]["PromptOut"][];
+        };
+        /**
          * AnalysisPromptsOut
          * @description Generated prompt list for ``GET /analyses/{id}/prompts``.
          */
@@ -2455,6 +2477,34 @@ export interface components {
             slug: string;
             /** Status */
             status: string;
+        };
+        /**
+         * PatchAnalysisKycRequest
+         * @description Partial KYC edit while a guided run awaits review (ADR-50).
+         */
+        PatchAnalysisKycRequest: {
+            /** Aliases */
+            aliases?: string[] | null;
+            /** Category */
+            category?: string | null;
+            /** Company */
+            company?: string | null;
+            /** Competitors */
+            competitors?: string[] | null;
+            /** Description */
+            description?: string | null;
+            /** Industry */
+            industry?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Locations */
+            locations?: string[] | null;
+            /** Products */
+            products?: string[] | null;
+            /** Services */
+            services?: string[] | null;
+            /** Use Cases */
+            use_cases?: string[] | null;
         };
         /** PromptOut */
         PromptOut: {
@@ -3705,6 +3755,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalysisKycOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_analysis_kyc_api_v1_analyses__analysis_id__kyc_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchAnalysisKycRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisProfileOut"];
                 };
             };
             /** @description Validation Error */

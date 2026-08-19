@@ -2425,5 +2425,6 @@ things the PR did not intend.*
   - ``awaiting_review`` counts toward the interim user analysis stock limit.
   - Guided rows cannot be manually deleted until ``done`` (same rule as
     ``queued``/``running``); cancel flow is a later UX concern.
-  - Next PRs: ``PATCH …/kyc``, ``PATCH …/prompts``, ``POST …/measure``, wizard UI.
+- Next PRs: ``PATCH …/prompts``, ``POST …/measure``, wizard UI.
+  - ``PATCH …/kyc`` shipped: allowlisted fields + deterministic prompt regen.
   - Doc: [guided-analysis.md](guided-analysis.md).

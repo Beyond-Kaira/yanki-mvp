@@ -539,6 +539,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/oauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Oauth Sign In
+         * @description Sign in with a Google or Apple identity token, registering on first use.
+         *
+         *     Deliberately one endpoint rather than an OAuth twin of ``/signup`` and
+         *     ``/login``: the provider flow has a single button behind it, and which of the
+         *     two happened is something only the server can know. Everything after the
+         *     token is verified — the session family, the rotating refresh cookie, the
+         *     access token — is the machinery ``/login`` already uses, unchanged. When a
+         *     provider email meets an existing password account, the first request asks
+         *     the client for that password and a confirmed retry links both methods.
+         */
+        post: operations["oauth_sign_in_api_v1_auth_oauth_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth Providers
+         * @description Which provider sign-ins this deployment can actually complete.
+         *
+         *     Public because the sign-in form is: the page that needs this is the one
+         *     nobody has signed into yet. It discloses only client ids, which the browser
+         *     hands to the provider on every sign-in anyway.
+         */
+        get: operations["auth_providers_api_v1_auth_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -1592,6 +1644,24 @@ export interface components {
             unverifiable: number;
         };
         /**
+         * AuthProvidersOut
+         * @description The client ids the browser needs to offer provider sign-in.
+         *
+         *     Served rather than baked into the frontend build so that configuring a
+         *     provider is an environment change instead of a rebuild, and so the UI can
+         *     offer exactly the buttons that will work: a provider with no client id is
+         *     ``null`` here and gets no button, instead of one that fails on click.
+         *
+         *     A client id is not a secret — the browser presents it to the provider on
+         *     every sign-in, and it is visible in any client's source.
+         */
+        AuthProvidersOut: {
+            /** Apple */
+            apple?: string | null;
+            /** Google */
+            google?: string | null;
+        };
+        /**
          * AuthSessionListOut
          * @description Every active session the caller holds, most-recently-used first.
          */
@@ -2287,6 +2357,35 @@ export interface components {
              */
             token_type: "bearer";
             user: components["schemas"]["UserOut"];
+        };
+        /**
+         * OAuthSignInRequest
+         * @description A provider identity token, plus what to call the org if this is a signup.
+         *
+         *     One request for both sign-up and sign-in, because the provider flow does not
+         *     distinguish them: the user presses one button and the server discovers
+         *     whether the account already exists. ``account_type`` and
+         *     ``organization_name`` are therefore only consulted when an account is
+         *     actually created, and ignored for a returning user.
+         */
+        OAuthSignInRequest: {
+            /**
+             * Account Type
+             * @default individual
+             * @enum {string}
+             */
+            account_type: "individual" | "organization";
+            /** Id Token */
+            id_token: string;
+            /** Organization Name */
+            organization_name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "google" | "apple";
         };
         /** OpportunitiesOut */
         OpportunitiesOut: {
@@ -3785,6 +3884,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_sign_in_api_v1_auth_oauth_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_providers_api_v1_auth_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthProvidersOut"];
                 };
             };
         };

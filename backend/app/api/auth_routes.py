@@ -12,11 +12,13 @@ from sqlalchemy.orm import Session
 from app.api.auth_cookies import clear_refresh_cookie, set_refresh_cookie
 from app.api.auth_dependencies import get_current_user
 from app.api.schemas import (
+    AuthProvidersOut,
     AuthSessionListOut,
     AuthSessionOut,
     CurrentUserOut,
     LoginRequest,
     LoginResponse,
+    OAuthSignInRequest,
     OrganizationMembershipOut,
     OrganizationOut,
     RefreshResponse,
@@ -29,8 +31,12 @@ from app.db.models import AuthSession, Organization, User
 from app.db.session import get_session
 from app.services import audit
 from app.services.auth import (
+    AccountLinkPasswordError,
+    AccountLinkRequiredError,
+    IdentityAlreadyLinkedError,
     audit_context,
     authenticate_user,
+    authenticate_with_identity,
     create_user,
     get_user_by_email,
 )
@@ -43,6 +49,11 @@ from app.services.auth_sessions import (
     revoke_session_family_for_user,
     rotate_refresh_session,
     start_refresh_session,
+)
+from app.services.oauth import (
+    OAuthConfigurationError,
+    OAuthTokenError,
+    verify_id_token,
 )
 from app.services.permissions import permissions_for
 from app.services.tenancy import (
@@ -121,6 +132,122 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid email or password",
+        )
+
+    try:
+        tokens = start_refresh_session(
+            session,
+            user_id=user.id,
+            settings=settings,
+        )
+    except TokenConfigurationError as exc:
+        raise _authentication_unavailable() from exc
+
+    set_refresh_cookie(
+        response,
+        token=tokens.refresh_token,
+        settings=settings,
+    )
+
+    return LoginResponse(
+        user=UserOut.model_validate(user),
+        access_token=tokens.access_token.value,
+    )
+
+
+@router.get(
+    "/providers",
+    response_model=AuthProvidersOut,
+)
+def auth_providers(
+    settings: Settings = Depends(get_settings),
+) -> AuthProvidersOut:
+    """Which provider sign-ins this deployment can actually complete.
+
+    Public because the sign-in form is: the page that needs this is the one
+    nobody has signed into yet. It discloses only client ids, which the browser
+    hands to the provider on every sign-in anyway.
+    """
+
+    return AuthProvidersOut(
+        google=settings.google_client_id.strip() or None,
+        apple=settings.apple_client_id.strip() or None,
+    )
+
+
+@router.post(
+    "/oauth",
+    response_model=LoginResponse,
+)
+def oauth_sign_in(
+    payload: OAuthSignInRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> LoginResponse:
+    """Sign in with a Google or Apple identity token, registering on first use.
+
+    Deliberately one endpoint rather than an OAuth twin of ``/signup`` and
+    ``/login``: the provider flow has a single button behind it, and which of the
+    two happened is something only the server can know. Everything after the
+    token is verified — the session family, the rotating refresh cookie, the
+    access token — is the machinery ``/login`` already uses, unchanged. When a
+    provider email meets an existing password account, the first request asks
+    the client for that password and a confirmed retry links both methods.
+    """
+
+    try:
+        identity = verify_id_token(
+            provider=payload.provider,
+            id_token=payload.id_token,
+            settings=settings,
+        )
+    except OAuthConfigurationError as exc:
+        # Ours to fix, not the caller's: an unconfigured provider and an
+        # unreachable key set are both "we cannot answer right now".
+        raise _authentication_unavailable() from exc
+    except OAuthTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid identity token",
+        ) from exc
+
+    try:
+        user = authenticate_with_identity(
+            session,
+            identity,
+            account_type=payload.account_type,
+            organization_name=payload.organization_name,
+            linking_password=payload.password,
+        )
+    except AccountLinkRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="current password required to connect this sign-in method",
+        ) from exc
+    except AccountLinkPasswordError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid account password",
+        ) from exc
+    except IdentityAlreadyLinkedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="account is already connected to another sign-in method",
+        ) from exc
+    except IntegrityError as exc:
+        # The race where two sign-ins register the same identity at once, the
+        # same one ``/signup`` guards against on the email.
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="account already registered",
+        ) from exc
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid identity token",
         )
 
     try:

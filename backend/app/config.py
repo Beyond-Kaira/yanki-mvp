@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     auth_refresh_cookie_name: str = "yanki_refresh_token"
     auth_refresh_cookie_secure: bool = True
 
+    # Sign-in with Google / Apple. Blank by default, and a blank one disables
+    # that provider rather than trusting anything: the client id is the audience
+    # an incoming id token must be addressed to, so accepting a token without
+    # one would accept tokens minted for somebody else's application.
+    google_client_id: str = ""
+    apple_client_id: str = ""
+
     # Provider credentials (blank in DRY_RUN)
     anthropic_api_key: str = ""
     openai_api_key: str = ""

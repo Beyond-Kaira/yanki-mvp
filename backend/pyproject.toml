@@ -16,7 +16,9 @@ dependencies = [
     "anthropic",
     "openai",
     "pwdlib[argon2]>=0.3.0",
-    "pyjwt>=2.13.0,<3",
+    # [crypto] pulls in `cryptography`, needed for the RS256 signatures Google
+    # and Apple sign their identity tokens with. Our own tokens stay HS256.
+    "pyjwt[crypto]>=2.13.0,<3",
     "playwright>=1.60,<2",
 ]
 

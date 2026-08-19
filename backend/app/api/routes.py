@@ -68,6 +68,7 @@ from app.services.checker import (
     normalize_triple,
 )
 from app.services.emailer import send_waitlist_emails
+from app.services.guided_execute import request_execute_prompts_and_score
 from app.services.guided_profile import patch_kyc_and_regenerate_prompts
 from app.services.guided_prompts import PromptPatchItem, patch_analysis_prompts
 from app.services.guided_review import (
@@ -133,7 +134,8 @@ def submit_analysis(
     4. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
 
     ``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses
-    after prompts with ``status=awaiting_review`` until ``POST …/measure`` (ADR-50).
+    after prompts with ``status=awaiting_review`` until
+    ``POST …/execute-prompts-and-score`` (ADR-50).
     """
 
     # Reject SSRF targets (loopback/private/link-local/metadata) up front; the
@@ -546,6 +548,54 @@ def patch_analysis_prompts_route(
     )
     session.commit()
     return build_prompts_out(analysis)
+
+
+@router.post(
+    "/analyses/{analysis_id}/execute-prompts-and-score",
+    status_code=202,
+    response_model=AnalysisOut,
+)
+def execute_prompts_and_score(
+    analysis_id: uuid.UUID,
+    org: OrgContext = Depends(requires(ANALYSIS_RUN)),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AnalysisOut:
+    """Resume a guided run: execute the approved prompt set and score GEO.
+
+    Only ``status='awaiting_review'`` guided analyses accept this call. Profile
+    rows (KYC, prompts, SEO) are kept; prior measure outputs are cleared before
+    the worker runs steps 4–6. Does not re-charge the monthly analysis quota.
+    """
+
+    analysis = readable_analysis(session, analysis_id, org)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="analysis not found")
+
+    before_status = analysis.status
+    try:
+        analysis = request_execute_prompts_and_score(session, analysis, settings)
+    except GuidedProfileConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"analysis in status {exc.status!r} cannot be measured",
+        ) from exc
+    except GuidedProfileValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+
+    audit.emit(
+        session,
+        action="analysis:execute_prompts_and_score",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="analysis",
+        entity_id=analysis_id,
+        before={"status": before_status, "progress": analysis.progress},
+        after={"status": analysis.status, "progress": analysis.progress},
+    )
+    session.commit()
+    return _to_out(analysis)
 
 
 @router.get("/analyses/{analysis_id}/prompts", response_model=AnalysisPromptsOut)

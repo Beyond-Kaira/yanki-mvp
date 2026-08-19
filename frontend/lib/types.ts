@@ -329,7 +329,8 @@ export interface paths {
          *     4. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
          *
          *     ``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses
-         *     after prompts with ``status=awaiting_review`` until ``POST …/measure`` (ADR-50).
+         *     after prompts with ``status=awaiting_review`` until
+         *     ``POST …/execute-prompts-and-score`` (ADR-50).
          */
         post: operations["submit_analysis_api_v1_analyses_post"];
         delete?: never;
@@ -365,6 +366,30 @@ export interface paths {
          *     deletable here. Deleting frees one slot on the interim per-user stock limit.
          */
         delete: operations["delete_analysis_api_v1_analyses__analysis_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyses/{analysis_id}/execute-prompts-and-score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Prompts And Score
+         * @description Resume a guided run: execute the approved prompt set and score GEO.
+         *
+         *     Only ``status='awaiting_review'`` guided analyses accept this call. Profile
+         *     rows (KYC, prompts, SEO) are kept; prior measure outputs are cleared before
+         *     the worker runs steps 4–6. Does not re-charge the monthly analysis quota.
+         */
+        post: operations["execute_prompts_and_score_api_v1_analyses__analysis_id__execute_prompts_and_score_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3727,6 +3752,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_prompts_and_score_api_v1_analyses__analysis_id__execute_prompts_and_score_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisOut"];
+                };
             };
             /** @description Validation Error */
             422: {

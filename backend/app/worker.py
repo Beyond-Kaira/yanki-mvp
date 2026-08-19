@@ -71,9 +71,16 @@ def run_once(settings: Settings) -> bool:
 
         analysis_id: uuid.UUID = analysis.id
         try:
-            from app.pipeline.runner import run_pipeline
+            from app.pipeline.runner import (
+                is_guided_measure_job,
+                run_execute_prompts_and_score,
+                run_pipeline,
+            )
 
-            run_pipeline(session, analysis_id, settings)
+            if is_guided_measure_job(analysis):
+                run_execute_prompts_and_score(session, analysis_id, settings)
+            else:
+                run_pipeline(session, analysis_id, settings)
         except Exception as exc:
             # Keep whatever partial rows earlier steps committed (FR-7); only the
             # in-flight step's uncommitted work is rolled back.

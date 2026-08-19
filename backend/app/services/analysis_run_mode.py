@@ -2,7 +2,8 @@
 
 ``quick`` — the existing one-shot path: all six pipeline steps run back-to-back.
 ``guided`` — profile phase (discovery → kyc → prompts) then pause for review;
-measure phase (execute → scoring) starts on ``POST …/measure`` (later PR).
+measure phase (execute → scoring) starts on
+``POST …/execute-prompts-and-score`` (ADR-50 phase 4).
 """
 
 from __future__ import annotations

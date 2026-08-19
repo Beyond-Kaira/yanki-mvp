@@ -1,6 +1,6 @@
 # Guided AI analysis
 
-**Status:** phase 1 — `run_mode`, profile pause after prompts (ADR-50).  
+**Status:** phase 4 — profile pause, KYC/prompt PATCH, execute-prompts-and-score (ADR-50).  
 **Canvas:** `guided-analysis-flow.canvas.tsx`
 
 ## Goal
@@ -20,8 +20,8 @@ pause before the expensive execute step.
 
 - **Org billing quota** and **user stock limit** are consumed at **`POST /analyses`**
   (same as quick). The row exists and holds a slot while the user reviews.
-- **Measure** (later PR) will not re-charge the monthly flow quota; it only resumes
-  the same analysis id.
+- **Measure** (`POST …/execute-prompts-and-score`) does not re-charge the monthly
+  flow quota; it only resumes the same analysis id.
 
 ## API (shipped)
 
@@ -32,6 +32,7 @@ pause before the expensive execute step.
 | `status=awaiting_review` | Guided pause; KYC/prompt slices available |
 | `PATCH /analyses/{id}/kyc` | Allowlisted KYC fields; regen prompts; 409 if not awaiting review |
 | `PATCH /analyses/{id}/prompts` | Curate set; `source` lineage; max +3 user prompts |
+| `POST /analyses/{id}/execute-prompts-and-score` | Resume guided run (steps 4–6); 202 → `status=queued` |
 
 Each prompt row stores:
 
@@ -45,7 +46,6 @@ Each prompt row stores:
 
 ## Not yet shipped
 
-- `POST /analyses/{id}/measure`
 - Guided wizard UI
 
 See also [analysis-api-split.md](analysis-api-split.md) for read slices.

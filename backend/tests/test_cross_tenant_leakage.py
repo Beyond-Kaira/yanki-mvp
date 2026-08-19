@@ -114,6 +114,7 @@ ORG = {
     ("DELETE", "/api/v1/analyses/{analysis_id}"),
     ("PATCH", "/api/v1/analyses/{analysis_id}/kyc"),
     ("PATCH", "/api/v1/analyses/{analysis_id}/prompts"),
+    ("POST", "/api/v1/analyses/{analysis_id}/execute-prompts-and-score"),
     ("GET", "/api/v1/admin/organization"),
     ("GET", "/api/v1/admin/members"),
     ("GET", "/api/v1/admin/members/{user_id}"),

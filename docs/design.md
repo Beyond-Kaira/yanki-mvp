@@ -2418,13 +2418,13 @@ things the PR did not intend.*
     still finish with ``status='done'`` inside ``run_pipeline``; the worker only
     force-finalizes rows still marked ``running`` (legacy safety net).
   - **Quota:** org billing and user stock limits are consumed at **submit**
-    (same as quick). ``POST …/measure`` (later PR) resumes the same row without
-    a second monthly charge.
+    (same as quick). ``POST …/execute-prompts-and-score`` resumes the same row
+    without a second monthly charge.
 
 - **Consequences:**
   - ``awaiting_review`` counts toward the interim user analysis stock limit.
   - Guided rows cannot be manually deleted until ``done`` (same rule as
     ``queued``/``running``); cancel flow is a later UX concern.
-- Next PRs: ``PATCH …/prompts``, ``POST …/measure``, wizard UI.
-  - ``PATCH …/kyc`` shipped: allowlisted fields + deterministic prompt regen.
+- Shipped: ``PATCH …/kyc``, ``PATCH …/prompts``, ``POST …/execute-prompts-and-score``.
+  Next: guided wizard UI.
   - Doc: [guided-analysis.md](guided-analysis.md).

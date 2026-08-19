@@ -6134,7 +6134,7 @@
         ]
       },
       "post": {
-        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged.\n3. **User stock limit** \u2014 429 when the caller already holds five active\n   analyses (``queued``/``running``/``done``). Interim hardcoded gate until\n   user plans and org billing replace it.\n4. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.\n\n``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses\nafter prompts with ``status=awaiting_review`` until ``POST \u2026/measure`` (ADR-50).",
+        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged.\n3. **User stock limit** \u2014 429 when the caller already holds five active\n   analyses (``queued``/``running``/``done``). Interim hardcoded gate until\n   user plans and org billing replace it.\n4. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.\n\n``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses\nafter prompts with ``status=awaiting_review`` until\n``POST \u2026/execute-prompts-and-score`` (ADR-50).",
         "operationId": "submit_analysis_api_v1_analyses_post",
         "parameters": [
           {
@@ -6313,6 +6313,71 @@
           }
         ],
         "summary": "Read Analysis",
+        "tags": [
+          "analyses"
+        ]
+      }
+    },
+    "/api/v1/analyses/{analysis_id}/execute-prompts-and-score": {
+      "post": {
+        "description": "Resume a guided run: execute the approved prompt set and score GEO.\n\nOnly ``status='awaiting_review'`` guided analyses accept this call. Profile\nrows (KYC, prompts, SEO) are kept; prior measure outputs are cleared before\nthe worker runs steps 4\u20136. Does not re-charge the monthly analysis quota.",
+        "operationId": "execute_prompts_and_score_api_v1_analyses__analysis_id__execute_prompts_and_score_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Execute Prompts And Score",
         "tags": [
           "analyses"
         ]

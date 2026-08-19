@@ -99,8 +99,55 @@ describe('SignupPage', () => {
     await user.type(screen.getByLabelText('Password'), 'short')
     await user.click(screen.getByRole('button', { name: 'Sign up' }))
 
-    expect(screen.getByText('Use at least 8 characters.')).toBeInTheDocument()
+    expect(screen.getByText('Use at least 12 characters.')).toBeInTheDocument()
     expect(mockedSignup).not.toHaveBeenCalled()
+  })
+
+  it('rejects a long password that the policy still refuses', async () => {
+    // Length was the whole policy until now, and a suite that only ever submits
+    // short passwords would not notice the rest of it being dropped.
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.type(screen.getByLabelText('Password'), 'password123456')
+    await user.click(screen.getByRole('button', { name: 'Sign up' }))
+
+    // The meter's screen-reader summary quotes the same sentence as the field
+    // error, so the query has to say which one it means.
+    expect(
+      screen.getByText(/one of the ones people pick most often/i, {
+        selector: '#password-error',
+      }),
+    ).toBeInTheDocument()
+    expect(mockedSignup).not.toHaveBeenCalled()
+  })
+
+  it('rejects a password built from the address typed on this form', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.type(screen.getByLabelText('Work email'), 'kahvemasa@example.com')
+    await user.type(screen.getByLabelText('Password'), 'kahvemasa-2026')
+    await user.click(screen.getByRole('button', { name: 'Sign up' }))
+
+    expect(
+      screen.getByText(/out of your email address/i, { selector: '#password-error' }),
+    ).toBeInTheDocument()
+    expect(mockedSignup).not.toHaveBeenCalled()
+  })
+
+  it('accepts a long passphrase with no uppercase, digit or symbol', async () => {
+    // The policy imposes no composition rule. This is the test that fails if
+    // somebody 'strengthens' it back into one.
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.type(screen.getByLabelText('Work email'), 'new@example.com')
+    await user.type(screen.getByLabelText('Password'), 'bulutkahvemasa')
+    await user.type(screen.getByLabelText('Confirm password'), 'bulutkahvemasa')
+    await user.click(screen.getByRole('button', { name: 'Sign up' }))
+
+    expect(mockedSignup).toHaveBeenCalled()
   })
 
   it('rejects a confirmation that does not match', async () => {
@@ -212,12 +259,25 @@ describe('SignupPage', () => {
     expect(mockedSignup).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the length rule as a hint, not as an error', () => {
+  it('points the password field at the strength meter, not at an error', () => {
     renderPage()
 
     const field = screen.getByLabelText('Password')
-    expect(field).toHaveAttribute('aria-describedby', 'password-hint')
+    expect(field).toHaveAttribute('aria-describedby', 'password-strength')
     expect(field).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('shows no meter until something is typed', async () => {
+    // Four red crosses as a greeting is a hostile way to open a form.
+    const user = userEvent.setup()
+    renderPage()
+
+    // The checklist row, matched exactly — the meter's screen-reader summary
+    // quotes the same rule inside a longer sentence.
+    expect(screen.queryByText('At least 12 characters')).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Password'), 'b')
+    expect(screen.getByText('At least 12 characters')).toBeInTheDocument()
   })
 
   it('offers both account types and defaults to individual', () => {

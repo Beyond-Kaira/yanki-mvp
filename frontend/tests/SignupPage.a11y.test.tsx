@@ -81,19 +81,21 @@ describe('SignupPage accessibility', () => {
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 
-  it('replaces the password hint with the error rather than showing both', async () => {
+  it('replaces the strength meter with the error rather than describing both', async () => {
     const user = userEvent.setup()
     const { container } = renderPage()
 
     const password = screen.getByLabelText('Password')
-    expect(password).toHaveAttribute('aria-describedby', 'password-hint')
+    expect(password).toHaveAttribute('aria-describedby', 'password-strength')
 
     await user.type(password, 'short')
     await user.click(screen.getByRole('button', { name: 'Sign up' }))
 
-    // The rule they have already broken is not what they need read back.
+    // The rule they have already broken is not what they need read back. The
+    // meter stays on screen — it is how they watch the rule being satisfied —
+    // but the field points at the reason it was rejected.
     expect(password).toHaveAttribute('aria-describedby', 'password-error')
-    expect(document.getElementById('password-hint')).toBeNull()
+    expect(document.getElementById('password-strength')).not.toBeNull()
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 })

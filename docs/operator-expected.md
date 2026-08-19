@@ -442,6 +442,33 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 
 ## B. Actions only you can do (in priority order)
 
+- [ ] **B18. Nothing to do for the password policy — read this and move on**
+  (added 2026-08-19, `feat/strong-password-check`, ADR-50). Listed because it
+  adds five environment variables and changes what the signup form accepts, not
+  because it needs you.
+
+  **No action required.** Every new setting has a working default and
+  `deploy/.env` needs no edit; the block in `deploy/.env.example` is there for
+  when you want to look. No migration. Nothing to run on the box.
+
+  **What changes for a customer:** new passwords must be at least twelve
+  characters, must not be one of the common ones (checked with the decoration
+  removed, so `P@ssw0rd2026!` is `password`), and must not be built out of their
+  own email address or organization name. There is deliberately **no** "must
+  contain a capital and a number" rule — the standard says not to have one.
+
+  **What does NOT change:** existing accounts and existing passwords. Sign-in
+  never consults the policy, so nobody is locked out and nobody is prompted.
+  That also means the weakest passwords in the database stay weak until there is
+  a way to change one, which there is not yet — tech-debt #93, repaid with the
+  password-reset endpoint (#49) in A5.
+
+  **The one thing worth deciding later, not now:** the breach-corpus check
+  (Have I Been Pwned) was deliberately left out of this change. It is one
+  adapter module and one setting, and it wants an answer from you about outbound
+  network calls from the signup path. A5 already schedules it; there is nothing
+  to answer today.
+
 - [x] ~~**B17. Decide whether to merge sessions 25 and 26**~~ — **DONE
   2026-08-09.** Both merged on your instruction, in order, with the admin bypass
   (no second reviewer exists). Production runs **`e470244`** and was verified: a

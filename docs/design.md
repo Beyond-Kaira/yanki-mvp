@@ -2396,3 +2396,95 @@ things the PR did not intend.*
     production's current size the query is a trivial scan; recorded as
     tech-debt #87 so the index lands with the next migration rather than being
     discovered under load.
+
+### ADR-50 — A password policy of length and a blocklist, not composition rules (2026-08-19, feat/strong-password-check)
+
+- **Context:** the whole policy was `min_length=8` on two Pydantic fields
+  (`SignupRequest`, `InvitationAcceptRequest`) and a matching `if` in
+  `lib/validation.ts`. Eight characters clears no modern bar, and length alone
+  never touches the attack that actually reaches a product like this one:
+  credential stuffing, where the password is long, unique-looking, and already
+  in somebody else's breach dump. Two write paths choose a password today and
+  two more are scheduled (reset, change — P7.5/A5), so the rule needed a home
+  before it needed to be stricter.
+
+- **Decision:** a policy module — `services/password_policy.py` — that is pure,
+  settings-driven, and called from the routes where a password is CHOSEN. Its
+  shape follows NIST SP 800-63B with OWASP ASVS V2.1's length floor.
+
+  - **Twelve characters minimum, no character-class rule.** 800-63B says a
+    verifier SHALL NOT impose composition rules, and it is right: they produce
+    `Password1!` and push people toward reuse. `PASSWORD_REQUIRE_CHARACTER_CLASSES`
+    exists, ships `false`, and is there only so a deployment answering to a
+    compliance regime can satisfy it without patching the policy. The 128-char
+    maximum stays — it is not policy, it is the bound that keeps a
+    multi-megabyte string away from Argon2.
+  - **A blocklist that is consulted with the decoration removed.** Case folded,
+    Turkish letters folded to ASCII, leet substitutions unwound, separators and
+    trailing years stripped — then every resulting form is looked up. This is
+    what lets ~600 curated base words reject `P@ssw0rd2026!`, `m-o-n-k-e-y-2026`
+    and `Şifre1234!!!`. The list has a Turkish section because the product's
+    users do; a blocklist built only from English corpora is blind to exactly
+    the passwords its own customers pick.
+  - **Context is a rule.** The email local part, the email's first domain label,
+    the organization name and the word "yanki" are all forbidden inside a
+    password. Tokens under four characters are ignored — banning `ali` would
+    tell that user their own name is forbidden.
+  - **The strength score is advisory and gates nothing.** It drives the meter.
+    Enforcing it would be a composition rule in disguise: at twelve characters
+    only mixed-case-plus-digits clears "strong", so a score threshold would
+    quietly reintroduce the rule the first bullet rejects. Tests in both
+    languages assert that a long all-lowercase passphrase is accepted.
+  - **NFKC at both ends.** `hash_password` and `verify_password` normalize
+    together, so the same Turkish password typed on two keyboards is one
+    password. Applying it at set time only would store a hash of a string
+    nobody can reproduce. It is the identity transform on ASCII, so no existing
+    hash is invalidated.
+  - **A domain exception, not a field constraint.** `PasswordPolicyViolation`
+    is translated to a 422 by a handler in `api.main`, the seam the billing
+    exceptions already use. Three reasons it is not a Pydantic validator: the
+    invitation path's context (the invited address) is not in the request body
+    at all; Pydantic answers in its own voice (*"Value error, String should have
+    at least 12 characters"*), which `readErrorMessage` renders verbatim to
+    somebody who only wanted an account; and the reset endpoint will want the
+    same call. The body carries `rules: string[]` alongside `detail` so a client
+    can key off which rule broke without parsing English.
+  - **The invitation path is gated only where an account is created.** A
+    signed-in invitee joining a second organization keeps their existing
+    password, so the value in their request body is not a password being CHOSEN
+    and the policy does not judge it. That body still carries a fabricated
+    constant to satisfy a required field, which is untidy and out of scope here
+    — tech-debt #97.
+  - **The browser gets a mirror, not a dependency.** `lib/password-policy.ts`
+    reimplements the rules with the same rule ids and no new package —
+    `zxcvbn` is ~800KB against a frontend whose entire runtime is next, react
+    and react-dom. `tests/password-policy.test.ts` pins the shared vocabulary
+    and the bounds so the two cannot drift silently.
+
+- **Consequences:** signup and invitation-accept now reject passwords they used
+  to take, which is the point; the two of them are also the only paths gated.
+  `create_user` is deliberately NOT gated — it registers Google and Apple
+  accounts that have no password, and it is the seam fixtures and scripts use —
+  so anything calling the service directly bypasses the policy. That is the
+  correct boundary (the gate belongs where untrusted input arrives) and it is
+  stated rather than assumed.
+
+  **Existing weak passwords are untouched and login never consults the policy.**
+  Enforcing at sign-in would lock out every account that predates this change
+  and would tell a guesser what the rules are. There is no way to nudge those
+  users until the reset endpoint exists (tech-debt #49); recorded as tech-debt.
+
+  The breach-corpus check (Have I Been Pwned, k-anonymity) is deliberately NOT
+  in this change. The local blocklist satisfies 800-63B's requirement, HIBP adds
+  an outbound HTTP call to the signup path plus a fail-open branch, and
+  `admin-panel-plan.md` already schedules "breach-password check at set time"
+  for A5 alongside password reset. The rule list is the seam it plugs into: one
+  adapter module and one setting.
+
+- **Rejected:** raising `min_length` on the Pydantic fields and stopping there
+  (no context rule, no blocklist, and a second source of truth for the minimum
+  that drifts the first time an operator changes the setting); a `zxcvbn`
+  dependency on either side; enforcing a minimum score; and a substring
+  blocklist match, which would reject `a-brand-new-password` for containing
+  `password` and with it most of the passphrases the policy is trying to
+  encourage.

@@ -48,6 +48,7 @@ NormalizedEmail = Annotated[
 class CreateAnalysisRequest(BaseModel):
     # AnyHttpUrl accepts http/https URLs only; anything else is a 422.
     url: AnyHttpUrl
+    mode: Literal["quick", "guided"] = "quick"
 
 
 class CreateAnalysisResponse(BaseModel):
@@ -555,6 +556,7 @@ class AnalysisOut(BaseModel):
     id: uuid.UUID
     url: str
     status: str
+    run_mode: str = "quick"
     progress: int
     current_step: str | None
     error: str | None

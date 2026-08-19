@@ -87,6 +87,7 @@ def create_analysis(
     *,
     org_id: uuid.UUID | None = None,
     created_by_user_id: uuid.UUID | None = None,
+    run_mode: str = "quick",
     commit: bool = True,
 ) -> Analysis:
     """Insert a new queued analysis and return it.
@@ -111,6 +112,7 @@ def create_analysis(
         ip_hash=ip_hash,
         org_id=org_id,
         created_by_user_id=created_by_user_id,
+        run_mode=run_mode,
     )
     session.add(analysis)
     if commit:

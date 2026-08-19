@@ -39,6 +39,7 @@ from app.pipeline import serp_visibility as serp_step
 from app.providers import registry
 from app.serp import registry as serp_registry
 from app.services.analyses import delete_analysis_children
+from app.services.analysis_run_mode import RUN_MODE_GUIDED, STATUS_AWAITING_REVIEW
 
 # progress % set when each step COMPLETES (see the master SPEC).
 _DISCOVERY_DONE = 15
@@ -147,6 +148,13 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
         prompt_rows.append(row)
     session.flush()
     _complete_step(session, analysis, _PROMPTS_DONE)
+
+    if analysis.run_mode == RUN_MODE_GUIDED and not is_checker:
+        analysis.status = STATUS_AWAITING_REVIEW
+        analysis.current_step = None
+        analysis.claimed_at = _now()
+        session.commit()
+        return analysis
 
     # 4. measured execute (Tavily + OpenRouter, or mocks under DRY_RUN)
     _start_step(session, analysis, "execute", settings)

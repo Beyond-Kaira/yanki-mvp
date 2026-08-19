@@ -121,6 +121,9 @@ def submit_analysis(
        analyses (``queued``/``running``/``done``). Interim hardcoded gate until
        user plans and org billing replace it.
     4. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+
+    ``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses
+    after prompts with ``status=awaiting_review`` until ``POST …/measure`` (ADR-50).
     """
 
     # Reject SSRF targets (loopback/private/link-local/metadata) up front; the
@@ -156,6 +159,7 @@ def submit_analysis(
         ip_hash=ip_hash,
         org_id=org_id,
         created_by_user_id=user_id,
+        run_mode=payload.mode,
         commit=False,
     )
 
@@ -167,7 +171,7 @@ def submit_analysis(
         actor_id=org.user_id,
         entity_type="analysis",
         entity_id=analysis.id,
-        after={"url": analysis.url, "kind": analysis.kind or "mvp"},
+        after={"url": analysis.url, "kind": analysis.kind or "mvp", "run_mode": analysis.run_mode},
     )
     session.commit()
     return CreateAnalysisResponse(id=analysis.id)

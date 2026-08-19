@@ -88,6 +88,11 @@ class Analysis(Base):
     # (trim + casefold) on checker rows so the 24h reuse lookup is a plain
     # equality match. They stay null on MVP rows.
     kind: Mapped[str] = mapped_column(sa.Text, nullable=True, default="mvp", server_default="mvp")
+    # quick = one-shot six-step run (default). guided = pause after prompts for
+    # KYC/prompt review before execute (ADR-50).
+    run_mode: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="quick", server_default="quick"
+    )
     brand: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     category: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     lang: Mapped[str] = mapped_column(sa.Text, nullable=True, default="en", server_default="en")

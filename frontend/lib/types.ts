@@ -1457,6 +1457,11 @@ export interface components {
             progress: number;
             /** Reliability Score */
             reliability_score?: number | null;
+            /**
+             * Run Mode
+             * @default quick
+             */
+            run_mode: string;
             /** Seo Grade */
             seo_grade?: string | null;
             /** Seo Score */
@@ -1908,6 +1913,12 @@ export interface components {
         };
         /** CreateAnalysisRequest */
         CreateAnalysisRequest: {
+            /**
+             * Mode
+             * @default quick
+             * @enum {string}
+             */
+            mode: "quick" | "guided";
             /**
              * Url
              * Format: uri

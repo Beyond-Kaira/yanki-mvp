@@ -2391,8 +2391,39 @@ things the PR did not intend.*
     57 rows in production, and it is the kind of simple that becomes an incident
     on the first customer who runs a thousand analyses — by which time the fix
     is a schema change to a shipped endpoint rather than a decision.
-  - **Not done:** an index on `analyses(org_id, created_at)`. It would be a
+    - **Not done:** an index on `analyses(org_id, created_at)`. It would be a
     migration, and migration-bearing work is gated on operator item B13. At
     production's current size the query is a trivial scan; recorded as
     tech-debt #87 so the index lands with the next migration rather than being
     discovered under load.
+
+---
+
+### ADR-50 — Guided analysis pauses before execute (2026-08-19)
+
+- **Context:** The six-step pipeline runs discovery → KYC → prompts → execute
+  → footprint → scoring as one job. Execute is the expensive step (many LLM +
+  search calls). Users cannot review or correct the KYC profile or prompt set
+  before that spend. A guided product path needs a pause after prompts so the
+  customer can edit profile and questions, while the existing one-click **quick**
+  path must keep working unchanged.
+
+- **Decision:**
+  - Add ``analyses.run_mode``: ``quick`` (default) or ``guided``.
+  - ``POST /api/v1/analyses`` accepts optional ``mode``; checker runs ignore it.
+  - Guided MVP rows pause after step 3 with ``status='awaiting_review'``,
+    ``progress=45``, no execute/response rows yet. KYC and prompt slices are
+    readable via existing GET routes.
+  - The queue worker does **not** claim ``awaiting_review`` rows. Quick runs
+    still finish with ``status='done'`` inside ``run_pipeline``; the worker only
+    force-finalizes rows still marked ``running`` (legacy safety net).
+  - **Quota:** org billing and user stock limits are consumed at **submit**
+    (same as quick). ``POST …/measure`` (later PR) resumes the same row without
+    a second monthly charge.
+
+- **Consequences:**
+  - ``awaiting_review`` counts toward the interim user analysis stock limit.
+  - Guided rows cannot be manually deleted until ``done`` (same rule as
+    ``queued``/``running``); cancel flow is a later UX concern.
+  - Next PRs: ``PATCH …/kyc``, ``PATCH …/prompts``, ``POST …/measure``, wizard UI.
+  - Doc: [guided-analysis.md](guided-analysis.md).

@@ -495,6 +495,11 @@
             ],
             "title": "Reliability Score"
           },
+          "run_mode": {
+            "default": "quick",
+            "title": "Run Mode",
+            "type": "string"
+          },
           "seo_grade": {
             "anyOf": [
               {
@@ -1625,6 +1630,15 @@
       },
       "CreateAnalysisRequest": {
         "properties": {
+          "mode": {
+            "default": "quick",
+            "enum": [
+              "quick",
+              "guided"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
           "url": {
             "format": "uri",
             "minLength": 1,

@@ -92,12 +92,18 @@ def run_once(settings: Settings) -> bool:
 
         done = session.get(Analysis, analysis_id)
         if done is not None:
-            done.status = "done"
-            done.progress = 100
-            done.current_step = None
-            session.commit()
-            _settle(session, done)
-            _alert(done, settings)
+            # Quick runs finish inside ``run_pipeline`` with ``status=done``.
+            # Guided profile phase sets ``awaiting_review`` — do not overwrite.
+            if done.status == "running":
+                done.status = "done"
+                done.progress = 100
+                done.current_step = None
+                session.commit()
+            if done.status in ("done", "failed"):
+                _settle(session, done)
+                _alert(done, settings)
+            elif done.status == "awaiting_review":
+                _settle(session, done)
         return True
     finally:
         session.close()

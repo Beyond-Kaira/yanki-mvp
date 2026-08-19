@@ -76,3 +76,23 @@ def test_authenticate_user_persists_upgraded_password_hash(
 
     assert persisted_user is not None
     assert persisted_user.password_hash == "upgraded-hash"
+
+
+def test_a_password_verifies_in_whichever_unicode_form_it_is_typed() -> None:
+    """NFKC on both ends, or the normalization would lock people out.
+
+    The same Turkish password can arrive precomposed from one keyboard and
+    decomposed from another. Hashing without normalizing stores a secret only
+    one of those two keyboards can reproduce; normalizing on the way IN but not
+    on the way OUT is worse still, because it stores one nobody can. This is the
+    test that fails if either half is removed.
+    """
+
+    precomposed = "şifremiz-uzun-olsun"
+    decomposed = "şifremiz-uzun-olsun"
+    assert precomposed != decomposed
+
+    stored = auth_service.hash_password(precomposed)
+
+    assert auth_service.verify_password(decomposed, stored) is True
+    assert auth_service.verify_password(precomposed, stored) is True

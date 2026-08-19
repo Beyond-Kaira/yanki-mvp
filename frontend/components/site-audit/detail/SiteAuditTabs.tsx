@@ -1,10 +1,11 @@
-export type SiteAuditTab = 'overview' | 'issues' | 'pages' | 'schema'
+export type SiteAuditTab = 'overview' | 'issues' | 'pages' | 'schema' | 'compare'
 
 const TAB_LABELS: Record<SiteAuditTab, string> = {
   overview: 'Overview',
   issues: 'Issues',
   pages: 'Crawled pages',
   schema: 'Schema markup',
+  compare: 'Compare crawls',
 }
 
 export default function SiteAuditTabs({

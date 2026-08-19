@@ -44,7 +44,8 @@ describe('UrlForm', () => {
     await user.type(screen.getByLabelText(/url/i), 'https://example.com')
     await user.click(screen.getByRole('button', { name: /run analysis/i }))
 
-    expect(mockedCreate).toHaveBeenCalledWith('https://example.com')
+    // No product area at '/', so no source is recorded for the audit log.
+    expect(mockedCreate).toHaveBeenCalledWith('https://example.com', undefined)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /run analysis/i })).toBeDisabled(),
     )

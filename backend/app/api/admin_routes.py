@@ -694,6 +694,7 @@ def _event_out(event: AuditEvent) -> AuditEventOut:
         before=event.before,
         after=event.after,
         changed=changed if isinstance(changed, dict) else None,
+        detail=detail if isinstance(detail, dict) else None,
         ip_hash=event.ip_hash,
         user_agent=event.user_agent,
         request_id=event.request_id,

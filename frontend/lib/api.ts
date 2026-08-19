@@ -139,13 +139,20 @@ export async function authorizedFetch(
 // keeps them distinct (the plan refusal carries a `limit` field); collapsing
 // them into "too many requests" would tell a customer to wait for something
 // that will not change until next month.
-export async function createAnalysis(url: string): Promise<CreateAnalysisResponse> {
+export type AnalysisSource = 'ai_visibility' | 'search_visibility'
+
+export async function createAnalysis(
+  url: string,
+  source?: AnalysisSource,
+): Promise<CreateAnalysisResponse> {
   let res: Response
   try {
     res = await authorizedFetch('/api/v1/analyses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      // Omitted rather than sent as null when the run starts somewhere with no
+      // product area of its own — the API treats absent as "not a screen".
+      body: JSON.stringify(source ? { url, source } : { url }),
     })
   } catch {
     throw new ApiError(

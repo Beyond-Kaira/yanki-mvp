@@ -48,6 +48,11 @@ NormalizedEmail = Annotated[
 class CreateAnalysisRequest(BaseModel):
     # AnyHttpUrl accepts http/https URLs only; anything else is a 422.
     url: AnyHttpUrl
+    # Which screen the run was started from. Both product areas post the same
+    # form to this route, so without it the audit log cannot tell two otherwise
+    # identical "analysis:create" rows apart. Optional: older clients, and any
+    # caller that is not a screen, record no source.
+    source: Literal["ai_visibility", "search_visibility"] | None = None
 
 
 class CreateAnalysisResponse(BaseModel):
@@ -728,6 +733,7 @@ class AuditEventOut(BaseModel):
     before: dict[str, Any] | None = None
     after: dict[str, Any] | None = None
     changed: dict[str, Any] | None = None
+    detail: dict[str, Any] | None = None
     ip_hash: str | None = None
     user_agent: str | None = None
     request_id: str | None = None

@@ -37,6 +37,7 @@ from app.pipeline import scoring as scoring_step
 from app.pipeline import seo_audit as seo_step
 from app.pipeline import serp_visibility as serp_step
 from app.providers import registry
+from app.providers.base import UsageTrackingProvider
 from app.serp import registry as serp_registry
 from app.services.analyses import delete_analysis_children
 
@@ -88,6 +89,8 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     analysis.seo_score = None
     analysis.seo_grade = None
     analysis.seo_status = None
+    analysis.kyc_cost_usd = 0
+    analysis.kyc_usage = None
     session.commit()
 
     is_checker = analysis.kind == "checker"
@@ -112,17 +115,25 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
 
     # 2. kyc
     _start_step(session, analysis, "kyc", settings)
-    kyc = kyc_step.generate_kyc(
-        text,
-        analysis.url,
-        registry.get_analysis_provider(settings),
-        # Grounding checks the model's proper nouns against the crawl. A checker
-        # row has no crawl — its "text" is the brand + category sentence composed
-        # above — so verifying against it would delete every competitor the model
-        # knows and degrade the run to the neutral fallbacks.
-        verify_against_source=not is_checker,
-    )
-    analysis.kyc = kyc.model_dump()
+    kyc_provider = UsageTrackingProvider(registry.get_analysis_provider(settings))
+    try:
+        kyc = kyc_step.generate_kyc(
+            text,
+            analysis.url,
+            kyc_provider,
+            # Grounding checks the model's proper nouns against the crawl. A checker
+            # row has no crawl — its "text" is the brand + category sentence composed
+            # above — so verifying against it would delete every competitor the model
+            # knows and degrade the run to the neutral fallbacks.
+            verify_against_source=not is_checker,
+        )
+        analysis.kyc = kyc.model_dump()
+    finally:
+        # Persist even when parsing/validation fails after a paid response. The
+        # failed analysis still cost money and its terminal audit event must say so.
+        analysis.kyc_cost_usd = kyc_provider.cost_usd
+        analysis.kyc_usage = kyc_provider.usage or None
+        session.commit()
     _complete_step(session, analysis, _KYC_DONE)
 
     # Refuse to fan out on input we already know is unusable. ``execute`` below

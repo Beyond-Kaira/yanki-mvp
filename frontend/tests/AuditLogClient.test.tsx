@@ -39,6 +39,7 @@ function event(overrides: Record<string, unknown> = {}) {
     before: { role: 'viewer' },
     after: { role: 'editor' },
     changed: { role: { from: 'viewer', to: 'editor' } },
+    detail: null,
     ip_hash: 'a'.repeat(64),
     user_agent: 'Mozilla/5.0',
     request_id: 'req-123',
@@ -87,7 +88,7 @@ describe('AuditLogClient', () => {
     render(<AuditLogClient />)
     await rowsLoaded()
 
-    expect(inTable().getByText('member:update')).toBeVisible()
+    expect(inTable().getByText('Updated member')).toBeVisible()
     expect(inTable().getByText('owner@acme.test')).toBeVisible()
     expect(inTable().getByText('success')).toBeVisible()
   })
@@ -103,6 +104,59 @@ describe('AuditLogClient', () => {
     expect(screen.getByText('req-123')).toBeVisible()
     // The whole hash, and never the raw address — there isn't one.
     expect(screen.getByText('a'.repeat(64))).toBeVisible()
+  })
+
+  it('shows the analysis total and a Gemini/Perplexity model breakdown', async () => {
+    fetchAuditEvents.mockResolvedValue(
+      listOf([
+        event({
+          action: 'analysis:complete',
+          entity_type: 'analysis',
+          entity_id: 'analysis-1',
+          before: null,
+          after: { url: 'https://acme.test', status: 'done' },
+          changed: null,
+          detail: {
+            cost: {
+              total_usd: '0.014000',
+              question_count: 2,
+              response_count: 4,
+              providers: [
+                {
+                  provider: 'gemini',
+                  model: 'gemini-flash-lite',
+                  stages: ['answers'],
+                  question_count: 2,
+                  operation_count: 2,
+                  cost_usd: '0.005000',
+                },
+                {
+                  provider: 'perplexity',
+                  model: 'sonar',
+                  stages: ['answers'],
+                  question_count: 2,
+                  operation_count: 2,
+                  cost_usd: '0.009000',
+                },
+              ],
+            },
+          },
+        }),
+      ]),
+    )
+    render(<AuditLogClient />)
+    await rowsLoaded()
+
+    expect(inTable().getByText('Completed analysis')).toBeVisible()
+    expect(inTable().getByText('$0.014000 total')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Show' }))
+
+    expect(screen.getByText('$0.014000')).toBeVisible()
+    expect(screen.getByText('gemini-flash-lite')).toBeVisible()
+    expect(screen.getByText('sonar')).toBeVisible()
+    expect(screen.getByText('$0.005000')).toBeVisible()
+    expect(screen.getByText('$0.009000')).toBeVisible()
+    expect(screen.getByText('analysis-1')).toBeVisible()
   })
 
   it('narrows by action, outcome and date in one query', async () => {
@@ -197,6 +251,70 @@ describe('AuditLogClient', () => {
     expect(screen.getByRole('link', { name: /view the whole audit log/i })).toBeVisible()
   })
 
+  it('separates two analyses started from different screens', async () => {
+    fetchAuditEvents.mockResolvedValue(
+      listOf([
+        event({
+          id: 'ev-ai',
+          action: 'analysis:create',
+          entity_type: 'analysis',
+          before: null,
+          changed: null,
+          after: { url: 'https://beyondkaira.com/pricing', source: 'ai_visibility' },
+        }),
+        event({
+          id: 'ev-sv',
+          action: 'analysis:create',
+          entity_type: 'analysis',
+          before: null,
+          changed: null,
+          after: { url: 'https://beyondkaira.com/pricing', source: 'search_visibility' },
+        }),
+      ]),
+    )
+    render(<AuditLogClient />)
+    // Two rows share one actor, so wait on the count rather than a single node.
+    await screen.findAllByText('owner@acme.test')
+
+    // The headline names the product area, so the two rows no longer read alike.
+    expect(inTable().getByText('Started AI Visibility analysis')).toBeVisible()
+    expect(inTable().getByText('Started Search Visibility analysis')).toBeVisible()
+    expect(inTable().getAllByText('beyondkaira.com/pricing')).toHaveLength(2)
+    // Entity stays the host: the full URL is what would blow the column open.
+    expect(inTable().getAllByText('beyondkaira.com')).toHaveLength(2)
+  })
+
+  it('does not print a uuid fragment when the record has no readable name', async () => {
+    fetchAuditEvents.mockResolvedValue(
+      listOf([
+        event({
+          action: 'auth:login',
+          entity_type: 'user',
+          entity_id: 'u-1',
+          actor_id: 'u-1',
+          before: null,
+          after: null,
+          changed: null,
+        }),
+      ]),
+    )
+    render(<AuditLogClient />)
+    await rowsLoaded()
+
+    expect(inTable().getByText('Signed in')).toBeVisible()
+    expect(inTable().queryByText(/^u-1/)).toBeNull()
+  })
+
+  it('shows an unmapped action as its raw code rather than a blank cell', async () => {
+    fetchAuditEvents.mockResolvedValue(
+      listOf([event({ action: 'something:new', before: null, changed: null, after: null })]),
+    )
+    render(<AuditLogClient />)
+    await rowsLoaded()
+
+    expect(inTable().getByText('something:new')).toBeVisible()
+  })
+
   it('explains a permission refusal instead of showing an empty table', async () => {
     fetchAuditEvents.mockRejectedValue(new ApiError('forbidden', 403))
     render(<AuditLogClient />)
@@ -209,7 +327,7 @@ describe('AuditLogClient', () => {
     render(<AuditLogClient />)
     await rowsLoaded()
 
-    expect(inTable().getByText('member:update')).toBeVisible()
+    expect(inTable().getByText('Updated member')).toBeVisible()
   })
 })
 

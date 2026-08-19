@@ -5,7 +5,7 @@ import type { FormEvent } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Button from '@/components/Button'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
-import { createAnalysis } from '@/lib/api'
+import { createAnalysis, type AnalysisSource } from '@/lib/api'
 import { notifyAnalysisQuotaChanged } from '@/lib/analysis-quota-events'
 
 function looksLikeUrl(value: string): boolean {
@@ -41,16 +41,23 @@ export default function UrlForm() {
       return
     }
 
+    // Both product areas mount this same form, so the path is the only thing
+    // that knows which one the user is standing in — the audit log has no other
+    // way to tell two identical "analysis:create" rows apart.
+    const source: AnalysisSource | undefined = pathname.startsWith('/search-visibility')
+      ? 'search_visibility'
+      : pathname.startsWith('/ai-visibility')
+        ? 'ai_visibility'
+        : undefined
+
     setSubmitting(true)
     try {
-      const { id } = await createAnalysis(trimmed)
+      const { id } = await createAnalysis(trimmed, source)
       notifyAnalysisQuotaChanged()
       // One shared analysis for the whole AI Visibility shell (and later tabs).
       setAnalysisId(id)
-      if (pathname.startsWith('/search-visibility')) {
-        router.push(`/search-visibility?analysis=${id}`)
-      } else if (pathname.startsWith('/ai-visibility')) {
-        router.push(`/ai-visibility?analysis=${id}`)
+      if (source) {
+        router.push(`/${source.replace('_', '-')}?analysis=${id}`)
       } else {
         router.push(`/analyses/${id}`)
       }

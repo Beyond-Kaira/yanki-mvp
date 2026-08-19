@@ -3,16 +3,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import QuestionBreakdown from '@/components/QuestionBreakdown'
 import type { QuestionGroup } from '@/lib/results'
+import { samplePrompt } from './analysisMocks'
 
 // No casts: the fixtures satisfy the generated wire types in full, so a
 // contract change breaks the build here instead of passing silently.
 const groups: QuestionGroup[] = [
   {
-    prompt: {
+    prompt: samplePrompt({
       id: 'p1',
       category: 'recommendation',
       text: 'Best analytics tools?',
-    },
+    }),
     responses: [
       {
         id: 'r1',

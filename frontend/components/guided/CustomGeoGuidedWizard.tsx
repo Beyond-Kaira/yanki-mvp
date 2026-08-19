@@ -15,9 +15,10 @@ import {
 } from '@/lib/api'
 import { analysisDomain } from '@/lib/ai-visibility-data'
 import { mergeAnalysis } from '@/lib/analysis-bundle'
-import type { Analysis, KYC } from '@/lib/contracts'
+import type { Analysis } from '@/lib/contracts'
 import {
   attributePromptApiError,
+  coerceKyc,
   countNewUserPrompts,
   draftToKycPatch,
   draftsToPatchItems,
@@ -135,12 +136,13 @@ export default function CustomGeoGuidedWizard({
     try {
       if (Object.keys(patch).length > 0) {
         const profile = await patchAnalysisKyc(analysis.id, patch)
+        const coercedKyc = coerceKyc(profile.kyc)
         const merged = mergeAnalysis(analysis, {
-          kyc: { kyc: profile.kyc as KYC },
+          ...(coercedKyc ? { kyc: { kyc: coercedKyc } } : {}),
           prompts: { prompts: profile.prompts },
         })
         onAnalysisUpdated(merged)
-        const nextDraft = profile.kyc ? kycToDraft(profile.kyc as KYC) : kycDraft
+        const nextDraft = coercedKyc ? kycToDraft(coercedKyc) : kycDraft
         setKycDraft(nextDraft)
         setKycBaseline(nextDraft)
         setPromptDrafts(promptsToDrafts(profile.prompts))

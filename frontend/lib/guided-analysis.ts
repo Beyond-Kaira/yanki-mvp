@@ -48,6 +48,36 @@ export function commaToList(value: string): string[] {
     .filter(Boolean)
 }
 
+/** Coerce wire KYC JSON (free-form object) into the locked app shape. */
+export function coerceKyc(value: unknown): KYC | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const str = (key: string): string =>
+    typeof record[key] === 'string' ? (record[key] as string) : ''
+  const list = (key: string): string[] =>
+    Array.isArray(record[key])
+      ? (record[key] as unknown[]).filter(
+          (item): item is string => typeof item === 'string',
+        )
+      : []
+
+  return {
+    company: str('company'),
+    description: str('description'),
+    industry: str('industry'),
+    aliases: list('aliases'),
+    products: list('products'),
+    services: list('services'),
+    keywords: list('keywords'),
+    locations: list('locations'),
+    competitors: list('competitors'),
+    ...(typeof record.category === 'string'
+      ? { category: record.category }
+      : {}),
+    ...(Array.isArray(record.use_cases) ? { use_cases: list('use_cases') } : {}),
+  }
+}
+
 export function kycToDraft(kyc: KYC): KycDraft {
   return {
     company: kyc.company ?? '',

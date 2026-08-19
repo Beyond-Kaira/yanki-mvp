@@ -11,7 +11,8 @@ from app.config import Settings
 from app.db.models import Analysis, Prompt
 from app.pipeline import discovery
 from app.services.analysis_run_mode import RUN_MODE_GUIDED, STATUS_AWAITING_REVIEW
-from app.services.guided_profile import GuidedProfileValidationError, merge_kyc_patch
+from app.services.guided_profile import merge_kyc_patch
+from app.services.guided_review import GuidedProfileValidationError
 
 KYC_URL = "/api/v1/analyses/{id}/kyc"
 

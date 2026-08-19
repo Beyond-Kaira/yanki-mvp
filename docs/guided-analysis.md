@@ -31,10 +31,20 @@ pause before the expensive execute step.
 | `AnalysisOut.run_mode` | Echo on thin GET |
 | `status=awaiting_review` | Guided pause; KYC/prompt slices available |
 | `PATCH /analyses/{id}/kyc` | Allowlisted KYC fields; regen prompts; 409 if not awaiting review |
+| `PATCH /analyses/{id}/prompts` | Curate set; `source` lineage; max +3 user prompts |
+
+Each prompt row stores:
+
+| Field | Meaning |
+|-------|---------|
+| `source=generated` | Deterministic template from KYC |
+| `source=edited` | User changed a generated prompt |
+| `source=user` | User-added prompt |
+| `locked=true` | Must appear unchanged (future: core probes) |
+| `editable` | API hint: `not locked` |
 
 ## Not yet shipped
 
-- `PATCH /analyses/{id}/prompts` (custom edit)
 - `POST /analyses/{id}/measure`
 - Guided wizard UI
 

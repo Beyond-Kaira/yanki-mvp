@@ -18,6 +18,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -320,6 +321,27 @@ class PromptOut(BaseModel):
     id: uuid.UUID
     text: str
     category: str
+    source: str = "generated"
+    locked: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def editable(self) -> bool:
+        return not self.locked
+
+
+class PromptPatchItem(BaseModel):
+    """One row in the desired prompt set for ``PATCH /analyses/{id}/prompts``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID | None = None
+    text: str = Field(min_length=3, max_length=500)
+    category: str = Field(min_length=1, max_length=40)
+
+
+class PatchAnalysisPromptsRequest(BaseModel):
+    prompts: list[PromptPatchItem] = Field(min_length=1)
 
 
 class ResponseOut(BaseModel):

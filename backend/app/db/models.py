@@ -164,6 +164,15 @@ class Prompt(Base):
     )
     text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     category: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Provenance for guided edits and future prompt-generation training.
+    # generated | edited | user — see app.services.guided_prompts.
+    source: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="generated", server_default="generated"
+    )
+    # When true, PATCH /prompts must include the row unchanged (future: core probes).
+    locked: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )

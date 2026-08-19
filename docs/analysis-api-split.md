@@ -55,7 +55,7 @@ Hook: `useAnalysisQuery({ slices: 'search' | 'ai' | 'full' })`.
 ## Later PRs
 
 - `PATCH /analyses/{id}/kyc` + prompt regen — **shipped** (guided, awaiting review).
-- `PATCH /analyses/{id}/prompts` (custom edit).
+- `PATCH /analyses/{id}/prompts` (custom edit) — **shipped** (`source`, `locked`, +3 user cap).
 - `POST /analyses/{id}/measure` — resume guided runs (ADR-50 phase 2).
 - Guided wizard UI (KYC review → prompts → measure).
 - Optional DB: `kyc_profiles`, `analysis_feature_runs`.

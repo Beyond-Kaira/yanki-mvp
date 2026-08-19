@@ -42,6 +42,7 @@ from app.api.schemas import (
     CreateAnalysisResponse,
     GeoOut,
     PatchAnalysisKycRequest,
+    PatchAnalysisPromptsRequest,
     PromptOut,
     SeoAuditOut,
     SerpVisibilityOut,
@@ -67,10 +68,11 @@ from app.services.checker import (
     normalize_triple,
 )
 from app.services.emailer import send_waitlist_emails
-from app.services.guided_profile import (
+from app.services.guided_profile import patch_kyc_and_regenerate_prompts
+from app.services.guided_prompts import PromptPatchItem, patch_analysis_prompts
+from app.services.guided_review import (
     GuidedProfileConflictError,
     GuidedProfileValidationError,
-    patch_kyc_and_regenerate_prompts,
 )
 from app.services.permissions import ANALYSIS_READ, ANALYSIS_RUN
 from app.services.rate_limit import (
@@ -484,6 +486,66 @@ def patch_analysis_kyc(
         kyc=analysis.kyc,
         prompts=[PromptOut.model_validate(p) for p in analysis.prompts],
     )
+
+
+@router.patch("/analyses/{analysis_id}/prompts", response_model=AnalysisPromptsOut)
+def patch_analysis_prompts_route(
+    analysis_id: uuid.UUID,
+    payload: PatchAnalysisPromptsRequest,
+    org: OrgContext = Depends(requires(ANALYSIS_RUN)),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AnalysisPromptsOut:
+    """Curate the prompt set before measure on a guided run.
+
+    Send the full desired set: rows with ``id`` update existing prompts, rows
+    without ``id`` add user prompts (up to three). Omitted non-locked rows are
+    removed. ``source`` tracks lineage (``generated`` / ``edited`` / ``user``).
+    """
+
+    analysis = readable_analysis(session, analysis_id, org)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="analysis not found")
+
+    before = [{"id": str(p.id), "text": p.text, "category": p.category} for p in analysis.prompts]
+    items = [
+        PromptPatchItem(id=item.id, text=item.text, category=item.category)
+        for item in payload.prompts
+    ]
+    try:
+        analysis = patch_analysis_prompts(session, analysis, items, settings)
+    except GuidedProfileConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"analysis in status {exc.status!r} cannot be edited",
+        ) from exc
+    except GuidedProfileValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+
+    audit.emit(
+        session,
+        action="analysis:prompts_patch",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="analysis",
+        entity_id=analysis_id,
+        before={"prompts": before},
+        after={
+            "prompts": [
+                {
+                    "id": str(p.id),
+                    "text": p.text,
+                    "category": p.category,
+                    "source": p.source,
+                    "locked": p.locked,
+                }
+                for p in analysis.prompts
+            ]
+        },
+    )
+    session.commit()
+    return build_prompts_out(analysis)
 
 
 @router.get("/analyses/{analysis_id}/prompts", response_model=AnalysisPromptsOut)

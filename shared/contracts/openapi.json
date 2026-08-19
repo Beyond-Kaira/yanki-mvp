@@ -3203,15 +3203,47 @@
         "title": "PatchAnalysisKycRequest",
         "type": "object"
       },
+      "PatchAnalysisPromptsRequest": {
+        "properties": {
+          "prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PromptPatchItem"
+            },
+            "minItems": 1,
+            "title": "Prompts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prompts"
+        ],
+        "title": "PatchAnalysisPromptsRequest",
+        "type": "object"
+      },
       "PromptOut": {
         "properties": {
           "category": {
             "title": "Category",
             "type": "string"
           },
+          "editable": {
+            "readOnly": true,
+            "title": "Editable",
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "locked": {
+            "default": false,
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "generated",
+            "title": "Source",
             "type": "string"
           },
           "text": {
@@ -3222,9 +3254,46 @@
         "required": [
           "id",
           "text",
-          "category"
+          "category",
+          "editable"
         ],
         "title": "PromptOut",
+        "type": "object"
+      },
+      "PromptPatchItem": {
+        "additionalProperties": false,
+        "description": "One row in the desired prompt set for ``PATCH /analyses/{id}/prompts``.",
+        "properties": {
+          "category": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "text": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "category"
+        ],
+        "title": "PromptPatchItem",
         "type": "object"
       },
       "ReferringDomainOut": {
@@ -6512,6 +6581,79 @@
           }
         ],
         "summary": "Read Analysis Prompts",
+        "tags": [
+          "analyses"
+        ]
+      },
+      "patch": {
+        "description": "Curate the prompt set before measure on a guided run.\n\nSend the full desired set: rows with ``id`` update existing prompts, rows\nwithout ``id`` add user prompts (up to three). Omitted non-locked rows are\nremoved. ``source`` tracks lineage (``generated`` / ``edited`` / ``user``).",
+        "operationId": "patch_analysis_prompts_route_api_v1_analyses__analysis_id__prompts_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchAnalysisPromptsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisPromptsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Analysis Prompts Route",
         "tags": [
           "analyses"
         ]

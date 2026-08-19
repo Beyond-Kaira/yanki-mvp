@@ -434,7 +434,15 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Analysis Prompts Route
+         * @description Curate the prompt set before measure on a guided run.
+         *
+         *     Send the full desired set: rows with ``id`` update existing prompts, rows
+         *     without ``id`` add user prompts (up to three). Omitted non-locked rows are
+         *     removed. ``source`` tracks lineage (``generated`` / ``edited`` / ``user``).
+         */
+        patch: operations["patch_analysis_prompts_route_api_v1_analyses__analysis_id__prompts_patch"];
         trace?: never;
     };
     "/api/v1/analyses/{analysis_id}/seo": {
@@ -2506,15 +2514,44 @@ export interface components {
             /** Use Cases */
             use_cases?: string[] | null;
         };
+        /** PatchAnalysisPromptsRequest */
+        PatchAnalysisPromptsRequest: {
+            /** Prompts */
+            prompts: components["schemas"]["PromptPatchItem"][];
+        };
         /** PromptOut */
         PromptOut: {
             /** Category */
             category: string;
+            /** Editable */
+            readonly editable: boolean;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /**
+             * Locked
+             * @default false
+             */
+            locked: boolean;
+            /**
+             * Source
+             * @default generated
+             */
+            source: string;
+            /** Text */
+            text: string;
+        };
+        /**
+         * PromptPatchItem
+         * @description One row in the desired prompt set for ``PATCH /analyses/{id}/prompts``.
+         */
+        PromptPatchItem: {
+            /** Category */
+            category: string;
+            /** Id */
+            id?: string | null;
             /** Text */
             text: string;
         };
@@ -3817,6 +3854,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisPromptsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_analysis_prompts_route_api_v1_analyses__analysis_id__prompts_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchAnalysisPromptsRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

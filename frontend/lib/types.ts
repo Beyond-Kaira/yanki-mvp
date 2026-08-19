@@ -2149,6 +2149,10 @@ export interface components {
          *
          *     The password is the only field: the email comes from the invitation, so an
          *     invitation cannot be redirected to a different address by editing the form.
+         *
+         *     The minimum length is not stated here for the reason given on
+         *     ``SignupRequest`` — the policy owns it — and the maximum is, for the reason
+         *     given there too.
          */
         InvitationAcceptRequest: {
             /** Password */

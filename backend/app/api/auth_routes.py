@@ -55,6 +55,8 @@ from app.services.oauth import (
     OAuthTokenError,
     verify_id_token,
 )
+from app.services.password_policy import PasswordContext
+from app.services.password_policy import enforce as enforce_password_policy
 from app.services.permissions import permissions_for
 from app.services.tenancy import (
     OrgContext,
@@ -81,8 +83,24 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 def signup(
     payload: SignupRequest,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> UserOut:
     """Create a user account with a hashed password."""
+
+    # Before the email lookup, and well before Argon2: the policy check touches
+    # no database and costs microseconds, while both of the steps after it are
+    # expensive on an endpoint anybody can post to.
+    enforce_password_policy(
+        payload.password,
+        context=PasswordContext(
+            email=payload.email,
+            organization_name=payload.organization_name,
+        ),
+        # Injected rather than read from the module-level cache, so the policy
+        # obeys whatever `Settings` this request is running under — the same
+        # seam every other tunable in this file goes through.
+        settings=settings,
+    )
 
     if get_user_by_email(session, payload.email) is not None:
         raise HTTPException(

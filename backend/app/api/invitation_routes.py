@@ -47,6 +47,8 @@ from app.db.session import get_session
 from app.services import audit, invitations
 from app.services.auth import get_user_by_email, hash_password
 from app.services.auth_sessions import start_refresh_session
+from app.services.password_policy import PasswordContext
+from app.services.password_policy import enforce as enforce_password_policy
 from app.services.tenancy import OrgContext
 from app.services.tokens import TokenConfigurationError
 
@@ -171,6 +173,20 @@ def accept_invitation(
 
     created_user = False
     if existing is None:
+        # Only on the branch that actually creates an account. A signed-in
+        # invitee is being seated in a second organization and their existing
+        # password is untouched, so the value they sent is not a password being
+        # CHOSEN and the policy has no business judging it (tech-debt #97).
+        organization = session.get(Organization, invitation.org_id)
+        enforce_password_policy(
+            payload.password,
+            context=PasswordContext(
+                email=invitation.email,
+                organization_name=organization.name if organization is not None else None,
+            ),
+            settings=settings,
+        )
+
         user = User(email=invitation.email, password_hash=hash_password(payload.password))
         session.add(user)
         try:

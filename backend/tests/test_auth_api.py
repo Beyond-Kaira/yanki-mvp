@@ -857,3 +857,114 @@ def _login(
     assert refresh_token is not None
 
     return response.json(), refresh_token
+
+
+# --------------------------------------------------------------------------
+# The password policy at the signup boundary
+# --------------------------------------------------------------------------
+#
+# The rules themselves are tested in test_password_policy.py. What is asserted
+# here is that the endpoint actually consults them, answers in a shape a client
+# can use, and creates nothing when it refuses.
+
+
+def test_signup_refuses_a_password_the_policy_rejects(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    response = client.post(
+        SIGNUP_URL,
+        json={"email": "new@example.com", "password": "password123456"},
+    )
+
+    assert response.status_code == 422
+
+    body = response.json()
+    assert "common" in body["rules"]
+    assert isinstance(body["detail"], str)
+
+    # Nothing was created, and in particular no organization: a refused signup
+    # that left a half-provisioned tenant behind would be worse than one that
+    # succeeded.
+    assert db_session.scalar(select(User).where(User.email == "new@example.com")) is None
+
+
+def test_signup_refuses_a_password_built_from_the_email(
+    client: TestClient,
+) -> None:
+    """The context the route passes is the point of this one — the policy
+    cannot apply a rule it is not given the material for."""
+
+    response = client.post(
+        SIGNUP_URL,
+        json={"email": "kahvemasa@example.com", "password": "kahvemasa-2026"},
+    )
+
+    assert response.status_code == 422
+    assert "context" in response.json()["rules"]
+
+
+def test_signup_refuses_a_password_built_from_the_organization_name(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        SIGNUP_URL,
+        json={
+            "email": "someone@example.com",
+            "password": "bulutbilisim-1",
+            "account_type": "organization",
+            "organization_name": "Bulut Bilişim",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "context" in response.json()["rules"]
+
+
+def test_the_refusal_never_echoes_the_password(
+    client: TestClient,
+) -> None:
+    """A 422 body is rendered in a browser and may be logged by anything in
+    front of it."""
+
+    secret = "password123456"
+    response = client.post(
+        SIGNUP_URL,
+        json={"email": "new@example.com", "password": secret},
+    )
+
+    assert secret not in response.text
+
+
+def test_signup_accepts_a_long_passphrase_with_no_composition_rule(
+    client: TestClient,
+) -> None:
+    """All lowercase, no digit, no symbol — and correct. This is the test that
+    fails if somebody 'strengthens' the policy back into a composition rule."""
+
+    response = client.post(
+        SIGNUP_URL,
+        json={"email": "new@example.com", "password": "bulutkahvemasa"},
+    )
+
+    assert response.status_code == 201
+
+
+def test_login_never_applies_the_policy(
+    client: TestClient,
+) -> None:
+    """An account whose password predates the policy must still be able to sign
+    in, and a guesser must not be told what the rules are. Both follow from the
+    login path never consulting the policy — so a password that signup would
+    refuse has to reach the credential check and fail THERE, as a 401.
+    """
+
+    _signup(client, email="old@example.com", password="correct-horse-battery")
+
+    response = client.post(
+        LOGIN_URL,
+        json={"email": "old@example.com", "password": "password123456"},
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "invalid email or password"}

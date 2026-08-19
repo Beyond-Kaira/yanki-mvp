@@ -2344,11 +2344,10 @@
         "type": "object"
       },
       "InvitationAcceptRequest": {
-        "description": "Create an account from an invitation.\n\nThe password is the only field: the email comes from the invitation, so an\ninvitation cannot be redirected to a different address by editing the form.",
+        "description": "Create an account from an invitation.\n\nThe password is the only field: the email comes from the invitation, so an\ninvitation cannot be redirected to a different address by editing the form.\n\nThe minimum length is not stated here for the reason given on\n``SignupRequest`` \u2014 the policy owns it \u2014 and the maximum is, for the reason\ngiven there too.",
         "properties": {
           "password": {
             "maxLength": 128,
-            "minLength": 8,
             "title": "Password",
             "type": "string"
           }
@@ -3753,7 +3752,6 @@
           },
           "password": {
             "maxLength": 128,
-            "minLength": 8,
             "title": "Password",
             "type": "string"
           }

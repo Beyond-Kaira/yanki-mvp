@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   analysisRouteUsesSession,
+  analysisSubmitLandingHref,
+  guidedReviewHref,
   resolveBoundAnalysisId,
 } from '@/lib/analysis-route'
 
@@ -28,5 +30,33 @@ describe('analysis route binding', () => {
     expect(
       resolveBoundAnalysisId(null, '/ai-visibility', 'remembered'),
     ).toBeNull()
+  })
+
+  it('sends guided runs to the AI Visibility review wizard from any submit surface', () => {
+    expect(
+      analysisSubmitLandingHref('abc', { mode: 'guided', pathname: '/dashboard' }),
+    ).toBe('/ai-visibility?analysis=abc')
+    expect(
+      analysisSubmitLandingHref('abc', {
+        mode: 'guided',
+        pathname: '/search-visibility',
+      }),
+    ).toBe('/ai-visibility?analysis=abc')
+  })
+
+  it('keeps quick-run landing paths unchanged', () => {
+    expect(
+      analysisSubmitLandingHref('abc', { mode: 'quick', pathname: '/dashboard' }),
+    ).toBe('/analyses/abc')
+    expect(
+      analysisSubmitLandingHref('abc', {
+        mode: 'quick',
+        pathname: '/search-visibility',
+      }),
+    ).toBe('/search-visibility?analysis=abc')
+  })
+
+  it('builds the guided review href for legacy redirects', () => {
+    expect(guidedReviewHref('abc')).toBe('/ai-visibility?analysis=abc')
   })
 })

@@ -6,6 +6,7 @@ import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
 import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
+import GuidedReviewLinkPanel from '@/components/guided/GuidedReviewLinkPanel'
 import SerpVisibility from '@/components/SerpVisibility'
 import SeoAudit from '@/components/SeoAudit'
 import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
@@ -43,6 +44,17 @@ export default function SearchVisibilityOverviewClient() {
             Search results visibility and the AI readiness audit appear here
             when this run finishes.
           </p>
+        </PageContainer>
+      ) : null}
+
+      {status === 'review' && analysisId ? (
+        <PageContainer>
+          <PageHeaderRow className="mb-6" action={<NewAnalysisButton path="/search-visibility" />}>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Awaiting review
+            </h1>
+          </PageHeaderRow>
+          <GuidedReviewLinkPanel analysisId={analysisId} className="space-y-3" />
         </PageContainer>
       ) : null}
 

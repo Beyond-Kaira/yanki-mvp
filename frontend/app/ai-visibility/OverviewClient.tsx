@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import OverviewDashboard from '@/components/ai-visibility/OverviewDashboard'
 import RecentAnalysesPanel from '@/components/ai-visibility/RecentAnalysesPanel'
 import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
+import CustomGeoGuidedWizard from '@/components/guided/CustomGeoGuidedWizard'
 import PageContainer from '@/components/shell/PageContainer'
 import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
@@ -12,7 +13,8 @@ import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
 import { overviewFromAnalysis } from '@/lib/ai-overview'
 
 export default function OverviewClient() {
-  const { status, analysis, error } = useAnalysisQuery({ slices: 'ai' })
+  const { status, analysis, error, resumePolling, setAnalysis } =
+    useAnalysisQuery({ slices: 'ai' })
   const model = useMemo(
     () =>
       status === 'ready' && analysis ? overviewFromAnalysis(analysis) : null,
@@ -45,6 +47,18 @@ export default function OverviewClient() {
             Prompts, Citations, and Drivers will fill with this same run when it
             finishes.
           </p>
+        </PageContainer>
+      ) : null}
+      {status === 'review' && analysis ? (
+        <PageContainer className="pb-12">
+          <PageHeaderRow className="mb-6" action={<NewAnalysisButton />}>
+            <span className="sr-only">Guided review</span>
+          </PageHeaderRow>
+          <CustomGeoGuidedWizard
+            analysis={analysis}
+            onAnalysisUpdated={setAnalysis}
+            onMeasureStarted={resumePolling}
+          />
         </PageContainer>
       ) : null}
       {status === 'error' ? (

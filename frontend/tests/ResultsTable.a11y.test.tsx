@@ -4,10 +4,11 @@ import userEvent from '@testing-library/user-event'
 import ResultsTable from '@/components/ResultsTable'
 import type { AnalysisResponse, Prompt } from '@/lib/contracts'
 import { axeCheck } from './a11y'
+import { samplePrompt } from './analysisMocks'
 
 const prompts: Prompt[] = [
-  { id: 'p1', category: 'comparison', text: 'Best CRM for small teams?' },
-  { id: 'p2', category: 'recommendation', text: 'Which analytics tool should I pick?' },
+  samplePrompt({ id: 'p1', category: 'comparison', text: 'Best CRM for small teams?' }),
+  samplePrompt({ id: 'p2', category: 'recommendation', text: 'Which analytics tool should I pick?' }),
 ]
 
 const responses: AnalysisResponse[] = [

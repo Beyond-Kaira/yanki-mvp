@@ -1,6 +1,6 @@
 # Guided AI analysis
 
-**Status:** phase 4 — profile pause, KYC/prompt PATCH, execute-prompts-and-score (ADR-50).  
+**Status:** phase 5 — backend + guided wizard UI (ADR-50).  
 **Canvas:** `guided-analysis-flow.canvas.tsx`
 
 ## Goal
@@ -46,6 +46,6 @@ Each prompt row stores:
 
 ## Not yet shipped
 
-- Guided wizard UI
+(none — guided backend + wizard UI are shipped in this branch)
 
 See also [analysis-api-split.md](analysis-api-split.md) for read slices.

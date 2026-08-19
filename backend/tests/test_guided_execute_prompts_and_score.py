@@ -141,9 +141,10 @@ def test_execute_prompts_and_score_emits_audit(client, db_session, signed_in, se
     assert event.after["status"] == "queued"
 
 
-def test_worker_runs_measure_only_after_execute_enqueue(worker_session_factory, monkeypatch, settings):
+def test_worker_runs_measure_only_after_execute_enqueue(
+    worker_session_factory, monkeypatch, settings
+):
     import app.worker as worker
-    from app.pipeline import runner
 
     crawl_calls: list[str] = []
 

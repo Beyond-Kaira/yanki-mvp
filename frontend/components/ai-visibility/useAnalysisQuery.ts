@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import {
   fetchAnalysisSlices,
   getAnalysis,
+  getAnalysisKyc,
+  getAnalysisPrompts,
   ApiError,
 } from '@/lib/api'
 import {
@@ -21,6 +23,7 @@ export type AnalysisQueryStatus =
   | 'empty'
   | 'loading'
   | 'running'
+  | 'review'
   | 'ready'
   | 'error'
 
@@ -33,14 +36,14 @@ export function useAnalysisQuery(options?: {
   status: AnalysisQueryStatus
   analysis: Analysis | null
   error: string | null
+  resumePolling: () => void
+  setAnalysis: (analysis: Analysis) => void
 } {
   const sliceMode = options?.slices ?? 'full'
   const params = useSearchParams()
   const pathname = usePathname()
   const fromQuery = params.get('analysis')
   const { analysisId: sessionId, setAnalysisId } = useAnalysisSession()
-  // Overview without `?analysis=` stays empty so "New analysis" can start fresh.
-  // Subpages and nav links fall back to the remembered run for tab binding.
   const analysisId = resolveBoundAnalysisId(fromQuery, pathname, sessionId)
   const { clearBinding } = useAnalysisBinding()
   const [status, setStatus] = useState<AnalysisQueryStatus>(
@@ -48,7 +51,13 @@ export function useAnalysisQuery(options?: {
   )
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [pollGeneration, setPollGeneration] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const resumePolling = useCallback(() => {
+    setPollGeneration((value) => value + 1)
+    setStatus('loading')
+  }, [])
 
   useEffect(() => {
     if (fromQuery) {
@@ -81,6 +90,23 @@ export function useAnalysisQuery(options?: {
         if (cancelled) return
         setAnalysisId(envelope.id)
         setError(null)
+
+        if (envelope.status === 'awaiting_review') {
+          const [kycSlice, promptsSlice] = await Promise.all([
+            getAnalysisKyc(envelope.id),
+            getAnalysisPrompts(envelope.id),
+          ])
+          if (cancelled) return
+          setAnalysis(
+            mergeAnalysis(envelope, {
+              kyc: kycSlice,
+              prompts: promptsSlice,
+            }),
+          )
+          setStatus('review')
+          stop()
+          return
+        }
 
         if (envelope.status === 'done') {
           const slices = await fetchAnalysisSlices(envelope.id, sliceMode)
@@ -122,7 +148,20 @@ export function useAnalysisQuery(options?: {
       cancelled = true
       stop()
     }
-  }, [analysisId, clearBinding, setAnalysisId, sliceMode])
+  }, [
+    analysisId,
+    clearBinding,
+    pollGeneration,
+    setAnalysisId,
+    sliceMode,
+  ])
 
-  return { analysisId, status, analysis, error }
+  return {
+    analysisId,
+    status,
+    analysis,
+    error,
+    resumePolling,
+    setAnalysis,
+  }
 }

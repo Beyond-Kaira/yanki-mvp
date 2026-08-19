@@ -57,7 +57,7 @@ Hook: `useAnalysisQuery({ slices: 'search' | 'ai' | 'full' })`.
 - `PATCH /analyses/{id}/kyc` + prompt regen — **shipped** (guided, awaiting review).
 - `PATCH /analyses/{id}/prompts` (custom edit) — **shipped** (`source`, `locked`, +3 user cap).
 - `POST /analyses/{id}/execute-prompts-and-score` — resume guided runs — **shipped**.
-- Guided wizard UI (KYC review → prompts → measure).
+- Guided wizard UI (KYC review → prompts → measure) — **shipped** on AI Visibility Overview.
 - Optional DB: `kyc_profiles`, `analysis_feature_runs`.
 
 ## Tests

@@ -5,6 +5,7 @@ import {
   runEngineIds,
 } from '@/lib/results'
 import type { AnalysisResponse, Prompt } from '@/lib/contracts'
+import { samplePrompt } from './analysisMocks'
 
 // No casts: fixtures satisfy the generated wire types in full, so a contract
 // change fails the build here rather than passing silently.
@@ -23,8 +24,8 @@ function response(overrides: Partial<AnalysisResponse>): AnalysisResponse {
 }
 
 const prompts: Prompt[] = [
-  { id: 'p1', category: 'recommendation', text: 'Best analytics tools?' },
-  { id: 'p2', category: 'comparison', text: 'How do they compare?' },
+  samplePrompt({ id: 'p1', category: 'recommendation', text: 'Best analytics tools?' }),
+  samplePrompt({ id: 'p2', category: 'comparison', text: 'How do they compare?' }),
 ]
 
 describe('runEngineIds', () => {

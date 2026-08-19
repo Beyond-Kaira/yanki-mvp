@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ApiError, listAnalyses } from '@/lib/api'
 import type { AnalysisSummary } from '@/lib/contracts'
+import { analysisStatusLabel } from '@/lib/guided-analysis'
 
 const RECENT_LIMIT = 5
 
@@ -11,6 +12,7 @@ const STATUS_TONE: Record<string, string> = {
   done: 'bg-success-soft text-success-strong',
   running: 'bg-primary-soft text-primary-strong',
   queued: 'bg-surface-muted text-surface-subtle',
+  awaiting_review: 'bg-warning-soft text-warning-strong',
   failed: 'bg-danger-soft text-danger-strong',
 }
 
@@ -131,7 +133,7 @@ export default function RecentAnalysesPanel({
                     STATUS_TONE[row.status] ?? 'bg-surface-muted'
                   }`}
                 >
-                  {row.status}
+                  {analysisStatusLabel(row.status)}
                 </span>
                 <span className="tabular-nums">
                   {row.geo_score == null ? '—' : row.geo_score.toFixed(1)}

@@ -129,6 +129,39 @@ describe('InviteClient', () => {
     await waitFor(() => expect(acceptInvite).toHaveBeenCalled())
   })
 
+  it('refuses a password the policy rejects before calling the API', async () => {
+    const user = userEvent.setup()
+    render(<InviteClient token="tok-abc" />)
+    await screen.findByLabelText('Choose a password')
+
+    await user.type(screen.getByLabelText('Choose a password'), 'password123456')
+    await user.type(screen.getByLabelText('Confirm password'), 'password123456')
+    await user.click(screen.getByRole('button', { name: /create account and join/i }))
+
+    expect(
+      screen.getByText(/one of the ones people pick most often/i, {
+        selector: '#password-error',
+      }),
+    ).toBeInTheDocument()
+    expect(acceptInvite).not.toHaveBeenCalled()
+  })
+
+  it('treats the invited address as context for the policy', async () => {
+    const user = userEvent.setup()
+    render(<InviteClient token="tok-abc" />)
+    await screen.findByLabelText('Choose a password')
+
+    // The preview says the invitation is for newbie@acme.test.
+    await user.type(screen.getByLabelText('Choose a password'), 'newbie-parolasi')
+    await user.type(screen.getByLabelText('Confirm password'), 'newbie-parolasi')
+    await user.click(screen.getByRole('button', { name: /create account and join/i }))
+
+    expect(
+      screen.getByText(/out of your email address/i, { selector: '#password-error' }),
+    ).toBeInTheDocument()
+    expect(acceptInvite).not.toHaveBeenCalled()
+  })
+
   it('stops someone signed in as a different person from taking the seat', async () => {
     authState = { status: 'authenticated', user: { email: 'someone@else.test' } }
     render(<InviteClient token="tok-abc" />)

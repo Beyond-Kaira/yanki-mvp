@@ -169,7 +169,17 @@ class SignupRequest(BaseModel):
     """
 
     email: NormalizedEmail
-    password: str = Field(min_length=8, max_length=128)
+    # No minimum here, deliberately. The minimum is configurable
+    # (``PASSWORD_MIN_LENGTH``) and it is one rule among several, so it lives in
+    # ``services.password_policy`` and nowhere else — a constraint duplicated
+    # here would be a second source of truth that drifts the first time an
+    # operator changes the setting, and it would answer in Pydantic's voice
+    # instead of the policy's.
+    #
+    # The maximum stays, because it is not policy: it is the bound that stops a
+    # multi-megabyte string reaching an Argon2 hash. Keep it at or above
+    # ``PASSWORD_MAX_LENGTH`` or this rejects first and the setting goes quiet.
+    password: str = Field(max_length=128)
     account_type: Literal["individual", "organization"] = "individual"
     # Required when account_type is 'organization'; ignored otherwise. An
     # individual's org is named after their email local part.
@@ -793,9 +803,13 @@ class InvitationAcceptRequest(BaseModel):
 
     The password is the only field: the email comes from the invitation, so an
     invitation cannot be redirected to a different address by editing the form.
+
+    The minimum length is not stated here for the reason given on
+    ``SignupRequest`` — the policy owns it — and the maximum is, for the reason
+    given there too.
     """
 
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(max_length=128)
 
 
 # --- Audit log ------------------------------------------------------------

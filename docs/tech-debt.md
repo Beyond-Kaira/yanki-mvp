@@ -1381,3 +1381,77 @@ devDependencies).)
     that is where it belongs) or by adding it to the image. **Verify the fix by
     running it inside the container, not by reading the Dockerfile** — this got
     through because nobody ran the documented command on the box.
+
+93. **Accounts created before the password policy keep whatever they had**
+    (2026-08-19, ADR-51). The policy gates the two paths that CHOOSE a password
+    and nothing else — login deliberately never consults it, because enforcing
+    at sign-in would lock out every account predating the change and would tell
+    a guesser what the rules are. So the users most likely to have a weak
+    password are exactly the ones the change does not reach, and there is no way
+    to nudge them: telling somebody their password no longer meets policy is
+    only useful next to a way to change it, and there is no reset endpoint
+    (**#49**) and no change endpoint at all. Repay this together with #49: on a
+    successful login, run `evaluate()` on the credential that just worked and,
+    if it fails, set a flag the UI turns into a non-blocking prompt pointing at
+    the change screen. Do NOT block the login.
+
+94. **The common-password blocklist is a curated head, not a corpus**
+    (2026-08-19, ADR-51). `backend/app/data/common_passwords.txt` holds a few
+    hundred base words chosen by hand. The canonicalizer multiplies its reach —
+    one `password` entry rejects every `P@ssw0rd2026!` — but it is still three
+    orders of magnitude smaller than the lists real attackers use, and it
+    matches whole canonical forms rather than substrings, so `mypassword12`
+    reduces to `mypassword` and passes. Two independent fixes, in order of
+    value: (a) the HIBP k-anonymity check deferred out of ADR-51, which is one
+    adapter module and one setting and is already scheduled for A5; (b) growing
+    the file from a maintained top-100k source, which is an ops task — the
+    loader neither knows nor cares how many lines it reads, and holds them in a
+    `frozenset` built once at import.
+
+95. **`SignupRequest.password`'s `max_length` and `PASSWORD_MAX_LENGTH` are two
+    numbers that must agree** (2026-08-19, ADR-51). The minimum has exactly one
+    home, the policy; the maximum has two, because something has to bound the
+    field before Pydantic binds a multi-megabyte string and hands it to Argon2.
+    Today both say 128. An operator who raises `PASSWORD_MAX_LENGTH` finds the
+    schema still rejecting at 128, silently — the setting appears to do nothing.
+    The comment on the field says so; nothing enforces it. Fix by raising the
+    schema bound to the settings field's own ceiling (1024, which is where the
+    `le=` already sits) so the schema is purely a payload guard and the policy
+    owns the real maximum, or by asserting the relation at settings
+    construction the way the min/max ordering already is.
+
+96. **The frontend policy is a hand-maintained mirror** (2026-08-19, ADR-51).
+    `frontend/lib/password-policy.ts` reimplements every rule in
+    `services/password_policy.py`, including a trimmed copy of the blocklist,
+    because the alternative was a ~800KB dependency in a frontend whose entire
+    runtime is next + react + react-dom. `tests/password-policy.test.ts` pins
+    the rule ids and the bounds, so the two cannot disagree about vocabulary —
+    but nothing pins the rule LOGIC, and a rule tightened on the server alone
+    would show as a form that passes locally and 422s on submit. That failure
+    mode is the safe direction (the server always wins and the message it sends
+    is rendered), which is why this is debt rather than a defect. The real fix
+    is to serve the policy — a small `GET /api/v1/auth/password-policy` the form
+    reads at mount — and it belongs with the reset screen, not before it.
+
+97. **The invitation-accept body carries a fabricated password for one of its
+    three callers** (found 2026-08-19 while implementing ADR-51; the arrangement
+    itself predates it). `InvitationAcceptRequest.password` is required, but an
+    invitee who is **already signed in** is being seated in a second
+    organization rather than registering — they have no password to give, and
+    the route never reads one on that path. `InviteClient.tsx` satisfies the
+    required field with the literal string `'already-signed-in-placeholder'`,
+    and the OpenAPI contract therefore documents a real password where there is
+    none.
+
+    **Nothing is broken today.** The password policy runs inside the branch that
+    creates an account, so it never sees the constant — and the constant would
+    pass the policy anyway. This is a contract-honesty problem, not a defect.
+
+    **It is one refactor from being a defect.** `/signup` enforces the policy at
+    the top of its route, which is the natural place and the one a later change
+    would move this to; doing so would put the fabricated constant in front of
+    the policy. The fix is to make the field `str | None` and enforce only on
+    the create-account branch — deliberately NOT done in the password-policy
+    change, which had one job. Whoever picks this up: it is a schema change, so
+    it needs `make gen-types` and the frontend chain (`api.ts`, `AuthProvider`,
+    `InviteClient`) in the same commit.

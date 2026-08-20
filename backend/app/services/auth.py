@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Membership, User
 from app.services import audit
 from app.services.oauth import OAuthIdentity
+from app.services.password_policy import normalize as normalize_password
 from app.services.tenancy import OrgContext, provision_org
 
 _password_hash = PasswordHash.recommended()
@@ -36,15 +37,21 @@ def normalize_email(email: str) -> str:
 
 
 def hash_password(password: str) -> str:
-    """Hash a plain-text password using the recommended password hasher."""
+    """Hash a plain-text password using the recommended password hasher.
 
-    return _password_hash.hash(password)
+    Normalized first — see :func:`app.services.password_policy.normalize` for
+    what and why. The pairing with :func:`verify_password` below is the whole
+    point: normalizing on the way in and not on the way out would store a hash
+    of a string the user can never type again.
+    """
+
+    return _password_hash.hash(normalize_password(password))
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     """Check a plain-text password against a stored password hash."""
 
-    return _password_hash.verify(password, password_hash)
+    return _password_hash.verify(normalize_password(password), password_hash)
 
 
 def verify_and_update_password(
@@ -52,7 +59,7 @@ def verify_and_update_password(
     password_hash: str,
 ) -> tuple[bool, str | None]:
     """Verify a password and return an upgraded hash when needed."""
-    return _password_hash.verify_and_update(password, password_hash)
+    return _password_hash.verify_and_update(normalize_password(password), password_hash)
 
 
 def audit_context(session: Session, user: User) -> OrgContext | None:

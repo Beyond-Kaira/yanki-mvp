@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,6 +40,28 @@ class Settings(BaseSettings):
     # explicitly override this to false because localhost normally uses HTTP.
     auth_refresh_cookie_name: str = "yanki_refresh_token"
     auth_refresh_cookie_secure: bool = True
+
+    # Password policy (NIST SP 800-63B, OWASP ASVS V2.1). Read by
+    # ``services.password_policy``; every write path that CHOOSES a password
+    # goes through it, and no path that VERIFIES one does.
+    #
+    # Length-first and blocklist-backed, with no character-class rule in the
+    # default configuration — that is the standard's position, not a shortcut.
+    # NIST 800-63B says a verifier SHALL NOT impose composition rules, because
+    # the passwords they produce are predictable ("Password1!") while the users
+    # who must invent them reuse and write them down. What replaces the rule is
+    # a longer minimum and a list of the passwords people actually pick.
+    password_min_length: int = Field(default=12, ge=8, le=128)
+    # ASVS asks for at least 64. The cap is a denial-of-service guard, not a
+    # policy: Argon2 hashes whatever it is given, so an unbounded field is a way
+    # to spend a core per request.
+    password_max_length: int = Field(default=128, ge=64, le=1024)
+    password_blocklist_enabled: bool = True
+    # Off, and here only so that a deployment answering to a compliance regime
+    # that mandates composition can satisfy it without patching the policy. It
+    # makes passwords worse; see above.
+    password_require_character_classes: bool = False
+    password_min_character_classes: int = Field(default=3, ge=1, le=4)
 
     # Sign-in with Google / Apple. Blank by default, and a blank one disables
     # that provider rather than trusting anything: the client id is the audience
@@ -257,6 +279,23 @@ class Settings(BaseSettings):
     # holiday, short enough that a forgotten invitation is not a permanent
     # standing grant sitting in an inbox.
     invitation_ttl_days: int = Field(default=14, ge=1, le=90)
+
+    @model_validator(mode="after")
+    def _password_bounds_are_orderable(self) -> Settings:
+        """A minimum above the maximum would reject every password.
+
+        Checked at construction rather than at policy time so the deployment
+        fails to boot instead of failing every signup — the two fields have
+        independent bounds and nothing else would notice they crossed.
+        """
+
+        if self.password_min_length > self.password_max_length:
+            raise ValueError(
+                "PASSWORD_MIN_LENGTH must not exceed PASSWORD_MAX_LENGTH "
+                f"({self.password_min_length} > {self.password_max_length})"
+            )
+
+        return self
 
 
 @lru_cache

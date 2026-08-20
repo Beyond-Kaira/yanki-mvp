@@ -16,6 +16,7 @@ from app.db.session import get_session
 from app.health import health_report
 from app.request_context import RequestContextMiddleware
 from app.services.billing import InsufficientCredit, PlanCatalogMissing, QuotaExceeded
+from app.services.password_policy import PasswordPolicyViolation
 from app.services.user_analysis_limits import UserAnalysisLimitExceeded
 
 app = FastAPI(title="Yanki API", version="0.1.0")
@@ -102,6 +103,32 @@ def _plan_catalog_missing(request: Request, exc: PlanCatalogMissing) -> JSONResp
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": "billing plans are not configured on this deployment"},
+    )
+
+
+# --- A rejected password is a 422 with sentences, not a Pydantic dump --------
+
+
+@app.exception_handler(PasswordPolicyViolation)
+def _password_policy_violation(request: Request, exc: PasswordPolicyViolation) -> JSONResponse:
+    """422, matching what a field-level constraint would have returned.
+
+    The status is deliberately unchanged from the ``min_length`` rule this
+    replaces, so no client has to learn a new code. What changes is the body.
+    Pydantic would have said *"Value error, String should have at least 12
+    characters"* — a sentence about our validator, shown to somebody who only
+    wanted an account — and `readErrorMessage` on the frontend renders exactly
+    that string. A plain ``detail`` gives that seam something worth showing.
+
+    ``rules`` rides along so a client can react to WHICH rule broke without
+    parsing English, and so the frontend's mirrored policy can be checked
+    against this one. It carries rule ids only: nothing derived from the
+    password itself appears in this body, or in anything that logs it.
+    """
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.detail, "rules": list(exc.rules)},
     )
 
 

@@ -553,3 +553,44 @@ def test_re_inviting_a_deactivated_member_reactivates_their_seat(db_session):
     assert len(memberships) == 1
     assert memberships[0].role == "editor"
     assert memberships[0].status == "active"
+
+
+# --------------------------------------------------------------------------
+# The password policy on the accept path
+# --------------------------------------------------------------------------
+
+
+def test_accepting_with_a_weak_password_is_refused_and_consumes_nothing(client, db_session):
+    """The invitation has to survive the refusal.
+
+    A link burned by a rejected password would leave the invitee with nothing
+    to retry and an administrator to email — which is why the policy runs on
+    the branch that creates the account, inside the same transaction, rather
+    than after the invitation is redeemed.
+    """
+
+    _owner_org(client, db_session)
+    created = _invite(client, _token(client, "owner@acme.test"), "weak@acme.test")
+    url = f"/api/v1/invitations/{_token_from(created['accept_url'])}/accept"
+
+    refused = client.post(url, json={"password": "password123456"})
+
+    assert refused.status_code == 422
+    assert "common" in refused.json()["rules"]
+    assert db_session.scalar(sa.select(User).where(User.email == "weak@acme.test")) is None
+
+    # The link still works.
+    assert client.post(url, json={"password": NEW_PASSWORD}).status_code == 201
+
+
+def test_the_invited_address_is_context_for_the_policy(client, db_session):
+    _owner_org(client, db_session)
+    created = _invite(client, _token(client, "owner@acme.test"), "kahvemasa@acme.test")
+
+    response = client.post(
+        f"/api/v1/invitations/{_token_from(created['accept_url'])}/accept",
+        json={"password": "kahvemasa-2026"},
+    )
+
+    assert response.status_code == 422
+    assert "context" in response.json()["rules"]

@@ -171,10 +171,12 @@ export type Credentials = Schemas['LoginRequest']
 
 // Sign-up carries its own schema even though it is {email, password} today, so
 // each call site is typed against the endpoint it actually posts to. They are
-// already not interchangeable — `SignupRequest.password` is min_length 8 where
-// `LoginRequest.password` is 1 — and the day sign-up gains a field, one of these
-// changes and the other does not. Sharing a type would keep TypeScript quiet
-// through exactly the change it is here to catch.
+// already not interchangeable — a sign-up password is judged by the password
+// policy while `LoginRequest.password` is only required to be non-empty, and a
+// login that applied the policy would lock out every account predating it — and
+// the day sign-up gains a field, one of these changes and the other does not.
+// Sharing a type would keep TypeScript quiet through exactly the change it is
+// here to catch.
 // The generated type is stricter than the wire contract. openapi-typescript
 // marks a property with a DEFAULT as required, but `openapi.json` lists only
 // `email` and `password` in `required` — the backend genuinely accepts a body

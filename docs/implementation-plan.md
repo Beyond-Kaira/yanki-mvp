@@ -2367,6 +2367,22 @@ paragraph, as the record.*
   meet. Residual debt: #67 (no device fingerprint without a migration), #68
   (stale active-org self-heals only on `/auth/me`), #69 (`/auth/me` N+1).
 
+  **The password policy shipped ahead of the rest, 2026-08-19, on
+  `feat/strong-password-check` — it needed no migration.** The whole rule had
+  been `min_length=8` on two schemas; it is now `services/password_policy.py`:
+  twelve characters, a leet-folding blocklist of the passwords people actually
+  pick (with a Turkish section, because the users are), a rule against building
+  a password out of your own address or organization name, pattern and
+  keyboard-run rules, NFKC normalization paired across hash and verify, and an
+  advisory strength meter on both screens. No character-class requirement —
+  800-63B forbids one, and the score gates nothing for the same reason. See
+  **ADR-51**. On the invitation path the policy gates only
+  the branch that creates an account, because a signed-in invitee keeps the
+  password they already have. New debt: #93 (existing weak passwords are unreachable
+  until #49 gives them somewhere to go), #94 (the blocklist is a curated head,
+  and the HIBP check is deferred to A5 where the plan already schedules it),
+  #95 (two maximum-length numbers), #96 (the frontend policy is a mirror).
+
 ### P7.6 — Plans, subscriptions, quotas, credit ledger (stage A6)
 - **Goal:** plan catalog as data; Stripe subscription lifecycle; quota
   service enforced on submission paths; credit ledger seeded from existing

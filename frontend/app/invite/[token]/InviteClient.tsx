@@ -2,19 +2,17 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import Button from '@/components/Button'
 import CustomFormError from '@/components/CustomFormError'
 import CustomPasswordField from '@/components/CustomPasswordField'
+import PasswordStrengthMeter from '@/components/PasswordStrengthMeter'
+import { customFieldErrorId } from '@/components/CustomFormField'
 import { useAuth } from '@/components/AuthProvider'
 import { ApiError, previewInvitation } from '@/lib/api'
 import type { InvitationPreview } from '@/lib/contracts'
-import {
-  MIN_PASSWORD_LENGTH,
-  validateNewPassword,
-  validatePasswordConfirmation,
-} from '@/lib/validation'
+import { validateNewPassword, validatePasswordConfirmation } from '@/lib/validation'
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Owner',
@@ -28,6 +26,7 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 const FORM_ERROR_ID = 'invite-error'
+const PASSWORD_METER_ID = 'invite-password-strength'
 
 const NOT_VALID = 'That invitation link is not valid.'
 
@@ -106,6 +105,10 @@ export default function InviteClient({ token }: { token: string }) {
     }
   }, [token])
 
+  // Memoized because it is a prop on the meter, which re-evaluates the policy
+  // whenever it changes; a fresh object literal every render would defeat that.
+  const passwordContext = useMemo(() => ({ email: preview?.email }), [preview?.email])
+
   const alreadySignedInAsInvitee =
     status === 'authenticated' && Boolean(preview) && user?.email === preview!.email
   const signedInAsSomeoneElse =
@@ -117,7 +120,10 @@ export default function InviteClient({ token }: { token: string }) {
 
     if (!alreadySignedInAsInvitee) {
       const errors = {
-        password: validateNewPassword(password),
+        // The invited address is context for the policy here, exactly as it is
+        // on the server — which reads it from the invitation row rather than
+        // from anything the caller sent.
+        password: validateNewPassword(password, passwordContext),
         confirmPassword: validatePasswordConfirmation(confirmPassword, password),
       }
       setFieldErrors(errors)
@@ -135,7 +141,7 @@ export default function InviteClient({ token }: { token: string }) {
     try {
       // A signed-in invitee is seated without creating anything, and the API
       // ignores the password — but the schema requires the field, so send
-      // something that satisfies it and means nothing.
+      // something that satisfies it and means nothing (tech-debt #97).
       await acceptInvite(token, alreadySignedInAsInvitee ? 'already-signed-in-placeholder' : password)
       router.push('/dashboard')
     } catch (err) {
@@ -239,7 +245,17 @@ export default function InviteClient({ token }: { token: string }) {
                 }}
                 disabled={submitting}
                 error={fieldErrors.password}
-                hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+                // No hint: the meter states every rule, and a static line
+                // repeating one of them starts lying the day the policy moves.
+                aria-describedby={
+                  fieldErrors.password ? customFieldErrorId('password') : PASSWORD_METER_ID
+                }
+              />
+
+              <PasswordStrengthMeter
+                id={PASSWORD_METER_ID}
+                value={password}
+                context={passwordContext}
               />
 
               <CustomPasswordField

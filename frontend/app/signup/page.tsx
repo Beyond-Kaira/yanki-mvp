@@ -1,18 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Button from '@/components/Button'
 import CustomFormError from '@/components/CustomFormError'
-import CustomFormField from '@/components/CustomFormField'
+import CustomFormField, { customFieldErrorId } from '@/components/CustomFormField'
 import CustomPasswordField from '@/components/CustomPasswordField'
+import PasswordStrengthMeter from '@/components/PasswordStrengthMeter'
 import SocialSignIn from '@/components/SocialSignIn'
 import { useAuth } from '@/components/AuthProvider'
 import { SignedUpButNotSignedInError } from '@/lib/auth'
 import {
-  MIN_PASSWORD_LENGTH,
   validateEmail,
   validateNewPassword,
   validatePasswordConfirmation,
@@ -24,6 +24,7 @@ import {
 // real text — see docs/tech-debt.md.
 
 const FORM_ERROR_ID = 'signup-error'
+const PASSWORD_METER_ID = 'password-strength'
 
 interface FieldErrors {
   organizationName?: string | null
@@ -51,13 +52,26 @@ export default function SignupPage() {
     if (status === 'authenticated') router.replace('/dashboard')
   }, [status, router])
 
+  // Memoized because it is a prop on the meter, which re-evaluates the policy
+  // whenever it changes; a fresh object literal every render would defeat that.
+  const passwordContext = useMemo(
+    () => ({
+      email,
+      organizationName: accountType === 'organization' ? organizationName : null,
+    }),
+    [email, accountType, organizationName],
+  )
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setFormError(null)
 
     const errors: FieldErrors = {
       email: validateEmail(email),
-      password: validateNewPassword(password),
+      // The context is what lets the policy reject a password assembled from
+      // the address and organization name typed on this same form — the server
+      // applies exactly this rule with exactly these two values.
+      password: validateNewPassword(password, passwordContext),
       confirmPassword: validatePasswordConfirmation(confirmPassword, password),
       organizationName:
         accountType === 'organization' && !organizationName.trim()
@@ -203,7 +217,21 @@ export default function SignupPage() {
             }}
             disabled={submitting}
             error={fieldErrors.password}
-            hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+            // No hint: the meter below states every rule, and a static "at
+            // least N characters" line under a live checklist saying the same
+            // thing is one of them lying the day the policy moves. Error first
+            // when there is one, matching what CustomFieldShell does for a
+            // hint — the reason a field was rejected must not be buried behind
+            // a rule the reader has already broken.
+            aria-describedby={
+              fieldErrors.password ? customFieldErrorId('password') : PASSWORD_METER_ID
+            }
+          />
+
+          <PasswordStrengthMeter
+            id={PASSWORD_METER_ID}
+            value={password}
+            context={passwordContext}
           />
 
           <CustomPasswordField

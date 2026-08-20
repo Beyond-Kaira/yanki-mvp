@@ -88,6 +88,11 @@ class Analysis(Base):
     # (trim + casefold) on checker rows so the 24h reuse lookup is a plain
     # equality match. They stay null on MVP rows.
     kind: Mapped[str] = mapped_column(sa.Text, nullable=True, default="mvp", server_default="mvp")
+    # quick = one-shot six-step run (default). guided = pause after prompts for
+    # KYC/prompt review before execute (ADR-50).
+    run_mode: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="quick", server_default="quick"
+    )
     brand: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     category: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     lang: Mapped[str] = mapped_column(sa.Text, nullable=True, default="en", server_default="en")
@@ -159,6 +164,15 @@ class Prompt(Base):
     )
     text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     category: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Provenance for guided edits and future prompt-generation training.
+    # generated | edited | user — see app.services.guided_prompts.
+    source: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="generated", server_default="generated"
+    )
+    # When true, PATCH /prompts must include the row unchanged (future: core probes).
+    locked: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )

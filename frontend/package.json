@@ -13,6 +13,8 @@
     "gen-types": "openapi-typescript ../shared/contracts/openapi.json -o lib/types.ts"
   },
   "dependencies": {
+    "iso-639-1": "^3.1.6",
+    "locale-emoji": "^0.3.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

@@ -46,6 +46,14 @@ def delete_analysis_children(session: Session, analysis_id: uuid.UUID) -> None:
     session.execute(delete(SeoCheck).where(SeoCheck.analysis_id == analysis_id))
 
 
+def delete_measure_outputs(session: Session, analysis_id: uuid.UUID) -> None:
+    """Drop execute→scoring artefacts while keeping profile phase rows (KYC, prompts, SEO)."""
+
+    session.execute(delete(GeoRecord).where(GeoRecord.analysis_id == analysis_id))
+    session.execute(delete(Response).where(Response.analysis_id == analysis_id))
+    session.execute(delete(SerpCheck).where(SerpCheck.analysis_id == analysis_id))
+
+
 def purge_analysis(session: Session, analysis: Analysis, *, commit: bool = True) -> None:
     """Delete an analysis and every child row it owns."""
 
@@ -87,6 +95,7 @@ def create_analysis(
     *,
     org_id: uuid.UUID | None = None,
     created_by_user_id: uuid.UUID | None = None,
+    run_mode: str = "quick",
     commit: bool = True,
 ) -> Analysis:
     """Insert a new queued analysis and return it.
@@ -111,6 +120,7 @@ def create_analysis(
         ip_hash=ip_hash,
         org_id=org_id,
         created_by_user_id=created_by_user_id,
+        run_mode=run_mode,
     )
     session.add(analysis)
     if commit:

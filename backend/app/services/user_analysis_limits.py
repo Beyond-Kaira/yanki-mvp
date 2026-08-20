@@ -20,7 +20,8 @@ USER_ANALYSIS_LIMIT = 5
 METRIC_USER_ANALYSES = "user_analyses"
 
 # Failed rows are auto-purged and excluded; see worker + delete path (P4).
-_ACTIVE_STATUSES = ("queued", "running", "done")
+# awaiting_review holds a user slot while guided profile review is in progress.
+_ACTIVE_STATUSES = ("queued", "running", "awaiting_review", "done")
 
 
 class UserAnalysisLimitExceeded(RuntimeError):

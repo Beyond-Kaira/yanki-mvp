@@ -495,6 +495,11 @@
             ],
             "title": "Reliability Score"
           },
+          "run_mode": {
+            "default": "quick",
+            "title": "Run Mode",
+            "type": "string"
+          },
           "seo_grade": {
             "anyOf": [
               {
@@ -586,6 +591,36 @@
           "updated_at"
         ],
         "title": "AnalysisOut",
+        "type": "object"
+      },
+      "AnalysisProfileOut": {
+        "description": "Updated KYC and regenerated prompts after a guided profile edit.",
+        "properties": {
+          "kyc": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kyc"
+          },
+          "prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PromptOut"
+            },
+            "title": "Prompts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kyc",
+          "prompts"
+        ],
+        "title": "AnalysisProfileOut",
         "type": "object"
       },
       "AnalysisPromptsOut": {
@@ -1625,6 +1660,15 @@
       },
       "CreateAnalysisRequest": {
         "properties": {
+          "mode": {
+            "default": "quick",
+            "enum": [
+              "quick",
+              "guided"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
           "url": {
             "format": "uri",
             "minLength": 1,
@@ -3008,15 +3052,197 @@
         "title": "OrganizationOut",
         "type": "object"
       },
+      "PatchAnalysisKycRequest": {
+        "additionalProperties": false,
+        "description": "Partial KYC edit while a guided run awaits review (ADR-50).",
+        "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "competitors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competitors"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          },
+          "locations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locations"
+          },
+          "products": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Products"
+          },
+          "services": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Services"
+          },
+          "use_cases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Cases"
+          }
+        },
+        "title": "PatchAnalysisKycRequest",
+        "type": "object"
+      },
+      "PatchAnalysisPromptsRequest": {
+        "properties": {
+          "prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PromptPatchItem"
+            },
+            "minItems": 1,
+            "title": "Prompts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prompts"
+        ],
+        "title": "PatchAnalysisPromptsRequest",
+        "type": "object"
+      },
       "PromptOut": {
         "properties": {
           "category": {
             "title": "Category",
             "type": "string"
           },
+          "editable": {
+            "readOnly": true,
+            "title": "Editable",
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "locked": {
+            "default": false,
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "generated",
+            "title": "Source",
             "type": "string"
           },
           "text": {
@@ -3027,9 +3253,46 @@
         "required": [
           "id",
           "text",
-          "category"
+          "category",
+          "editable"
         ],
         "title": "PromptOut",
+        "type": "object"
+      },
+      "PromptPatchItem": {
+        "additionalProperties": false,
+        "description": "One row in the desired prompt set for ``PATCH /analyses/{id}/prompts``.",
+        "properties": {
+          "category": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "text": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "category"
+        ],
+        "title": "PromptPatchItem",
         "type": "object"
       },
       "ReferringDomainOut": {
@@ -5869,7 +6132,7 @@
         ]
       },
       "post": {
-        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged.\n3. **User stock limit** \u2014 429 when the caller already holds five active\n   analyses (``queued``/``running``/``done``). Interim hardcoded gate until\n   user plans and org billing replace it.\n4. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.",
+        "description": "Queue one GEO analysis for the caller's organization.\n\nThe guards run cheapest-and-most-certain first, and each one refuses before\nthe next has any effect:\n\n1. **SSRF** \u2014 422, and no row, so a rejected target never counts anywhere.\n2. **Per-credential burst** \u2014 the P5.0 IP limit, unchanged.\n3. **User stock limit** \u2014 429 when the caller already holds five active\n   analyses (``queued``/``running``/``done``). Interim hardcoded gate until\n   user plans and org billing replace it.\n4. **Plan quota** \u2014 429 (ADR-45). Consumed here, committed with the row.\n\n``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses\nafter prompts with ``status=awaiting_review`` until\n``POST \u2026/execute-prompts-and-score`` (ADR-50).",
         "operationId": "submit_analysis_api_v1_analyses_post",
         "parameters": [
           {
@@ -6053,6 +6316,71 @@
         ]
       }
     },
+    "/api/v1/analyses/{analysis_id}/execute-prompts-and-score": {
+      "post": {
+        "description": "Resume a guided run: execute the approved prompt set and score GEO.\n\nOnly ``status='awaiting_review'`` guided analyses accept this call. Profile\nrows (KYC, prompts, SEO) are kept; prior measure outputs are cleared before\nthe worker runs steps 4\u20136. Does not re-charge the monthly analysis quota.",
+        "operationId": "execute_prompts_and_score_api_v1_analyses__analysis_id__execute_prompts_and_score_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Execute Prompts And Score",
+        "tags": [
+          "analyses"
+        ]
+      }
+    },
     "/api/v1/analyses/{analysis_id}/geo": {
       "get": {
         "description": "Measured GEO slice (responses, geo_records, scores, interventions).",
@@ -6181,6 +6509,79 @@
         "tags": [
           "analyses"
         ]
+      },
+      "patch": {
+        "description": "Edit the company profile on a guided run and regenerate prompts.\n\nOnly ``status='awaiting_review'`` guided analyses accept edits. Execute has\nnot started, so there are no response rows to invalidate.",
+        "operationId": "patch_analysis_kyc_api_v1_analyses__analysis_id__kyc_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchAnalysisKycRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Analysis Kyc",
+        "tags": [
+          "analyses"
+        ]
       }
     },
     "/api/v1/analyses/{analysis_id}/prompts": {
@@ -6243,6 +6644,79 @@
           }
         ],
         "summary": "Read Analysis Prompts",
+        "tags": [
+          "analyses"
+        ]
+      },
+      "patch": {
+        "description": "Curate the prompt set before measure on a guided run.\n\nSend the full desired set: rows with ``id`` update existing prompts, rows\nwithout ``id`` add user prompts (up to three). Omitted non-locked rows are\nremoved. ``source`` tracks lineage (``generated`` / ``edited`` / ``user``).",
+        "operationId": "patch_analysis_prompts_route_api_v1_analyses__analysis_id__prompts_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchAnalysisPromptsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisPromptsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Analysis Prompts Route",
         "tags": [
           "analyses"
         ]

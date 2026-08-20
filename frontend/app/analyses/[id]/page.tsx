@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import {
   fetchAnalysisSlices,
   getAnalysis,
@@ -12,6 +12,7 @@ import {
   analysisFromEnvelope,
   mergeAnalysis,
 } from '@/lib/analysis-bundle'
+import { guidedReviewHref } from '@/lib/analysis-route'
 import type { Analysis } from '@/lib/contracts'
 import {
   deriveEnginePresence,
@@ -35,6 +36,7 @@ const POLL_MS = 2000
 export default function AnalysisPage() {
   const params = useParams<{ id: string }>()
   const id = params.id
+  const router = useRouter()
   const { setAnalysisId } = useAnalysisSession()
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -59,6 +61,12 @@ export default function AnalysisPage() {
         const envelope = await getAnalysis(id)
         if (cancelled) return
         setAnalysisId(envelope.id)
+
+        if (envelope.status === 'awaiting_review') {
+          stop()
+          router.replace(guidedReviewHref(envelope.id))
+          return
+        }
 
         if (envelope.status === 'done' || envelope.status === 'failed') {
           const slices = await fetchAnalysisSlices(envelope.id, 'full')
@@ -89,7 +97,7 @@ export default function AnalysisPage() {
       cancelled = true
       stop()
     }
-  }, [id, setAnalysisId])
+  }, [id, router, setAnalysisId])
 
   // Nothing loaded and an error came back: there is no run to point at a step
   // within, so the load failure itself is the only thing to report.

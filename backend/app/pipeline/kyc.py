@@ -369,9 +369,7 @@ def _sanitize(kyc: KYC) -> None:
     # A company is not its own competitor. Left in, it becomes an "alternatives
     # to <us>" prompt and a self-mention counted as a competitor sighting.
     own = {normalize_key(name) for name in [kyc.company, *kyc.aliases] if name}
-    kyc.competitors = [
-        name for name in kyc.competitors if normalize_key(name) not in own
-    ]
+    kyc.competitors = [name for name in kyc.competitors if normalize_key(name) not in own]
 
 
 def _ground(kyc: KYC, source_text: str) -> None:
@@ -428,15 +426,11 @@ def require_usable(kyc: KYC, known_topic: str = "") -> None:
         kyc.industry,
         known_topic,
     ]
-    if not any(
-        (signal or "").strip() and not is_junk(signal) for signal in signals
-    ):
+    if not any((signal or "").strip() and not is_junk(signal) for signal in signals):
         raise PipelineError("could not identify what the company does")
 
 
-def generate_kyc(
-    text: str, url: str, provider, *, verify_against_source: bool = True
-) -> KYC:
+def generate_kyc(text: str, url: str, provider, *, verify_against_source: bool = True) -> KYC:
     """Extract, sanitize and (when there is a crawl to check against) ground.
 
     ``verify_against_source`` is False for checker rows: their "source text" is
@@ -452,9 +446,7 @@ def generate_kyc(
         # costs nothing; this is the single bounded retry. The repair prompt
         # keeps the literal "JSON object" phrase MockProvider keys off
         # (mock.py), or DRY_RUN and the e2e would break in lockstep.
-        kyc, reason = _read_profile(
-            provider.generate(build_repair_prompt(text, url)).text
-        )
+        kyc, reason = _read_profile(provider.generate(build_repair_prompt(text, url)).text)
     if kyc is None:
         raise PipelineError(reason)
 
@@ -475,3 +467,17 @@ def generate_kyc(
             kyc.locations = [country]
 
     return kyc
+
+
+def prepare_user_edited_kyc(kyc: KYC, *, url: str = "") -> None:
+    """Sanitize a guided-wizard profile edit and refuse if still unusable.
+
+    Skips LLM grounding — the user is deliberately correcting the profile — but
+    still mints name/domain aliases so footprint detection keeps working.
+    """
+
+    _sanitize(kyc)
+    _ensure_name_aliases(kyc, kyc.company)
+    if url:
+        _ensure_alias(kyc, _registrable_name(url))
+    require_usable(kyc)

@@ -4,9 +4,11 @@ import userEvent from '@testing-library/user-event'
 
 const push = vi.fn()
 
+let pathname = '/'
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push }),
-  usePathname: () => '/',
+  usePathname: () => pathname,
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -20,6 +22,7 @@ const mockedCreate = vi.mocked(createAnalysis)
 
 describe('UrlForm', () => {
   beforeEach(() => {
+    pathname = '/'
     push.mockReset()
     mockedCreate.mockReset()
   })
@@ -44,9 +47,23 @@ describe('UrlForm', () => {
     await user.type(screen.getByLabelText(/url/i), 'https://example.com')
     await user.click(screen.getByRole('button', { name: /run analysis/i }))
 
-    expect(mockedCreate).toHaveBeenCalledWith('https://example.com')
+    expect(mockedCreate).toHaveBeenCalledWith('https://example.com', { mode: 'quick' })
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /run analysis/i })).toBeDisabled(),
     )
+  })
+
+  it('sends guided runs from the dashboard to the AI Visibility review wizard', async () => {
+    const user = userEvent.setup()
+    pathname = '/dashboard'
+    mockedCreate.mockResolvedValue({ id: 'run-123' })
+    render(<UrlForm />)
+
+    await user.click(screen.getByRole('radio', { name: /guided/i }))
+    await user.type(screen.getByLabelText(/url/i), 'https://example.com')
+    await user.click(screen.getByRole('button', { name: /start guided run/i }))
+
+    expect(mockedCreate).toHaveBeenCalledWith('https://example.com', { mode: 'guided' })
+    expect(push).toHaveBeenCalledWith('/ai-visibility?analysis=run-123')
   })
 })

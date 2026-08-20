@@ -12,7 +12,14 @@ import type { components } from './types'
 type Schemas = components['schemas']
 
 // The backend serializes these as plain strings; narrow to the locked SPEC values.
-export type AnalysisStatus = 'queued' | 'running' | 'done' | 'failed'
+export type AnalysisStatus =
+  | 'queued'
+  | 'running'
+  | 'awaiting_review'
+  | 'done'
+  | 'failed'
+
+export type RunMode = 'quick' | 'guided'
 
 export type PipelineStep =
   | 'discovery'
@@ -46,6 +53,14 @@ export type Prompt = Schemas['PromptOut']
 export type AnalysisResponse = Schemas['ResponseOut']
 
 export type CreateAnalysisResponse = Schemas['CreateAnalysisResponse']
+
+export type PatchAnalysisKycRequest = Schemas['PatchAnalysisKycRequest']
+
+export type PromptPatchItem = Schemas['PromptPatchItem']
+
+export type AnalysisProfileOut = Schemas['AnalysisProfileOut']
+
+export type AnalysisPromptsOut = Schemas['AnalysisPromptsOut']
 
 // Public checker (P5.4). The submit returns both the analysis id (polled via the
 // shared getAnalysis) and a submission_id carried to the results route for

@@ -18,6 +18,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -48,6 +49,7 @@ NormalizedEmail = Annotated[
 class CreateAnalysisRequest(BaseModel):
     # AnyHttpUrl accepts http/https URLs only; anything else is a 422.
     url: AnyHttpUrl
+    mode: Literal["quick", "guided"] = "quick"
 
 
 class CreateAnalysisResponse(BaseModel):
@@ -329,6 +331,27 @@ class PromptOut(BaseModel):
     id: uuid.UUID
     text: str
     category: str
+    source: str = "generated"
+    locked: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def editable(self) -> bool:
+        return not self.locked
+
+
+class PromptPatchItem(BaseModel):
+    """One row in the desired prompt set for ``PATCH /analyses/{id}/prompts``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID | None = None
+    text: str = Field(min_length=3, max_length=500)
+    category: str = Field(min_length=1, max_length=40)
+
+
+class PatchAnalysisPromptsRequest(BaseModel):
+    prompts: list[PromptPatchItem] = Field(min_length=1)
 
 
 class ResponseOut(BaseModel):
@@ -528,6 +551,31 @@ class AnalysisKycOut(BaseModel):
     kyc: dict[str, Any] | None
 
 
+class PatchAnalysisKycRequest(BaseModel):
+    """Partial KYC edit while a guided run awaits review (ADR-50)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    company: str | None = None
+    description: str | None = None
+    industry: str | None = None
+    category: str | None = None
+    aliases: list[str] | None = None
+    products: list[str] | None = None
+    services: list[str] | None = None
+    keywords: list[str] | None = None
+    use_cases: list[str] | None = None
+    locations: list[str] | None = None
+    competitors: list[str] | None = None
+
+
+class AnalysisProfileOut(BaseModel):
+    """Updated KYC and regenerated prompts after a guided profile edit."""
+
+    kyc: dict[str, Any] | None
+    prompts: list[PromptOut]
+
+
 class AnalysisPromptsOut(BaseModel):
     """Generated prompt list for ``GET /analyses/{id}/prompts``."""
 
@@ -565,6 +613,7 @@ class AnalysisOut(BaseModel):
     id: uuid.UUID
     url: str
     status: str
+    run_mode: str = "quick"
     progress: int
     current_step: str | None
     error: str | None

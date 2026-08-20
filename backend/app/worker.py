@@ -21,8 +21,15 @@ from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import SessionLocal
 from app.jobs.queue import claim_next
-from app.services.analyses import purge_analysis, settle_cost, should_auto_purge_failed
+from app.services import audit
+from app.services.analyses import (
+    cost_breakdown,
+    purge_analysis,
+    settle_cost,
+    should_auto_purge_failed,
+)
 from app.services.emailer import send_run_alert
+from app.services.tenancy import OrgContext
 
 logger = logging.getLogger("yanki.worker")
 
@@ -61,6 +68,43 @@ def _settle(session, analysis: Analysis) -> None:
         logger.exception("credit-ledger settle failed for analysis %s", analysis.id)
 
 
+def _record_terminal_event(session, analysis: Analysis) -> None:
+    """Write the immutable outcome and provider/model cost snapshot.
+
+    The start event cannot know the bill yet. A separate terminal event keeps
+    the log append-only and also preserves failed-run spend before the worker's
+    optional auto-purge removes partial analysis rows.
+    """
+
+    failed = analysis.status == "failed"
+    action = "analysis:failed" if failed else "analysis:complete"
+    try:
+        audit.emit(
+            session,
+            action=action,
+            context=OrgContext(org_id=analysis.org_id, is_system=True),
+            actor_type="job",
+            actor_label="analysis worker",
+            entity_type="analysis",
+            entity_id=analysis.id,
+            after={
+                "url": analysis.url,
+                "status": analysis.status,
+                "kind": analysis.kind or "mvp",
+                "total_responses": analysis.total_responses,
+            },
+            outcome="error" if failed else "success",
+            detail={
+                "cost": cost_breakdown(session, analysis),
+                **({"error": analysis.error} if failed and analysis.error else {}),
+            },
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("terminal audit event failed for analysis %s", analysis.id)
+
+
 def run_once(settings: Settings) -> bool:
     """Claim and run at most one job. Returns True if a job was processed."""
     session = SessionLocal()
@@ -90,6 +134,7 @@ def run_once(settings: Settings) -> bool:
                 failed.status = "failed"
                 failed.error = str(exc)[:500]
                 session.commit()
+                _record_terminal_event(session, failed)
                 _settle(session, failed)
                 _alert(failed, settings)
                 if should_auto_purge_failed(failed):
@@ -107,6 +152,7 @@ def run_once(settings: Settings) -> bool:
                 done.current_step = None
                 session.commit()
             if done.status in ("done", "failed"):
+                _record_terminal_event(session, done)
                 _settle(session, done)
                 _alert(done, settings)
             elif done.status == "awaiting_review":

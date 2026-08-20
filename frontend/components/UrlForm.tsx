@@ -5,7 +5,7 @@ import type { FormEvent } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Button from '@/components/Button'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
-import { createAnalysis } from '@/lib/api'
+import { createAnalysis, type AnalysisSource } from '@/lib/api'
 import { analysisSubmitLandingHref } from '@/lib/analysis-route'
 import { notifyAnalysisQuotaChanged } from '@/lib/analysis-quota-events'
 import type { RunMode } from '@/lib/contracts'
@@ -44,9 +44,21 @@ export default function UrlForm() {
       return
     }
 
+    // Both product areas mount this same form, so the path is the only thing
+    // that knows which one the user is standing in — the audit log has no other
+    // way to tell two identical "analysis:create" rows apart.
+    const source: AnalysisSource | undefined = pathname.startsWith('/search-visibility')
+      ? 'search_visibility'
+      : pathname.startsWith('/ai-visibility')
+        ? 'ai_visibility'
+        : undefined
+
     setSubmitting(true)
     try {
-      const { id } = await createAnalysis(trimmed, { mode })
+      const { id } = await createAnalysis(trimmed, {
+        mode,
+        ...(source ? { source } : {}),
+      })
       notifyAnalysisQuotaChanged()
       setAnalysisId(id)
       router.push(analysisSubmitLandingHref(id, { mode, pathname }))

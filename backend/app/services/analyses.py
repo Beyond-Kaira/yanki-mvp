@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Any
 
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
@@ -262,14 +263,123 @@ def list_user_analyses(
 
 
 def spend_on(session: Session, analysis_id: uuid.UUID) -> Decimal:
-    """What one analysis actually cost, summed from its stored responses."""
+    """What one analysis actually cost, including pre-response KYC calls."""
 
     total = session.scalar(
         select(func.coalesce(func.sum(Response.cost_usd), 0)).where(
             Response.analysis_id == analysis_id
         )
     )
-    return Decimal(str(total or 0))
+    kyc_cost = session.scalar(select(Analysis.kyc_cost_usd).where(Analysis.id == analysis_id))
+    return Decimal(str(total or 0)) + Decimal(str(kyc_cost or 0))
+
+
+def cost_breakdown(session: Session, analysis: Analysis) -> dict[str, Any]:
+    """A stable, display-ready USD breakdown for one terminal audit event.
+
+    Response rows are grouped by provider/engine and model.  KYC usage joins
+    the same groups when it used the same model, so the headline total really
+    is the sum of the lines beneath it.  Dollar amounts stay strings in JSON;
+    converting accounting decimals back to binary floats would add fake digits.
+    """
+
+    rows = list(session.scalars(select(Response).where(Response.analysis_id == analysis.id)))
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def add(
+        *,
+        provider: str,
+        model: str,
+        stage: str,
+        cost: Decimal,
+        prompt_id: uuid.UUID | None = None,
+    ) -> None:
+        key = (provider or "unknown", model or "unknown")
+        group = groups.setdefault(
+            key,
+            {
+                "provider": key[0],
+                "model": key[1],
+                "stages": set(),
+                "prompt_ids": set(),
+                "operation_count": 0,
+                "cost": Decimal("0"),
+            },
+        )
+        group["stages"].add(stage)
+        if prompt_id is not None:
+            group["prompt_ids"].add(prompt_id)
+        group["operation_count"] += 1
+        group["cost"] += max(cost, Decimal("0"))
+
+    tracked_kyc = Decimal("0")
+    for item in analysis.kyc_usage or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            item_cost = Decimal(str(item.get("cost_usd") or 0))
+        except (InvalidOperation, TypeError, ValueError):
+            item_cost = Decimal("0")
+        add(
+            provider=str(item.get("provider") or "unknown"),
+            model=str(item.get("model") or "unknown"),
+            stage=str(item.get("stage") or "kyc"),
+            cost=item_cost,
+        )
+        tracked_kyc += max(item_cost, Decimal("0"))
+
+    # Rows written before call-level KYC usage existed can still carry the
+    # numeric total after a partial rollout/backfill. Keep that money visible
+    # rather than silently dropping it from the model table.
+    stored_kyc = Decimal(str(analysis.kyc_cost_usd or 0))
+    if stored_kyc > tracked_kyc:
+        add(
+            provider="unknown",
+            model="unknown",
+            stage="kyc",
+            cost=stored_kyc - tracked_kyc,
+        )
+
+    for row in rows:
+        add(
+            provider=row.engine,
+            model=row.model,
+            stage="answers",
+            cost=Decimal(str(row.cost_usd or 0)),
+            prompt_id=row.prompt_id,
+        )
+
+    def money(value: Decimal) -> str:
+        return str(value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP))
+
+    providers = [
+        {
+            "provider": group["provider"],
+            "model": group["model"],
+            "stages": sorted(group["stages"]),
+            "question_count": len(group["prompt_ids"]),
+            "operation_count": group["operation_count"],
+            "cost_usd": money(group["cost"]),
+        }
+        for group in groups.values()
+    ]
+    providers.sort(key=lambda item: (-Decimal(item["cost_usd"]), item["provider"], item["model"]))
+
+    prompt_count = int(
+        session.scalar(
+            select(func.count()).select_from(Prompt).where(Prompt.analysis_id == analysis.id)
+        )
+        or 0
+    )
+    total = sum((Decimal(item["cost_usd"]) for item in providers), Decimal("0"))
+    return {
+        "currency": "USD",
+        "total_usd": money(total),
+        "question_count": prompt_count,
+        "response_count": len(rows),
+        "providers": providers,
+        "basis": "provider_reported",
+    }
 
 
 def already_charged(session: Session, analysis_id: uuid.UUID) -> Decimal:

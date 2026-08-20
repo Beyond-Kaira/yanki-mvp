@@ -47,6 +47,7 @@ describe('UrlForm', () => {
     await user.type(screen.getByLabelText(/url/i), 'https://example.com')
     await user.click(screen.getByRole('button', { name: /run analysis/i }))
 
+    // No product area at '/', so no source is recorded for the audit log.
     expect(mockedCreate).toHaveBeenCalledWith('https://example.com', { mode: 'quick' })
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /run analysis/i })).toBeDisabled(),
@@ -65,5 +66,21 @@ describe('UrlForm', () => {
 
     expect(mockedCreate).toHaveBeenCalledWith('https://example.com', { mode: 'guided' })
     expect(push).toHaveBeenCalledWith('/ai-visibility?analysis=run-123')
+  })
+
+  it('records the product area together with the selected run mode', async () => {
+    const user = userEvent.setup()
+    pathname = '/search-visibility'
+    mockedCreate.mockResolvedValue({ id: 'run-456' })
+    render(<UrlForm />)
+
+    await user.type(screen.getByLabelText(/url/i), 'https://example.com')
+    await user.click(screen.getByRole('button', { name: /run analysis/i }))
+
+    expect(mockedCreate).toHaveBeenCalledWith('https://example.com', {
+      mode: 'quick',
+      source: 'search_visibility',
+    })
+    expect(push).toHaveBeenCalledWith('/search-visibility?analysis=run-456')
   })
 })

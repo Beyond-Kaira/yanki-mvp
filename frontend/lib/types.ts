@@ -1654,6 +1654,10 @@ export interface components {
             changed?: {
                 [key: string]: unknown;
             } | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
             /** Entity Id */
             entity_id?: string | null;
             /** Entity Type */
@@ -1974,6 +1978,8 @@ export interface components {
              * @enum {string}
              */
             mode: "quick" | "guided";
+            /** Source */
+            source?: ("ai_visibility" | "search_visibility") | null;
             /**
              * Url
              * Format: uri

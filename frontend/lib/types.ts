@@ -2964,6 +2964,11 @@ export interface components {
         };
         /** SiteAuditPageOut */
         SiteAuditPageOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Final Url */
             final_url: string;
             /** H1 Count */

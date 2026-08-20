@@ -125,6 +125,26 @@ class Settings(BaseSettings):
     site_audit_max_html_chars: int = Field(default=2_000_000, ge=10_000)
     site_audit_max_queue_urls: int = Field(default=5_000, ge=10, le=50_000)
 
+    # A navigation that times out is NOT a navigation that stopped: `page.goto`
+    # raising leaves Chromium still fetching that URL, so a slow target grew a
+    # backlog of inflight loads which then interrupted each other — one slow
+    # page became a chain of failures, and the crawl kept adding load to a site
+    # that had already stopped answering. The crawler now drops the page after
+    # every failed navigation; these two bound what it does next.
+    #
+    # The backoff cap is how far the politeness delay may grow while failures
+    # are consecutive. Re-asking at full speed is the worst possible answer to
+    # "the target is not responding", because it feeds whatever is throttling.
+    # The floor is always the robots.txt/politeness delay, never below it.
+    #
+    # The consecutive-failure stop ends the crawl outright: once N navigations
+    # in a row have failed, the rest of the page budget buys nothing but
+    # timeouts. Measured 2026-08-17 against a real target: 82 of 100 pages
+    # failed, 64 of them in one unbroken run, costing ~41 minutes and leaving a
+    # health score computed from the 18 pages that survived. 0 disables the stop.
+    site_audit_failure_backoff_max_seconds: float = Field(default=10.0, ge=0)
+    site_audit_max_consecutive_failures: int = Field(default=10, ge=0)
+
     # Plan quota enforcement (P7.6). ON by default: a plan tier that nothing
     # enforces is decorative, which is what this flag exists to stop being true.
     #

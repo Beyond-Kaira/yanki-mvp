@@ -11,7 +11,9 @@ from app.site_audit.analyzer import analyze_page
 from app.site_audit.crawler import (
     UnsafeCrawlTarget,
     _Frontier,
+    _HostAllowCache,
     _is_browser_http_url,
+    _next_delay_seconds,
     _read_limited_response,
     _read_robots,
     _read_sitemaps,
@@ -267,6 +269,7 @@ def test_redirect_target_disallowed_by_robots_is_never_fetched(monkeypatch) -> N
             robots_cache={},
             robots_user_agent="YankiSiteAuditBot",
             max_robots_bytes=512,
+            host_allow_cache=_HostAllowCache(),
             on_navigation_blocked=navigation_blocks.append,
         )
 
@@ -290,9 +293,7 @@ def test_robots_network_and_overflow_fail_conservatively() -> None:
         )
 
     with httpx.Client(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, content=b"x" * 513)
-        )
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"x" * 513))
     ) as client:
         overflow = _read_robots(
             client,
@@ -345,6 +346,70 @@ def test_browser_route_scheme_allowlist_is_fail_closed() -> None:
     assert _is_browser_http_url("http://example.com") is True
     for url in ("file:///etc/passwd", "data:text/plain,test", "ftp://example.com"):
         assert _is_browser_http_url(url) is False
+
+
+def test_public_host_verdicts_are_memoized_for_the_rest_of_the_crawl(monkeypatch) -> None:
+    """The guard blocks Playwright's dispatcher, so repeat lookups are latency.
+
+    Every subresource used to pay a fresh ``getaddrinfo`` for an answer the
+    crawl already had, out of the same 30s budget the navigation was being
+    timed against.
+    """
+
+    resolutions: list[str] = []
+
+    def counting_guard(url: str) -> bool:
+        resolutions.append(url)
+        return "allowed" in url
+
+    monkeypatch.setattr("app.site_audit.crawler.is_public_url", counting_guard)
+    cache = _HostAllowCache()
+
+    for path in ("/a.js", "/b.css", "/c.json"):
+        assert cache.is_public(f"https://allowed.example.com{path}") is True
+    assert len(resolutions) == 1
+
+    # Denials are cached too, or one dead third-party host costs a full
+    # resolver timeout on every subresource that references it.
+    for path in ("/x.js", "/y.css"):
+        assert cache.is_public(f"https://blocked.example.com{path}") is False
+    assert len(resolutions) == 2
+
+    # Keyed by host alone: the port and path do not change who we are talking
+    # to. Reached only on a cache hit — a miss would re-run the guard, which
+    # does not recognize this URL and would answer False.
+    assert cache.is_public("https://ALLOWED.example.com:8443/z.js") is True
+    assert len(resolutions) == 2
+
+    # An expired verdict is re-resolved rather than served stale.
+    cache.denied_until["blocked.example.com"] = 0.0
+    assert cache.is_public("https://blocked.example.com/x.js") is False
+    assert len(resolutions) == 3
+
+
+def test_failure_backoff_grows_from_the_politeness_floor_and_stops_at_the_cap() -> None:
+    # A healthy crawl is unaffected: no failures, no backoff.
+    assert _next_delay_seconds(0.25, 0, 10.0) == 0.25
+
+    # Consecutive failures double the wait, then hold at the cap.
+    assert _next_delay_seconds(0.25, 1, 10.0) == 1.0
+    assert _next_delay_seconds(0.25, 2, 10.0) == 2.0
+    assert _next_delay_seconds(0.25, 4, 10.0) == 8.0
+    assert _next_delay_seconds(0.25, 5, 10.0) == 10.0
+    assert _next_delay_seconds(0.25, 40, 10.0) == 10.0
+
+    # The floor wins whenever it is the larger of the two. A site declaring
+    # Crawl-delay: 30 is still waited on for 30s while we are failing, and a cap
+    # set below that floor never talks us into being ruder than robots.txt asks.
+    assert _next_delay_seconds(30.0, 3, 10.0) == 30.0
+
+    # An operator who disabled the politeness delay still gets backed off, since
+    # 0 means "do not be slow against a healthy site", not "hammer a failing one".
+    assert _next_delay_seconds(0, 1, 10.0) == 1.0
+    assert _next_delay_seconds(0, 0, 10.0) == 0
+
+    # A zero cap disables backoff without disabling the floor.
+    assert _next_delay_seconds(0.25, 3, 0) == 0.25
 
 
 def test_health_score_excludes_robots_and_uses_visible_penalties() -> None:

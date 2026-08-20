@@ -443,7 +443,7 @@ Next session = P5.11 at your pace: answer A1, do B2, then B3.
 ## B. Actions only you can do (in priority order)
 
 - [ ] **B18. Nothing to do for the password policy — read this and move on**
-  (added 2026-08-19, `feat/strong-password-check`, ADR-50). Listed because it
+  (added 2026-08-19, `feat/strong-password-check`, ADR-51). Listed because it
   adds five environment variables and changes what the signup form accepts, not
   because it needs you.
 

@@ -2376,7 +2376,7 @@ paragraph, as the record.*
   keyboard-run rules, NFKC normalization paired across hash and verify, and an
   advisory strength meter on both screens. No character-class requirement —
   800-63B forbids one, and the score gates nothing for the same reason. See
-  **ADR-50**. On the invitation path the policy gates only
+  **ADR-51**. On the invitation path the policy gates only
   the branch that creates an account, because a signed-in invitee keeps the
   password they already have. New debt: #93 (existing weak passwords are unreachable
   until #49 gives them somewhere to go), #94 (the blocklist is a curated head,

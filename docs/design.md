@@ -2397,7 +2397,7 @@ things the PR did not intend.*
     tech-debt #87 so the index lands with the next migration rather than being
     discovered under load.
 
-### ADR-50 — A password policy of length and a blocklist, not composition rules (2026-08-19, feat/strong-password-check)
+### ADR-51 — A password policy of length and a blocklist, not composition rules (2026-08-19, feat/strong-password-check)
 
 - **Context:** the whole policy was `min_length=8` on two Pydantic fields
   (`SignupRequest`, `InvitationAcceptRequest`) and a matching `if` in

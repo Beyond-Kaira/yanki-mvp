@@ -327,6 +327,10 @@ export interface paths {
          *        analyses (``queued``/``running``/``done``). Interim hardcoded gate until
          *        user plans and org billing replace it.
          *     4. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+         *
+         *     ``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses
+         *     after prompts with ``status=awaiting_review`` until
+         *     ``POST …/execute-prompts-and-score`` (ADR-50).
          */
         post: operations["submit_analysis_api_v1_analyses_post"];
         delete?: never;
@@ -362,6 +366,30 @@ export interface paths {
          *     deletable here. Deleting frees one slot on the interim per-user stock limit.
          */
         delete: operations["delete_analysis_api_v1_analyses__analysis_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyses/{analysis_id}/execute-prompts-and-score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Prompts And Score
+         * @description Resume a guided run: execute the approved prompt set and score GEO.
+         *
+         *     Only ``status='awaiting_review'`` guided analyses accept this call. Profile
+         *     rows (KYC, prompts, SEO) are kept; prior measure outputs are cleared before
+         *     the worker runs steps 4–6. Does not re-charge the monthly analysis quota.
+         */
+        post: operations["execute_prompts_and_score_api_v1_analyses__analysis_id__execute_prompts_and_score_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -404,7 +432,14 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Analysis Kyc
+         * @description Edit the company profile on a guided run and regenerate prompts.
+         *
+         *     Only ``status='awaiting_review'`` guided analyses accept edits. Execute has
+         *     not started, so there are no response rows to invalidate.
+         */
+        patch: operations["patch_analysis_kyc_api_v1_analyses__analysis_id__kyc_patch"];
         trace?: never;
     };
     "/api/v1/analyses/{analysis_id}/prompts": {
@@ -424,7 +459,15 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Analysis Prompts Route
+         * @description Curate the prompt set before measure on a guided run.
+         *
+         *     Send the full desired set: rows with ``id`` update existing prompts, rows
+         *     without ``id`` add user prompts (up to three). Omitted non-locked rows are
+         *     removed. ``source`` tracks lineage (``generated`` / ``edited`` / ``user``).
+         */
+        patch: operations["patch_analysis_prompts_route_api_v1_analyses__analysis_id__prompts_patch"];
         trace?: never;
     };
     "/api/v1/analyses/{analysis_id}/seo": {
@@ -531,6 +574,58 @@ export interface paths {
          *     always carries the caller's full list, which is what makes a switch offerable.
          */
         get: operations["me_api_v1_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Oauth Sign In
+         * @description Sign in with a Google or Apple identity token, registering on first use.
+         *
+         *     Deliberately one endpoint rather than an OAuth twin of ``/signup`` and
+         *     ``/login``: the provider flow has a single button behind it, and which of the
+         *     two happened is something only the server can know. Everything after the
+         *     token is verified — the session family, the rotating refresh cookie, the
+         *     access token — is the machinery ``/login`` already uses, unchanged. When a
+         *     provider email meets an existing password account, the first request asks
+         *     the client for that password and a confirmed retry links both methods.
+         */
+        post: operations["oauth_sign_in_api_v1_auth_oauth_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth Providers
+         * @description Which provider sign-ins this deployment can actually complete.
+         *
+         *     Public because the sign-in form is: the page that needs this is the one
+         *     nobody has signed into yet. It discloses only client ids, which the browser
+         *     hands to the provider on every sign-in anyway.
+         */
+        get: operations["auth_providers_api_v1_auth_providers_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1405,6 +1500,11 @@ export interface components {
             progress: number;
             /** Reliability Score */
             reliability_score?: number | null;
+            /**
+             * Run Mode
+             * @default quick
+             */
+            run_mode: string;
             /** Seo Grade */
             seo_grade?: string | null;
             /** Seo Score */
@@ -1426,6 +1526,18 @@ export interface components {
             updated_at: string;
             /** Url */
             url: string;
+        };
+        /**
+         * AnalysisProfileOut
+         * @description Updated KYC and regenerated prompts after a guided profile edit.
+         */
+        AnalysisProfileOut: {
+            /** Kyc */
+            kyc: {
+                [key: string]: unknown;
+            } | null;
+            /** Prompts */
+            prompts: components["schemas"]["PromptOut"][];
         };
         /**
          * AnalysisPromptsOut
@@ -1594,6 +1706,24 @@ export interface components {
             ok: boolean;
             /** Unverifiable */
             unverifiable: number;
+        };
+        /**
+         * AuthProvidersOut
+         * @description The client ids the browser needs to offer provider sign-in.
+         *
+         *     Served rather than baked into the frontend build so that configuring a
+         *     provider is an environment change instead of a rebuild, and so the UI can
+         *     offer exactly the buttons that will work: a provider with no client id is
+         *     ``null`` here and gets no button, instead of one that fails on click.
+         *
+         *     A client id is not a secret — the browser presents it to the provider on
+         *     every sign-in, and it is visible in any client's source.
+         */
+        AuthProvidersOut: {
+            /** Apple */
+            apple?: string | null;
+            /** Google */
+            google?: string | null;
         };
         /**
          * AuthSessionListOut
@@ -1842,6 +1972,12 @@ export interface components {
         };
         /** CreateAnalysisRequest */
         CreateAnalysisRequest: {
+            /**
+             * Mode
+             * @default quick
+             * @enum {string}
+             */
+            mode: "quick" | "guided";
             /** Source */
             source?: ("ai_visibility" | "search_visibility") | null;
             /**
@@ -2294,6 +2430,35 @@ export interface components {
             token_type: "bearer";
             user: components["schemas"]["UserOut"];
         };
+        /**
+         * OAuthSignInRequest
+         * @description A provider identity token, plus what to call the org if this is a signup.
+         *
+         *     One request for both sign-up and sign-in, because the provider flow does not
+         *     distinguish them: the user presses one button and the server discovers
+         *     whether the account already exists. ``account_type`` and
+         *     ``organization_name`` are therefore only consulted when an account is
+         *     actually created, and ignored for a returning user.
+         */
+        OAuthSignInRequest: {
+            /**
+             * Account Type
+             * @default individual
+             * @enum {string}
+             */
+            account_type: "individual" | "organization";
+            /** Id Token */
+            id_token: string;
+            /** Organization Name */
+            organization_name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "google" | "apple";
+        };
         /** OpportunitiesOut */
         OpportunitiesOut: {
             /** Link Gap */
@@ -2352,15 +2517,72 @@ export interface components {
             /** Status */
             status: string;
         };
+        /**
+         * PatchAnalysisKycRequest
+         * @description Partial KYC edit while a guided run awaits review (ADR-50).
+         */
+        PatchAnalysisKycRequest: {
+            /** Aliases */
+            aliases?: string[] | null;
+            /** Category */
+            category?: string | null;
+            /** Company */
+            company?: string | null;
+            /** Competitors */
+            competitors?: string[] | null;
+            /** Description */
+            description?: string | null;
+            /** Industry */
+            industry?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Locations */
+            locations?: string[] | null;
+            /** Products */
+            products?: string[] | null;
+            /** Services */
+            services?: string[] | null;
+            /** Use Cases */
+            use_cases?: string[] | null;
+        };
+        /** PatchAnalysisPromptsRequest */
+        PatchAnalysisPromptsRequest: {
+            /** Prompts */
+            prompts: components["schemas"]["PromptPatchItem"][];
+        };
         /** PromptOut */
         PromptOut: {
             /** Category */
             category: string;
+            /** Editable */
+            readonly editable: boolean;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /**
+             * Locked
+             * @default false
+             */
+            locked: boolean;
+            /**
+             * Source
+             * @default generated
+             */
+            source: string;
+            /** Text */
+            text: string;
+        };
+        /**
+         * PromptPatchItem
+         * @description One row in the desired prompt set for ``PATCH /analyses/{id}/prompts``.
+         */
+        PromptPatchItem: {
+            /** Category */
+            category: string;
+            /** Id */
+            id?: string | null;
             /** Text */
             text: string;
         };
@@ -3548,6 +3770,39 @@ export interface operations {
             };
         };
     };
+    execute_prompts_and_score_api_v1_analyses__analysis_id__execute_prompts_and_score_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_analysis_geo_api_v1_analyses__analysis_id__geo_get: {
         parameters: {
             query?: never;
@@ -3614,6 +3869,43 @@ export interface operations {
             };
         };
     };
+    patch_analysis_kyc_api_v1_analyses__analysis_id__kyc_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchAnalysisKycRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_analysis_prompts_api_v1_analyses__analysis_id__prompts_get: {
         parameters: {
             query?: never;
@@ -3626,6 +3918,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisPromptsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_analysis_prompts_route_api_v1_analyses__analysis_id__prompts_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchAnalysisPromptsRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3791,6 +4120,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_sign_in_api_v1_auth_oauth_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_providers_api_v1_auth_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthProvidersOut"];
                 };
             };
         };

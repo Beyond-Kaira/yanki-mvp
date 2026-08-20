@@ -6,7 +6,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import Button from '@/components/Button'
 import { useAnalysisSession } from '@/components/AnalysisSessionProvider'
 import { createAnalysis, type AnalysisSource } from '@/lib/api'
+import { analysisSubmitLandingHref } from '@/lib/analysis-route'
 import { notifyAnalysisQuotaChanged } from '@/lib/analysis-quota-events'
+import type { RunMode } from '@/lib/contracts'
 
 function looksLikeUrl(value: string): boolean {
   try {
@@ -24,6 +26,7 @@ export default function UrlForm() {
   const pathname = usePathname()
   const { setAnalysisId } = useAnalysisSession()
   const [url, setUrl] = useState('')
+  const [mode, setMode] = useState<RunMode>('quick')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -52,15 +55,13 @@ export default function UrlForm() {
 
     setSubmitting(true)
     try {
-      const { id } = await createAnalysis(trimmed, source)
+      const { id } = await createAnalysis(trimmed, {
+        mode,
+        ...(source ? { source } : {}),
+      })
       notifyAnalysisQuotaChanged()
-      // One shared analysis for the whole AI Visibility shell (and later tabs).
       setAnalysisId(id)
-      if (source) {
-        router.push(`/${source.replace('_', '-')}?analysis=${id}`)
-      } else {
-        router.push(`/analyses/${id}`)
-      }
+      router.push(analysisSubmitLandingHref(id, { mode, pathname }))
     } catch (err) {
       setSubmitting(false)
       setError(
@@ -72,7 +73,48 @@ export default function UrlForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="w-full space-y-2">
+    <form onSubmit={handleSubmit} noValidate className="w-full space-y-4">
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-surface-foreground">
+          Run mode
+        </legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex cursor-pointer gap-3 rounded-xl border border-surface-border bg-surface-muted/40 p-3 has-[:checked]:border-primary has-[:checked]:bg-primary-soft/40">
+            <input
+              type="radio"
+              name="run-mode"
+              value="quick"
+              checked={mode === 'quick'}
+              onChange={() => setMode('quick')}
+              disabled={submitting}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-medium">Quick</span>
+              <span className="block text-xs text-surface-subtle">
+                Run all six steps automatically.
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer gap-3 rounded-xl border border-surface-border bg-surface-muted/40 p-3 has-[:checked]:border-primary has-[:checked]:bg-primary-soft/40">
+            <input
+              type="radio"
+              name="run-mode"
+              value="guided"
+              checked={mode === 'guided'}
+              onChange={() => setMode('guided')}
+              disabled={submitting}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-medium">Guided</span>
+              <span className="block text-xs text-surface-subtle">
+                Review profile and prompts before measuring.
+              </span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
       <label htmlFor="url" className="sr-only">
         Company website URL
       </label>
@@ -92,7 +134,7 @@ export default function UrlForm() {
           className="w-full rounded-lg border border-surface-subtle bg-white px-4 py-3 text-base text-surface-foreground placeholder:text-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
         />
         <Button type="submit" loading={submitting} className="shrink-0">
-          Run analysis
+          {mode === 'guided' ? 'Start guided run' : 'Run analysis'}
         </Button>
       </div>
       {error ? (

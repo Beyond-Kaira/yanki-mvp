@@ -9,12 +9,14 @@ import IconRemoveButton from '@/components/shell/IconRemoveButton'
 import { useAnalysisBinding } from '@/components/ai-visibility/useAnalysisBinding'
 import { ApiError, deleteAnalysis, listAnalyses } from '@/lib/api'
 import type { AnalysisList, AnalysisSummary } from '@/lib/contracts'
+import { analysisStatusLabel } from '@/lib/guided-analysis'
 
 const PAGE_SIZE = 20
 
 const STATUS_FILTERS: { id: string; label: string }[] = [
   { id: '', label: 'All' },
   { id: 'done', label: 'Finished' },
+  { id: 'awaiting_review', label: 'Awaiting review' },
   { id: 'running', label: 'Running' },
   { id: 'queued', label: 'Queued' },
   { id: 'failed', label: 'Failed' },
@@ -24,6 +26,7 @@ const STATUS_TONE: Record<string, string> = {
   done: 'bg-success-soft text-success-strong',
   running: 'bg-primary-soft text-primary-strong',
   queued: 'bg-surface-muted text-surface-subtle',
+  awaiting_review: 'bg-warning-soft text-warning-strong',
   failed: 'bg-danger-soft text-danger-strong',
 }
 
@@ -247,7 +250,11 @@ export default function AnalysisHistoryClient() {
                   <tr key={row.id} className="border-b border-surface-border last:border-0">
                     <td className="px-4 py-3">
                       <Link
-                        href={`/analyses/${row.id}`}
+                        href={
+                          row.status === 'awaiting_review'
+                            ? `/ai-visibility?analysis=${row.id}`
+                            : `/analyses/${row.id}`
+                        }
                         className="font-medium text-primary-strong underline underline-offset-2"
                       >
                         {readableTarget(row.url)}
@@ -264,7 +271,7 @@ export default function AnalysisHistoryClient() {
                           STATUS_TONE[row.status] ?? 'bg-surface-muted text-surface-subtle'
                         }`}
                       >
-                        {row.status}
+                        {analysisStatusLabel(row.status)}
                       </span>
                       {row.status === 'running' ? (
                         <span className="ml-2 text-xs text-surface-subtle">

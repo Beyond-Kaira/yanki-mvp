@@ -17,6 +17,10 @@ import type {
   BacklinkSummary,
   CheckerSubmitResponse,
   CreateAnalysisResponse,
+  PatchAnalysisKycRequest,
+  PromptPatchItem,
+  AnalysisProfileOut,
+  AnalysisPromptsOut,
     CreateSeoProjectInput,
   InvitationPreview,
   KeywordExpandRequest,
@@ -141,9 +145,14 @@ export async function authorizedFetch(
 // that will not change until next month.
 export type AnalysisSource = 'ai_visibility' | 'search_visibility'
 
+type CreateAnalysisOptions = {
+  mode?: 'quick' | 'guided'
+  source?: AnalysisSource
+}
+
 export async function createAnalysis(
   url: string,
-  source?: AnalysisSource,
+  options?: CreateAnalysisOptions,
 ): Promise<CreateAnalysisResponse> {
   let res: Response
   try {
@@ -152,7 +161,11 @@ export async function createAnalysis(
       headers: { 'Content-Type': 'application/json' },
       // Omitted rather than sent as null when the run starts somewhere with no
       // product area of its own — the API treats absent as "not a screen".
-      body: JSON.stringify(source ? { url, source } : { url }),
+      body: JSON.stringify({
+        url,
+        mode: options?.mode ?? 'quick',
+        ...(options?.source ? { source: options.source } : {}),
+      }),
     })
   } catch {
     throw new ApiError(
@@ -183,6 +196,71 @@ export async function createAnalysis(
     throw new ApiError(message, res.status)
   }
   return (await res.json()) as CreateAnalysisResponse
+}
+
+export async function patchAnalysisKyc(
+  id: string,
+  patch: PatchAnalysisKycRequest,
+): Promise<AnalysisProfileOut> {
+  const res = await authorizedFetch(
+    `/api/v1/analyses/${encodeURIComponent(id)}/kyc`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(patch),
+    },
+  )
+  if (!res.ok) {
+    throw new ApiError(await readErrorMessage(res), res.status)
+  }
+  return (await res.json()) as AnalysisProfileOut
+}
+
+export async function patchAnalysisPrompts(
+  id: string,
+  prompts: PromptPatchItem[],
+): Promise<AnalysisPromptsOut> {
+  const res = await authorizedFetch(
+    `/api/v1/analyses/${encodeURIComponent(id)}/prompts`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ prompts }),
+    },
+  )
+  if (!res.ok) {
+    throw new ApiError(await readErrorMessage(res), res.status)
+  }
+  return (await res.json()) as AnalysisPromptsOut
+}
+
+/** Resume a guided run after profile review (steps 4–6). Does not re-charge quota. */
+export async function executePromptsAndScore(id: string): Promise<AnalysisEnvelope> {
+  const res = await authorizedFetch(
+    `/api/v1/analyses/${encodeURIComponent(id)}/execute-prompts-and-score`,
+    {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    },
+  )
+  if (!res.ok) {
+    let message: string
+    if (res.status === 409) {
+      message = await readErrorMessage(res)
+    } else if (res.status === 403) {
+      message = 'Your role cannot run this analysis. Ask an Analyst or above.'
+    } else {
+      message = await readErrorMessage(res)
+    }
+    throw new ApiError(message, res.status)
+  }
+  return readAnalysisJson<AnalysisEnvelope>(res)
 }
 
 export async function createCheckerAnalysis(

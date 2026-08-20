@@ -12,7 +12,14 @@ import type { components } from './types'
 type Schemas = components['schemas']
 
 // The backend serializes these as plain strings; narrow to the locked SPEC values.
-export type AnalysisStatus = 'queued' | 'running' | 'done' | 'failed'
+export type AnalysisStatus =
+  | 'queued'
+  | 'running'
+  | 'awaiting_review'
+  | 'done'
+  | 'failed'
+
+export type RunMode = 'quick' | 'guided'
 
 export type PipelineStep =
   | 'discovery'
@@ -46,6 +53,14 @@ export type Prompt = Schemas['PromptOut']
 export type AnalysisResponse = Schemas['ResponseOut']
 
 export type CreateAnalysisResponse = Schemas['CreateAnalysisResponse']
+
+export type PatchAnalysisKycRequest = Schemas['PatchAnalysisKycRequest']
+
+export type PromptPatchItem = Schemas['PromptPatchItem']
+
+export type AnalysisProfileOut = Schemas['AnalysisProfileOut']
+
+export type AnalysisPromptsOut = Schemas['AnalysisPromptsOut']
 
 // Public checker (P5.4). The submit returns both the analysis id (polled via the
 // shared getAnalysis) and a submission_id carried to the results route for
@@ -171,6 +186,20 @@ export type SignupCredentials = Pick<SignupWire, 'email' | 'password'> &
   Partial<Pick<SignupWire, 'account_type' | 'organization_name'>>
 
 export type LoginResponse = Schemas['LoginResponse']
+
+// Which provider sign-ins this deployment can complete, and the client id each
+// one needs. Served rather than built in, so a provider configured after the
+// build still appears — and one that is not configured stays absent instead of
+// offering a button that cannot work.
+export type AuthProviders = Schemas['AuthProvidersOut']
+
+export type OAuthProvider = Schemas['OAuthSignInRequest']['provider']
+
+// Same correction as SignupCredentials above: the account fields carry defaults
+// server-side, so a caller that has nothing to say about them may say nothing.
+type OAuthWire = Schemas['OAuthSignInRequest']
+export type OAuthCredentials = Pick<OAuthWire, 'provider' | 'id_token'> &
+  Partial<Pick<OAuthWire, 'account_type' | 'organization_name' | 'password'>>
 
 // Independent Site Audit projects. These aliases stay deliberately thin: the
 // backend OpenAPI schema is the source of truth for every field rendered by the

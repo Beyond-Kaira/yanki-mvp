@@ -7,6 +7,7 @@ import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
 import StepProgress from '@/components/StepProgress'
 import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
 import PageHeaderRow from '@/components/shell/PageHeaderRow'
+import GuidedReviewLinkPanel from '@/components/guided/GuidedReviewLinkPanel'
 import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
 import { analysisDomain } from '@/lib/ai-visibility-data'
 import type { Analysis } from '@/lib/contracts'
@@ -72,6 +73,10 @@ export default function AnalysisBoundSubpage({
             analysis finishes.
           </p>
         </div>
+      ) : null}
+
+      {status === 'review' && analysisId ? (
+        <GuidedReviewLinkPanel analysisId={analysisId} />
       ) : null}
 
       {status === 'error' ? (

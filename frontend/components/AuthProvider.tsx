@@ -7,9 +7,10 @@ import {
   fetchCurrentUser,
   login,
   logout as logoutRequest,
+  signInWithProvider,
   signup,
 } from '@/lib/auth'
-import type { AuthUser } from '@/lib/auth'
+import type { AuthUser, OAuthCredentials } from '@/lib/auth'
 import { acceptInvitation } from '@/lib/api'
 import { getActiveOrgId, setActiveOrgId } from '@/lib/active-org'
 import { onSessionLost, refreshAccessToken, setAccessToken } from '@/lib/session'
@@ -44,6 +45,10 @@ interface AuthContextValue {
     password: string,
     options?: { accountType?: 'individual' | 'organization'; organizationName?: string },
   ) => Promise<void>
+  // Signs in with an identity token a provider issued in the browser. Sign-up
+  // and sign-in are the same call here, for the same reason they are one
+  // endpoint on the server: the button does not know which one it is.
+  signInWithIdToken: (credentials: OAuthCredentials) => Promise<void>
   signOut: () => Promise<void>
   // Redeems an invitation token and signs the invitee in — the endpoint returns
   // the same session envelope as login, so no second round trip is needed.
@@ -129,6 +134,16 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('authenticated')
   }, [])
 
+  const signInWithIdToken = useCallback(async (credentials: OAuthCredentials) => {
+    const session = await signInWithProvider(credentials)
+    // Same three lines as `signIn`, and deliberately so: past the credential
+    // check there is nothing about a provider session that differs from a
+    // password one, and any drift here would be a bug on one path only.
+    setActiveOrgId(null)
+    setUser((await fetchCurrentUser()) ?? session.user)
+    setStatus('authenticated')
+  }, [])
+
   const signUp = useCallback(
     async (
       email: string,
@@ -202,7 +217,16 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ status, user, signIn, signUp, signOut, acceptInvite, switchOrg }}
+      value={{
+        status,
+        user,
+        signIn,
+        signUp,
+        signInWithIdToken,
+        signOut,
+        acceptInvite,
+        switchOrg,
+      }}
     >
       {children}
     </AuthContext.Provider>

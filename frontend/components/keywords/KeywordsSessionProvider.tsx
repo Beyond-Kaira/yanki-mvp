@@ -21,8 +21,8 @@ type KeywordsSessionValue = {
   setOverviewQuery: (value: string) => void
   magicQuery: string
   setMagicQuery: (value: string) => void
-  locale: string
-  setLocale: (value: string) => void
+  language: string
+  setLanguage: (value: string) => void
   domain: string
   setDomain: (value: string) => void
 
@@ -68,7 +68,8 @@ export default function KeywordsSessionProvider({
 }) {
   const [overviewQuery, setOverviewQuery] = useState('')
   const [magicQuery, setMagicQuery] = useState('')
-  const [locale, setLocale] = useState('en')
+  // ISO 639-1 code, matching the language picker's values.
+  const [language, setLanguage] = useState('en')
   const [domain, setDomain] = useState('')
 
   const [overviewLoading, setOverviewLoading] = useState(false)
@@ -116,8 +117,8 @@ export default function KeywordsSessionProvider({
       setOverviewQuery,
       magicQuery,
       setMagicQuery,
-      locale,
-      setLocale,
+      language,
+      setLanguage,
       domain,
       setDomain,
       overviewLoading,
@@ -146,7 +147,7 @@ export default function KeywordsSessionProvider({
     [
       overviewQuery,
       magicQuery,
-      locale,
+      language,
       domain,
       overviewLoading,
       overviewError,

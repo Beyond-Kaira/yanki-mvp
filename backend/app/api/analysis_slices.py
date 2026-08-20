@@ -32,6 +32,7 @@ def build_envelope(analysis: Analysis) -> AnalysisOut:
         id=analysis.id,
         url=analysis.url,
         status=analysis.status,
+        run_mode=analysis.run_mode or "quick",
         progress=analysis.progress,
         current_step=analysis.current_step,
         error=analysis.error,

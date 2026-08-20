@@ -18,6 +18,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -53,6 +54,7 @@ class CreateAnalysisRequest(BaseModel):
     # identical "analysis:create" rows apart. Optional: older clients, and any
     # caller that is not a screen, record no source.
     source: Literal["ai_visibility", "search_visibility"] | None = None
+    mode: Literal["quick", "guided"] = "quick"
 
 
 class CreateAnalysisResponse(BaseModel):
@@ -111,6 +113,54 @@ class WaitlistRequest(BaseModel):
 
 class WaitlistResponse(BaseModel):
     ok: bool
+
+
+class AuthProvidersOut(BaseModel):
+    """The client ids the browser needs to offer provider sign-in.
+
+    Served rather than baked into the frontend build so that configuring a
+    provider is an environment change instead of a rebuild, and so the UI can
+    offer exactly the buttons that will work: a provider with no client id is
+    ``null`` here and gets no button, instead of one that fails on click.
+
+    A client id is not a secret — the browser presents it to the provider on
+    every sign-in, and it is visible in any client's source.
+    """
+
+    google: str | None = None
+    apple: str | None = None
+
+
+class OAuthSignInRequest(BaseModel):
+    """A provider identity token, plus what to call the org if this is a signup.
+
+    One request for both sign-up and sign-in, because the provider flow does not
+    distinguish them: the user presses one button and the server discovers
+    whether the account already exists. ``account_type`` and
+    ``organization_name`` are therefore only consulted when an account is
+    actually created, and ignored for a returning user.
+    """
+
+    provider: Literal["google", "apple"]
+    id_token: str = Field(min_length=1, max_length=8192)
+    # Supplied only when the provider email already belongs to a password
+    # account. Requiring that password before linking prevents an identity
+    # token from silently replacing an existing sign-in method.
+    password: str | None = Field(default=None, min_length=1, max_length=128)
+    account_type: Literal["individual", "organization"] = "individual"
+    organization_name: str | None = Field(default=None, max_length=120)
+
+    @field_validator("organization_name")
+    @classmethod
+    def _strip_oauth_org_name(cls, value: str | None) -> str | None:
+        return value.strip() if value else None
+
+    @model_validator(mode="after")
+    def _oauth_organization_needs_a_name(self) -> OAuthSignInRequest:
+        if self.account_type == "organization" and not self.organization_name:
+            raise ValueError("organization_name is required for an organization account")
+
+        return self
 
 
 class SignupRequest(BaseModel):
@@ -276,6 +326,27 @@ class PromptOut(BaseModel):
     id: uuid.UUID
     text: str
     category: str
+    source: str = "generated"
+    locked: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def editable(self) -> bool:
+        return not self.locked
+
+
+class PromptPatchItem(BaseModel):
+    """One row in the desired prompt set for ``PATCH /analyses/{id}/prompts``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID | None = None
+    text: str = Field(min_length=3, max_length=500)
+    category: str = Field(min_length=1, max_length=40)
+
+
+class PatchAnalysisPromptsRequest(BaseModel):
+    prompts: list[PromptPatchItem] = Field(min_length=1)
 
 
 class ResponseOut(BaseModel):
@@ -475,6 +546,31 @@ class AnalysisKycOut(BaseModel):
     kyc: dict[str, Any] | None
 
 
+class PatchAnalysisKycRequest(BaseModel):
+    """Partial KYC edit while a guided run awaits review (ADR-50)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    company: str | None = None
+    description: str | None = None
+    industry: str | None = None
+    category: str | None = None
+    aliases: list[str] | None = None
+    products: list[str] | None = None
+    services: list[str] | None = None
+    keywords: list[str] | None = None
+    use_cases: list[str] | None = None
+    locations: list[str] | None = None
+    competitors: list[str] | None = None
+
+
+class AnalysisProfileOut(BaseModel):
+    """Updated KYC and regenerated prompts after a guided profile edit."""
+
+    kyc: dict[str, Any] | None
+    prompts: list[PromptOut]
+
+
 class AnalysisPromptsOut(BaseModel):
     """Generated prompt list for ``GET /analyses/{id}/prompts``."""
 
@@ -512,6 +608,7 @@ class AnalysisOut(BaseModel):
     id: uuid.UUID
     url: str
     status: str
+    run_mode: str = "quick"
     progress: int
     current_step: str | None
     error: str | None

@@ -8,6 +8,7 @@ import Button from '@/components/Button'
 import CustomFormError from '@/components/CustomFormError'
 import CustomFormField from '@/components/CustomFormField'
 import CustomPasswordField from '@/components/CustomPasswordField'
+import SocialSignIn from '@/components/SocialSignIn'
 import { useAuth } from '@/components/AuthProvider'
 import { safeNext } from '@/lib/auth-redirect'
 import { validateEmail, validateExistingPassword } from '@/lib/validation'
@@ -131,6 +132,11 @@ function LoginForm() {
             Login
           </Button>
         </form>
+
+        {/* Below the form, not above it: the password field is what a returning
+            user came for, and the provider buttons render nothing at all when
+            no provider is configured. */}
+        <SocialSignIn onSignedIn={() => router.push(next)} disabled={submitting} />
 
         <p className="text-sm text-surface-subtle">
           {"Don't have an account? "}

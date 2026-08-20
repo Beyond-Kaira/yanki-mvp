@@ -1,6 +1,18 @@
 import { vi } from 'vitest'
-import type { Analysis, AnalysisEnvelope } from '@/lib/contracts'
+import type { Analysis, AnalysisEnvelope, Prompt } from '@/lib/contracts'
 import type { FetchedAnalysisSlices } from '@/lib/analysis-bundle'
+
+export function samplePrompt(
+  overrides: Partial<Prompt> & Pick<Prompt, 'id' | 'text'>,
+): Prompt {
+  return {
+    category: 'recommendation',
+    source: 'generated',
+    locked: false,
+    editable: true,
+    ...overrides,
+  }
+}
 
 export function envelopeFrom(analysis: Analysis): AnalysisEnvelope {
   const { result: _result, ...envelope } = analysis

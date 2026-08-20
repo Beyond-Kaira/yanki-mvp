@@ -28,7 +28,7 @@ vi.mock('@/lib/api', () => ({
 import CheckerPage from '@/app/checker/page'
 import CheckerResultsPage from '@/app/checker/[id]/page'
 import { fetchAnalysisSlices, getAnalysis } from '@/lib/api'
-import { envelopeFrom, wireAnalysisPollMocks } from './analysisMocks'
+import { envelopeFrom, samplePrompt, wireAnalysisPollMocks } from './analysisMocks'
 
 const mockedGet = vi.mocked(getAnalysis)
 const mockedFetchSlices = vi.mocked(fetchAnalysisSlices)
@@ -46,6 +46,7 @@ function makeAnalysis(overrides: AnalysisOverrides = {}): Analysis {
     current_step: 'prompts',
     progress: 30,
     error: null,
+    run_mode: 'quick',
     created_at: '2026-07-10T00:00:00Z',
     updated_at: '2026-07-10T00:00:00Z',
     result: {
@@ -104,7 +105,7 @@ describe('Checker screens accessibility', () => {
           footprint_count: 16,
           geo_score: 33,
           kyc: null,
-          prompts: [{ id: 'p1', category: 'comparison', text: 'Best note app?' }],
+          prompts: [samplePrompt({ id: 'p1', category: 'comparison', text: 'Best note app?' })],
           responses: [
             {
               id: 'r1',
@@ -150,7 +151,7 @@ describe('Checker screens accessibility', () => {
           footprint_count: 1,
           geo_score: 50,
           kyc: null,
-          prompts: [{ id: 'p1', category: 'comparison', text: 'Best note app?' }],
+          prompts: [samplePrompt({ id: 'p1', category: 'comparison', text: 'Best note app?' })],
           responses: [
             {
               id: 'r1',

@@ -4,6 +4,7 @@ import type { Analysis } from '@/lib/contracts'
 import { axeCheck } from './a11y'
 
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({ id: 'test-id' }),
 }))
 
@@ -23,7 +24,7 @@ vi.mock('@/lib/api', () => ({
 
 import AnalysisPage from '@/app/analyses/[id]/page'
 import { fetchAnalysisSlices, getAnalysis } from '@/lib/api'
-import { envelopeFrom, wireAnalysisPollMocks } from './analysisMocks'
+import { envelopeFrom, samplePrompt, wireAnalysisPollMocks } from './analysisMocks'
 
 const mockedGet = vi.mocked(getAnalysis)
 const mockedFetchSlices = vi.mocked(fetchAnalysisSlices)
@@ -43,6 +44,7 @@ function makeAnalysis(overrides: AnalysisOverrides = {}): Analysis {
     current_step: 'prompts',
     progress: 30,
     error: null,
+    run_mode: 'quick',
     created_at: '2026-07-09T00:00:00Z',
     updated_at: '2026-07-09T00:00:00Z',
     result: {
@@ -134,7 +136,7 @@ describe('AnalysisPage accessibility', () => {
           footprint_count: 1,
           geo_score: 50,
           kyc: null,
-          prompts: [{ id: 'p1', category: 'comparison', text: 'Best CRM?' }],
+          prompts: [samplePrompt({ id: 'p1', category: 'comparison', text: 'Best CRM?' })],
           responses: [
             {
               id: 'r1',

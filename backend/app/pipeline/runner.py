@@ -38,12 +38,14 @@ from app.pipeline import seo_audit as seo_step
 from app.pipeline import serp_visibility as serp_step
 from app.providers import registry
 from app.serp import registry as serp_registry
-from app.services.analyses import delete_analysis_children
+from app.services.analyses import delete_analysis_children, delete_measure_outputs
+from app.services.analysis_run_mode import RUN_MODE_GUIDED, STATUS_AWAITING_REVIEW
 
 # progress % set when each step COMPLETES (see the master SPEC).
 _DISCOVERY_DONE = 15
 _KYC_DONE = 30
-_PROMPTS_DONE = 45
+PROMPTS_DONE_PROGRESS = 45
+_PROMPTS_DONE = PROMPTS_DONE_PROGRESS
 _EXECUTE_DONE = 80
 _FOOTPRINT_DONE = 90
 _SCORING_DONE = 100
@@ -69,6 +71,114 @@ def _complete_step(session, analysis: Analysis, progress: int) -> None:
     analysis.progress = progress
     analysis.claimed_at = _now()
     session.commit()
+
+
+def is_guided_measure_job(analysis: Analysis) -> bool:
+    """True when the worker should run execute→scoring only (guided review done)."""
+
+    return (
+        analysis.run_mode == RUN_MODE_GUIDED
+        and (analysis.kind or "mvp") == "mvp"
+        and analysis.progress == PROMPTS_DONE_PROGRESS
+        and analysis.kyc is not None
+    )
+
+
+def _clear_measure_summaries(analysis: Analysis) -> None:
+    analysis.serp_score = None
+    analysis.serp_hit_count = None
+    analysis.serp_query_count = None
+    analysis.serp_status = None
+    analysis.serp_source = None
+    analysis.geo_score = None
+    analysis.footprint_count = None
+    analysis.total_responses = None
+    analysis.reliability_score = None
+    analysis.interventions = None
+    analysis.citation_summary = None
+    analysis.error = None
+
+
+def _run_measure_phase(
+    session,
+    analysis: Analysis,
+    prompt_rows: list[Prompt],
+    kyc: kyc_step.KYC,
+    settings,
+) -> Analysis:
+    """Steps 4–6: execute approved prompts, footprint (+ SERP), GEO scoring."""
+
+    _start_step(session, analysis, "execute", settings)
+    responses = execute_step.run_measured_execute(session, analysis, prompt_rows, settings)
+    _complete_step(session, analysis, _EXECUTE_DONE)
+
+    _start_step(session, analysis, "footprint", settings)
+    if not responses:
+        responses = (
+            session.execute(select(Response).where(Response.analysis_id == analysis.id))
+            .scalars()
+            .all()
+        )
+    audit_records = [r.audit for r in responses if isinstance(r.audit, dict)]
+    reliability_report = reliability_step.analyze_records(audit_records)
+    analysis.reliability_score = reliability_report.get("reliability_score")
+    footprint_count = sum(1 for response in responses if response.footprint)
+
+    serp_source = serp_registry.get_serp_source(settings)
+    if serp_source is not None:
+        outcome = serp_step.run_serp(session, analysis, kyc, serp_source, settings)
+        analysis.serp_status = outcome.status
+        analysis.serp_source = outcome.source or None
+        analysis.serp_hit_count = outcome.hits
+        analysis.serp_query_count = outcome.queries
+        analysis.serp_score = outcome.score
+
+    session.flush()
+    _complete_step(session, analysis, _FOOTPRINT_DONE)
+
+    _start_step(session, analysis, "scoring", settings)
+    intervention_report = interventions_step.analyze_records(audit_records)
+    analysis.interventions = intervention_report.get("aggregated_interventions") or []
+    total = len(responses)
+    analysis.footprint_count = footprint_count
+    analysis.total_responses = total
+    if audit_records:
+        analysis.geo_score = scoring_step.geo_score(
+            audit_records,
+            reliability_score=analysis.reliability_score,
+        )
+    else:
+        analysis.geo_score = scoring_step.mention_rate(footprint_count, total) * 100.0
+    analysis.citation_summary = geo_records_step.aggregate_citation_summary(audit_records)
+    analysis.status = "done"
+    analysis.current_step = None
+    analysis.progress = _SCORING_DONE
+    analysis.claimed_at = _now()
+    session.commit()
+    return analysis
+
+
+def run_execute_prompts_and_score(session, analysis_id, settings) -> Analysis:
+    """Resume a guided run: execute the stored prompt set and produce GEO scores."""
+
+    analysis = session.execute(select(Analysis).where(Analysis.id == analysis_id)).scalar_one()
+    if not is_guided_measure_job(analysis):
+        raise RuntimeError("analysis is not queued for guided measure")
+
+    delete_measure_outputs(session, analysis.id)
+    _clear_measure_summaries(analysis)
+    session.commit()
+
+    kyc = kyc_step.KYC.model_validate(analysis.kyc)
+    kyc_step.require_usable(kyc)
+
+    prompt_rows = (
+        session.execute(select(Prompt).where(Prompt.analysis_id == analysis.id)).scalars().all()
+    )
+    if not prompt_rows:
+        raise kyc_step.PipelineError("no prompts to execute")
+
+    return _run_measure_phase(session, analysis, prompt_rows, kyc, settings)
 
 
 def run_pipeline(session, analysis_id, settings) -> Analysis:
@@ -148,61 +258,11 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     session.flush()
     _complete_step(session, analysis, _PROMPTS_DONE)
 
-    # 4. measured execute (Tavily + OpenRouter, or mocks under DRY_RUN)
-    _start_step(session, analysis, "execute", settings)
-    responses = execute_step.run_measured_execute(session, analysis, prompt_rows, settings)
-    _complete_step(session, analysis, _EXECUTE_DONE)
+    if analysis.run_mode == RUN_MODE_GUIDED and not is_checker:
+        analysis.status = STATUS_AWAITING_REVIEW
+        analysis.current_step = None
+        analysis.claimed_at = _now()
+        session.commit()
+        return analysis
 
-    # 5. reliability over measured audits (+ footprint recount)
-    _start_step(session, analysis, "footprint", settings)
-    if not responses:
-        responses = (
-            session.execute(select(Response).where(Response.analysis_id == analysis.id))
-            .scalars()
-            .all()
-        )
-    audit_records = [r.audit for r in responses if isinstance(r.audit, dict)]
-    reliability_report = reliability_step.analyze_records(audit_records)
-    analysis.reliability_score = reliability_report.get("reliability_score")
-    footprint_count = sum(1 for response in responses if response.footprint)
-
-    # SERP visibility rides in this step rather than a seventh one (ADR-28):
-    # footprint is the step that asks where the brand actually appears, and this
-    # asks it of search results instead of LLM answers. ``current_step`` and the
-    # progress mapping are therefore unchanged. ``run_serp`` never raises — a
-    # search instance having a bad day costs the run its SERP number and nothing
-    # more — and a run with SERP switched off leaves every ``serp_*`` column
-    # null, which says "not measured" rather than "measured zero".
-    serp_source = serp_registry.get_serp_source(settings)
-    if serp_source is not None:
-        outcome = serp_step.run_serp(session, analysis, kyc, serp_source, settings)
-        analysis.serp_status = outcome.status
-        analysis.serp_source = outcome.source or None
-        analysis.serp_hit_count = outcome.hits
-        analysis.serp_query_count = outcome.queries
-        analysis.serp_score = outcome.score
-
-    session.flush()
-    _complete_step(session, analysis, _FOOTPRINT_DONE)
-
-    # 6. interventions + composite GEO score (gaps excluded from score)
-    _start_step(session, analysis, "scoring", settings)
-    intervention_report = interventions_step.analyze_records(audit_records)
-    analysis.interventions = intervention_report.get("aggregated_interventions") or []
-    total = len(responses)
-    analysis.footprint_count = footprint_count
-    analysis.total_responses = total
-    if audit_records:
-        analysis.geo_score = scoring_step.geo_score(
-            audit_records,
-            reliability_score=analysis.reliability_score,
-        )
-    else:
-        analysis.geo_score = scoring_step.mention_rate(footprint_count, total) * 100.0
-    analysis.citation_summary = geo_records_step.aggregate_citation_summary(audit_records)
-    analysis.status = "done"
-    analysis.current_step = None
-    analysis.progress = _SCORING_DONE
-    analysis.claimed_at = _now()
-    session.commit()
-    return analysis
+    return _run_measure_phase(session, analysis, prompt_rows, kyc, settings)

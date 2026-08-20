@@ -18,3 +18,25 @@ export function resolveBoundAnalysisId(
   if (analysisRouteUsesSession(pathname)) return sessionId
   return null
 }
+
+/** Where the guided review wizard lives (ADR-50). */
+export function guidedReviewHref(analysisId: string): string {
+  return `/ai-visibility?analysis=${encodeURIComponent(analysisId)}`
+}
+
+/** Post-submit landing: guided runs always open the review wizard on AI Visibility. */
+export function analysisSubmitLandingHref(
+  analysisId: string,
+  options: { mode: 'quick' | 'guided'; pathname: string },
+): string {
+  if (options.mode === 'guided') {
+    return guidedReviewHref(analysisId)
+  }
+  if (options.pathname.startsWith('/search-visibility')) {
+    return `/search-visibility?analysis=${encodeURIComponent(analysisId)}`
+  }
+  if (options.pathname.startsWith('/ai-visibility')) {
+    return `/ai-visibility?analysis=${encodeURIComponent(analysisId)}`
+  }
+  return `/analyses/${encodeURIComponent(analysisId)}`
+}

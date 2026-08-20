@@ -32,6 +32,7 @@ from app.api.schemas import (
     AnalysisKycOut,
     AnalysisListOut,
     AnalysisOut,
+    AnalysisProfileOut,
     AnalysisPromptsOut,
     AnalysisSummaryOut,
     CheckerLeadRequest,
@@ -40,6 +41,9 @@ from app.api.schemas import (
     CreateAnalysisRequest,
     CreateAnalysisResponse,
     GeoOut,
+    PatchAnalysisKycRequest,
+    PatchAnalysisPromptsRequest,
+    PromptOut,
     SeoAuditOut,
     SerpVisibilityOut,
     WaitlistRequest,
@@ -64,6 +68,13 @@ from app.services.checker import (
     normalize_triple,
 )
 from app.services.emailer import send_waitlist_emails
+from app.services.guided_execute import request_execute_prompts_and_score
+from app.services.guided_profile import patch_kyc_and_regenerate_prompts
+from app.services.guided_prompts import PromptPatchItem, patch_analysis_prompts
+from app.services.guided_review import (
+    GuidedProfileConflictError,
+    GuidedProfileValidationError,
+)
 from app.services.permissions import ANALYSIS_READ, ANALYSIS_RUN
 from app.services.rate_limit import (
     WAITLIST_RATE_LIMIT_PER_IP_HOUR,
@@ -121,6 +132,10 @@ def submit_analysis(
        analyses (``queued``/``running``/``done``). Interim hardcoded gate until
        user plans and org billing replace it.
     4. **Plan quota** — 429 (ADR-45). Consumed here, committed with the row.
+
+    ``mode`` defaults to ``quick`` (six steps back-to-back). ``guided`` pauses
+    after prompts with ``status=awaiting_review`` until
+    ``POST …/execute-prompts-and-score`` (ADR-50).
     """
 
     # Reject SSRF targets (loopback/private/link-local/metadata) up front; the
@@ -156,6 +171,7 @@ def submit_analysis(
         ip_hash=ip_hash,
         org_id=org_id,
         created_by_user_id=user_id,
+        run_mode=payload.mode,
         commit=False,
     )
 
@@ -167,7 +183,7 @@ def submit_analysis(
         actor_id=org.user_id,
         entity_type="analysis",
         entity_id=analysis.id,
-        after={"url": analysis.url, "kind": analysis.kind or "mvp"},
+        after={"url": analysis.url, "kind": analysis.kind or "mvp", "run_mode": analysis.run_mode},
     )
     session.commit()
     return CreateAnalysisResponse(id=analysis.id)
@@ -421,6 +437,165 @@ def read_analysis_kyc(
 
     analysis = _readable_or_404(session, analysis_id, org)
     return build_kyc_out(analysis)
+
+
+@router.patch("/analyses/{analysis_id}/kyc", response_model=AnalysisProfileOut)
+def patch_analysis_kyc(
+    analysis_id: uuid.UUID,
+    payload: PatchAnalysisKycRequest,
+    org: OrgContext = Depends(requires(ANALYSIS_RUN)),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AnalysisProfileOut:
+    """Edit the company profile on a guided run and regenerate prompts.
+
+    Only ``status='awaiting_review'`` guided analyses accept edits. Execute has
+    not started, so there are no response rows to invalidate.
+    """
+
+    analysis = readable_analysis(session, analysis_id, org)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="analysis not found")
+
+    patch = payload.model_dump(exclude_unset=True)
+    if not patch:
+        raise HTTPException(status_code=422, detail="at least one field is required")
+
+    before_kyc = analysis.kyc
+    try:
+        analysis = patch_kyc_and_regenerate_prompts(session, analysis, patch, settings)
+    except GuidedProfileConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"analysis in status {exc.status!r} cannot be edited",
+        ) from exc
+    except GuidedProfileValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+
+    audit.emit(
+        session,
+        action="analysis:kyc_patch",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="analysis",
+        entity_id=analysis_id,
+        before={"kyc": before_kyc},
+        after={"kyc": analysis.kyc, "prompt_count": len(analysis.prompts)},
+    )
+    session.commit()
+    return AnalysisProfileOut(
+        kyc=analysis.kyc,
+        prompts=[PromptOut.model_validate(p) for p in analysis.prompts],
+    )
+
+
+@router.patch("/analyses/{analysis_id}/prompts", response_model=AnalysisPromptsOut)
+def patch_analysis_prompts_route(
+    analysis_id: uuid.UUID,
+    payload: PatchAnalysisPromptsRequest,
+    org: OrgContext = Depends(requires(ANALYSIS_RUN)),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AnalysisPromptsOut:
+    """Curate the prompt set before measure on a guided run.
+
+    Send the full desired set: rows with ``id`` update existing prompts, rows
+    without ``id`` add user prompts (up to three). Omitted non-locked rows are
+    removed. ``source`` tracks lineage (``generated`` / ``edited`` / ``user``).
+    """
+
+    analysis = readable_analysis(session, analysis_id, org)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="analysis not found")
+
+    before = [{"id": str(p.id), "text": p.text, "category": p.category} for p in analysis.prompts]
+    items = [
+        PromptPatchItem(id=item.id, text=item.text, category=item.category)
+        for item in payload.prompts
+    ]
+    try:
+        analysis = patch_analysis_prompts(session, analysis, items, settings)
+    except GuidedProfileConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"analysis in status {exc.status!r} cannot be edited",
+        ) from exc
+    except GuidedProfileValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+
+    audit.emit(
+        session,
+        action="analysis:prompts_patch",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="analysis",
+        entity_id=analysis_id,
+        before={"prompts": before},
+        after={
+            "prompts": [
+                {
+                    "id": str(p.id),
+                    "text": p.text,
+                    "category": p.category,
+                    "source": p.source,
+                    "locked": p.locked,
+                }
+                for p in analysis.prompts
+            ]
+        },
+    )
+    session.commit()
+    return build_prompts_out(analysis)
+
+
+@router.post(
+    "/analyses/{analysis_id}/execute-prompts-and-score",
+    status_code=202,
+    response_model=AnalysisOut,
+)
+def execute_prompts_and_score(
+    analysis_id: uuid.UUID,
+    org: OrgContext = Depends(requires(ANALYSIS_RUN)),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AnalysisOut:
+    """Resume a guided run: execute the approved prompt set and score GEO.
+
+    Only ``status='awaiting_review'`` guided analyses accept this call. Profile
+    rows (KYC, prompts, SEO) are kept; prior measure outputs are cleared before
+    the worker runs steps 4–6. Does not re-charge the monthly analysis quota.
+    """
+
+    analysis = readable_analysis(session, analysis_id, org)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="analysis not found")
+
+    before_status = analysis.status
+    try:
+        analysis = request_execute_prompts_and_score(session, analysis, settings)
+    except GuidedProfileConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"analysis in status {exc.status!r} cannot be measured",
+        ) from exc
+    except GuidedProfileValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+
+    audit.emit(
+        session,
+        action="analysis:execute_prompts_and_score",
+        context=org,
+        actor_type="user",
+        actor_id=org.user_id,
+        entity_type="analysis",
+        entity_id=analysis_id,
+        before={"status": before_status, "progress": analysis.progress},
+        after={"status": analysis.status, "progress": analysis.progress},
+    )
+    session.commit()
+    return _to_out(analysis)
 
 
 @router.get("/analyses/{analysis_id}/prompts", response_model=AnalysisPromptsOut)

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Analysis } from '@/lib/contracts'
+import { samplePrompt } from './analysisMocks'
 
 vi.mock('@/lib/api', () => ({
   submitLead: vi.fn(),
@@ -143,6 +144,7 @@ function makeAnalysis(responses: Analysis['result']['responses']): Analysis {
     current_step: null,
     progress: 100,
     error: null,
+    run_mode: 'quick',
     created_at: '2026-07-10T00:00:00Z',
     updated_at: '2026-07-10T00:00:00Z',
     result: {
@@ -150,7 +152,7 @@ function makeAnalysis(responses: Analysis['result']['responses']): Analysis {
       geo_score: 33,
       geo_records: [],
       kyc: null,
-      prompts: [{ id: 'p1', category: 'comparison', text: 'Best note app?' }],
+      prompts: [samplePrompt({ id: 'p1', category: 'comparison', text: 'Best note app?' })],
       responses,
       total_responses: responses.length,
       engine_presence: null,

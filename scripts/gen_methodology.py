@@ -39,6 +39,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 def main() -> None:
     # Imported here, after sys.path is set, so the backend app is importable.
+    from app.config import DEFAULT_GEO_LLM_MODELS, parse_geo_llm_model_list
     from app.pipeline.checker_prompts import VERSION, generate
     from app.pipeline.kyc import KYC
     from app.providers.registry import DEFAULT_PANEL
@@ -55,6 +56,10 @@ def main() -> None:
         "version": VERSION,
         "language": "en",
         "engines": list(DEFAULT_PANEL),
+        "geo_llm_models": parse_geo_llm_model_list(
+            DEFAULT_GEO_LLM_MODELS,
+            fallback_model="openai/gpt-4o-mini",
+        ),
         "prompts": prompts,
         "score_formula": {
             "expression": "footprints / total_responses",
@@ -62,8 +67,9 @@ def main() -> None:
             "denominator": "total_responses",
             "range": "0.0 to 1.0",
             "description": (
-                "The share of engine answers that mentioned the brand: the count "
-                "of answers with a footprint divided by the total answers collected."
+                "The share of model answers that mentioned the brand: the count "
+                "of answers with a footprint divided by the total answers collected "
+                "(prompts × configured OpenRouter models)."
             ),
         },
     }

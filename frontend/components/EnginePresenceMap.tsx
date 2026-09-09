@@ -1,11 +1,11 @@
 import type { EnginePresence } from '@/lib/contracts'
-import { engineLabel } from '@/lib/engines'
+import { modelSlugLabel } from '@/lib/engines'
 
 interface EnginePresenceMapProps {
   presence: EnginePresence[]
 }
 
-// Per-engine footprint: how many answers from each engine named the brand.
+// Per-model footprint: how many answers from each model named the brand.
 // Never color-only — every bar is backed by the "N of M answers" count and an
 // accessible progressbar label (brandkit v2 §7).
 export default function EnginePresenceMap({ presence }: EnginePresenceMapProps) {
@@ -21,7 +21,7 @@ export default function EnginePresenceMap({ presence }: EnginePresenceMapProps) 
           share a line so N engines cost N rows of height, not N cards. */}
       <ul className="divide-y divide-surface-border rounded-lg border border-surface-border bg-white">
         {presence.map((engine) => {
-          const label = engineLabel(engine.engine)
+          const label = modelSlugLabel(engine.engine)
           const pct =
             engine.total > 0
               ? Math.round((engine.mentioned / engine.total) * 100)

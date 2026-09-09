@@ -51,7 +51,7 @@ class _CountingLLM:
         elif system.strip() == GROUNDED_ANSWER_SYSTEM_PROMPT.strip():
             type(self).grounded_calls += 1
             payload = {
-                "grounded_answer": "Leaders include Acme [1].",
+                "grounded_answer": f"Leaders include Acme [1]. (via {self.model})",
                 "citations": [],
                 "competitors": ["Acme"],
                 "answer_summary": "summary",
@@ -108,8 +108,8 @@ def test_search_visibility_detects_owned_domain():
 def test_run_measured_audits_dry_run_returns_one_record_per_model_slug():
     slugs = [
         "openai/gpt-4o-mini",
-        "anthropic/claude-3.5-sonnet",
-        "google/gemini-2.0-flash-001",
+        "anthropic/claude-sonnet-4.5",
+        "google/gemini-2.5-flash",
     ]
     records = run_measured_audits(
         brand="Yanki Demo Co",
@@ -122,13 +122,13 @@ def test_run_measured_audits_dry_run_returns_one_record_per_model_slug():
     assert len(records) == 3
     assert [record["model"] for record in records] == slugs
     assert all(record["error"] is False for record in records)
-    assert records[0]["grounded_answer"] == records[1]["grounded_answer"]
+    assert len({record["grounded_answer"] for record in records}) == len(slugs)
 
 
-def test_run_measured_audits_live_calls_audit_once_per_model():
+def test_run_measured_audits_live_calls_grounded_and_audit_once_per_model():
     _CountingLLM.audit_calls = 0
     _CountingLLM.grounded_calls = 0
-    slugs = ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet"]
+    slugs = ["openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5"]
 
     def factory(slug: str) -> _CountingLLM:
         return _CountingLLM(slug)
@@ -144,9 +144,10 @@ def test_run_measured_audits_live_calls_audit_once_per_model():
         search_payload=mock_search("Best tools", brand="Acme"),
     )
     assert len(records) == 2
-    assert _CountingLLM.grounded_calls == 1
+    assert _CountingLLM.grounded_calls == 2
     assert _CountingLLM.audit_calls == 2
     assert records[0]["model"] == slugs[0]
+    assert records[0]["grounded_answer"] != records[1]["grounded_answer"]
     assert records[1]["recommendation_reasoning"] == f"audit from {slugs[1]}"
 
 

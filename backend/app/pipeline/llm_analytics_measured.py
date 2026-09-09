@@ -687,6 +687,7 @@ def _build_mock_shared_evidence(
     owned_domains: list[str],
     aliases: list[str] | None = None,
     known_competitors: list[str] | None = None,
+    model_slug: str = "mock",
 ) -> _MeasuredSharedEvidence:
     mentioned = any(
         _text_mentions_brand(f"{r.get('title', '')} {r.get('snippet', '')}", brand, aliases)
@@ -706,11 +707,14 @@ def _build_mock_shared_evidence(
                 "citation_position": result["rank"],
             }
         )
+    model_label = model_slug.rsplit("/", 1)[-1]
     answer = (
         f"{brand} is a strong option based on the search results [1]. "
-        f"Other names that appear include Acme and Globex."
+        f"Other names that appear include Acme and Globex. "
+        f"(mock grounded answer via {model_label})"
         if mentioned
-        else "Category leaders in the search results include Acme and Globex [2]."
+        else "Category leaders in the search results include Acme and Globex [2]. "
+        f"(mock grounded answer via {model_label})"
     )
     grounded: dict[str, Any] = {
         "grounded_answer": answer,
@@ -857,8 +861,9 @@ def run_measured_audits(
 ) -> list[dict[str, Any]]:
     """Run measured audits for ``(brand, prompt)`` across ``model_slugs``.
 
-    Tavily search and the grounded answer run once; ``AUDIT_EXTRACTION_SYSTEM_PROMPT``
-    runs once per model slug. A failure in one model's audit does not stop the rest.
+    Tavily search runs once (shared evidence). Each model slug gets its own
+    grounded answer and audit extraction — so ``grounded_answer`` / ``raw_text``
+    differ per model as users expect. A failure in one model does not stop the rest.
     """
     slugs = list(model_slugs or [])
     if not slugs:
@@ -885,25 +890,30 @@ def run_measured_audits(
     search_payload = annotate_brands_in_results(search_payload, known)
 
     if not use_live_llm:
-        shared = _build_mock_shared_evidence(
-            brand,
-            prompt,
-            search_payload,
-            owned_domains=owned_domains,
-            aliases=aliases,
-            known_competitors=known_competitors,
+        search_visibility = measure_search_visibility(
+            brand, search_payload, owned_domains=owned_domains, aliases=aliases
         )
-        mentioned = bool(shared.answer_visibility.get("mentioned"))
-        audit_payload = _mock_audit_payload(brand=brand, mentioned=mentioned)
+        search_cost = _call_cost(search_payload)
         records: list[dict[str, Any]] = []
         for slug in slugs:
+            shared = _build_mock_shared_evidence(
+                brand,
+                prompt,
+                search_payload,
+                owned_domains=owned_domains,
+                aliases=aliases,
+                known_competitors=known_competitors,
+                model_slug=slug,
+            )
+            mentioned = bool(shared.answer_visibility.get("mentioned"))
+            audit_payload = _mock_audit_payload(brand=brand, mentioned=mentioned)
             record = merge_measured_record(
                 brand,
                 prompt,
                 prompt_group,
                 slug,
                 shared.search_payload,
-                shared.search_visibility,
+                search_visibility,
                 shared.grounded_payload,
                 shared.answer_visibility,
                 audit_payload,
@@ -912,7 +922,7 @@ def run_measured_audits(
             )
             _set_record_cost(
                 record,
-                search_cost=shared.search_cost,
+                search_cost=search_cost,
                 grounded_cost=shared.grounded_cost,
                 audit_payload=audit_payload,
                 model_count=len(slugs),
@@ -944,47 +954,46 @@ def run_measured_audits(
         brand, search_payload, owned_domains=owned_domains, aliases=aliases
     )
     search_cost = _call_cost(search_payload)
-    grounded_llm = llm_factory(slugs[0])
-    grounded_payload = call_grounded_answer(grounded_llm, prompt, search_payload)
-    grounded_cost = _call_cost(grounded_payload)
-
-    if grounded_payload.get("error"):
-        per_search = _allocate_shared_cost(search_cost + grounded_cost, model_count=len(slugs))
-        return [
-            _measured_error_record(
-                model=slug,
-                brand=brand,
-                prompt=prompt,
-                prompt_group=prompt_group,
-                search_payload=search_payload,
-                search_visibility=search_visibility,
-                error_stage=str(grounded_payload.get("stage") or "grounded_answer"),
-                error_response=str(grounded_payload.get("error_response") or ""),
-                search_cost=per_search,
-            )
-            for slug in slugs
-        ]
-
-    grounded_payload = normalize_grounded_citations(
-        brand,
-        grounded_payload,
-        search_payload,
-        owned_domains=owned_domains,
-        aliases=aliases,
-    )
-    answer_visibility = measure_answer_visibility(
-        brand,
-        grounded_payload,
-        owned_domains=owned_domains,
-        known_competitors=known_competitors or [],
-        aliases=aliases,
-    )
-    shared_cost = search_cost + grounded_cost
+    per_search = _allocate_shared_cost(search_cost, model_count=len(slugs))
     records = []
     for slug in slugs:
-        audit_llm = llm_factory(slug)
+        model_llm = llm_factory(slug)
+        grounded_payload = call_grounded_answer(model_llm, prompt, search_payload)
+        grounded_cost = _call_cost(grounded_payload)
+
+        if grounded_payload.get("error"):
+            records.append(
+                _measured_error_record(
+                    model=slug,
+                    brand=brand,
+                    prompt=prompt,
+                    prompt_group=prompt_group,
+                    search_payload=search_payload,
+                    search_visibility=search_visibility,
+                    error_stage=str(grounded_payload.get("stage") or "grounded_answer"),
+                    error_response=str(grounded_payload.get("error_response") or ""),
+                    search_cost=per_search,
+                    grounded_cost=grounded_cost,
+                )
+            )
+            continue
+
+        grounded_payload = normalize_grounded_citations(
+            brand,
+            grounded_payload,
+            search_payload,
+            owned_domains=owned_domains,
+            aliases=aliases,
+        )
+        answer_visibility = measure_answer_visibility(
+            brand,
+            grounded_payload,
+            owned_domains=owned_domains,
+            known_competitors=known_competitors or [],
+            aliases=aliases,
+        )
         audit_payload = call_audit_extraction(
-            audit_llm,
+            model_llm,
             brand,
             prompt,
             prompt_group,
@@ -994,7 +1003,6 @@ def run_measured_audits(
             answer_visibility,
         )
         if audit_payload.get("error"):
-            per_search = _allocate_shared_cost(shared_cost, model_count=len(slugs))
             records.append(
                 _measured_error_record(
                     model=slug,
@@ -1008,6 +1016,7 @@ def run_measured_audits(
                     search_cost=per_search,
                     grounded_payload=grounded_payload,
                     answer_visibility=answer_visibility,
+                    grounded_cost=grounded_cost,
                     audit_cost=_call_cost(audit_payload),
                 )
             )

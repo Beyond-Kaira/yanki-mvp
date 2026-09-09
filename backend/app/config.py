@@ -17,8 +17,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # used so a single-model deploy needs no second knob.
 DEFAULT_GEO_LLM_MODELS = (
     "openai/gpt-4o-mini,"
-    "anthropic/claude-3.5-sonnet,"
-    "google/gemini-2.0-flash-001"
+    "anthropic/claude-sonnet-4.5,"
+    "google/gemini-2.5-flash"
 )
 
 

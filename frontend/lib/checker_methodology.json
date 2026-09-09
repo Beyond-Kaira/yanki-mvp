@@ -5,6 +5,11 @@
     "gemini",
     "perplexity"
   ],
+  "geo_llm_models": [
+    "openai/gpt-4o-mini",
+    "anthropic/claude-sonnet-4.5",
+    "google/gemini-2.5-flash"
+  ],
   "language": "en",
   "prompts": [
     {
@@ -70,7 +75,7 @@
   ],
   "score_formula": {
     "denominator": "total_responses",
-    "description": "The share of engine answers that mentioned the brand: the count of answers with a footprint divided by the total answers collected.",
+    "description": "The share of model answers that mentioned the brand: the count of answers with a footprint divided by the total answers collected (prompts \u00d7 configured OpenRouter models).",
     "expression": "footprints / total_responses",
     "numerator": "footprints",
     "range": "0.0 to 1.0"

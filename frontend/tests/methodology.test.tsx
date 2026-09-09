@@ -5,6 +5,13 @@ import MethodologyPage from '@/app/methodology/page'
 // literals: a re-export via `make gen-types` must flow through to the page with
 // no test edit. This is the anti-drift guarantee, tested.
 import methodology from '../lib/checker_methodology.json'
+import { modelSlugLabel } from '@/lib/engines'
+
+type MethodologyArtifact = typeof methodology & {
+  geo_llm_models?: string[]
+}
+
+const artifact = methodology as MethodologyArtifact
 
 describe('Methodology page', () => {
   it('renders the version stamp from the artifact', () => {
@@ -20,16 +27,15 @@ describe('Methodology page', () => {
     }
   })
 
-  it('renders every engine from the artifact', () => {
+  it('renders every configured model from the artifact', () => {
     render(<MethodologyPage />)
-    expect(methodology.engines).toEqual([
-      'anthropic',
-      'openai',
-      'gemini',
-      'perplexity',
-    ])
-    const list = screen.getByRole('list', { name: /ai engines/i })
+    const models = artifact.geo_llm_models ?? []
+    expect(models.length).toBeGreaterThan(0)
+    const list = screen.getByRole('list', { name: /ai models/i })
     expect(list).toBeInTheDocument()
+    for (const slug of models) {
+      expect(screen.getByText(modelSlugLabel(slug))).toBeInTheDocument()
+    }
   })
 
   it('shows the score formula honestly', () => {

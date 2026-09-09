@@ -175,7 +175,7 @@ def test_simulated_audits_charge_one_call_per_model():
         owned_domains=["acme.example"],
         llm=llm,
         dry_run=False,
-        model_slugs=["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
+        model_slugs=["openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash"],
     )
 
     assert llm.calls == 3
@@ -259,3 +259,36 @@ def test_execute_persists_the_cost_onto_every_response_row(db_session, make_anal
     # DRY_RUN spends nothing, and the column now carries that as a recorded fact.
     assert all(row.cost_usd == Decimal("0") for row in rows)
     assert all(isinstance(row.cost_usd, Decimal) for row in rows)
+
+
+def test_execute_respects_max_responses_cap_during_model_fan_out(
+    db_session, make_analysis
+):
+    """Fan-out stops at max_responses_per_job, mid-prompt if needed."""
+
+    analysis = make_analysis(url="https://acme.example", kyc={"company": "Acme"})
+    prompts = []
+    for index in range(4):
+        from app.db.models import Prompt
+
+        prompt = Prompt(
+            analysis_id=analysis.id,
+            text=f"Best widgets {index}",
+            category="recommendation",
+        )
+        db_session.add(prompt)
+        prompts.append(prompt)
+    db_session.commit()
+
+    settings = Settings(
+        dry_run=True,
+        geo_mode="measured",
+        max_responses_per_job=5,
+        geo_llm_models="openai/gpt-4o-mini,anthropic/claude-sonnet-4.5,google/gemini-2.5-flash",
+    )
+
+    rows = run_measured_execute(db_session, analysis, prompts, settings)
+    db_session.commit()
+
+    assert len(rows) == 5
+    assert len({row.model for row in rows}) >= 2

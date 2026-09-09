@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { AnalysisStatus, PipelineStep } from '@/lib/contracts'
-import { PANEL_ENGINE_IDS, engineLabel } from '@/lib/engines'
+import { GEO_LLM_MODELS, modelSlugLabel } from '@/lib/engines'
 import { STEP_DESCRIPTIONS, STEP_PHRASES } from '@/lib/steps'
 
 type StepState = 'done' | 'active' | 'failed' | 'pending'
@@ -23,9 +23,9 @@ const STEPS: StepDef[] = [
   { key: 'scoring', label: 'Scoring', threshold: 100 },
 ]
 
-// The backend does not report per-engine completion, so the panel only ever
-// shows all engines as being asked; no fabricated checkmarks or counters.
-const PANEL_ENGINES = PANEL_ENGINE_IDS.map(engineLabel)
+// The backend does not report per-model completion, so the panel only ever
+// shows all configured models as being asked; no fabricated checkmarks.
+const EXECUTE_MODELS = GEO_LLM_MODELS.map(modelSlugLabel)
 
 const STATE_WORD: Record<StepState, string> = {
   done: 'completed',
@@ -194,18 +194,19 @@ export default function StepProgress({
 }
 
 // Shown only while the execute step is active: the wait is dominated by the
-// fan-out to the engine panel, so name the engines being asked. All chips
-// animate together — per-engine completion is not reported by the backend.
+// multi-LLM fan-out via OpenRouter, so name the models being asked. All chips
+// animate together — per-model completion is not reported by the backend.
 function EnginePanel() {
   return (
     <div className="rounded-xl border border-surface-border bg-surface p-4">
       <p className="text-xs text-surface-subtle">
-        Asking {PANEL_ENGINES.length} AI engines the questions your buyers ask
+        Asking {EXECUTE_MODELS.length} models via OpenRouter the questions your
+        buyers ask
       </p>
-      <ul className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        {PANEL_ENGINES.map((engine, index) => (
+      <ul className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        {EXECUTE_MODELS.map((label, index) => (
           <li
-            key={engine}
+            key={label}
             className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface-muted px-3 py-2.5"
           >
             <span
@@ -214,11 +215,8 @@ function EnginePanel() {
               style={{ animationDelay: `${index * 0.3}s` }}
             />
             <span className="text-sm font-medium text-surface-foreground">
-              {engine}
+              {label}
             </span>
-            {/* Decorative: the headline and the panel intro already say every
-                engine is being asked, so repeating it per chip only adds noise
-                to a screen-reader traversal. */}
             <span aria-hidden="true" className="ml-auto text-xs text-surface-subtle">
               asking…
             </span>

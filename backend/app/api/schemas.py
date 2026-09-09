@@ -424,9 +424,10 @@ class GeoRecordOut(BaseModel):
 
 
 class EnginePresence(BaseModel):
-    """One engine's presence in a checker run: ``mentioned`` of ``total`` answers
-    named the searched brand (P5.3). Read-time aggregate of the ``footprint``
-    booleans; the per-engine totals sum to ``total_responses``."""
+    """One model's presence in a checker run: ``mentioned`` of ``total`` answers
+    named the searched brand (P5.3). ``engine`` is the OpenRouter model slug (or
+    legacy panel id). Read-time aggregate of the ``footprint`` booleans; the
+    per-model totals sum to ``total_responses``."""
 
     model_config = ConfigDict(from_attributes=True)
 

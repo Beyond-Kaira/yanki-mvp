@@ -15,7 +15,7 @@ export const STEP_PHRASES: Record<PipelineStep, string> = {
   discovery: 'gathering your company details',
   kyc: 'building your company profile',
   prompts: 'writing the questions your buyers ask',
-  execute: 'asking the AI engines about you',
+  execute: 'auditing your buyer questions across our models',
   footprint: 'checking where you show up',
   scoring: 'scoring your visibility',
 }
@@ -26,7 +26,7 @@ export const STEP_DESCRIPTIONS: Record<PipelineStep, string> = {
   discovery: 'Collecting the details we start from.',
   kyc: 'Turning them into a company profile.',
   prompts: 'Generating the questions your buyers ask.',
-  execute: 'Running your buyer questions against each engine.',
+  execute: 'Running your buyer questions across each configured model via OpenRouter.',
   footprint: 'Scanning every answer for your brand.',
   scoring: 'Calculating your GEO score.',
 }

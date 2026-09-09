@@ -123,7 +123,7 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
             break
 
         if mode == "simulated":
-            record = simulated_step.run_simulated_audit(
+            records = simulated_step.run_simulated_audits(
                 brand=ctx["brand"],
                 prompt=prompt.text,
                 prompt_group=prompt.category or "general",
@@ -132,8 +132,14 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
                 sector=ctx["sector"],
                 llm=llm,
                 dry_run=dry_run,
+                model_slugs=model_slugs,
             )
-            _persist_response_row(session, analysis, prompt, record, settings=settings, rows=rows)
+            for record in records:
+                if len(rows) >= max_responses:
+                    break
+                _persist_response_row(
+                    session, analysis, prompt, record, settings=settings, rows=rows
+                )
             continue
 
         records = llm_analytics_measured_step.run_measured_audits(

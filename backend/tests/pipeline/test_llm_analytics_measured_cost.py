@@ -17,9 +17,10 @@ from decimal import Decimal
 
 from app.config import Settings
 from app.pipeline.execute_measured import _record_cost, run_measured_execute
+from app.providers.registry import get_openrouter_models
 from app.pipeline.llm_analytics_measured import run_measured_audit
 from tests.pipeline.conftest import geo_response_count
-from app.pipeline.simulated import run_simulated_audit
+from app.pipeline.simulated import run_simulated_audit, run_simulated_audits
 from app.providers.base import ProviderResult
 from app.providers.tavily import DEFAULT_SEARCH_PRICE_USD, TavilyClient
 
@@ -159,6 +160,57 @@ def test_simulated_audit_reports_its_single_call():
     )
 
     assert record["_cost_usd"] == 0.003
+
+
+def test_simulated_audits_charge_one_call_per_model():
+    llm = _StubLLM(
+        ['{"simulated_answer": "Acme leads.", "citations": []}'] * 3,
+        cost_per_call=0.003,
+    )
+
+    records = run_simulated_audits(
+        brand="Acme",
+        prompt="Best widgets",
+        prompt_group="recommendation",
+        owned_domains=["acme.example"],
+        llm=llm,
+        dry_run=False,
+        model_slugs=["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
+    )
+
+    assert llm.calls == 3
+    assert len(records) == 3
+    assert all(record["_cost_usd"] == 0.003 for record in records)
+
+
+def test_execute_simulated_persists_fan_out_rows(db_session, make_analysis):
+    analysis = make_analysis(url="https://acme.example", kyc={"company": "Acme"})
+    prompts = []
+    for index in range(2):
+        from app.db.models import Prompt
+
+        prompt = Prompt(
+            analysis_id=analysis.id,
+            text=f"Best widgets {index}",
+            category="recommendation",
+        )
+        db_session.add(prompt)
+        prompts.append(prompt)
+    db_session.commit()
+
+    settings = Settings(
+        dry_run=True,
+        geo_mode="simulated",
+        max_responses_per_job=60,
+    )
+
+    rows = run_measured_execute(db_session, analysis, prompts, settings)
+    db_session.commit()
+
+    assert len(rows) == geo_response_count(settings, len(prompts))
+    assert analysis.geo_run["mode"] == "simulated"
+    assert analysis.geo_run["search"] is None
+    assert len({row.model for row in rows}) == len(get_openrouter_models(settings))
 
 
 def test_tavily_client_prices_every_search_and_the_mock_prices_none():

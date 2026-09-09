@@ -12,6 +12,32 @@ from functools import lru_cache
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Default multi-LLM fan-out for measured/simulated GEO (Phase 1). Comma-separated
+# in ``GEO_LLM_MODELS``; when that env is blank, ``openrouter_model`` alone is
+# used so a single-model deploy needs no second knob.
+DEFAULT_GEO_LLM_MODELS = (
+    "openai/gpt-4o-mini,"
+    "anthropic/claude-3.5-sonnet,"
+    "google/gemini-2.0-flash-001"
+)
+
+
+def parse_geo_llm_model_list(raw: str, *, fallback_model: str) -> list[str]:
+    """Split a comma-separated OpenRouter slug list; dedupe; never return empty."""
+
+    slugs: list[str] = []
+    seen: set[str] = set()
+    for part in raw.split(","):
+        slug = part.strip()
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        slugs.append(slug)
+    if slugs:
+        return slugs
+    fallback = (fallback_model or "openai/gpt-4o-mini").strip()
+    return [fallback or "openai/gpt-4o-mini"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -81,6 +107,10 @@ class Settings(BaseSettings):
     open_router_key: str = ""
     tavily_api_key: str = ""
     openrouter_model: str = "openai/gpt-4o-mini"
+    # Comma-separated OpenRouter model slugs for measured/simulated fan-out.
+    # Blank falls back to ``openrouter_model`` only. Under DRY_RUN the pipeline
+    # still uses these slugs as row identity even though the LLM client is mock.
+    geo_llm_models: str = DEFAULT_GEO_LLM_MODELS
     # measured = Tavily + grounded answer; simulated = OpenRouter-only SYSTEM_PROMPT
     geo_mode: str = "measured"
     # Dollars per Tavily search, counted into responses.cost_usd. Tavily bills in
@@ -100,6 +130,9 @@ class Settings(BaseSettings):
     dry_run: bool = True
     prompt_count: int = 10
     panel_engines: str = "anthropic,openai,gemini,perplexity"
+    # Hard cap on ``responses`` rows written in one execute step. With multi-LLM
+    # fan-out this is ``prompts × len(geo_llm_model_list())``, truncated in
+    # prompt-major order once the cap is hit.
     max_responses_per_job: int = 60
 
     # Worker / queue
@@ -296,6 +329,14 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    def geo_llm_model_list(self) -> list[str]:
+        """OpenRouter slugs to fan out per prompt (measured audit + simulated)."""
+
+        return parse_geo_llm_model_list(
+            self.geo_llm_models,
+            fallback_model=self.openrouter_model,
+        )
 
 
 @lru_cache

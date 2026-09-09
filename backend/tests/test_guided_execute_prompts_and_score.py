@@ -204,7 +204,9 @@ def test_worker_runs_measure_only_after_execute_enqueue(
             .scalars()
             .all()
         )
-        assert len(responses) == settings.prompt_count
+        from tests.pipeline.conftest import geo_response_count
+
+        assert len(responses) == geo_response_count(dry_settings, settings.prompt_count)
     finally:
         check.close()
 
@@ -254,7 +256,9 @@ def test_guided_end_to_end_profile_pause_then_measure(
         .scalars()
         .all()
     )
-    assert len(responses) == settings.prompt_count
+    from tests.pipeline.conftest import geo_response_count
+
+    assert len(responses) == geo_response_count(dry_settings, settings.prompt_count)
 
 
 @pytest.fixture

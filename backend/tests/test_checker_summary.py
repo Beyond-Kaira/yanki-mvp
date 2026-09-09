@@ -254,8 +254,10 @@ def test_empty_responses_returns_empty_summary():
 # --- API level -----------------------------------------------------------------
 
 
-def _dry_run_settings() -> SimpleNamespace:
-    return SimpleNamespace(
+def _dry_run_settings():
+    from app.config import Settings
+
+    return Settings(
         dry_run=True,
         panel_engines="anthropic,openai,gemini,perplexity",
         prompt_count=10,
@@ -280,16 +282,21 @@ def test_checker_get_carries_presence_and_competitors(client, db_session):
     db_session.add(analysis)
     db_session.commit()
 
-    runner.run_pipeline(db_session, analysis.id, _dry_run_settings())
+    settings = _dry_run_settings()
+    runner.run_pipeline(db_session, analysis.id, settings)
 
     geo = client.get(f"/api/v1/analyses/{analysis.id}/geo").json()
 
+    from tests.pipeline.conftest import geo_response_count
+
+    expected_responses = geo_response_count(settings, 12)
+
     presence = geo["engine_presence"]
     assert presence is not None
-    # One llm_provider entry; totals match total_responses.
+    # One llm_provider entry until Phase 5 groups by model slug; totals match.
     assert len(presence) == 1
     assert presence[0]["engine"] == "openrouter"
-    assert sum(e["total"] for e in presence) == geo["total_responses"] == 12
+    assert sum(e["total"] for e in presence) == geo["total_responses"] == expected_responses
     assert sum(e["mentioned"] for e in presence) == geo["footprint_count"]
 
     competitors = geo["competitors_appeared"]

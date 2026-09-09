@@ -14,10 +14,11 @@ stores the total.
 from __future__ import annotations
 
 from decimal import Decimal
-from types import SimpleNamespace
 
+from app.config import Settings
 from app.pipeline.execute_measured import _record_cost, run_measured_execute
 from app.pipeline.llm_analytics_measured import run_measured_audit
+from tests.pipeline.conftest import geo_response_count
 from app.pipeline.simulated import run_simulated_audit
 from app.providers.base import ProviderResult
 from app.providers.tavily import DEFAULT_SEARCH_PRICE_USD, TavilyClient
@@ -191,17 +192,18 @@ def test_execute_persists_the_cost_onto_every_response_row(db_session, make_anal
         prompts.append(prompt)
     db_session.commit()
 
-    settings = SimpleNamespace(
+    settings = Settings(
         dry_run=True,
         geo_mode="measured",
         max_responses_per_job=60,
         openrouter_model="stub/model",
+        geo_llm_models="stub/model",
     )
 
     rows = run_measured_execute(db_session, analysis, prompts, settings)
     db_session.commit()
 
-    assert len(rows) == 2
+    assert len(rows) == geo_response_count(settings, len(prompts))
     # DRY_RUN spends nothing, and the column now carries that as a recorded fact.
     assert all(row.cost_usd == Decimal("0") for row in rows)
     assert all(isinstance(row.cost_usd, Decimal) for row in rows)

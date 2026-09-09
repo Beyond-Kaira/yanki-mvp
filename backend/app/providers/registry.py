@@ -65,6 +65,14 @@ def get_openrouter_models(settings) -> list[str]:
 
     if hasattr(settings, "geo_llm_model_list"):
         return settings.geo_llm_model_list()
+    raw = getattr(settings, "geo_llm_models", None)
+    if raw:
+        from app.config import parse_geo_llm_model_list
+
+        return parse_geo_llm_model_list(
+            str(raw),
+            fallback_model=getattr(settings, "openrouter_model", "openai/gpt-4o-mini"),
+        )
     # Transitional: duck-typed settings in older tests.
     return [getattr(settings, "openrouter_model", "openai/gpt-4o-mini")]
 

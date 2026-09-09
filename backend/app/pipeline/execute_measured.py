@@ -1,9 +1,9 @@
 """Step 4 — GEO execute: measured (Tavily) or simulated (OpenRouter-only).
 
 Mode is selected by ``settings.geo_mode`` (``measured`` | ``simulated``).
-Run metadata is stored once on ``analyses.geo_run``; each prompt becomes one
-``responses`` row with ``llm_provider=openrouter``, ``raw_text`` = answer text,
-``footprint`` = mentioned, ``audit`` = full record.
+Run metadata is stored once on ``analyses.geo_run``; each prompt × model slug
+becomes one ``responses`` row with ``llm_provider=openrouter``, ``model`` = slug,
+``raw_text`` = answer text, ``footprint`` = mentioned, ``audit`` = full record.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from app.pipeline import llm_analytics_measured as llm_analytics_measured_step
 from app.pipeline import simulated as simulated_step
 from app.pipeline.geo_run import LLM_PROVIDER, SEARCH_PROVIDER_TAVILY, build_geo_run
 from app.pipeline.llm_analytics_measured import SCHEMA_VERSION
+from app.providers.registry import get_openrouter_models, get_measured_llm
 from app.providers.tavily import owned_domains_from_url
 
 
@@ -42,22 +43,65 @@ def _geo_mode(settings) -> str:
     return mode
 
 
+def _persist_response_row(
+    session,
+    analysis,
+    prompt,
+    record: dict[str, Any],
+    *,
+    settings,
+    rows: list[Response],
+) -> Response:
+    mentioned = bool(record.get("mentioned"))
+    grounded = record.get("grounded_answer") or record.get("simulated_answer") or ""
+    if not grounded:
+        grounded = _error_text(record)
+    snippet = grounded[:200] if mentioned and grounded else None
+
+    model_name = record.get("model") or (
+        getattr(settings, "openrouter_model", "openai/gpt-4o-mini")
+        if not getattr(settings, "dry_run", True)
+        else "mock"
+    )
+
+    row = Response(
+        analysis_id=analysis.id,
+        prompt_id=prompt.id,
+        llm_provider=LLM_PROVIDER,
+        model=model_name,
+        raw_text=grounded,
+        footprint=mentioned,
+        matched_snippet=snippet,
+        audit=record,
+        cost_usd=_record_cost(record),
+    )
+    session.add(row)
+    rows.append(row)
+    session.flush()
+    session.add(
+        geo_records_step.geo_record_from_audit(
+            record,
+            analysis_id=analysis.id,
+            response_id=row.id,
+        )
+    )
+    session.flush()
+    return row
+
+
 def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Response]:
     """Run measured or simulated audits for every prompt; persist Response rows."""
     ctx = _brand_context(analysis.kyc, analysis.url)
     dry_run = bool(getattr(settings, "dry_run", True))
     mode = _geo_mode(settings)
+    model_slugs = get_openrouter_models(settings)
 
     llm = None
     search = None
     if not dry_run:
-        from app.providers.openrouter import OpenRouterProvider
         from app.providers.tavily import TavilyClient
 
-        llm = OpenRouterProvider(
-            api_key=getattr(settings, "open_router_key", ""),
-            model=getattr(settings, "openrouter_model", "openai/gpt-4o-mini"),
-        )
+        llm = get_measured_llm(settings, model=model_slugs[0])
         if mode == "measured":
             search = TavilyClient(
                 api_key=getattr(settings, "tavily_api_key", ""),
@@ -66,12 +110,9 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
 
     rows: list[Response] = []
     max_responses = int(getattr(settings, "max_responses_per_job", 60) or 60)
-    llm_model = (
-        getattr(settings, "openrouter_model", "openai/gpt-4o-mini") if not dry_run else "mock"
-    )
     analysis.geo_run = build_geo_run(
         mode=mode,
-        llm_model=llm_model,
+        llm_models=model_slugs,
         search_provider=SEARCH_PROVIDER_TAVILY if mode == "measured" else None,
         schema_version=SCHEMA_VERSION,
     )
@@ -92,52 +133,26 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
                 llm=llm,
                 dry_run=dry_run,
             )
-        else:
-            record = llm_analytics_measured_step.run_measured_audit(
-                brand=ctx["brand"],
-                prompt=prompt.text,
-                prompt_group=prompt.category or "general",
-                owned_domains=ctx["owned_domains"],
-                aliases=ctx["aliases"],
-                known_competitors=ctx["competitors"],
-                sector=ctx["sector"],
-                llm=llm,
-                search=search,
-                dry_run=dry_run,
-            )
-        mentioned = bool(record.get("mentioned"))
-        grounded = record.get("grounded_answer") or record.get("simulated_answer") or ""
-        if not grounded:
-            grounded = _error_text(record)
-        snippet = grounded[:200] if mentioned and grounded else None
+            _persist_response_row(session, analysis, prompt, record, settings=settings, rows=rows)
+            continue
 
-        model_name = record.get("model") or (
-            getattr(settings, "openrouter_model", "openai/gpt-4o-mini") if not dry_run else "mock"
+        records = llm_analytics_measured_step.run_measured_audits(
+            brand=ctx["brand"],
+            prompt=prompt.text,
+            prompt_group=prompt.category or "general",
+            owned_domains=ctx["owned_domains"],
+            aliases=ctx["aliases"],
+            known_competitors=ctx["competitors"],
+            sector=ctx["sector"],
+            llm=llm,
+            search=search,
+            dry_run=dry_run,
+            model_slugs=model_slugs,
         )
-
-        row = Response(
-            analysis_id=analysis.id,
-            prompt_id=prompt.id,
-            llm_provider=LLM_PROVIDER,
-            model=model_name,
-            raw_text=grounded,
-            footprint=mentioned,
-            matched_snippet=snippet,
-            audit=record,
-            cost_usd=_record_cost(record),
-        )
-        session.add(row)
-        rows.append(row)
-        session.flush()
-        # Columnar Kaira-record twin (responses.audit stays as opaque JSON).
-        session.add(
-            geo_records_step.geo_record_from_audit(
-                record,
-                analysis_id=analysis.id,
-                response_id=row.id,
-            )
-        )
-        session.flush()
+        for record in records:
+            if len(rows) >= max_responses:
+                break
+            _persist_response_row(session, analysis, prompt, record, settings=settings, rows=rows)
 
     return rows
 

@@ -106,7 +106,9 @@ def test_quick_pipeline_still_runs_execute(db_session, settings, monkeypatch):
         .scalars()
         .all()
     )
-    assert len(responses) == settings.prompt_count
+    from tests.pipeline.conftest import geo_response_count
+
+    assert len(responses) == geo_response_count(settings, settings.prompt_count)
 
 
 def test_worker_leaves_guided_run_awaiting_review(worker_session_factory, monkeypatch):

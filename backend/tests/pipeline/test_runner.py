@@ -5,6 +5,9 @@ from sqlalchemy import select
 
 from app.pipeline.errors import PipelineError
 from app.providers.base import ProviderResult
+from app.providers.registry import get_openrouter_models
+
+from tests.pipeline.conftest import geo_response_count
 
 
 def _stub_discovery(monkeypatch, text: str = "Acme builds warehouse robots and tools.") -> None:
@@ -44,24 +47,27 @@ def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, m
     ).scalars().all()
     assert len(prompts) == settings.prompt_count
 
-    # Responses: one measured audit per prompt.
+    # Responses: one row per prompt × model slug.
+    expected_responses = geo_response_count(settings, settings.prompt_count)
     responses = db_session.execute(
         select(models.Response).where(models.Response.analysis_id == analysis.id)
     ).scalars().all()
-    assert len(responses) == settings.prompt_count
+    assert len(responses) == expected_responses
     assert result.total_responses == len(responses)
     assert all(response.llm_provider == "openrouter" for response in responses)
+    assert len({response.model for response in responses}) == len(get_openrouter_models(settings))
     assert all(isinstance(response.audit, dict) for response in responses)
     assert result.geo_run is not None
     assert result.geo_run["mode"] == "measured"
     assert result.geo_run["llm"]["provider"] == "openrouter"
+    assert result.geo_run["llm"]["models"] == get_openrouter_models(settings)
 
     geo_rows = db_session.execute(
         select(models.GeoRecord).where(models.GeoRecord.analysis_id == analysis.id)
     ).scalars().all()
-    assert len(geo_rows) == settings.prompt_count
+    assert len(geo_rows) == expected_responses
     assert result.citation_summary is not None
-    assert result.citation_summary["record_count"] == settings.prompt_count
+    assert result.citation_summary["record_count"] == expected_responses
 
     # Footprint recorded on every response; composite score in 0–100.
     assert all(response.footprint is not None for response in responses)

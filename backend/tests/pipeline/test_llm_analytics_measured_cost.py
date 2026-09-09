@@ -17,7 +17,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from app.pipeline.execute_measured import _record_cost, run_measured_execute
-from app.pipeline.measured import run_measured_audit
+from app.pipeline.llm_analytics_measured import run_measured_audit
 from app.pipeline.simulated import run_simulated_audit
 from app.providers.base import ProviderResult
 from app.providers.tavily import DEFAULT_SEARCH_PRICE_USD, TavilyClient

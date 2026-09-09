@@ -13,10 +13,10 @@ from typing import Any
 
 from app.db.models import Response
 from app.pipeline import geo_records as geo_records_step
-from app.pipeline import measured as measured_step
+from app.pipeline import llm_analytics_measured as llm_analytics_measured_step
 from app.pipeline import simulated as simulated_step
 from app.pipeline.geo_run import LLM_PROVIDER, SEARCH_PROVIDER_TAVILY, build_geo_run
-from app.pipeline.measured import SCHEMA_VERSION
+from app.pipeline.llm_analytics_measured import SCHEMA_VERSION
 from app.providers.tavily import owned_domains_from_url
 
 
@@ -93,7 +93,7 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
                 dry_run=dry_run,
             )
         else:
-            record = measured_step.run_measured_audit(
+            record = llm_analytics_measured_step.run_measured_audit(
                 brand=ctx["brand"],
                 prompt=prompt.text,
                 prompt_group=prompt.category or "general",

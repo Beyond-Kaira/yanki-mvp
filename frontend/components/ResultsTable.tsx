@@ -64,7 +64,7 @@ export default function ResultsTable({ responses, prompts }: ResultsTableProps) 
               <Fragment key={response.id}>
                 <tr className={zebra}>
                   <td className="px-4 py-3 font-medium text-surface-foreground">
-                    {engineLabel(response.engine)}
+                    {engineLabel(response.llm_provider)}
                   </td>
                   <td className="px-4 py-3 text-surface-subtle">
                     <span className="block truncate" title={response.model}>

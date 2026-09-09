@@ -17,7 +17,7 @@ const groups: QuestionGroup[] = [
     responses: [
       {
         id: 'r1',
-        engine: 'anthropic',
+        llm_provider: 'anthropic',
         model: 'mock',
         footprint: true,
         matched_snippet: 'Acme is a strong option.',
@@ -27,7 +27,7 @@ const groups: QuestionGroup[] = [
       },
       {
         id: 'r2',
-        engine: 'openai',
+        llm_provider: 'openai',
         model: 'mock',
         footprint: false,
         matched_snippet: null,

@@ -19,7 +19,7 @@ export function runEngineIds(
   reported?: EnginePresence[] | null,
 ): string[] {
   const seen = new Set(PANEL_ENGINE_IDS)
-  for (const response of responses) seen.add(response.engine)
+  for (const response of responses) seen.add(response.llm_provider)
   for (const stat of reported ?? []) seen.add(stat.engine)
   return [...seen]
 }
@@ -54,10 +54,10 @@ export function deriveEnginePresence(
     }
   } else {
     for (const response of responses) {
-      const stat = byEngine.get(response.engine) ?? { mentioned: 0, total: 0 }
+      const stat = byEngine.get(response.llm_provider) ?? { mentioned: 0, total: 0 }
       stat.total += 1
       if (response.footprint) stat.mentioned += 1
-      byEngine.set(response.engine, stat)
+      byEngine.set(response.llm_provider, stat)
     }
   }
 

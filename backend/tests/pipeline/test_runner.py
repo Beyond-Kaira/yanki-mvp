@@ -7,13 +7,20 @@ from app.pipeline.errors import PipelineError
 from app.providers.base import ProviderResult
 
 
-def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, monkeypatch):
-    from app.pipeline import discovery, runner
+def _stub_discovery(monkeypatch, text: str = "Acme builds warehouse robots and tools.") -> None:
+    from app.pipeline import discovery
 
-    # Avoid real network: hand discovery a canned page.
     monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
+        discovery,
+        "discover_detailed",
+        lambda url: discovery.CrawlResult(text=text, pages=()),
     )
+
+
+def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, monkeypatch):
+    from app.pipeline import runner
+
+    _stub_discovery(monkeypatch)
 
     analysis = models.Analysis(url="https://example.com", status="running")
     db_session.add(analysis)
@@ -43,8 +50,11 @@ def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, m
     ).scalars().all()
     assert len(responses) == settings.prompt_count
     assert result.total_responses == len(responses)
-    assert all(response.engine == "measured" for response in responses)
+    assert all(response.llm_provider == "openrouter" for response in responses)
     assert all(isinstance(response.audit, dict) for response in responses)
+    assert result.geo_run is not None
+    assert result.geo_run["mode"] == "measured"
+    assert result.geo_run["llm"]["provider"] == "openrouter"
 
     geo_rows = db_session.execute(
         select(models.GeoRecord).where(models.GeoRecord.analysis_id == analysis.id)
@@ -84,17 +94,18 @@ class _CannedKycProvider:
 def test_useless_profile_never_reaches_the_paid_fan_out(
     db_session, models, settings, monkeypatch, payload
 ):
-    from app.pipeline import discovery, runner
-    from app.pipeline import execute as execute_step
+    from app.pipeline import discovery, execute_measured, runner
     from app.providers import registry
 
-    monkeypatch.setattr(discovery, "discover", lambda url: "Some site text.")
+    _stub_discovery(monkeypatch, text="Some site text.")
     monkeypatch.setattr(
         registry, "get_analysis_provider", lambda _settings: _CannedKycProvider(payload)
     )
     calls: list[object] = []
     monkeypatch.setattr(
-        execute_step, "run_execute", lambda *args, **kwargs: calls.append(args)
+        execute_measured,
+        "run_measured_execute",
+        lambda *args, **kwargs: calls.append(args) or [],
     )
 
     analysis = models.Analysis(url="https://example.com", status="running")
@@ -116,11 +127,9 @@ def test_rerun_replaces_rows_and_does_not_double_counts(
 ):
     # NFR-3: a stale-claim re-run must replace prior partial rows, not accumulate
     # them (else total_responses / footprint_count double).
-    from app.pipeline import discovery, runner
+    from app.pipeline import runner
 
-    monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
-    )
+    _stub_discovery(monkeypatch)
 
     analysis = models.Analysis(url="https://example.com", status="running")
     db_session.add(analysis)
@@ -167,11 +176,9 @@ def test_serp_is_dark_unless_switched_on(db_session, models, settings, monkeypat
     NULL is the honest record of "we did not measure", and it is what every row
     written before this feature existed already says.
     """
-    from app.pipeline import discovery, runner
+    from app.pipeline import runner
 
-    monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
-    )
+    _stub_discovery(monkeypatch)
 
     analysis = models.Analysis(url="https://example.com", status="running")
     db_session.add(analysis)
@@ -190,11 +197,9 @@ def test_serp_is_dark_unless_switched_on(db_session, models, settings, monkeypat
 def test_serp_runs_in_the_footprint_step_without_touching_the_progress_contract(
     db_session, models, settings, monkeypatch
 ):
-    from app.pipeline import discovery, runner
+    from app.pipeline import runner
 
-    monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
-    )
+    _stub_discovery(monkeypatch)
     settings.serp_enabled = True  # DRY_RUN -> the deterministic mock source
     settings.serp_query_count = 4
 
@@ -225,13 +230,11 @@ def test_a_serp_outage_costs_the_number_and_not_the_job(
     db_session, models, settings, monkeypatch
 ):
     """The fail-open guarantee: SERP cannot fail a run that already cost money."""
-    from app.pipeline import discovery, runner
+    from app.pipeline import runner
     from app.serp.base import SerpUnavailable
     from app.serp.mock import MockSerpSource
 
-    monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
-    )
+    _stub_discovery(monkeypatch)
 
     def _down(self, query):
         raise SerpUnavailable("instance is down")
@@ -255,11 +258,9 @@ def test_a_serp_outage_costs_the_number_and_not_the_job(
 def test_a_rerun_replaces_serp_checks_rather_than_accumulating_them(
     db_session, models, settings, monkeypatch
 ):
-    from app.pipeline import discovery, runner
+    from app.pipeline import runner
 
-    monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
-    )
+    _stub_discovery(monkeypatch)
     settings.serp_enabled = True
     settings.serp_query_count = 3
 
@@ -286,11 +287,9 @@ def test_a_rerun_with_serp_switched_off_leaves_no_score_without_evidence(
     an empty evidence table behind it — a number with no working shown, which is
     the one thing this feature exists not to produce.
     """
-    from app.pipeline import discovery, runner
+    from app.pipeline import runner
 
-    monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
-    )
+    _stub_discovery(monkeypatch)
     settings.serp_enabled = True
     settings.serp_query_count = 3
 

@@ -37,8 +37,8 @@ _MOCK_KYC = {"company": "Yanki Demo Co", "aliases": ["Yanki Demo Co", "Yanki"]}
 _FILLERS = {"Acme", "Globex", "Initech", "Umbrella", "Stark"}
 
 
-def _resp(engine: str, raw_text: str, footprint: bool | None) -> SimpleNamespace:
-    return SimpleNamespace(engine=engine, raw_text=raw_text, footprint=footprint)
+def _resp(llm_provider: str, raw_text: str, footprint: bool | None) -> SimpleNamespace:
+    return SimpleNamespace(llm_provider=llm_provider, raw_text=raw_text, footprint=footprint)
 
 
 def _mock_responses() -> list[SimpleNamespace]:
@@ -286,9 +286,9 @@ def test_checker_get_carries_presence_and_competitors(client, db_session):
 
     presence = geo["engine_presence"]
     assert presence is not None
-    # Measured path: one engine entry; totals match total_responses.
+    # One llm_provider entry; totals match total_responses.
     assert len(presence) == 1
-    assert presence[0]["engine"] == "measured"
+    assert presence[0]["engine"] == "openrouter"
     assert sum(e["total"] for e in presence) == geo["total_responses"] == 12
     assert sum(e["mentioned"] for e in presence) == geo["footprint_count"]
 

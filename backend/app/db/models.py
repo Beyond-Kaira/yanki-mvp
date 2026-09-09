@@ -46,6 +46,11 @@ class Analysis(Base):
             "created_at",
         ),
         sa.Index("ix_analyses_created_by_user_id", "created_by_user_id"),
+        sa.Index(
+            "ix_analyses_geo_run_mode",
+            sa.text("(geo_run->>'mode')"),
+            postgresql_where=sa.text("geo_run IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
@@ -129,6 +134,10 @@ class Analysis(Base):
     citation_summary: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+    # Run-level GEO metadata (mode, llm, search) — ADR-51. Null until step 4.
+    geo_run: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -188,7 +197,7 @@ class Response(Base):
     prompt_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("prompts.id", ondelete="CASCADE"), nullable=False
     )
-    engine: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    llm_provider: Mapped[str] = mapped_column(sa.Text, nullable=False)
     model: Mapped[str] = mapped_column(sa.Text, nullable=False)
     raw_text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     footprint: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
@@ -309,8 +318,6 @@ class GeoRecord(Base):
     prompt: Mapped[str] = mapped_column(sa.Text, nullable=False)
     prompt_group: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     intent: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    measurement_mode: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    search_provider: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     search_results: Mapped[list[Any] | dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
@@ -352,7 +359,6 @@ class GeoRecord(Base):
     content_improvement_opportunities: Mapped[list[Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
-    model: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     generated_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     error: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
     schema_version: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
@@ -982,20 +988,6 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=True,
-    )
-
-
-class LlmCache(Base):
-    __tablename__ = "llm_cache"
-
-    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
-    cache_key: Mapped[str] = mapped_column(sa.Text, nullable=False, unique=True)
-    engine: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    model: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    response_text: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    cost_usd: Mapped[Decimal] = mapped_column(sa.Numeric(10, 6), nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False, default=_utcnow
     )
 
 

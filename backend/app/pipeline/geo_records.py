@@ -63,8 +63,6 @@ def geo_record_from_audit(
         prompt=str(record.get("prompt") or ""),
         prompt_group=record.get("prompt_group") or None,
         intent=record.get("intent") or None,
-        measurement_mode=record.get("measurement_mode") or None,
-        search_provider=record.get("search_provider") or None,
         search_results=record.get("search_results"),
         search_visibility=_as_dict(record.get("search_visibility")),
         grounded_answer=record.get("grounded_answer") or None,
@@ -88,7 +86,6 @@ def geo_record_from_audit(
         content_improvement_opportunities=_as_list(
             record.get("content_improvement_opportunities")
         ),
-        model=record.get("model") or None,
         generated_at=_parse_generated_at(record.get("generated_at")),
         error=bool(record.get("error")) if "error" in record else None,
         schema_version=record.get("schema_version") or None,

@@ -43,7 +43,7 @@ def done_analysis(db_session, make_analysis):
         Response(
             analysis_id=analysis.id,
             prompt_id=prompt.id,
-            engine="measured",
+            llm_provider="openrouter",
             model="gpt-test",
             raw_text="Acme is strong.",
             footprint=True,
@@ -104,7 +104,7 @@ def test_geo_slice_returns_measured_payload(client, done_analysis):
     assert geo["geo_score"] == 72.5
     assert geo["footprint_count"] == 1
     assert len(geo["responses"]) == 1
-    assert geo["responses"][0]["engine"] == "measured"
+    assert geo["responses"][0]["llm_provider"] == "openrouter"
     assert geo["interventions"][0]["id"] == "fix-meta"
 
 

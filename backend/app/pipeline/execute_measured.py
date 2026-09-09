@@ -1,8 +1,9 @@
 """Step 4 — GEO execute: measured (Tavily) or simulated (OpenRouter-only).
 
 Mode is selected by ``settings.geo_mode`` (``measured`` | ``simulated``).
-Each prompt becomes one ``responses`` row with ``engine`` matching the mode,
-``raw_text`` = answer text, ``footprint`` = mentioned, ``audit`` = full record.
+Run metadata is stored once on ``analyses.geo_run``; each prompt becomes one
+``responses`` row with ``llm_provider=openrouter``, ``raw_text`` = answer text,
+``footprint`` = mentioned, ``audit`` = full record.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from app.db.models import Response
 from app.pipeline import geo_records as geo_records_step
 from app.pipeline import measured as measured_step
 from app.pipeline import simulated as simulated_step
+from app.pipeline.geo_run import LLM_PROVIDER, SEARCH_PROVIDER_TAVILY, build_geo_run
+from app.pipeline.measured import SCHEMA_VERSION
 from app.providers.tavily import owned_domains_from_url
 
 
@@ -63,6 +66,16 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
 
     rows: list[Response] = []
     max_responses = int(getattr(settings, "max_responses_per_job", 60) or 60)
+    llm_model = (
+        getattr(settings, "openrouter_model", "openai/gpt-4o-mini") if not dry_run else "mock"
+    )
+    analysis.geo_run = build_geo_run(
+        mode=mode,
+        llm_model=llm_model,
+        search_provider=SEARCH_PROVIDER_TAVILY if mode == "measured" else None,
+        schema_version=SCHEMA_VERSION,
+    )
+    session.flush()
 
     for prompt in prompt_rows:
         if len(rows) >= max_responses:
@@ -79,7 +92,6 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
                 llm=llm,
                 dry_run=dry_run,
             )
-            engine = "simulated"
         else:
             record = measured_step.run_measured_audit(
                 brand=ctx["brand"],
@@ -93,8 +105,6 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
                 search=search,
                 dry_run=dry_run,
             )
-            engine = "measured"
-
         mentioned = bool(record.get("mentioned"))
         grounded = record.get("grounded_answer") or record.get("simulated_answer") or ""
         if not grounded:
@@ -108,7 +118,7 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
         row = Response(
             analysis_id=analysis.id,
             prompt_id=prompt.id,
-            engine=engine,
+            llm_provider=LLM_PROVIDER,
             model=model_name,
             raw_text=grounded,
             footprint=mentioned,

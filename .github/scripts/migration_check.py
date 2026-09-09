@@ -66,7 +66,7 @@ def _snapshot(url: str) -> dict:
                         for c in inspector.get_columns(table)
                     ),
                     "indexes": sorted(
-                        f"{i['name']}:{','.join(i['column_names'] or [])}"
+                        f"{i['name']}:{','.join(c for c in (i['column_names'] or []) if c) or 'expr'}"
                         for i in inspector.get_indexes(table)
                     ),
                     "rows": int(count),

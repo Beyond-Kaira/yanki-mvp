@@ -12,7 +12,7 @@ import { samplePrompt } from './analysisMocks'
 function response(overrides: Partial<AnalysisResponse>): AnalysisResponse {
   return {
     id: 'r1',
-    engine: 'openai',
+    llm_provider: 'openai',
     model: 'mock',
     footprint: false,
     matched_snippet: null,
@@ -39,16 +39,16 @@ describe('runEngineIds', () => {
   })
 
   it('includes an engine outside the panel that did answer', () => {
-    expect(runEngineIds([response({ engine: 'mistral' })])).toContain('mistral')
+    expect(runEngineIds([response({ llm_provider: 'mistral' })])).toContain('mistral')
   })
 })
 
 describe('deriveEnginePresence', () => {
   it('counts mentions per engine', () => {
     const presence = deriveEnginePresence([
-      response({ id: 'a', engine: 'openai', footprint: true }),
-      response({ id: 'b', engine: 'openai', footprint: false }),
-      response({ id: 'c', engine: 'anthropic', footprint: true }),
+      response({ id: 'a', llm_provider: 'openai', footprint: true }),
+      response({ id: 'b', llm_provider: 'openai', footprint: false }),
+      response({ id: 'c', llm_provider: 'anthropic', footprint: true }),
     ])
 
     expect(presence).toContainEqual({
@@ -65,7 +65,7 @@ describe('deriveEnginePresence', () => {
 
   it('keeps an engine that returned nothing instead of dropping it', () => {
     const presence = deriveEnginePresence([
-      response({ id: 'a', engine: 'openai', footprint: true }),
+      response({ id: 'a', llm_provider: 'openai', footprint: true }),
     ])
 
     // A silent provider must not shrink the denominator: it reports 0 of 0.
@@ -81,7 +81,7 @@ describe('deriveEnginePresence', () => {
     // What the checker route gets: the backend aggregate walks the responses it
     // has, so an engine that answered nothing is absent from it entirely.
     const presence = deriveEnginePresence(
-      [response({ id: 'a', engine: 'openai', footprint: true })],
+      [response({ id: 'a', llm_provider: 'openai', footprint: true })],
       [{ engine: 'openai', mentioned: 7, total: 12 }],
     )
 
@@ -103,7 +103,7 @@ describe('deriveEnginePresence', () => {
 
   it('treats a null footprint as not mentioned', () => {
     const presence = deriveEnginePresence([
-      response({ id: 'a', engine: 'gemini', footprint: null }),
+      response({ id: 'a', llm_provider: 'gemini', footprint: null }),
     ])
 
     expect(presence).toContainEqual({
@@ -117,12 +117,12 @@ describe('deriveEnginePresence', () => {
 describe('groupByQuestion', () => {
   it('groups responses under their prompt, in prompt order', () => {
     const groups = groupByQuestion(prompts, [
-      response({ id: 'a', prompt_id: 'p2', engine: 'openai', footprint: true }),
-      response({ id: 'b', prompt_id: 'p1', engine: 'openai', footprint: true }),
+      response({ id: 'a', prompt_id: 'p2', llm_provider: 'openai', footprint: true }),
+      response({ id: 'b', prompt_id: 'p1', llm_provider: 'openai', footprint: true }),
       response({
         id: 'c',
         prompt_id: 'p1',
-        engine: 'anthropic',
+        llm_provider: 'anthropic',
         footprint: false,
       }),
     ])

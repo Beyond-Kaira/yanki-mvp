@@ -359,7 +359,7 @@ class ResponseOut(BaseModel):
 
     id: uuid.UUID
     prompt_id: uuid.UUID
-    engine: str
+    llm_provider: str
     model: str
     raw_text: str
     footprint: bool | None
@@ -380,8 +380,6 @@ class GeoRecordOut(BaseModel):
     prompt: str
     prompt_group: str | None = None
     intent: str | None = None
-    measurement_mode: str | None = None
-    search_provider: str | None = None
     search_results: list[Any] | dict[str, Any] | None = None
     search_visibility: dict[str, Any] | None = None
     grounded_answer: str | None = None
@@ -401,7 +399,6 @@ class GeoRecordOut(BaseModel):
     entities_associated_with_brand: list[Any] | None = None
     sentiment: str | None = None
     content_improvement_opportunities: list[Any] | None = None
-    model: str | None = None
     generated_at: datetime | None = None
     error: bool | None = None
     schema_version: str | None = None

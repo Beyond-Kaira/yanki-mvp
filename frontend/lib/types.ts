@@ -2148,14 +2148,10 @@ export interface components {
             id: string;
             /** Intent */
             intent?: string | null;
-            /** Measurement Mode */
-            measurement_mode?: string | null;
             /** Mention Context */
             mention_context?: string | null;
             /** Mentioned */
             mentioned?: boolean | null;
-            /** Model */
-            model?: string | null;
             /** Owned Domains */
             owned_domains?: unknown[] | null;
             /** Prompt */
@@ -2177,8 +2173,6 @@ export interface components {
             response_id: string;
             /** Schema Version */
             schema_version?: string | null;
-            /** Search Provider */
-            search_provider?: string | null;
             /** Search Results */
             search_results?: unknown[] | {
                 [key: string]: unknown;
@@ -2678,8 +2672,6 @@ export interface components {
             } | null;
             /** Cost Usd */
             cost_usd: number;
-            /** Engine */
-            engine: string;
             /** Footprint */
             footprint: boolean | null;
             /**
@@ -2687,6 +2679,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Llm Provider */
+            llm_provider: string;
             /** Matched Snippet */
             matched_snippet: string | null;
             /** Model */

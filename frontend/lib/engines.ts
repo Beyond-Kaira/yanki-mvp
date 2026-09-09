@@ -22,6 +22,7 @@ const ENGINE_LABELS: Record<string, string> = {
   openai: 'ChatGPT',
   gemini: 'Gemini',
   perplexity: 'Perplexity',
+  openrouter: 'OpenRouter',
 }
 
 // Vendor-qualified names: used where the vendor IS the information, i.e. the
@@ -31,6 +32,7 @@ const ENGINE_VENDOR_LABELS: Record<string, string> = {
   openai: 'OpenAI (GPT)',
   gemini: 'Google (Gemini)',
   perplexity: 'Perplexity',
+  openrouter: 'OpenRouter',
 }
 
 // An id these maps have not been taught yet falls back to the raw value:

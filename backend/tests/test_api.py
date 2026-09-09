@@ -107,7 +107,7 @@ def test_get_done_analysis_thin_envelope_carries_summary_columns(client, db_sess
             Response(
                 analysis_id=analysis.id,
                 prompt_id=prompt.id,
-                engine="anthropic",
+                llm_provider="anthropic",
                 model="claude",
                 raw_text="Acme is a strong option.",
                 footprint=True,
@@ -117,7 +117,7 @@ def test_get_done_analysis_thin_envelope_carries_summary_columns(client, db_sess
             Response(
                 analysis_id=analysis.id,
                 prompt_id=prompt.id,
-                engine="openai",
+                llm_provider="openai",
                 model="gpt",
                 raw_text="Plenty of vendors exist.",
                 footprint=False,
@@ -147,7 +147,7 @@ def test_get_done_analysis_thin_envelope_carries_summary_columns(client, db_sess
     assert prompts[0]["id"] == str(prompt.id)
     geo = client.get(f"/api/v1/analyses/{analysis_id}/geo").json()
     assert len(geo["responses"]) == 2
-    hit = next(r for r in geo["responses"] if r["engine"] == "anthropic")
+    hit = next(r for r in geo["responses"] if r["llm_provider"] == "anthropic")
     assert hit["cost_usd"] == 0.001234
 
 

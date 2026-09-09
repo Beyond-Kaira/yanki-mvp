@@ -53,7 +53,11 @@ def test_pipeline_persists_geo_records_and_citation_summary(
     from app.pipeline import discovery, runner
 
     monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
+        discovery,
+        "discover_detailed",
+        lambda url: discovery.CrawlResult(
+            text="Acme builds warehouse robots and tools.", pages=()
+        ),
     )
 
     analysis = models.Analysis(url="https://example.com", status="running")

@@ -140,7 +140,7 @@ describe('AnalysisPage accessibility', () => {
           responses: [
             {
               id: 'r1',
-              engine: 'openai',
+              llm_provider: 'openai',
               model: 'gpt-4o-mini',
               footprint: true,
               matched_snippet: 'Acme is a strong option.',

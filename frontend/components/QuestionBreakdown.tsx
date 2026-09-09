@@ -154,7 +154,7 @@ export default function QuestionBreakdown({
                     <ul className="flex flex-wrap gap-2">
                       {engines.map((engine) => {
                         const response = responses.find(
-                          (row) => row.engine === engine,
+                          (row) => row.llm_provider === engine,
                         )
                         const named = Boolean(response?.footprint)
                         const answered = Boolean(response)
@@ -214,7 +214,7 @@ export default function QuestionBreakdown({
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 space-y-1">
                                 <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-surface-foreground">
-                                  {engineLabel(response.engine)}
+                                  {engineLabel(response.llm_provider)}
                                   <span className="font-mono text-xs font-normal text-surface-subtle">
                                     {response.model}
                                   </span>

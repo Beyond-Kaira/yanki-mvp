@@ -2135,17 +2135,6 @@
             ],
             "title": "Intent"
           },
-          "measurement_mode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Measurement Mode"
-          },
           "mention_context": {
             "anyOf": [
               {
@@ -2167,17 +2156,6 @@
               }
             ],
             "title": "Mentioned"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
           },
           "owned_domains": {
             "anyOf": [
@@ -2255,17 +2233,6 @@
               }
             ],
             "title": "Schema Version"
-          },
-          "search_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Search Provider"
           },
           "search_results": {
             "anyOf": [
@@ -3543,10 +3510,6 @@
             "title": "Cost Usd",
             "type": "number"
           },
-          "engine": {
-            "title": "Engine",
-            "type": "string"
-          },
           "footprint": {
             "anyOf": [
               {
@@ -3561,6 +3524,10 @@
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "llm_provider": {
+            "title": "Llm Provider",
             "type": "string"
           },
           "matched_snippet": {
@@ -3591,7 +3558,7 @@
         "required": [
           "id",
           "prompt_id",
-          "engine",
+          "llm_provider",
           "model",
           "raw_text",
           "footprint",

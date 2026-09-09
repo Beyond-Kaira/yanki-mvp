@@ -146,7 +146,7 @@ _POSSESSIVE_RE = re.compile(r"['’]s?$")
 class ResponseLike(Protocol):
     """The duck-typed shape this helper reads off each response row."""
 
-    engine: str
+    llm_provider: str
     footprint: bool | None
     raw_text: str
 
@@ -254,7 +254,7 @@ def _engine_presence(responses: list[ResponseLike]) -> list[EnginePresenceStat]:
     totals: dict[str, int] = {}
     mentioned: dict[str, int] = {}
     for response in responses:
-        engine = response.engine
+        engine = response.llm_provider
         totals[engine] = totals.get(engine, 0) + 1
         if response.footprint:
             mentioned[engine] = mentioned.get(engine, 0) + 1

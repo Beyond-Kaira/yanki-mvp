@@ -74,7 +74,7 @@ def test_checker_pipeline_walks_all_steps_without_crawl(
     )
     assert len(responses) == 12
     assert result.total_responses == 12
-    assert all(r.engine == "measured" for r in responses)
+    assert all(r.llm_provider == "openrouter" for r in responses)
     assert all(isinstance(r.audit, dict) for r in responses)
 
     # Footprint recorded on every response; composite GEO in 0–100.

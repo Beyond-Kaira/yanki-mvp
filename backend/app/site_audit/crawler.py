@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import time
 import urllib.robotparser
 import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
 from collections.abc import Callable
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -20,9 +21,16 @@ from app.net_guard import is_public_url
 from app.site_audit.models import CrawlConfig, CrawledPage
 from app.site_audit.parser import extract_links
 
+logger = logging.getLogger("yanki.site_audit.crawler")
+
 PageCallback = Callable[[CrawledPage, int], None]
 DiscoveryCallback = Callable[[int], None]
 HeartbeatCallback = Callable[[], None]
+
+# Where the consecutive-failure backoff starts doubling from. Deliberately not
+# derived from ``crawl_delay_seconds``: an operator who sets that to 0 is saying
+# "do not be slow against a healthy site", not "hammer one that is failing".
+_FAILURE_BACKOFF_SEED_SECONDS = 1.0
 
 _HTML_CONTENT_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _BLOCKED_RESOURCE_TYPES = frozenset({"image", "media", "font"})
@@ -107,8 +115,7 @@ def _normalize_http_url(value: str, *, exclude_binary: bool) -> str | None:
     query_pairs = [
         (key, item)
         for key, item in parse_qsl(parsed.query, keep_blank_values=True)
-        if key.lower() not in _TRACKING_QUERY_KEYS
-        and not key.lower().startswith("utm_")
+        if key.lower() not in _TRACKING_QUERY_KEYS and not key.lower().startswith("utm_")
     ]
     query = urlencode(sorted(query_pairs))
     return urlunsplit((scheme, f"{formatted_host}{port_suffix}", path, query, ""))
@@ -123,9 +130,7 @@ def _scope_key(url: str) -> tuple[str, int | None]:
     host = (parsed.hostname or "").lower().rstrip(".")
     host = host[4:] if host.startswith("www.") else host
     default_port = 443 if parsed.scheme.lower() == "https" else 80
-    custom_port = (
-        parsed.port if parsed.port is not None and parsed.port != default_port else None
-    )
+    custom_port = parsed.port if parsed.port is not None and parsed.port != default_port else None
     return host, custom_port
 
 
@@ -425,6 +430,66 @@ class _NavigationBlock:
     robots: _RobotsReadResult
 
 
+# How long one crawl reuses a host's public/private verdict. Allows are held
+# long enough to cover a page and everything it pulls; denials only briefly —
+# see the class docstring for why the two are not symmetrical.
+_HOST_ALLOW_TTL_SECONDS = 300.0
+_HOST_DENY_TTL_SECONDS = 30.0
+_HOST_CACHE_MAX_ENTRIES = 512
+
+
+@dataclass
+class _HostAllowCache:
+    """Per-crawl memo for the public-host guard, keyed by hostname.
+
+    ``is_public_host`` resolves through ``socket.getaddrinfo``, which **blocks**.
+    The route handler runs on Playwright's dispatcher, so every uncached lookup
+    stalls all browser protocol traffic — including the navigation the crawler
+    is currently timing out. One page pulls dozens of subresources off a handful
+    of hosts, and without this the guard paid that stall once per *request* for
+    an answer it already had. The cost is invisible against a warm local
+    resolver and decisive on a contended box, which is how a crawl that is
+    healthy on a laptop times out in production.
+
+    Allows and denials are cached differently, on purpose:
+
+    * An allow is cheap to trust. It is the same answer the uncached check
+      produced moments earlier, and this guard was never DNS-rebinding
+      protection to begin with — Python and Chromium resolve independently, so
+      a host that changes answers mid-crawl already defeated it (see
+      ``docs/site-audit-integration.md``).
+    * A denial is held briefly, because ``is_public_host`` returns False both
+      for a genuinely private address *and* for a resolver that merely timed
+      out. Holding the second for long would turn one DNS blip into a page that
+      cannot load; not holding it at all makes a dead third-party host cost a
+      full resolver timeout on every subresource that references it.
+
+    A miss is always safe: correctness never depends on a hit, which is why the
+    bound below simply drops the memo instead of evicting carefully.
+    """
+
+    allowed_until: dict[str, float] = field(default_factory=dict)
+    denied_until: dict[str, float] = field(default_factory=dict)
+
+    def is_public(self, url: str) -> bool:
+        host = (urlsplit(url).hostname or "").lower()
+        if not host:
+            return is_public_url(url)
+
+        now = time.monotonic()
+        if self.allowed_until.get(host, 0.0) > now:
+            return True
+        if self.denied_until.get(host, 0.0) > now:
+            return False
+
+        allowed = is_public_url(url)
+        cache = self.allowed_until if allowed else self.denied_until
+        if len(cache) >= _HOST_CACHE_MAX_ENTRIES:
+            cache.clear()
+        cache[host] = now + (_HOST_ALLOW_TTL_SECONDS if allowed else _HOST_DENY_TTL_SECONDS)
+        return allowed
+
+
 def _route_browser_request(
     route: Route,
     request: Request,
@@ -434,6 +499,7 @@ def _route_browser_request(
     robots_cache: dict[str, _RobotsReadResult],
     robots_user_agent: str,
     max_robots_bytes: int,
+    host_allow_cache: _HostAllowCache,
     on_navigation_blocked: Callable[[_NavigationBlock], None],
 ) -> None:
     if request.resource_type in _BLOCKED_RESOURCE_TYPES:
@@ -443,16 +509,14 @@ def _route_browser_request(
         route.abort("blockedbyclient")
         return
 
-    is_main_navigation = request.is_navigation_request() and (
-        request.frame.parent_frame is None
-    )
+    is_main_navigation = request.is_navigation_request() and (request.frame.parent_frame is None)
     if is_main_navigation and not _same_scope(request.url, scope_key):
         route.abort("blockedbyclient")
         return
 
     # Application-level defence in depth. Resolution and connection are still
     # separate operations; production egress isolation remains unresolved.
-    if not is_public_url(request.url):
+    if not host_allow_cache.is_public(request.url):
         route.abort("blockedbyclient")
         return
 
@@ -484,6 +548,30 @@ def _robots_failure_message(result: _RobotsReadResult) -> str:
         f"HTTP {result.status_code}" if result.status_code is not None else "unknown error"
     )
     return f"robots.txt could not be read safely ({result.status}): {detail}"
+
+
+def _next_delay_seconds(
+    base_delay_seconds: float,
+    consecutive_failures: int,
+    backoff_max_seconds: float,
+) -> float:
+    """How long to wait before the next navigation.
+
+    Never below ``base_delay_seconds``: that is the politeness floor, raised to
+    the target's own robots.txt ``Crawl-delay`` where it declares one, and a run
+    of failures is not permission to ignore it. Above that floor the wait
+    doubles per consecutive failure up to ``backoff_max_seconds``, because
+    re-asking at full speed is the worst available answer to "the target is not
+    responding" — it grows the very load that produced the timeouts.
+    """
+
+    if consecutive_failures <= 0:
+        return base_delay_seconds
+    backoff = min(
+        _FAILURE_BACKOFF_SEED_SECONDS * 2 ** (consecutive_failures - 1),
+        backoff_max_seconds,
+    )
+    return max(base_delay_seconds, backoff)
 
 
 def _is_html_response(headers: dict[str, str]) -> bool:
@@ -536,6 +624,7 @@ def crawl_site(
         on_discovery(len(frontier.visited))
 
     robots_cache = {_origin_url(normalized_seed): robots}
+    host_allow_cache = _HostAllowCache()
     processed = 0
     with ExitStack() as stack:
         policy_client = stack.enter_context(
@@ -576,11 +665,36 @@ def crawl_site(
                 robots_cache=robots_cache,
                 robots_user_agent=config.profile.robots_user_agent,
                 max_robots_bytes=config.max_robots_bytes,
+                host_allow_cache=host_allow_cache,
                 on_navigation_blocked=remember_navigation_block,
             )
 
         context.route("**/*", route_request)
         page = context.new_page()
+
+        def recycle_page() -> None:
+            """Replace the page a failed navigation left behind.
+
+            ``page.goto`` timing out raises here but does **not** cancel the
+            navigation — Chromium keeps fetching that URL. Reusing the page then
+            lets the straggler arrive mid-flight and abort the *next* goto, so
+            one slow page becomes a chain of failures ("interrupted by another
+            navigation"), and every unfinished load stays outstanding against a
+            target that has already stopped answering. Closing the page cancels
+            its inflight work. The route handler is registered on the *context*,
+            so the replacement page is governed identically.
+            """
+
+            nonlocal page
+            try:
+                page.close()
+            except Exception:
+                # A page that will not close is already unusable; the
+                # replacement is the part that matters and the browser reaps it.
+                logger.warning("Site Audit could not close the page after a failed navigation")
+            page = context.new_page()
+
+        consecutive_failures = 0
 
         try:
             while frontier.queue and processed < config.page_limit:
@@ -631,6 +745,7 @@ def crawl_site(
                         raise UnsafeCrawlTarget("redirect left the SEO project domain")
                     response_headers = dict(response.headers)
                     if not _is_html_response(response_headers):
+                        consecutive_failures = 0
                         processed += 1
                         delay = max(
                             config.crawl_delay_seconds,
@@ -668,25 +783,42 @@ def crawl_site(
                         rendered_html=rendered_html,
                         response_headers=response_headers,
                     )
+                    consecutive_failures = 0
                 except Exception as exc:
-                    if navigation_block is not None:
-                        if navigation_block.robots.safely_read:
+                    # Read before recycling: closing the page can still fire a
+                    # pending route callback, and that would rewrite the block
+                    # this iteration is supposed to be reporting.
+                    blocked = navigation_block
+                    recycle_page()
+                    if blocked is not None:
+                        # This navigation was aborted by our own robots policy,
+                        # not by the target failing to answer. It is an outcome,
+                        # so it must drive neither the backoff nor the stop —
+                        # otherwise a run of disallowed redirects would look
+                        # exactly like a site that had gone silent.
+                        consecutive_failures = 0
+                        if blocked.robots.safely_read:
                             crawled = CrawledPage(
                                 requested_url=current_url,
-                                final_url=navigation_block.url,
+                                final_url=blocked.url,
                                 status_code=0,
                                 blocked_by_robots=True,
                             )
                         else:
                             crawled = CrawledPage(
                                 requested_url=current_url,
-                                final_url=navigation_block.url,
+                                final_url=blocked.url,
                                 status_code=0,
-                                error=_robots_failure_message(
-                                    navigation_block.robots
-                                ),
+                                error=_robots_failure_message(blocked.robots),
                             )
                     else:
+                        consecutive_failures += 1
+                        logger.warning(
+                            "Site Audit navigation failed (%s in a row) for %s: %s",
+                            consecutive_failures,
+                            current_url,
+                            (str(exc) or exc.__class__.__name__).splitlines()[0],
+                        )
                         crawled = CrawledPage(
                             requested_url=current_url,
                             final_url=current_url,
@@ -696,9 +828,29 @@ def crawl_site(
 
                 on_page(crawled, len(frontier.visited))
                 processed += 1
-                delay = max(
-                    config.crawl_delay_seconds,
-                    current_robots.policy.crawl_delay_seconds,
+
+                if (
+                    config.max_consecutive_failures
+                    and consecutive_failures >= config.max_consecutive_failures
+                ):
+                    # The remaining budget would buy nothing but timeouts, and
+                    # spending it keeps loading a site that stopped answering.
+                    logger.warning(
+                        "Site Audit stopped after %s consecutive navigation failures; "
+                        "%s of %s pages processed",
+                        consecutive_failures,
+                        processed,
+                        config.page_limit,
+                    )
+                    break
+
+                delay = _next_delay_seconds(
+                    max(
+                        config.crawl_delay_seconds,
+                        current_robots.policy.crawl_delay_seconds,
+                    ),
+                    consecutive_failures,
+                    config.failure_backoff_max_seconds,
                 )
                 if delay:
                     time.sleep(delay)

@@ -89,6 +89,8 @@ def run_site_audit(
         max_sitemap_bytes=settings.site_audit_max_sitemap_bytes,
         max_html_chars=settings.site_audit_max_html_chars,
         max_queue_urls=settings.site_audit_max_queue_urls,
+        failure_backoff_max_seconds=settings.site_audit_failure_backoff_max_seconds,
+        max_consecutive_failures=settings.site_audit_max_consecutive_failures,
     )
     persisted_urls: set[str] = set()
     scores: list[int | None] = []

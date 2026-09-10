@@ -52,7 +52,12 @@ def downgrade() -> None:
         sa.Column("engine", sa.Text(), nullable=False),
         sa.Column("model", sa.Text(), nullable=False),
         sa.Column("response_text", sa.Text(), nullable=False),
-        sa.Column("cost_usd", sa.Numeric(precision=10, scale=6), server_default=sa.text("0"), nullable=False),
+        sa.Column(
+            "cost_usd",
+            sa.Numeric(precision=10, scale=6),
+            server_default=sa.text("0"),
+            nullable=False,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

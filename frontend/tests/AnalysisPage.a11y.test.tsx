@@ -118,7 +118,9 @@ describe('AnalysisPage accessibility', () => {
     const { container } = render(<AnalysisPage />)
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/it stopped while asking the ai engines/i)
+    expect(alert).toHaveTextContent(
+      /it stopped while auditing your buyer questions across our models/i,
+    )
     // The trail renders alongside the card and marks that step failed.
     expect(screen.getAllByRole('listitem')[3]).toHaveTextContent('failed')
     expect(await axeCheck(container)).toHaveNoViolations()

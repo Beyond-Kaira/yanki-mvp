@@ -103,7 +103,9 @@ describe('Checker results screen', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/couldn't finish this check/i)
-    expect(alert).toHaveTextContent(/stopped while asking the AI engines/i)
+    expect(alert).toHaveTextContent(
+      /stopped while auditing your buyer questions across our models/i,
+    )
     // The trail marks the step that died, and nothing after it.
     expect(screen.getByText('Executing')).toBeInTheDocument()
     expect(await axeCheck(container)).toHaveNoViolations()

@@ -17,12 +17,12 @@ from decimal import Decimal
 
 from app.config import Settings
 from app.pipeline.execute_measured import _record_cost, run_measured_execute
-from app.providers.registry import get_openrouter_models
 from app.pipeline.llm_analytics_measured import run_measured_audit
-from tests.pipeline.conftest import geo_response_count
 from app.pipeline.simulated import run_simulated_audit, run_simulated_audits
 from app.providers.base import ProviderResult
+from app.providers.registry import get_openrouter_models
 from app.providers.tavily import DEFAULT_SEARCH_PRICE_USD, TavilyClient
+from tests.pipeline.conftest import geo_response_count
 
 
 class _StubLLM:
@@ -175,7 +175,11 @@ def test_simulated_audits_charge_one_call_per_model():
         owned_domains=["acme.example"],
         llm=llm,
         dry_run=False,
-        model_slugs=["openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash"],
+        model_slugs=[
+            "openai/gpt-4o-mini",
+            "anthropic/claude-sonnet-4.5",
+            "google/gemini-2.5-flash",
+        ],
     )
 
     assert llm.calls == 3

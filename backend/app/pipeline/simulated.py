@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from copy import deepcopy
 from datetime import UTC, datetime
-from collections.abc import Callable
 from typing import Any, Protocol
 
 from app.providers.tavily import normalize_domain

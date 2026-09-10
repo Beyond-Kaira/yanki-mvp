@@ -11,7 +11,6 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.providers.registry import get_openrouter_models
-
 from tests.pipeline.conftest import geo_response_count
 
 

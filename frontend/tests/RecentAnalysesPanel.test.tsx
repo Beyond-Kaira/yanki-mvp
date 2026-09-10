@@ -61,6 +61,6 @@ describe('RecentAnalysesPanel', () => {
     const { container } = render(<RecentAnalysesPanel />)
 
     await waitFor(() => expect(listAnalyses).toHaveBeenCalled())
-    expect(container).toBeEmptyDOMElement()
+    await waitFor(() => expect(container).toBeEmptyDOMElement())
   })
 })

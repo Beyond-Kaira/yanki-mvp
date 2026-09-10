@@ -6,7 +6,6 @@ from sqlalchemy import select
 from app.pipeline.errors import PipelineError
 from app.providers.base import ProviderResult
 from app.providers.registry import get_openrouter_models
-
 from tests.pipeline.conftest import geo_response_count
 
 
@@ -100,7 +99,7 @@ class _CannedKycProvider:
 def test_useless_profile_never_reaches_the_paid_fan_out(
     db_session, models, settings, monkeypatch, payload
 ):
-    from app.pipeline import discovery, execute_measured, runner
+    from app.pipeline import execute_measured, runner
     from app.providers import registry
 
     _stub_discovery(monkeypatch, text="Some site text.")

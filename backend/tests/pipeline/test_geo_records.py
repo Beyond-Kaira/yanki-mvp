@@ -7,7 +7,6 @@ import uuid
 from sqlalchemy import select
 
 from app.pipeline.geo_records import aggregate_citation_summary, geo_record_from_audit
-
 from tests.pipeline.conftest import geo_response_count
 
 

@@ -79,13 +79,9 @@ def geo_record_from_audit(
         visibility_drivers=_as_dict(record.get("visibility_drivers")),
         visibility_gaps=_as_dict(record.get("visibility_gaps")),
         trust_signals=_as_list(record.get("trust_signals")),
-        entities_associated_with_brand=_as_list(
-            record.get("entities_associated_with_brand")
-        ),
+        entities_associated_with_brand=_as_list(record.get("entities_associated_with_brand")),
         sentiment=record.get("sentiment") or None,
-        content_improvement_opportunities=_as_list(
-            record.get("content_improvement_opportunities")
-        ),
+        content_improvement_opportunities=_as_list(record.get("content_improvement_opportunities")),
         generated_at=_parse_generated_at(record.get("generated_at")),
         error=bool(record.get("error")) if "error" in record else None,
         schema_version=record.get("schema_version") or None,

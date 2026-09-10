@@ -15,11 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Default multi-LLM fan-out for measured/simulated GEO (Phase 1). Comma-separated
 # in ``GEO_LLM_MODELS``; when that env is blank, ``openrouter_model`` alone is
 # used so a single-model deploy needs no second knob.
-DEFAULT_GEO_LLM_MODELS = (
-    "openai/gpt-4o-mini,"
-    "anthropic/claude-sonnet-4.5,"
-    "google/gemini-2.5-flash"
-)
+DEFAULT_GEO_LLM_MODELS = "openai/gpt-4o-mini,anthropic/claude-sonnet-4.5,google/gemini-2.5-flash"
 
 
 def parse_geo_llm_model_list(raw: str, *, fallback_model: str) -> list[str]:

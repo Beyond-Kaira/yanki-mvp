@@ -41,16 +41,22 @@ def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, m
     assert result.kyc["company"]
 
     # Prompts persisted (PROMPT_COUNT of them).
-    prompts = db_session.execute(
-        select(models.Prompt).where(models.Prompt.analysis_id == analysis.id)
-    ).scalars().all()
+    prompts = (
+        db_session.execute(select(models.Prompt).where(models.Prompt.analysis_id == analysis.id))
+        .scalars()
+        .all()
+    )
     assert len(prompts) == settings.prompt_count
 
     # Responses: one row per prompt × model slug.
     expected_responses = geo_response_count(settings, settings.prompt_count)
-    responses = db_session.execute(
-        select(models.Response).where(models.Response.analysis_id == analysis.id)
-    ).scalars().all()
+    responses = (
+        db_session.execute(
+            select(models.Response).where(models.Response.analysis_id == analysis.id)
+        )
+        .scalars()
+        .all()
+    )
     assert len(responses) == expected_responses
     assert result.total_responses == len(responses)
     assert all(response.llm_provider == "openrouter" for response in responses)
@@ -61,9 +67,13 @@ def test_run_pipeline_walks_all_steps_and_scores(db_session, models, settings, m
     assert result.geo_run["llm"]["provider"] == "openrouter"
     assert result.geo_run["llm"]["models"] == get_openrouter_models(settings)
 
-    geo_rows = db_session.execute(
-        select(models.GeoRecord).where(models.GeoRecord.analysis_id == analysis.id)
-    ).scalars().all()
+    geo_rows = (
+        db_session.execute(
+            select(models.GeoRecord).where(models.GeoRecord.analysis_id == analysis.id)
+        )
+        .scalars()
+        .all()
+    )
     assert len(geo_rows) == expected_responses
     assert result.citation_summary is not None
     assert result.citation_summary["record_count"] == expected_responses
@@ -127,9 +137,7 @@ def test_useless_profile_never_reaches_the_paid_fan_out(
     assert analysis.kyc is not None
 
 
-def test_rerun_replaces_rows_and_does_not_double_counts(
-    db_session, models, settings, monkeypatch
-):
+def test_rerun_replaces_rows_and_does_not_double_counts(db_session, models, settings, monkeypatch):
     # NFR-3: a stale-claim re-run must replace prior partial rows, not accumulate
     # them (else total_responses / footprint_count double).
     from app.pipeline import runner
@@ -147,12 +155,18 @@ def test_rerun_replaces_rows_and_does_not_double_counts(
     # Re-run the same analysis (as the stale-claim reaper would).
     second = runner.run_pipeline(db_session, analysis.id, settings)
 
-    prompts = db_session.execute(
-        select(models.Prompt).where(models.Prompt.analysis_id == analysis.id)
-    ).scalars().all()
-    responses = db_session.execute(
-        select(models.Response).where(models.Response.analysis_id == analysis.id)
-    ).scalars().all()
+    prompts = (
+        db_session.execute(select(models.Prompt).where(models.Prompt.analysis_id == analysis.id))
+        .scalars()
+        .all()
+    )
+    responses = (
+        db_session.execute(
+            select(models.Response).where(models.Response.analysis_id == analysis.id)
+        )
+        .scalars()
+        .all()
+    )
 
     assert len(prompts) == settings.prompt_count
     assert len(responses) == first_total
@@ -231,9 +245,7 @@ def test_serp_runs_in_the_footprint_step_without_touching_the_progress_contract(
     assert sum(1 for check in checks if check.hit) == result.serp_hit_count
 
 
-def test_a_serp_outage_costs_the_number_and_not_the_job(
-    db_session, models, settings, monkeypatch
-):
+def test_a_serp_outage_costs_the_number_and_not_the_job(db_session, models, settings, monkeypatch):
     """The fail-open guarantee: SERP cannot fail a run that already cost money."""
     from app.pipeline import runner
     from app.serp.base import SerpUnavailable
@@ -412,8 +424,12 @@ def test_a_checker_run_has_no_site_to_audit(db_session, models, settings, monkey
     from app.pipeline import runner
 
     analysis = models.Analysis(
-        url="checker://acme/robots", status="running", kind="checker",
-        brand="acme", category="warehouse robots", lang="en",
+        url="checker://acme/robots",
+        status="running",
+        kind="checker",
+        brand="acme",
+        category="warehouse robots",
+        lang="en",
     )
     db_session.add(analysis)
     db_session.flush()

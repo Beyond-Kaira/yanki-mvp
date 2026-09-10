@@ -37,9 +37,7 @@ def _forbid_crawl(monkeypatch):
     monkeypatch.setattr(discovery, "discover", _boom)
 
 
-def test_checker_pipeline_walks_all_steps_without_crawl(
-    db_session, models, settings, monkeypatch
-):
+def test_checker_pipeline_walks_all_steps_without_crawl(db_session, models, settings, monkeypatch):
     from app.pipeline import runner
 
     _forbid_crawl(monkeypatch)
@@ -59,9 +57,7 @@ def test_checker_pipeline_walks_all_steps_without_crawl(
 
     # Exactly 12 prompts (the fixed checker set), not settings.prompt_count.
     prompts = (
-        db_session.execute(
-            select(models.Prompt).where(models.Prompt.analysis_id == analysis.id)
-        )
+        db_session.execute(select(models.Prompt).where(models.Prompt.analysis_id == analysis.id))
         .scalars()
         .all()
     )
@@ -103,9 +99,7 @@ def test_checker_rerun_is_idempotent(db_session, models, settings, monkeypatch):
     second = runner.run_pipeline(db_session, analysis.id, settings)
 
     prompts = (
-        db_session.execute(
-            select(models.Prompt).where(models.Prompt.analysis_id == analysis.id)
-        )
+        db_session.execute(select(models.Prompt).where(models.Prompt.analysis_id == analysis.id))
         .scalars()
         .all()
     )

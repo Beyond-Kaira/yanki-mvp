@@ -780,11 +780,7 @@ def _measured_error_record(
         "search_visibility": search_visibility,
         "grounded_answer": (grounded_payload or {}).get("grounded_answer"),
         "mentioned": mentioned,
-        "mention_context": (
-            "not_mentioned"
-            if not mentioned
-            else "secondary_recommendation"
-        ),
+        "mention_context": ("not_mentioned" if not mentioned else "secondary_recommendation"),
         "citation_metrics": (
             answer_visibility.get("citation_metrics", deepcopy(DEFAULT_CITATION_METRICS))
             if answer_visibility

@@ -135,8 +135,6 @@ def downgrade() -> None:
         )
     )
 
-    conn.execute(
-        sa.text("UPDATE analyses SET geo_run = NULL WHERE geo_run IS NOT NULL")
-    )
+    conn.execute(sa.text("UPDATE analyses SET geo_run = NULL WHERE geo_run IS NOT NULL"))
 
     # Deleted panel-engine rows are not restored.

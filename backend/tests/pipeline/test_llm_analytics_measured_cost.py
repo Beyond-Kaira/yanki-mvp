@@ -265,9 +265,7 @@ def test_execute_persists_the_cost_onto_every_response_row(db_session, make_anal
     assert all(isinstance(row.cost_usd, Decimal) for row in rows)
 
 
-def test_execute_respects_max_responses_cap_during_model_fan_out(
-    db_session, make_analysis
-):
+def test_execute_respects_max_responses_cap_during_model_fan_out(db_session, make_analysis):
     """Fan-out stops at max_responses_per_job, mid-prompt if needed."""
 
     analysis = make_analysis(url="https://acme.example", kyc={"company": "Acme"})

@@ -83,7 +83,15 @@ def get_measured_llm(settings, *, model: str | None = None):
         return None
     from app.providers.openrouter import OpenRouterProvider
 
-    slug = model or getattr(settings, "openrouter_model", "openai/gpt-4o-mini")
+    if model is not None:
+        slug = model
+    else:
+        configured = getattr(settings, "openrouter_model", "openai/gpt-4o-mini")
+        slug = (
+            configured
+            if isinstance(configured, str) and configured.strip()
+            else "openai/gpt-4o-mini"
+        )
     return OpenRouterProvider(
         api_key=getattr(settings, "open_router_key", ""),
         model=slug,

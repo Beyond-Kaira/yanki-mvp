@@ -87,8 +87,8 @@ No nested `measured: { claude: {} }` API shape — flat `responses[]` only.
 ## Removed
 
 - **`llm_cache` table** — only used by the retired four-engine `execute.py` path.
-- **Legacy multi-engine panel rows** — deleted in migration 0024.
-- **ADR-34 mode slugs** — backfilled to `llm_provider=openrouter` + `analyses.geo_run` in 0024.
+- **Legacy multi-engine panel rows** — deleted in migration 0025.
+- **ADR-34 mode slugs** — backfilled to `llm_provider=openrouter` + `analyses.geo_run` in 0025.
 
 ## API follow-up
 

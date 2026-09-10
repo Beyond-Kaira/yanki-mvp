@@ -884,6 +884,18 @@
             ],
             "title": "Changed"
           },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
           "entity_id": {
             "anyOf": [
               {
@@ -1668,6 +1680,21 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ai_visibility",
+                  "search_visibility"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
           },
           "url": {
             "format": "uri",

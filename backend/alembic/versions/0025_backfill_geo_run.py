@@ -1,10 +1,10 @@
 """Backfill geo_run and fix legacy response llm_provider values (ADR-51)
 
-Revision ID: 0024_backfill_geo_run
-Revises: 0023_geo_run_metadata
+Revision ID: 0025_backfill_geo_run
+Revises: 0024_geo_run_metadata
 Create Date: 2026-09-09
 
-Data-only follow-up to ``0023_geo_run_metadata``. ADR-34 stored pipeline **mode**
+Data-only follow-up to ``0024_geo_run_metadata``. ADR-34 stored pipeline **mode**
 (``measured`` / ``simulated``) in ``responses.engine``; ADR-51 expects
 ``llm_provider=openrouter`` and run metadata on ``analyses.geo_run``.
 
@@ -23,8 +23,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0024_backfill_geo_run"
-down_revision: str | None = "0023_geo_run_metadata"
+revision: str = "0025_backfill_geo_run"
+down_revision: str | None = "0024_geo_run_metadata"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

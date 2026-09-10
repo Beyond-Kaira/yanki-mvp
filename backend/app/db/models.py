@@ -99,6 +99,15 @@ class Analysis(Base):
     kyc: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+    # Provider spend incurred before prompt responses exist.  Today this is the
+    # KYC extraction (and its one bounded repair retry); keeping it separate
+    # prevents ``responses.cost_usd`` from pretending to be the whole run.
+    kyc_cost_usd: Mapped[Decimal] = mapped_column(
+        sa.Numeric(10, 6), nullable=False, default=0, server_default="0"
+    )
+    kyc_usage: Mapped[list[Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     # Composite GEO score on a 0–100 scale (mention × position × citation ×
     # sentiment). Legacy MVP rows may still hold a 0–1 mention-rate fraction.
     geo_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)

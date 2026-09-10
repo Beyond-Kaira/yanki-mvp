@@ -210,7 +210,7 @@ scenario('the audit log records what the admin did, with before and after', asyn
   await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
 
   // Signing up is itself an audited event, so the log is never empty here.
-  const row = page.locator('tbody tr', { hasText: 'auth:signup' })
+  const row = page.locator('tbody tr', { hasText: 'Created account' })
   await expect(row).toBeVisible({ timeout: 15_000 })
 
   await row.getByRole('button', { name: 'Show' }).click()

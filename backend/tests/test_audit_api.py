@@ -151,6 +151,29 @@ def test_a_member_change_lands_in_the_log_with_before_and_after(client, db_sessi
     assert event["outcome"] == "success"
 
 
+def test_the_api_exposes_redacted_detail_not_only_the_changed_shortcut(client, db_session):
+    org = _owner_org(client, db_session)
+    owner = _token(client, "owner@acme.test")
+    _seed(
+        db_session,
+        org,
+        action="analysis:complete",
+        entity_type="analysis",
+        detail={"cost": {"total_usd": "0.012300"}, "api_key": "secret"},
+    )
+
+    body = client.get(
+        EVENTS,
+        headers=_headers(owner),
+        params={"action": "analysis:complete"},
+    ).json()
+
+    assert body["events"][0]["detail"] == {
+        "cost": {"total_usd": "0.012300"},
+        "api_key": "[redacted]",
+    }
+
+
 def test_every_event_carries_the_request_id_and_a_hashed_ip(client, db_session):
     _owner_org(client, db_session)
     owner = _token(client, "owner@acme.test")

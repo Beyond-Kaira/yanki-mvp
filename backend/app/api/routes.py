@@ -183,7 +183,12 @@ def submit_analysis(
         actor_id=org.user_id,
         entity_type="analysis",
         entity_id=analysis.id,
-        after={"url": analysis.url, "kind": analysis.kind or "mvp", "run_mode": analysis.run_mode},
+        after={
+            "url": analysis.url,
+            "kind": analysis.kind or "mvp",
+            "run_mode": analysis.run_mode,
+            **({"source": payload.source} if payload.source else {}),
+        },
     )
     session.commit()
     return CreateAnalysisResponse(id=analysis.id)

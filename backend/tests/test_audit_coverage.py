@@ -579,6 +579,47 @@ def test_the_analysis_submit_path_still_emits_its_own_event(client, db_session, 
     assert events[0].org_id == org.id
 
 
+def test_the_screen_that_started_an_analysis_is_recorded(client, db_session, signed_in) -> None:
+    """Both product areas post the same form to this route, so the source is the
+    only thing that tells two otherwise identical rows apart."""
+
+    signed_in(plan_key="enterprise")
+    accepted = client.post(
+        "/api/v1/analyses",
+        json={"url": "https://example.com", "source": "search_visibility"},
+    )
+    assert accepted.status_code == 202
+
+    db_session.expire_all()
+    events = _events(db_session, "analysis:create")
+    assert events[0].after["source"] == "search_visibility"
+
+
+def test_an_analysis_started_without_a_source_records_none(client, db_session, signed_in) -> None:
+    """The field is optional: a caller that is not a screen must still succeed,
+    and must not leave a source behind for the log to render."""
+
+    signed_in(plan_key="enterprise")
+    accepted = client.post("/api/v1/analyses", json={"url": "https://example.com"})
+    assert accepted.status_code == 202
+
+    db_session.expire_all()
+    events = _events(db_session, "analysis:create")
+    assert "source" not in events[0].after
+
+
+def test_an_unknown_source_is_rejected(client, signed_in) -> None:
+    """The taxonomy is closed, so a typo fails loudly rather than landing in the
+    log as a value nothing can render."""
+
+    signed_in(plan_key="enterprise")
+    refused = client.post(
+        "/api/v1/analyses",
+        json={"url": "https://example.com", "source": "somewhere_else"},
+    )
+    assert refused.status_code == 422
+
+
 def test_an_old_event_written_before_a_window_is_untouched(db_session: Session) -> None:
     """The store is append-only: nothing added in this change updates a row.
 

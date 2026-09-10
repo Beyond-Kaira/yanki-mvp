@@ -28,6 +28,141 @@ const OUTCOME_TONE: Record<string, string> = {
   error: 'bg-danger-soft text-danger-strong',
 }
 
+/** `resource:action` → a sentence. An unmapped action falls through to its raw
+ * code, so a new emit site on the backend is legible-ish on day one rather than
+ * blank, and this table never has to ship in lockstep with the API. */
+const ACTION_LABELS: Record<string, string> = {
+  'analysis:complete': 'Completed analysis',
+  'analysis:create': 'Started analysis',
+  'analysis:delete': 'Deleted analysis',
+  'analysis:failed': 'Analysis failed',
+  'audit:export': 'Exported audit log',
+  'auth:login': 'Signed in',
+  'auth:logout': 'Signed out',
+  'auth:signup': 'Created account',
+  'auth:refresh_reuse': 'Reused a refresh token',
+  'auth:session_revoke': 'Revoked a session',
+  'auth:session_revoke_all': 'Revoked all sessions',
+  'backlink:competitor_track': 'Tracked competitor',
+  'backlink:competitor_untrack': 'Untracked competitor',
+  'backlink:refresh': 'Refreshed backlinks',
+  'billing:quota_denied': 'Hit the plan quota',
+  'checker:lead': 'Left contact details',
+  'checker:submit': 'Ran the free checker',
+  'invitation:accept': 'Accepted invitation',
+  'invitation:create': 'Invited a member',
+  'invitation:resend': 'Resent invitation',
+  'invitation:revoke': 'Revoked invitation',
+  'member:remove': 'Removed member',
+  'member:update': 'Updated member',
+  'project:create': 'Created project',
+  'project:delete': 'Deleted project',
+  'site_audit:queue': 'Queued site audit',
+  'waitlist:signup': 'Joined the waitlist',
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  ai_visibility: 'AI Visibility',
+  search_visibility: 'Search Visibility',
+}
+
+const ENTITY_LABELS: Record<string, string> = {
+  site_audit: 'site audit',
+  seo_project: 'project',
+}
+
+function payload(event: AuditEvent): Record<string, unknown> {
+  const after = event.after
+  const before = event.before
+  const source = after ?? before
+  return source && typeof source === 'object' ? (source as Record<string, unknown>) : {}
+}
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+/** The host of a recorded URL, which is what a reader recognises — the full URL
+ * is the one field long enough to blow the column open. */
+function host(value: unknown): string | null {
+  const raw = text(value)
+  if (!raw) return null
+  try {
+    return new URL(raw).host
+  } catch {
+    return raw
+  }
+}
+
+/**
+ * The headline, named as specifically as the record allows, and the second
+ * line under it — what the action was aimed at, or the change it made.
+ *
+ * Everything here is already stored — it just only showed up once the row was
+ * expanded, which is no help when you are scanning for the run you remember.
+ */
+function actionTitle(event: AuditEvent): string {
+  if (event.action === 'analysis:create') {
+    const data = payload(event)
+    if (text(data.kind) === 'checker') return 'Ran the free checker'
+    const source = text(data.source)
+    const area = source ? SOURCE_LABELS[source] : null
+    if (area) return `Started ${area} analysis`
+  }
+  return ACTION_LABELS[event.action] ?? event.action
+}
+
+function actionDetail(event: AuditEvent): string | null {
+  const data = payload(event)
+  if (event.action === 'analysis:complete' || event.action === 'analysis:failed') {
+    const cost = eventCost(event)
+    return cost ? `${formatUsd(cost.total_usd)} total` : host(data.url)
+  }
+  if (event.action === 'analysis:create') {
+    // Host plus path: the host alone repeats the entity column, and the path is
+    // what separates two runs against the same site.
+    const raw = text(data.url)
+    if (!raw) return null
+    try {
+      const parsed = new URL(raw)
+      return `${parsed.host}${parsed.pathname === '/' ? '' : parsed.pathname}`
+    } catch {
+      return raw
+    }
+  }
+  if (event.action === 'site_audit:queue') {
+    const limit = data.page_limit
+    return typeof limit === 'number' ? `${limit} pages` : null
+  }
+  const changed = event.changed
+  if (changed && typeof changed === 'object') {
+    const role = (changed as Record<string, unknown>).role as
+      | { from?: unknown; to?: unknown }
+      | undefined
+    const from = text(role?.from)
+    const to = text(role?.to)
+    if (from && to) return `${from} → ${to}`
+  }
+  return text(data.email) ?? text(data.name)
+}
+
+/**
+ * What the action happened *to*, named the way its owner would name it.
+ *
+ * `null` when the record carries no readable name — an id fragment identifies
+ * nothing to a reader, so the cell falls back to the type alone rather than
+ * printing eight characters of a UUID. Sign-in events name the actor
+ * themselves, which the actor column already says; they get the type only.
+ */
+function entityLabel(event: AuditEvent): string | null {
+  const data = payload(event)
+  if (event.entity_type === 'analysis' || event.entity_type === 'seo_project') {
+    return host(data.url) ?? text(data.domain)
+  }
+  if (event.entity_id && event.entity_id === event.actor_id) return null
+  return text(data.email) ?? text(data.name) ?? text(data.label)
+}
+
 function formatMoment(value: string): string {
   return new Date(value).toLocaleString(undefined, {
     year: 'numeric',
@@ -49,6 +184,69 @@ function changeLines(event: AuditEvent): string[] {
     const to = pair && 'to' in pair ? JSON.stringify(pair.to) : '—'
     return `${field}: ${from} → ${to}`
   })
+}
+
+type CostLine = {
+  provider: string
+  model: string
+  stages: string[]
+  question_count: number
+  operation_count: number
+  cost_usd: string
+}
+
+type AnalysisCost = {
+  total_usd: string
+  question_count: number
+  response_count: number
+  providers: CostLine[]
+}
+
+function eventCost(event: AuditEvent): AnalysisCost | null {
+  const detail = event.detail
+  if (!detail || typeof detail !== 'object') return null
+  const candidate = (detail as Record<string, unknown>).cost
+  if (!candidate || typeof candidate !== 'object') return null
+  const cost = candidate as Record<string, unknown>
+  if (typeof cost.total_usd !== 'string' || !Array.isArray(cost.providers)) return null
+
+  const providers = cost.providers.filter((item): item is CostLine => {
+    if (!item || typeof item !== 'object') return false
+    const line = item as Record<string, unknown>
+    return (
+      typeof line.provider === 'string' &&
+      typeof line.model === 'string' &&
+      Array.isArray(line.stages) &&
+      typeof line.question_count === 'number' &&
+      typeof line.operation_count === 'number' &&
+      typeof line.cost_usd === 'string'
+    )
+  })
+  return {
+    total_usd: cost.total_usd,
+    question_count: typeof cost.question_count === 'number' ? cost.question_count : 0,
+    response_count: typeof cost.response_count === 'number' ? cost.response_count : 0,
+    providers,
+  }
+}
+
+function formatUsd(value: string): string {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? `$${amount.toFixed(6)}` : `$${value}`
+}
+
+function stageLabel(stages: string[]): string {
+  return stages
+    .map((stage) => (stage === 'kyc' ? 'KYC' : stage === 'answers' ? 'Answers' : stage))
+    .join(', ')
+}
+
+function remainingDetail(event: AuditEvent): Record<string, unknown> | null {
+  if (!event.detail || typeof event.detail !== 'object') return null
+  const detail = { ...(event.detail as Record<string, unknown>) }
+  delete detail.changed
+  delete detail.cost
+  return Object.keys(detail).length > 0 ? detail : null
 }
 
 /**
@@ -443,6 +641,13 @@ export default function AuditLogClient() {
               events.map((event) => {
                 const lines = changeLines(event)
                 const open = expanded === event.id
+                const detail = actionDetail(event)
+                const name = entityLabel(event)
+                const cost = eventCost(event)
+                const extraDetail = remainingDetail(event)
+                const entityName = event.entity_type
+                  ? (ENTITY_LABELS[event.entity_type] ?? event.entity_type.replace(/_/g, ' '))
+                  : '—'
                 return (
                   <Fragment key={event.id}>
                   <tr className="border-b border-surface-border align-top last:border-0">
@@ -464,9 +669,32 @@ export default function AuditLogClient() {
                       <span className="block">{event.actor_label ?? event.actor_type}</span>
                       <span className="text-xs text-surface-subtle">{event.actor_type}</span>
                     </td>
-                    <td className="px-4 py-3 font-medium">{event.action}</td>
-                    <td className="px-4 py-3 text-surface-subtle">
-                      {event.entity_type ?? '—'}
+                    <td className="px-4 py-3">
+                      <span className="block font-medium">
+                        {actionTitle(event)}
+                      </span>
+                      {detail ? (
+                        <span
+                          className="block max-w-[28ch] truncate text-xs text-surface-subtle"
+                          title={detail}
+                        >
+                          {detail}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      {name ? (
+                        <>
+                          <span className="block max-w-[28ch] truncate" title={name}>
+                            {name}
+                          </span>
+                          <span className="block text-xs text-surface-subtle">
+                            {entityName}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-surface-subtle">{entityName}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -513,6 +741,74 @@ export default function AuditLogClient() {
                     >
                       <td colSpan={6} className="bg-surface-muted px-4 py-3">
                         <dl className="space-y-2 text-xs">
+                          {event.entity_type || event.entity_id ? (
+                            <div>
+                              <dt className="font-medium">Entity</dt>
+                              <dd className="mt-1">
+                                <span className="block">
+                                  {name ? `${name} · ` : ''}{entityName}
+                                </span>
+                                <span className="block break-all font-mono text-surface-subtle">
+                                  {event.entity_id ?? '—'}
+                                </span>
+                              </dd>
+                            </div>
+                          ) : null}
+                          {cost ? (
+                            <div>
+                              <dt className="font-medium">Analysis cost</dt>
+                              <dd className="mt-1">
+                                <p>
+                                  <span className="font-semibold">{formatUsd(cost.total_usd)}</span>
+                                  {' total · '}{cost.question_count} questions · {cost.response_count}{' '}
+                                  answers
+                                </p>
+                                <div className="mt-2 overflow-x-auto rounded border border-surface-border bg-surface">
+                                  <table className="w-full min-w-[620px] text-left text-xs">
+                                    <thead className="border-b border-surface-border text-surface-subtle">
+                                      <tr>
+                                        <th className="px-2 py-1.5 font-medium">Provider / model</th>
+                                        <th className="px-2 py-1.5 font-medium">Stage</th>
+                                        <th className="px-2 py-1.5 text-right font-medium">Questions</th>
+                                        <th className="px-2 py-1.5 text-right font-medium">Operations</th>
+                                        <th className="px-2 py-1.5 text-right font-medium">Cost</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {cost.providers.map((line) => (
+                                        <tr
+                                          key={`${line.provider}:${line.model}`}
+                                          className="border-b border-surface-border last:border-0"
+                                        >
+                                          <td className="px-2 py-1.5">
+                                            <span className="block font-medium capitalize">
+                                              {line.provider}
+                                            </span>
+                                            <span className="block font-mono text-surface-subtle">
+                                              {line.model}
+                                            </span>
+                                          </td>
+                                          <td className="px-2 py-1.5">{stageLabel(line.stages)}</td>
+                                          <td className="px-2 py-1.5 text-right">
+                                            {line.question_count}
+                                          </td>
+                                          <td className="px-2 py-1.5 text-right">
+                                            {line.operation_count}
+                                          </td>
+                                          <td className="px-2 py-1.5 text-right font-mono">
+                                            {formatUsd(line.cost_usd)}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <p className="mt-1 text-surface-subtle">
+                                  Provider-reported estimate; cached answers remain visible as $0.
+                                </p>
+                              </dd>
+                            </div>
+                          ) : null}
                           {lines.length > 0 ? (
                             <div>
                               <dt className="font-medium">Changed</dt>
@@ -531,6 +827,16 @@ export default function AuditLogClient() {
                             <dt className="font-medium">Request</dt>
                             <dd className="font-mono break-all">{event.request_id ?? '—'}</dd>
                           </div>
+                          {extraDetail ? (
+                            <div>
+                              <dt className="font-medium">Detail</dt>
+                              <dd>
+                                <pre className="mt-1 overflow-x-auto rounded bg-surface p-2">
+                                  {JSON.stringify(extraDetail, null, 2)}
+                                </pre>
+                              </dd>
+                            </div>
+                          ) : null}
                           <div>
                             <dt className="font-medium">IP (hashed)</dt>
                             <dd className="font-mono break-all">

@@ -14,6 +14,7 @@ import {
   ApiError,
 } from '@/lib/api'
 import { analysisDomain } from '@/lib/ai-visibility-data'
+import { GEO_LLM_MODELS } from '@/lib/engines'
 import { mergeAnalysis } from '@/lib/analysis-bundle'
 import type { Analysis } from '@/lib/contracts'
 import {
@@ -526,8 +527,9 @@ export default function CustomGeoGuidedWizard({
         <section className="space-y-6 rounded-2xl border border-surface-border bg-surface p-6">
           <h2 className="text-lg font-semibold">Ready to measure</h2>
           <p className="text-sm text-surface-subtle">
-            We will ask {promptDrafts.length} prompts across the AI engine panel,
-            measure footprints, and compute your GEO score. This step uses your
+            We will ask {promptDrafts.length} prompts across {GEO_LLM_MODELS.length}{' '}
+            models via OpenRouter, measure footprints, and compute your GEO score.
+            This step uses your
             analysis quota slot but does not charge the monthly flow again.
           </p>
           <dl className="grid gap-3 text-sm sm:grid-cols-2">

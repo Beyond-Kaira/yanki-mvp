@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
+from app.providers.registry import get_openrouter_models
+from tests.pipeline.conftest import geo_response_count
+
 
 def _make_checker(db_session, models):
     analysis = models.Analysis(
@@ -34,9 +37,7 @@ def _forbid_crawl(monkeypatch):
     monkeypatch.setattr(discovery, "discover", _boom)
 
 
-def test_checker_pipeline_walks_all_steps_without_crawl(
-    db_session, models, settings, monkeypatch
-):
+def test_checker_pipeline_walks_all_steps_without_crawl(db_session, models, settings, monkeypatch):
     from app.pipeline import runner
 
     _forbid_crawl(monkeypatch)
@@ -56,15 +57,14 @@ def test_checker_pipeline_walks_all_steps_without_crawl(
 
     # Exactly 12 prompts (the fixed checker set), not settings.prompt_count.
     prompts = (
-        db_session.execute(
-            select(models.Prompt).where(models.Prompt.analysis_id == analysis.id)
-        )
+        db_session.execute(select(models.Prompt).where(models.Prompt.analysis_id == analysis.id))
         .scalars()
         .all()
     )
     assert len(prompts) == 12
 
-    # 12 measured responses = 12 prompts × 1 measured engine.
+    # 12 prompts × N model slugs (multi-LLM fan-out).
+    expected_responses = geo_response_count(settings, 12)
     responses = (
         db_session.execute(
             select(models.Response).where(models.Response.analysis_id == analysis.id)
@@ -72,9 +72,10 @@ def test_checker_pipeline_walks_all_steps_without_crawl(
         .scalars()
         .all()
     )
-    assert len(responses) == 12
-    assert result.total_responses == 12
-    assert all(r.engine == "measured" for r in responses)
+    assert len(responses) == expected_responses
+    assert result.total_responses == expected_responses
+    assert len({r.model for r in responses}) == len(get_openrouter_models(settings))
+    assert all(r.llm_provider == "openrouter" for r in responses)
     assert all(isinstance(r.audit, dict) for r in responses)
 
     # Footprint recorded on every response; composite GEO in 0–100.
@@ -98,9 +99,7 @@ def test_checker_rerun_is_idempotent(db_session, models, settings, monkeypatch):
     second = runner.run_pipeline(db_session, analysis.id, settings)
 
     prompts = (
-        db_session.execute(
-            select(models.Prompt).where(models.Prompt.analysis_id == analysis.id)
-        )
+        db_session.execute(select(models.Prompt).where(models.Prompt.analysis_id == analysis.id))
         .scalars()
         .all()
     )
@@ -111,7 +110,8 @@ def test_checker_rerun_is_idempotent(db_session, models, settings, monkeypatch):
         .scalars()
         .all()
     )
+    expected_responses = geo_response_count(settings, 12)
     assert len(prompts) == 12
-    assert len(responses) == 12
-    assert second.total_responses == first.total_responses == 12
+    assert len(responses) == expected_responses
+    assert second.total_responses == first.total_responses == expected_responses
     assert second.footprint_count == first.footprint_count

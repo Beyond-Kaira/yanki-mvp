@@ -409,7 +409,7 @@ def test_a_finished_run_settles_its_real_cost_against_the_org(db_session, signed
         Response(
             analysis_id=analysis.id,
             prompt_id=prompt.id,
-            engine="mock",
+            llm_provider="mock",
             model="mock-1",
             raw_text="a",
             cost_usd=Decimal("0.0250"),
@@ -449,7 +449,7 @@ def test_a_failed_run_still_records_what_it_spent(db_session, signed_in):
         Response(
             analysis_id=analysis.id,
             prompt_id=prompt.id,
-            engine="mock",
+            llm_provider="mock",
             model="mock-1",
             raw_text="a",
             cost_usd=Decimal("0.0100"),

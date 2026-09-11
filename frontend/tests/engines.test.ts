@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import methodology from '@/lib/checker_methodology.json'
 import {
+  GEO_LLM_MODELS,
   PANEL_ENGINE_IDS,
   engineLabel,
   engineVendorLabel,
+  modelSlugLabel,
 } from '@/lib/engines'
 
 describe('engine identity', () => {
@@ -26,5 +28,25 @@ describe('engine identity', () => {
     // engine from the screen is not.
     expect(engineLabel('mistral')).toBe('mistral')
     expect(engineVendorLabel('mistral')).toBe('mistral')
+  })
+
+  it('exports the default GEO multi-LLM fan-out from the generated artifact', () => {
+    const fromArtifact = (methodology as { geo_llm_models?: string[] }).geo_llm_models
+    expect(fromArtifact).toEqual([
+      'openai/gpt-4o-mini',
+      'anthropic/claude-sonnet-4.5',
+      'google/gemini-2.5-flash',
+    ])
+    expect(GEO_LLM_MODELS).toEqual(fromArtifact)
+  })
+
+  it('labels known OpenRouter slugs with short product names', () => {
+    expect(modelSlugLabel('openai/gpt-4o-mini')).toBe('GPT-4o mini')
+    expect(modelSlugLabel('anthropic/claude-sonnet-4.5')).toBe('Claude Sonnet 4.5')
+    expect(modelSlugLabel('google/gemini-2.5-flash')).toBe('Gemini 2.5 Flash')
+  })
+
+  it('prettifies unknown slugs instead of hiding them', () => {
+    expect(modelSlugLabel('mistral/mistral-small')).toBe('mistral small')
   })
 })

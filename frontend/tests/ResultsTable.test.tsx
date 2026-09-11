@@ -18,7 +18,7 @@ const RAW_TWO =
 const responses: AnalysisResponse[] = [
   {
     id: 'r1',
-    engine: 'openai',
+    llm_provider: 'openai',
     model: 'gpt-4o-mini',
     footprint: true,
     matched_snippet: 'Acme is a strong option for small teams.',
@@ -28,7 +28,7 @@ const responses: AnalysisResponse[] = [
   },
   {
     id: 'r2',
-    engine: 'anthropic',
+    llm_provider: 'anthropic',
     model: 'claude-3-5-haiku',
     footprint: false,
     matched_snippet: null,

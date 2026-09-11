@@ -170,7 +170,7 @@ function response(
 ): Analysis['result']['responses'][number] {
   return {
     id,
-    engine: 'openai',
+    llm_provider: 'openai',
     model: 'gpt-4o-mini',
     footprint,
     matched_snippet: footprint ? 'Notion is a strong option.' : null,

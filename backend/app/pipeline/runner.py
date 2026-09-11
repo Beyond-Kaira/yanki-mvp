@@ -97,6 +97,7 @@ def _clear_measure_summaries(analysis: Analysis) -> None:
     analysis.reliability_score = None
     analysis.interventions = None
     analysis.citation_summary = None
+    analysis.geo_run = None
     analysis.error = None
 
 

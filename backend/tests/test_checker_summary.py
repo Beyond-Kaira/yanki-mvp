@@ -37,8 +37,19 @@ _MOCK_KYC = {"company": "Yanki Demo Co", "aliases": ["Yanki Demo Co", "Yanki"]}
 _FILLERS = {"Acme", "Globex", "Initech", "Umbrella", "Stark"}
 
 
-def _resp(engine: str, raw_text: str, footprint: bool | None) -> SimpleNamespace:
-    return SimpleNamespace(engine=engine, raw_text=raw_text, footprint=footprint)
+def _resp(
+    llm_provider: str,
+    raw_text: str,
+    footprint: bool | None,
+    *,
+    model: str | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        llm_provider=llm_provider,
+        model=model if model is not None else llm_provider,
+        raw_text=raw_text,
+        footprint=footprint,
+    )
 
 
 def _mock_responses() -> list[SimpleNamespace]:
@@ -79,6 +90,24 @@ def test_engine_presence_footprint_none_is_not_a_mention():
     (stat,) = summary.engine_presence
     assert stat.total == 3
     assert stat.mentioned == 0
+
+
+def test_engine_presence_groups_by_model_slug_not_gateway():
+    slugs = ["openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5"]
+    rows: list[SimpleNamespace] = []
+    for slug in slugs:
+        for index in range(6):
+            hit = index % 2 == 0
+            template = _MENTION if hit else _NO_MENTION
+            rows.append(_resp("openrouter", template.format(eng=slug), hit, model=slug))
+
+    summary = summarize_checker(rows, _MOCK_KYC)
+    by_engine = {stat.engine: stat for stat in summary.engine_presence}
+
+    assert set(by_engine) == set(slugs)
+    for stat in summary.engine_presence:
+        assert stat.total == 6
+        assert stat.mentioned == 3
 
 
 def test_engine_presence_preserves_first_seen_order():
@@ -254,8 +283,10 @@ def test_empty_responses_returns_empty_summary():
 # --- API level -----------------------------------------------------------------
 
 
-def _dry_run_settings() -> SimpleNamespace:
-    return SimpleNamespace(
+def _dry_run_settings():
+    from app.config import Settings
+
+    return Settings(
         dry_run=True,
         panel_engines="anthropic,openai,gemini,perplexity",
         prompt_count=10,
@@ -280,16 +311,24 @@ def test_checker_get_carries_presence_and_competitors(client, db_session):
     db_session.add(analysis)
     db_session.commit()
 
-    runner.run_pipeline(db_session, analysis.id, _dry_run_settings())
+    settings = _dry_run_settings()
+    runner.run_pipeline(db_session, analysis.id, settings)
 
     geo = client.get(f"/api/v1/analyses/{analysis.id}/geo").json()
 
+    from tests.pipeline.conftest import geo_response_count
+
+    expected_responses = geo_response_count(settings, 12)
+
+    from app.providers.registry import get_openrouter_models
+
+    model_slugs = get_openrouter_models(settings)
+
     presence = geo["engine_presence"]
     assert presence is not None
-    # Measured path: one engine entry; totals match total_responses.
-    assert len(presence) == 1
-    assert presence[0]["engine"] == "measured"
-    assert sum(e["total"] for e in presence) == geo["total_responses"] == 12
+    assert len(presence) == len(model_slugs)
+    assert {entry["engine"] for entry in presence} == set(model_slugs)
+    assert sum(e["total"] for e in presence) == geo["total_responses"] == expected_responses
     assert sum(e["mentioned"] for e in presence) == geo["footprint_count"]
 
     competitors = geo["competitors_appeared"]

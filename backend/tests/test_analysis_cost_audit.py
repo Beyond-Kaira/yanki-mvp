@@ -9,12 +9,12 @@ from app.services.analyses import cost_breakdown, spend_on
 from app.worker import _record_terminal_event
 
 
-def _response(db_session, analysis, prompt, engine, model, cost):
+def _response(db_session, analysis, prompt, llm_provider, model, cost):
     db_session.add(
         Response(
             analysis_id=analysis.id,
             prompt_id=prompt.id,
-            engine=engine,
+            llm_provider=llm_provider,
             model=model,
             raw_text="answer",
             cost_usd=Decimal(cost),
@@ -68,6 +68,29 @@ def test_cost_breakdown_groups_questions_and_usd_by_provider_model(db_session):
     assert by_provider["perplexity"]["cost_usd"] == "0.009000"
     assert by_provider["openrouter"]["stages"] == ["kyc"]
     assert spend_on(db_session, analysis.id) == Decimal("0.015000")
+
+
+def test_cost_breakdown_maps_legacy_measured_slug_to_openrouter(db_session):
+    analysis = Analysis(url="https://acme.test", status="done")
+    db_session.add(analysis)
+    db_session.flush()
+    prompt = Prompt(analysis_id=analysis.id, text="best widgets", category="recommendation")
+    db_session.add(prompt)
+    db_session.flush()
+    _response(
+        db_session,
+        analysis,
+        prompt,
+        "measured",
+        "openai/gpt-4o-mini",
+        "0.002500",
+    )
+    db_session.commit()
+
+    detail = cost_breakdown(db_session, analysis)
+
+    assert detail["providers"][0]["provider"] == "openrouter"
+    assert detail["providers"][0]["model"] == "openai/gpt-4o-mini"
 
 
 def test_terminal_event_keeps_cost_detail_after_the_analysis_finishes(db_session):

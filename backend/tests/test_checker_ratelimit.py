@@ -86,7 +86,7 @@ def _seed_done_checker(
         response = Response(
             analysis_id=analysis.id,
             prompt_id=prompt.id,
-            engine="anthropic",
+            llm_provider="anthropic",
             model="mock",
             raw_text="a",
             cost_usd=Decimal(str(cost)),

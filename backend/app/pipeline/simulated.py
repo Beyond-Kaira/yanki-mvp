@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -472,6 +473,7 @@ def mock_simulated_record(
     owned_domains: list[str],
     sector: str = "",
     aliases: list[str] | None = None,
+    model: str = "mock",
 ) -> dict[str, Any]:
     """Deterministic DRY_RUN simulated record (no LLM)."""
     mentioned = True  # mock always surfaces the brand for a non-zero demo score
@@ -521,35 +523,55 @@ def mock_simulated_record(
         "entities_associated_with_brand": aliases or [],
         "sentiment": "positive",
         "content_improvement_opportunities": [],
-        "model": "mock",
+        "model": model,
         # Explicit, so the DRY_RUN suite's "$0" assertion is a real assertion.
         "_cost_usd": 0.0,
     }
     return normalize_record(record, owned_domains=owned_domains, sector=sector)
 
 
-def run_simulated_audit(
+def _simulated_error_record(
+    *,
+    brand: str,
+    prompt: str,
+    prompt_group: str,
+    model: str,
+    owned_domains: list[str],
+    error_response: str,
+    cost_usd: float = 0.0,
+) -> dict[str, Any]:
+    return {
+        "brand": brand,
+        "prompt": prompt,
+        "prompt_group": prompt_group,
+        "model": model,
+        "error": True,
+        "error_stage": "simulated_audit",
+        "error_response": error_response,
+        "simulated_answer": "",
+        "grounded_answer": "",
+        "mentioned": False,
+        "mention_context": "not_mentioned",
+        "citation_metrics": deepcopy(DEFAULT_CITATION_METRICS),
+        "sentiment": "neutral",
+        "measurement_mode": "simulated",
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "owned_domains": owned_domains,
+        "_cost_usd": cost_usd,
+    }
+
+
+def _run_simulated_audit_live(
     *,
     brand: str,
     prompt: str,
     prompt_group: str,
     owned_domains: list[str],
-    aliases: list[str] | None = None,
-    sector: str = "",
-    llm: ChatLLM | None = None,
-    dry_run: bool = False,
+    aliases: list[str] | None,
+    sector: str,
+    llm: ChatLLM,
 ) -> dict[str, Any]:
-    """Run one simulated audit for ``(brand, prompt)`` via OpenRouter (or mock)."""
-    if dry_run or llm is None:
-        return mock_simulated_record(
-            brand=brand,
-            prompt=prompt,
-            prompt_group=prompt_group,
-            owned_domains=owned_domains,
-            sector=sector,
-            aliases=aliases,
-        )
-
     alias_line = ", ".join(aliases or []) or "(none)"
     user_content = (
         f"Brand: {brand}\n"
@@ -576,31 +598,121 @@ def run_simulated_audit(
         parsed["prompt_group"] = prompt_group
         parsed["model"] = getattr(llm, "model", "")
         parsed["response_format"] = response_format
-        # One LLM call, one price, recorded on the record so the caller can
-        # persist it into ``responses.cost_usd``. Before session 21 the
-        # simulated path reported no cost at all.
         parsed["_cost_usd"] = float(getattr(result, "cost_usd", 0) or 0)
         return parsed
     except Exception as exc:  # noqa: BLE001
-        return {
-            "brand": brand,
-            "prompt": prompt,
-            "prompt_group": prompt_group,
-            "model": getattr(llm, "model", ""),
-            "error": True,
-            "error_stage": "simulated_audit",
-            "error_response": str(exc),
-            "simulated_answer": "",
-            "grounded_answer": "",
-            "mentioned": False,
-            "mention_context": "not_mentioned",
-            "citation_metrics": deepcopy(DEFAULT_CITATION_METRICS),
-            "sentiment": "neutral",
-            "measurement_mode": "simulated",
-            "schema_version": SCHEMA_VERSION,
-            "generated_at": datetime.now(UTC).isoformat(),
-            "owned_domains": owned_domains,
-            # A call that raised may still have been billed upstream, but nothing
-            # here can know that — so this is an honest 0, not a claim of $0.
-            "_cost_usd": 0.0,
-        }
+        return _simulated_error_record(
+            brand=brand,
+            prompt=prompt,
+            prompt_group=prompt_group,
+            model=getattr(llm, "model", ""),
+            owned_domains=owned_domains,
+            error_response=str(exc),
+        )
+
+
+def run_simulated_audits(
+    *,
+    brand: str,
+    prompt: str,
+    prompt_group: str,
+    owned_domains: list[str],
+    aliases: list[str] | None = None,
+    sector: str = "",
+    llm: ChatLLM | None = None,
+    dry_run: bool = False,
+    model_slugs: list[str] | None = None,
+    llm_factory: Callable[[str], ChatLLM] | None = None,
+) -> list[dict[str, Any]]:
+    """Run simulated audits for ``(brand, prompt)`` across ``model_slugs``.
+
+    Unlike measured, there is no shared search — each slug gets a full
+    SYSTEM_PROMPT audit call. A failure in one model does not stop the rest.
+    """
+    slugs = list(model_slugs or [])
+    if not slugs:
+        if dry_run or llm is None:
+            slugs = ["mock"]
+        elif llm is not None:
+            slugs = [getattr(llm, "model", "openai/gpt-4o-mini")]
+        else:
+            slugs = ["openai/gpt-4o-mini"]
+
+    use_live_llm = not dry_run and (llm is not None or llm_factory is not None)
+
+    if not use_live_llm:
+        return [
+            mock_simulated_record(
+                brand=brand,
+                prompt=prompt,
+                prompt_group=prompt_group,
+                owned_domains=owned_domains,
+                sector=sector,
+                aliases=aliases,
+                model=slug,
+            )
+            for slug in slugs
+        ]
+
+    if llm_factory is None:
+        if llm is None:
+            raise RuntimeError("llm or llm_factory is required when dry_run=False")
+        passed_llm = llm
+        api_key = getattr(passed_llm, "_api_key", None)
+        if api_key is not None:
+            from app.providers.openrouter import OpenRouterProvider
+
+            def _make_llm(slug: str) -> ChatLLM:
+                return OpenRouterProvider(api_key=api_key, model=slug)
+
+            llm_factory = _make_llm
+        else:
+
+            def _make_llm(slug: str) -> ChatLLM:
+                passed_llm.model = slug  # type: ignore[attr-defined]
+                return passed_llm
+
+            llm_factory = _make_llm
+
+    records: list[dict[str, Any]] = []
+    for slug in slugs:
+        audit_llm = llm_factory(slug)
+        records.append(
+            _run_simulated_audit_live(
+                brand=brand,
+                prompt=prompt,
+                prompt_group=prompt_group,
+                owned_domains=owned_domains,
+                aliases=aliases,
+                sector=sector,
+                llm=audit_llm,
+            )
+        )
+    return records
+
+
+def run_simulated_audit(
+    *,
+    brand: str,
+    prompt: str,
+    prompt_group: str,
+    owned_domains: list[str],
+    aliases: list[str] | None = None,
+    sector: str = "",
+    llm: ChatLLM | None = None,
+    dry_run: bool = False,
+    model_slugs: list[str] | None = None,
+) -> dict[str, Any]:
+    """Run one simulated audit — the first slug when ``model_slugs`` has several."""
+
+    return run_simulated_audits(
+        brand=brand,
+        prompt=prompt,
+        prompt_group=prompt_group,
+        owned_domains=owned_domains,
+        aliases=aliases,
+        sector=sector,
+        llm=llm,
+        dry_run=dry_run,
+        model_slugs=model_slugs,
+    )[0]

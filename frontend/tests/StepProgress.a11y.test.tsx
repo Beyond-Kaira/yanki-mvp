@@ -49,10 +49,16 @@ describe('StepProgress accessibility', () => {
       </main>,
     )
     expect(
-      screen.getByText('Asking 4 AI engines the questions your buyers ask'),
+      screen.getByText(
+        'Asking 3 models via OpenRouter the questions your buyers ask',
+      ),
     ).toBeInTheDocument()
-    for (const engine of ['Claude', 'ChatGPT', 'Gemini', 'Perplexity']) {
-      expect(screen.getByText(engine)).toBeInTheDocument()
+    for (const model of [
+      'GPT-4o mini',
+      'Claude Sonnet 4.5',
+      'Gemini 2.5 Flash',
+    ]) {
+      expect(screen.getByText(model)).toBeInTheDocument()
     }
     expect(await axeCheck(container)).toHaveNoViolations()
 
@@ -61,13 +67,13 @@ describe('StepProgress accessibility', () => {
         <StepProgress status="running" progress={30} currentStep="prompts" />
       </main>,
     )
-    expect(screen.queryByText('Claude')).not.toBeInTheDocument()
+    expect(screen.queryByText('GPT-4o mini')).not.toBeInTheDocument()
   })
 
   it('hides the timer, descriptions, and engine panel when failed', () => {
     render(<StepProgress status="failed" progress={45} currentStep="execute" />)
     expect(screen.queryByText(/elapsed/)).not.toBeInTheDocument()
-    expect(screen.queryByText('Claude')).not.toBeInTheDocument()
+    expect(screen.queryByText('GPT-4o mini')).not.toBeInTheDocument()
     expect(
       screen.queryByText('Running your buyer questions against each engine.'),
     ).not.toBeInTheDocument()

@@ -556,7 +556,7 @@ def test_unlinked_mentions_come_from_citation_evidence_with_no_vendor_call(db_se
     response = Response(
         analysis_id=analysis.id,
         prompt_id=prompt.id,
-        engine="measured",
+        llm_provider="openrouter",
         model="mock",
         raw_text="Acme is good.",
     )

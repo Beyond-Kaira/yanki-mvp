@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { engineLabel } from '@/lib/engines'
+import { modelSlugLabel, responseModelId } from '@/lib/engines'
 import type { QuestionGroup } from '@/lib/results'
 
 interface QuestionBreakdownProps {
   groups: QuestionGroup[]
-  // Every engine the run should have covered, so the denominator is the panel
-  // rather than however many answers happened to come back.
+  // Every model the run should have covered, so the denominator is the
+  // configured fan-out rather than however many answers happened to come back.
   engines: string[]
 }
 
@@ -63,13 +63,13 @@ export default function QuestionBreakdown({
           carry the same aria-hidden / sr-only split as the chips they explain,
           so a screen reader hears the states rather than the glyphs. */}
       <p className="text-sm text-surface-subtle">
-        Each question goes to every engine on the panel:{' '}
+        Each question is audited across every configured model:{' '}
         <span aria-hidden="true">
           ✓ named you in its answer, ✕ answered without naming you, – no answer
           came back.
         </span>
         <span className="sr-only">
-          a green engine named you in its answer, a solid grey engine answered
+          a green model named you in its answer, a solid grey model answered
           without naming you, and a dashed outline means no answer came back.
         </span>
       </p>
@@ -85,7 +85,7 @@ export default function QuestionBreakdown({
           aria-hidden="true"
         >
           <span>Question</span>
-          <span className="text-right">Engines</span>
+          <span className="text-right">Models</span>
           <span />
         </div>
         <ul className="divide-y divide-surface-border">
@@ -118,11 +118,8 @@ export default function QuestionBreakdown({
                     >
                       {mentioned}/{engines.length}
                     </span>
-                    {/* "engines", not "answers": the denominator is the panel
-                        roster, so a run where two of four engines answered
-                        would otherwise be read out as four answers. */}
                     <span className="sr-only">
-                      {mentioned} of {engines.length} engines named you
+                      {mentioned} of {engines.length} models named you
                     </span>
                   </p>
                   <p>
@@ -148,13 +145,13 @@ export default function QuestionBreakdown({
                     id={answersId}
                     className="space-y-3 border-t border-surface-border bg-surface-muted px-4 py-3"
                   >
-                    {/* One chip per panel engine, not per answer: an engine
+                    {/* One chip per configured model, not per answer: a model
                         that never answered this question is shown as a gap
                         instead of being left out of the count. */}
                     <ul className="flex flex-wrap gap-2">
                       {engines.map((engine) => {
                         const response = responses.find(
-                          (row) => row.engine === engine,
+                          (row) => responseModelId(row) === engine,
                         )
                         const named = Boolean(response?.footprint)
                         const answered = Boolean(response)
@@ -173,7 +170,7 @@ export default function QuestionBreakdown({
                             <span aria-hidden="true">
                               {named ? '✓' : answered ? '✕' : '–'}
                             </span>
-                            {engineLabel(engine)}
+                            {modelSlugLabel(engine)}
                             <span className="sr-only">
                               {named
                                 ? 'named you'
@@ -213,11 +210,9 @@ export default function QuestionBreakdown({
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 space-y-1">
-                                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-surface-foreground">
-                                  {engineLabel(response.engine)}
-                                  <span className="font-mono text-xs font-normal text-surface-subtle">
-                                    {response.model}
-                                  </span>
+                                <p className="text-sm font-medium text-surface-foreground">
+                                  OpenRouter ·{' '}
+                                  {modelSlugLabel(responseModelId(response))}
                                 </p>
                                 {evidence ? (
                                   <p className="truncate border-l-2 border-success-soft pl-3 text-xs text-success-strong">

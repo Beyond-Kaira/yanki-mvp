@@ -341,8 +341,12 @@ def cost_breakdown(session: Session, analysis: Analysis) -> dict[str, Any]:
         )
 
     for row in rows:
+        provider = row.llm_provider or "unknown"
+        # ADR-34 stored pipeline mode (measured/simulated) in the old engine column.
+        if provider in {"measured", "simulated"}:
+            provider = "openrouter"
         add(
-            provider=row.engine,
+            provider=provider,
             model=row.model,
             stage="answers",
             cost=Decimal(str(row.cost_usd or 0)),

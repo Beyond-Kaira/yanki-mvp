@@ -60,15 +60,41 @@ def get_analysis_provider(settings) -> Provider:
     return _build_real("openrouter", settings)
 
 
-def get_measured_llm(settings):
+def get_openrouter_models(settings) -> list[str]:
+    """OpenRouter model slugs for GEO multi-LLM fan-out (measured + simulated)."""
+
+    if hasattr(settings, "geo_llm_model_list"):
+        return settings.geo_llm_model_list()
+    raw = getattr(settings, "geo_llm_models", None)
+    if raw:
+        from app.config import parse_geo_llm_model_list
+
+        return parse_geo_llm_model_list(
+            str(raw),
+            fallback_model=getattr(settings, "openrouter_model", "openai/gpt-4o-mini"),
+        )
+    # Transitional: duck-typed settings in older tests.
+    return [getattr(settings, "openrouter_model", "openai/gpt-4o-mini")]
+
+
+def get_measured_llm(settings, *, model: str | None = None):
     """OpenRouter chat client for grounded answer + audit extraction."""
     if getattr(settings, "dry_run", True):
         return None
     from app.providers.openrouter import OpenRouterProvider
 
+    if model is not None:
+        slug = model
+    else:
+        configured = getattr(settings, "openrouter_model", "openai/gpt-4o-mini")
+        slug = (
+            configured
+            if isinstance(configured, str) and configured.strip()
+            else "openai/gpt-4o-mini"
+        )
     return OpenRouterProvider(
         api_key=getattr(settings, "open_router_key", ""),
-        model=getattr(settings, "openrouter_model", "openai/gpt-4o-mini"),
+        model=slug,
     )
 
 

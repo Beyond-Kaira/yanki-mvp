@@ -17,7 +17,7 @@ const groups: QuestionGroup[] = [
     responses: [
       {
         id: 'r1',
-        engine: 'anthropic',
+        llm_provider: 'anthropic',
         model: 'mock',
         footprint: true,
         matched_snippet: 'Acme is a strong option.',
@@ -27,7 +27,7 @@ const groups: QuestionGroup[] = [
       },
       {
         id: 'r2',
-        engine: 'openai',
+        llm_provider: 'openai',
         model: 'mock',
         footprint: false,
         matched_snippet: null,
@@ -91,7 +91,7 @@ describe('QuestionBreakdown', () => {
     expect(screen.getByText('1/3')).toBeInTheDocument()
     // And the spoken count says so: this fixture holds two answers, so calling
     // the denominator "answers" would claim one gemini never produced.
-    expect(screen.getByText('1 of 3 engines named you')).toBeInTheDocument()
+    expect(screen.getByText('1 of 3 models named you')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /expand/i }))
 
@@ -115,7 +115,7 @@ describe('QuestionBreakdown', () => {
     // that covers two of them tells the reader a grid full of grey means the
     // engines never answered, when the middle state is the ordinary miss.
     expect(
-      screen.getByText(/Each question goes to every engine/),
+      screen.getByText(/Each question is audited across every configured model/),
     ).toBeInTheDocument()
 
     // Each copy is asserted on its own element, not on the paragraph wrapping
@@ -129,7 +129,7 @@ describe('QuestionBreakdown', () => {
     expect(seen).toHaveTextContent('answered without naming you')
     expect(seen).toHaveTextContent('no answer came back')
 
-    const spoken = screen.getByText(/a green engine named you in its answer/)
+    const spoken = screen.getByText(/a green model named you in its answer/)
     expect(spoken).toHaveTextContent('answered without naming you')
     expect(spoken).toHaveTextContent('no answer came back')
   })

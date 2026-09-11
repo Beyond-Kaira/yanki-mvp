@@ -7,6 +7,7 @@ import uuid
 from sqlalchemy import select
 
 from app.pipeline.geo_records import aggregate_citation_summary, geo_record_from_audit
+from tests.pipeline.conftest import geo_response_count
 
 
 def test_aggregate_citation_summary_rates():
@@ -53,7 +54,9 @@ def test_pipeline_persists_geo_records_and_citation_summary(
     from app.pipeline import discovery, runner
 
     monkeypatch.setattr(
-        discovery, "discover", lambda url: "Acme builds warehouse robots and tools."
+        discovery,
+        "discover_detailed",
+        lambda url: discovery.CrawlResult(text="Acme builds warehouse robots and tools.", pages=()),
     )
 
     analysis = models.Analysis(url="https://example.com", status="running")
@@ -69,14 +72,15 @@ def test_pipeline_persists_geo_records_and_citation_summary(
         .scalars()
         .all()
     )
-    assert len(geo_rows) == settings.prompt_count
+    expected_responses = geo_response_count(settings, settings.prompt_count)
+    assert len(geo_rows) == expected_responses
     assert all(row.brand for row in geo_rows)
     assert all(row.prompt for row in geo_rows)
     assert all(row.citation_metrics is not None for row in geo_rows)
     assert all(row.response_id is not None for row in geo_rows)
 
     assert result.citation_summary is not None
-    assert result.citation_summary["record_count"] == settings.prompt_count
+    assert result.citation_summary["record_count"] == expected_responses
     assert "cite_rate" in result.citation_summary
 
 
@@ -116,9 +120,7 @@ def test_geo_record_from_audit_maps_kaira_keys():
         "schema_version": "3.0",
         "owned_domains": ["acme.example"],
     }
-    row = geo_record_from_audit(
-        record, analysis_id=analysis_id, response_id=response_id
-    )
+    row = geo_record_from_audit(record, analysis_id=analysis_id, response_id=response_id)
     assert row.brand == "Acme"
     assert row.mentioned is True
     assert row.citations == [{"source_domain": "acme.example"}]

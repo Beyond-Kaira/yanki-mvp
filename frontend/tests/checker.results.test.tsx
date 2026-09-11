@@ -70,7 +70,7 @@ function makeAnalysis(overrides: AnalysisOverrides = {}): Analysis {
 function response(overrides: Partial<AnalysisResponse>): AnalysisResponse {
   return {
     id: 'r1',
-    engine: 'anthropic',
+    llm_provider: 'anthropic',
     model: 'mock',
     footprint: true,
     matched_snippet: 'Notion is a strong option.',
@@ -103,7 +103,9 @@ describe('Checker results screen', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/couldn't finish this check/i)
-    expect(alert).toHaveTextContent(/stopped while asking the AI engines/i)
+    expect(alert).toHaveTextContent(
+      /stopped while auditing your buyer questions across our models/i,
+    )
     // The trail marks the step that died, and nothing after it.
     expect(screen.getByText('Executing')).toBeInTheDocument()
     expect(await axeCheck(container)).toHaveNoViolations()
@@ -143,10 +145,10 @@ describe('Checker results screen', () => {
           kyc: null,
           prompts: [samplePrompt({ id: 'p1', category: 'recommendation', text: 'Best?' })],
           responses: [
-            response({ id: 'r1', engine: 'anthropic', footprint: true }),
+            response({ id: 'r1', llm_provider: 'anthropic', footprint: true }),
             response({
               id: 'r2',
-              engine: 'openai',
+              llm_provider: 'openai',
               footprint: false,
               matched_snippet: null,
             }),

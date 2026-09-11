@@ -4,6 +4,7 @@ import {
   groupByQuestion,
   runEngineIds,
 } from '@/lib/results'
+import { GEO_LLM_MODELS } from '@/lib/engines'
 import type { AnalysisResponse, Prompt } from '@/lib/contracts'
 import { samplePrompt } from './analysisMocks'
 
@@ -12,8 +13,8 @@ import { samplePrompt } from './analysisMocks'
 function response(overrides: Partial<AnalysisResponse>): AnalysisResponse {
   return {
     id: 'r1',
-    engine: 'openai',
-    model: 'mock',
+    llm_provider: 'openrouter',
+    model: 'openai/gpt-4o-mini',
     footprint: false,
     matched_snippet: null,
     prompt_id: 'p1',
@@ -29,86 +30,125 @@ const prompts: Prompt[] = [
 ]
 
 describe('runEngineIds', () => {
-  it('covers the panel even when a run has no answers at all', () => {
-    expect(runEngineIds([])).toEqual([
-      'anthropic',
-      'openai',
-      'gemini',
-      'perplexity',
-    ])
+  it('covers the configured models even when a run has no answers at all', () => {
+    expect(runEngineIds([])).toEqual(GEO_LLM_MODELS)
   })
 
-  it('includes an engine outside the panel that did answer', () => {
-    expect(runEngineIds([response({ engine: 'mistral' })])).toContain('mistral')
+  it('includes a model outside the default list that did answer', () => {
+    expect(
+      runEngineIds([
+        response({ llm_provider: 'openrouter', model: 'mistral/mistral-small' }),
+      ]),
+    ).toContain('mistral/mistral-small')
   })
 })
 
 describe('deriveEnginePresence', () => {
-  it('counts mentions per engine', () => {
+  it('counts mentions per model slug', () => {
     const presence = deriveEnginePresence([
-      response({ id: 'a', engine: 'openai', footprint: true }),
-      response({ id: 'b', engine: 'openai', footprint: false }),
-      response({ id: 'c', engine: 'anthropic', footprint: true }),
+      response({
+        id: 'a',
+        model: 'openai/gpt-4o-mini',
+        footprint: true,
+      }),
+      response({
+        id: 'b',
+        model: 'openai/gpt-4o-mini',
+        footprint: false,
+      }),
+      response({
+        id: 'c',
+        model: 'anthropic/claude-sonnet-4.5',
+        footprint: true,
+      }),
     ])
 
     expect(presence).toContainEqual({
-      engine: 'openai',
+      engine: 'openai/gpt-4o-mini',
       mentioned: 1,
       total: 2,
     })
     expect(presence).toContainEqual({
-      engine: 'anthropic',
+      engine: 'anthropic/claude-sonnet-4.5',
       mentioned: 1,
       total: 1,
     })
   })
 
-  it('keeps an engine that returned nothing instead of dropping it', () => {
+  it('keeps a model that returned nothing instead of dropping it', () => {
     const presence = deriveEnginePresence([
-      response({ id: 'a', engine: 'openai', footprint: true }),
+      response({ id: 'a', model: 'openai/gpt-4o-mini', footprint: true }),
     ])
 
-    // A silent provider must not shrink the denominator: it reports 0 of 0.
     expect(presence).toContainEqual({
-      engine: 'gemini',
+      engine: 'google/gemini-2.5-flash',
       mentioned: 0,
       total: 0,
     })
-    expect(presence).toHaveLength(4)
+    expect(presence).toHaveLength(GEO_LLM_MODELS.length)
   })
 
   it('keeps the reported numbers while still seeding the roster', () => {
-    // What the checker route gets: the backend aggregate walks the responses it
-    // has, so an engine that answered nothing is absent from it entirely.
     const presence = deriveEnginePresence(
-      [response({ id: 'a', engine: 'openai', footprint: true })],
-      [{ engine: 'openai', mentioned: 7, total: 12 }],
+      [response({ id: 'a', model: 'openai/gpt-4o-mini', footprint: true })],
+      [{ engine: 'openai/gpt-4o-mini', mentioned: 7, total: 12 }],
     )
 
-    // Reported numbers win: the backend can count rows this client never sees.
-    expect(presence).toContainEqual({ engine: 'openai', mentioned: 7, total: 12 })
-    // And the silent engine is still listed, which is the whole guarantee.
-    expect(presence).toContainEqual({ engine: 'gemini', mentioned: 0, total: 0 })
-    expect(presence).toHaveLength(4)
+    expect(presence).toContainEqual({
+      engine: 'openai/gpt-4o-mini',
+      mentioned: 7,
+      total: 12,
+    })
+    expect(presence).toContainEqual({
+      engine: 'google/gemini-2.5-flash',
+      mentioned: 0,
+      total: 0,
+    })
+    expect(presence).toHaveLength(GEO_LLM_MODELS.length)
   })
 
-  it('keeps a reported engine that is not on the panel', () => {
+  it('keeps a reported model that is not on the default list', () => {
     const presence = deriveEnginePresence(
       [],
-      [{ engine: 'mistral', mentioned: 1, total: 3 }],
+      [{ engine: 'mistral/mistral-small', mentioned: 1, total: 3 }],
     )
 
-    expect(presence).toContainEqual({ engine: 'mistral', mentioned: 1, total: 3 })
+    expect(presence).toContainEqual({
+      engine: 'mistral/mistral-small',
+      mentioned: 1,
+      total: 3,
+    })
   })
 
   it('treats a null footprint as not mentioned', () => {
     const presence = deriveEnginePresence([
-      response({ id: 'a', engine: 'gemini', footprint: null }),
+      response({
+        id: 'a',
+        model: 'google/gemini-2.5-flash',
+        footprint: null,
+      }),
     ])
 
     expect(presence).toContainEqual({
-      engine: 'gemini',
+      engine: 'google/gemini-2.5-flash',
       mentioned: 0,
+      total: 1,
+    })
+  })
+
+  it('falls back to llm_provider when model is mock (legacy rows)', () => {
+    const presence = deriveEnginePresence([
+      response({
+        id: 'a',
+        llm_provider: 'anthropic',
+        model: 'mock',
+        footprint: true,
+      }),
+    ])
+
+    expect(presence).toContainEqual({
+      engine: 'anthropic',
+      mentioned: 1,
       total: 1,
     })
   })
@@ -117,12 +157,12 @@ describe('deriveEnginePresence', () => {
 describe('groupByQuestion', () => {
   it('groups responses under their prompt, in prompt order', () => {
     const groups = groupByQuestion(prompts, [
-      response({ id: 'a', prompt_id: 'p2', engine: 'openai', footprint: true }),
-      response({ id: 'b', prompt_id: 'p1', engine: 'openai', footprint: true }),
+      response({ id: 'a', prompt_id: 'p2', model: 'openai/gpt-4o-mini', footprint: true }),
+      response({ id: 'b', prompt_id: 'p1', model: 'openai/gpt-4o-mini', footprint: true }),
       response({
         id: 'c',
         prompt_id: 'p1',
-        engine: 'anthropic',
+        model: 'anthropic/claude-sonnet-4.5',
         footprint: false,
       }),
     ])

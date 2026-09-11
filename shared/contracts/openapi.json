@@ -1838,7 +1838,7 @@
         "type": "object"
       },
       "EnginePresence": {
-        "description": "One engine's presence in a checker run: ``mentioned`` of ``total`` answers\nnamed the searched brand (P5.3). Read-time aggregate of the ``footprint``\nbooleans; the per-engine totals sum to ``total_responses``.",
+        "description": "One model's presence in a checker run: ``mentioned`` of ``total`` answers\nnamed the searched brand (P5.3). ``engine`` is the OpenRouter model slug (or\nlegacy panel id). Read-time aggregate of the ``footprint`` booleans; the\nper-model totals sum to ``total_responses``.",
         "properties": {
           "engine": {
             "title": "Engine",
@@ -2162,17 +2162,6 @@
             ],
             "title": "Intent"
           },
-          "measurement_mode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Measurement Mode"
-          },
           "mention_context": {
             "anyOf": [
               {
@@ -2194,17 +2183,6 @@
               }
             ],
             "title": "Mentioned"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
           },
           "owned_domains": {
             "anyOf": [
@@ -2282,17 +2260,6 @@
               }
             ],
             "title": "Schema Version"
-          },
-          "search_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Search Provider"
           },
           "search_results": {
             "anyOf": [
@@ -3570,10 +3537,6 @@
             "title": "Cost Usd",
             "type": "number"
           },
-          "engine": {
-            "title": "Engine",
-            "type": "string"
-          },
           "footprint": {
             "anyOf": [
               {
@@ -3588,6 +3551,10 @@
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "llm_provider": {
+            "title": "Llm Provider",
             "type": "string"
           },
           "matched_snippet": {
@@ -3618,7 +3585,7 @@
         "required": [
           "id",
           "prompt_id",
-          "engine",
+          "llm_provider",
           "model",
           "raw_text",
           "footprint",

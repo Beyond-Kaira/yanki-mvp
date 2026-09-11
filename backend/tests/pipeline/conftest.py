@@ -9,25 +9,29 @@ module is not present yet.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
+from app.config import Settings
 from app.pipeline.kyc import KYC
+from app.providers.registry import get_openrouter_models
+
+
+def geo_response_count(settings, prompt_count: int) -> int:
+    """Expected ``responses`` rows after execute (prompts × configured models)."""
+
+    return prompt_count * len(get_openrouter_models(settings))
 
 
 @pytest.fixture
 def settings(tmp_path_factory):
-    """A plain settings object mirroring app.config.Settings (lowercase attrs).
+    """Settings tuned for pipeline tests (DRY_RUN, default multi-LLM list).
 
     ``worker_heartbeat_path`` points at a temp file because `run_pipeline` beats
     at every step (ADR-47) and the real default, `/var/run/yanki/`, is a volume
-    that exists only in a container. `health.beat` forgives a missing field
-    anyway — it must, since it runs inside the step loop — but a fixture that
-    relies on the forgiveness tests the fallback instead of the behaviour.
+    that exists only in a container.
     """
 
-    return SimpleNamespace(
+    return Settings(
         dry_run=True,
         panel_engines="anthropic,openai,gemini,perplexity",
         prompt_count=4,

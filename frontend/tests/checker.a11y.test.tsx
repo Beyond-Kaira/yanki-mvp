@@ -109,7 +109,7 @@ describe('Checker screens accessibility', () => {
           responses: [
             {
               id: 'r1',
-              engine: 'openai',
+              llm_provider: 'openai',
               model: 'gpt-4o-mini',
               footprint: true,
               matched_snippet: 'Notion is a strong option.',
@@ -155,7 +155,7 @@ describe('Checker screens accessibility', () => {
           responses: [
             {
               id: 'r1',
-              engine: 'openai',
+              llm_provider: 'openai',
               model: 'gpt-4o-mini',
               footprint: true,
               matched_snippet: 'Notion is a strong option.',
@@ -165,7 +165,7 @@ describe('Checker screens accessibility', () => {
             },
             {
               id: 'r2',
-              engine: 'anthropic',
+              llm_provider: 'anthropic',
               model: 'claude',
               footprint: false,
               matched_snippet: null,

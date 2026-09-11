@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from 'react'
 import type { AnalysisResponse, Prompt } from '@/lib/contracts'
-import { engineLabel } from '@/lib/engines'
+import { engineLabel, modelSlugLabel, responseModelId } from '@/lib/engines'
 
 interface ResultsTableProps {
   responses: AnalysisResponse[]
@@ -64,11 +64,14 @@ export default function ResultsTable({ responses, prompts }: ResultsTableProps) 
               <Fragment key={response.id}>
                 <tr className={zebra}>
                   <td className="px-4 py-3 font-medium text-surface-foreground">
-                    {engineLabel(response.engine)}
+                    {engineLabel(response.llm_provider)}
                   </td>
                   <td className="px-4 py-3 text-surface-subtle">
-                    <span className="block truncate" title={response.model}>
-                      {response.model}
+                    <span
+                      className="block truncate"
+                      title={responseModelId(response)}
+                    >
+                      {modelSlugLabel(responseModelId(response))}
                     </span>
                   </td>
                   <td className="px-4 py-3">

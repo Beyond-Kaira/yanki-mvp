@@ -10,9 +10,10 @@ whole thing is deterministic and costs **$0**.
 
 Two aggregates, one pass:
 
-* **engine_presence** — group the responses by ``engine`` and report, per
-  engine, how many answers mentioned the company (``footprint is True``) out of
-  the total answers for that engine. The per-engine totals sum to the analysis'
+* **engine_presence** — group the responses by OpenRouter **model slug**
+  (``response.model``; legacy rows fall back to ``llm_provider``) and report,
+  per model, how many answers mentioned the company (``footprint is True``) out of
+  the total answers for that model. The per-model totals sum to the analysis'
   ``total_responses`` and the per-engine ``mentioned`` counts sum to its
   ``footprint_count``, so the map is always consistent with the headline score.
 
@@ -56,8 +57,9 @@ Heuristic design notes (why this is more than a naive Title-Case grep):
   genuinely ends in ``'s`` (``McDonald's``) keeps its name.
 
 The helper is intentionally free of any ORM / API import: it consumes a plain
-sequence of duck-typed response rows (``engine`` / ``footprint`` / ``raw_text``)
-plus the ``kyc`` dict, and returns plain frozen dataclasses. The route
+sequence of duck-typed response rows (``model`` / ``llm_provider`` / ``footprint``
+/ ``raw_text``) plus the ``kyc`` dict, and returns plain frozen dataclasses. The
+route
 (``_to_out``) maps those onto the Pydantic contract models, and only for
 ``kind='checker'`` rows — MVP analyses carry ``null`` for both fields.
 """
@@ -97,33 +99,184 @@ _NAME_RE = re.compile(rf"{_WORD}(?:[ \t]+{_WORD})*")
 # can already appear). Not exhaustive — a heuristic tuned for co-mention noise.
 _STOPWORDS_RAW = [
     # English
-    "the", "a", "an", "and", "or", "but", "so", "as", "if", "then", "than",
-    "this", "that", "these", "those", "it", "its", "we", "you", "they", "he",
-    "she", "i", "there", "here", "when", "where", "what", "which", "who", "whom",
-    "whose", "why", "how", "in", "on", "at", "to", "of", "for", "with", "from",
-    "by", "about", "into", "over", "under", "some", "any", "many", "much",
-    "most", "more", "other", "others", "another", "both", "each", "every",
-    "all", "few", "several", "well", "also", "however", "overall", "generally",
-    "typically", "based", "depending", "consider", "considering", "note",
-    "please", "options", "option", "example", "examples", "etc", "meanwhile",
-    "additionally", "furthermore", "moreover", "similarly", "alternatively",
-    "yes", "no", "maybe", "best", "top", "popular", "known", "recommend",
-    "recommended", "include", "includes", "including",
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "so",
+    "as",
+    "if",
+    "then",
+    "than",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "we",
+    "you",
+    "they",
+    "he",
+    "she",
+    "i",
+    "there",
+    "here",
+    "when",
+    "where",
+    "what",
+    "which",
+    "who",
+    "whom",
+    "whose",
+    "why",
+    "how",
+    "in",
+    "on",
+    "at",
+    "to",
+    "of",
+    "for",
+    "with",
+    "from",
+    "by",
+    "about",
+    "into",
+    "over",
+    "under",
+    "some",
+    "any",
+    "many",
+    "much",
+    "most",
+    "more",
+    "other",
+    "others",
+    "another",
+    "both",
+    "each",
+    "every",
+    "all",
+    "few",
+    "several",
+    "well",
+    "also",
+    "however",
+    "overall",
+    "generally",
+    "typically",
+    "based",
+    "depending",
+    "consider",
+    "considering",
+    "note",
+    "please",
+    "options",
+    "option",
+    "example",
+    "examples",
+    "etc",
+    "meanwhile",
+    "additionally",
+    "furthermore",
+    "moreover",
+    "similarly",
+    "alternatively",
+    "yes",
+    "no",
+    "maybe",
+    "best",
+    "top",
+    "popular",
+    "known",
+    "recommend",
+    "recommended",
+    "include",
+    "includes",
+    "including",
     # Recommendation / imperative verbs an LLM Title-Cases at a sentence start,
     # welding onto the following brand ("Try Acme", "Choose Nike over ..."). As
     # leading tokens they are stripped, so the real brand (and its exclusion)
     # survives instead of a bogus "Try Acme" / "Choose Nike" name.
-    "try", "visit", "choose", "explore", "discover", "compare", "suggest",
-    "suggests", "prefer", "avoid",
+    "try",
+    "visit",
+    "choose",
+    "explore",
+    "discover",
+    "compare",
+    "suggest",
+    "suggests",
+    "prefer",
+    "avoid",
     # Turkish (both plain and İ-initial spellings so casefold matches either way)
-    "bir", "ve", "veya", "ya", "ama", "fakat", "ancak", "çünkü", "ki", "da",
-    "de", "bu", "şu", "o", "bunlar", "şunlar", "onlar", "ben", "sen", "biz",
-    "siz", "için", "İçin", "ile", "İle", "ise", "İse", "gibi", "kadar", "daha",
-    "çok", "az", "bazı", "birçok", "diğer", "başka", "her", "hepsi", "tüm",
-    "bütün", "ayrıca", "örneğin", "genellikle", "genel", "olarak", "yani",
-    "hem", "ne", "nasıl", "neden", "niçin", "hangi", "kim", "nerede", "evet",
-    "hayır", "belki", "en", "iyi", "İyi", "popüler", "seçenek", "seçenekler",
-    "öneri", "öneriler", "öneririm",
+    "bir",
+    "ve",
+    "veya",
+    "ya",
+    "ama",
+    "fakat",
+    "ancak",
+    "çünkü",
+    "ki",
+    "da",
+    "de",
+    "bu",
+    "şu",
+    "o",
+    "bunlar",
+    "şunlar",
+    "onlar",
+    "ben",
+    "sen",
+    "biz",
+    "siz",
+    "için",
+    "İçin",
+    "ile",
+    "İle",
+    "ise",
+    "İse",
+    "gibi",
+    "kadar",
+    "daha",
+    "çok",
+    "az",
+    "bazı",
+    "birçok",
+    "diğer",
+    "başka",
+    "her",
+    "hepsi",
+    "tüm",
+    "bütün",
+    "ayrıca",
+    "örneğin",
+    "genellikle",
+    "genel",
+    "olarak",
+    "yani",
+    "hem",
+    "ne",
+    "nasıl",
+    "neden",
+    "niçin",
+    "hangi",
+    "kim",
+    "nerede",
+    "evet",
+    "hayır",
+    "belki",
+    "en",
+    "iyi",
+    "İyi",
+    "popüler",
+    "seçenek",
+    "seçenekler",
+    "öneri",
+    "öneriler",
+    "öneririm",
 ]
 _STOPWORDS = frozenset(w.casefold() for w in _STOPWORDS_RAW)
 
@@ -146,16 +299,17 @@ _POSSESSIVE_RE = re.compile(r"['’]s?$")
 class ResponseLike(Protocol):
     """The duck-typed shape this helper reads off each response row."""
 
-    engine: str
+    llm_provider: str
+    model: str
     footprint: bool | None
     raw_text: str
 
 
 @dataclass(frozen=True)
 class EnginePresenceStat:
-    """One engine's presence: ``mentioned`` of ``total`` answers named the brand."""
+    """One model's presence: ``mentioned`` of ``total`` answers named the brand."""
 
-    engine: str
+    engine: str  # OpenRouter model slug (legacy: panel llm_provider id)
     mentioned: int
     total: int
 
@@ -243,10 +397,21 @@ def _names_in_answer(raw_text: str, excluded: set[str]) -> set[str]:
     return found
 
 
-def _engine_presence(responses: list[ResponseLike]) -> list[EnginePresenceStat]:
-    """Per-engine mentioned/total, in first-seen (panel) order.
+def _presence_engine(response: ResponseLike) -> str:
+    """Group key for engine_presence: model slug, with legacy llm_provider fallback."""
 
-    ``total`` counts every response for the engine; ``mentioned`` counts those
+    model = getattr(response, "model", None)
+    if isinstance(model, str):
+        slug = model.strip()
+        if slug and slug != "mock":
+            return slug
+    return response.llm_provider
+
+
+def _engine_presence(responses: list[ResponseLike]) -> list[EnginePresenceStat]:
+    """Per-model mentioned/total, in first-seen order.
+
+    ``total`` counts every response for the model; ``mentioned`` counts those
     whose ``footprint`` is True (``None``/False do not count as a mention). The
     totals sum to ``len(responses)`` and the mentions to the footprint count, so
     the map stays consistent with ``total_responses`` / ``footprint_count``.
@@ -254,7 +419,7 @@ def _engine_presence(responses: list[ResponseLike]) -> list[EnginePresenceStat]:
     totals: dict[str, int] = {}
     mentioned: dict[str, int] = {}
     for response in responses:
-        engine = response.engine
+        engine = _presence_engine(response)
         totals[engine] = totals.get(engine, 0) + 1
         if response.footprint:
             mentioned[engine] = mentioned.get(engine, 0) + 1

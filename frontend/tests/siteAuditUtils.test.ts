@@ -17,6 +17,7 @@ function page(
     final_url: `https://example.com/${id}`,
     status_code: statusCode,
     title: id,
+    created_at: '2026-08-04T09:00:00Z',
     meta_description: null,
     h1_count: 0,
     html_lang: null,

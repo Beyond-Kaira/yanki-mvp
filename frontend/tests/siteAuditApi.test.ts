@@ -5,6 +5,7 @@ import {
   getSeoProject,
   getSiteAudit,
   listSeoProjects,
+  startSiteAudit,
 } from '@/lib/api'
 import type { SeoProject, SeoProjectDetail, SiteAuditDetail } from '@/lib/contracts'
 import { setAccessToken } from '@/lib/session'
@@ -110,6 +111,53 @@ describe('Site Audit API', () => {
     )
     expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
     expect(JSON.parse(init.body as string)).toEqual(input)
+  })
+
+  it('queues a re-run against the project that already exists', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ...AUDIT_DETAIL, status: 'queued' }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const settings = {
+      page_limit: 100,
+      profile_id: 'site_audit_mobile' as const,
+      js_rendering: true,
+    }
+
+    await expect(startSiteAudit(PROJECT.id, settings)).resolves.toMatchObject({
+      status: 'queued',
+    })
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(path).toBe(`/api/v1/seo-projects/${PROJECT.id}/audits`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual(settings)
+    expect(new Headers(init.headers).get('Authorization')).toBe(
+      'Bearer site-audit-token',
+    )
+  })
+
+  it('reads out the refusals a re-run has its own answer for', async () => {
+    for (const [status, pattern] of [
+      [409, /already has an audit queued or running/i],
+      [404, /not available for this project/i],
+      [403, /role cannot start a Site Audit/i],
+    ] as const) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response('{}', { status })),
+      )
+      const request = startSiteAudit(PROJECT.id, {
+        page_limit: 10,
+        profile_id: 'site_audit_mobile',
+        js_rendering: true,
+      })
+      await expect(request).rejects.toThrow(pattern)
+      await expect(request).rejects.toMatchObject({ status })
+    }
   })
 
   it('loads an account-owned project and audit detail', async () => {

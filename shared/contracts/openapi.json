@@ -4223,6 +4223,11 @@
       },
       "SiteAuditPageOut": {
         "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
           "final_url": {
             "title": "Final Url",
             "type": "string"
@@ -4295,7 +4300,8 @@
           "meta_description",
           "html_lang",
           "issues",
-          "schemas"
+          "schemas",
+          "created_at"
         ],
         "title": "SiteAuditPageOut",
         "type": "object"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from urllib.parse import urlsplit
 
 import pytest
@@ -305,6 +306,12 @@ def test_audit_detail_returns_structured_page_findings(
     assert body["health_score"] == 85
     assert body["pages"][0]["issues"][0]["code"] == "missing_h1"
     assert body["pages"][0]["schemas"][0]["type"] == "Organization"
+    # Per-page timing is the only way to see a crawl slow down from outside the
+    # server: the audit's own start/finish pair averages it away. Compared as an
+    # instant rather than a string, because SQLite drops the tzinfo Postgres keeps
+    # and the assertion is about the value, not the dialect.
+    returned_at = datetime.fromisoformat(body["pages"][0]["created_at"].replace("Z", "+00:00"))
+    assert returned_at.replace(tzinfo=None) == page.created_at.replace(tzinfo=None)
 
 
 def test_private_network_domain_is_rejected_without_persisting(

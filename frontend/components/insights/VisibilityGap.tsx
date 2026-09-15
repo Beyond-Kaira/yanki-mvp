@@ -3,43 +3,43 @@ import {
   INTENT_GROUPS,
   type IntentGroup,
   type VisibilityGap as VisibilityGapData,
-} from '@/lib/insights'
+} from "@/lib/insights";
 
 interface VisibilityGapProps {
-  gap: VisibilityGapData
+  gap: VisibilityGapData;
 }
 
 const GROUP_META: Record<IntentGroup, { label: string; description: string }> =
   {
     discovery: {
-      label: 'Discovery',
-      description: 'Market leaders and best-of questions',
+      label: "Discovery",
+      description: "Market leaders and best-of questions",
     },
     comparison: {
-      label: 'Comparison',
-      description: 'Comparisons and alternative searches',
+      label: "Comparison",
+      description: "Comparisons and alternative searches",
     },
     recommendation: {
-      label: 'Recommendation',
-      description: 'Recommendations and use-case questions',
+      label: "Recommendation",
+      description: "Recommendations and use-case questions",
     },
-  }
+  };
 
 function percent(value: number, total: number): number {
-  return total > 0 ? Math.round((value / total) * 100) : 0
+  return total > 0 ? Math.round((value / total) * 100) : 0;
 }
 
 function groupedGap(gap: VisibilityGapData) {
   return INTENT_GROUPS.map((group) => {
-    const categories = new Set(GROUP_CATEGORIES[group])
-    const rows = gap.categories.filter((row) => categories.has(row.category))
+    const categories = new Set(GROUP_CATEGORIES[group]);
+    const rows = gap.categories.filter((row) => categories.has(row.category));
     return {
       group,
       total: rows.reduce((sum, row) => sum + row.total, 0),
       lost: rows.reduce((sum, row) => sum + row.lost, 0),
       names: [...new Set(rows.flatMap((row) => row.competitors))],
-    }
-  })
+    };
+  });
 }
 
 // An answer-level metric: another detected name appeared while the measured
@@ -47,9 +47,9 @@ function groupedGap(gap: VisibilityGapData) {
 // win because the backend does not yet distinguish brand mentions from empty
 // or no-signal answers in this aggregate.
 export default function VisibilityGap({ gap }: VisibilityGapProps) {
-  const gapPct = percent(gap.answersLost, gap.total)
-  const other = Math.max(0, gap.total - gap.answersLost)
-  const groups = groupedGap(gap)
+  const gapPct = percent(gap.answersLost, gap.total);
+  const other = Math.max(0, gap.total - gap.answersLost);
+  const groups = groupedGap(gap);
 
   return (
     <section
@@ -164,8 +164,8 @@ export default function VisibilityGap({ gap }: VisibilityGapProps) {
 
         <ul className="mt-4 grid gap-3 lg:grid-cols-3">
           {groups.map((row) => {
-            const meta = GROUP_META[row.group]
-            const pct = percent(row.lost, row.total)
+            const meta = GROUP_META[row.group];
+            const pct = percent(row.lost, row.total);
             return (
               <li
                 key={row.group}
@@ -222,10 +222,10 @@ export default function VisibilityGap({ gap }: VisibilityGapProps) {
                   </details>
                 ) : null}
               </li>
-            )
+            );
           })}
         </ul>
       </div>
     </section>
-  )
+  );
 }

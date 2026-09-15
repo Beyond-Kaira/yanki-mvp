@@ -3,43 +3,43 @@ import {
   INTENT_GROUPS,
   type DriverStat,
   type IntentGroup,
-} from '@/lib/insights'
+} from "@/lib/insights";
 
 interface VisibilityDriversProps {
-  drivers: DriverStat[]
-  promptSet: string
+  drivers: DriverStat[];
+  promptSet: string;
 }
 
 const GROUP_META: Record<IntentGroup, { label: string; description: string }> =
   {
     discovery: {
-      label: 'Discovery',
-      description: 'Leadership and best-of questions',
+      label: "Discovery",
+      description: "Leadership and best-of questions",
     },
     comparison: {
-      label: 'Comparison',
-      description: 'Comparisons and alternatives',
+      label: "Comparison",
+      description: "Comparisons and alternatives",
     },
     recommendation: {
-      label: 'Recommendation',
-      description: 'Choice and use-case questions',
+      label: "Recommendation",
+      description: "Choice and use-case questions",
     },
-  }
+  };
 
 function percent(value: number, total: number): number {
-  return total > 0 ? Math.round((value / total) * 100) : 0
+  return total > 0 ? Math.round((value / total) * 100) : 0;
 }
 
 function groupedDrivers(drivers: DriverStat[]) {
   return INTENT_GROUPS.map((group) => {
-    const categories = new Set(GROUP_CATEGORIES[group])
-    const rows = drivers.filter((driver) => categories.has(driver.category))
+    const categories = new Set(GROUP_CATEGORIES[group]);
+    const rows = drivers.filter((driver) => categories.has(driver.category));
     return {
       group,
       mentioned: rows.reduce((sum, row) => sum + row.mentioned, 0),
       total: rows.reduce((sum, row) => sum + row.total, 0),
-    }
-  })
+    };
+  });
 }
 
 // This view intentionally groups the six low-sample prompt categories into the
@@ -49,10 +49,10 @@ export default function VisibilityDrivers({
   drivers,
   promptSet,
 }: VisibilityDriversProps) {
-  const groups = groupedDrivers(drivers)
-  const totalAnswers = groups.reduce((sum, group) => sum + group.total, 0)
-  const totalMentions = groups.reduce((sum, group) => sum + group.mentioned, 0)
-  const visibilityRate = percent(totalMentions, totalAnswers)
+  const groups = groupedDrivers(drivers);
+  const totalAnswers = groups.reduce((sum, group) => sum + group.total, 0);
+  const totalMentions = groups.reduce((sum, group) => sum + group.mentioned, 0);
+  const visibilityRate = percent(totalMentions, totalAnswers);
 
   return (
     <section
@@ -104,9 +104,9 @@ export default function VisibilityDrivers({
       <div className="p-5 sm:p-6">
         <ul className="grid gap-3 lg:grid-cols-3">
           {groups.map((row) => {
-            const meta = GROUP_META[row.group]
-            const rate = percent(row.mentioned, row.total)
-            const mentionShare = percent(row.mentioned, totalMentions)
+            const meta = GROUP_META[row.group];
+            const rate = percent(row.mentioned, row.total);
+            const mentionShare = percent(row.mentioned, totalMentions);
             return (
               <li
                 key={row.group}
@@ -152,12 +152,12 @@ export default function VisibilityDrivers({
                       Share of mentions
                     </p>
                     <p className="mt-0.5 text-sm font-medium tabular-nums text-surface-foreground">
-                      {totalMentions > 0 ? `${mentionShare}%` : '—'}
+                      {totalMentions > 0 ? `${mentionShare}%` : "—"}
                     </p>
                   </div>
                 </div>
               </li>
-            )
+            );
           })}
         </ul>
 
@@ -170,5 +170,5 @@ export default function VisibilityDrivers({
         </div>
       </div>
     </section>
-  )
+  );
 }

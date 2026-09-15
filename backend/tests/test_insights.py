@@ -29,7 +29,8 @@ def _prompt(prompt_id: str, category: str) -> SimpleNamespace:
 def _response(prompt_id: str, engine: str, raw_text: str, footprint: bool) -> SimpleNamespace:
     return SimpleNamespace(
         prompt_id=prompt_id,
-        engine=engine,
+        llm_provider="openrouter",
+        model=engine,
         raw_text=raw_text,
         footprint=footprint,
     )
@@ -93,9 +94,7 @@ def test_landscape_does_not_repeat_own_term_as_a_competitor() -> None:
 
     assert insights is not None
     turkey = [
-        entity
-        for entity in insights.entityLandscape.entities
-        if entity.name.casefold() == "turkey"
+        entity for entity in insights.entityLandscape.entities if entity.name.casefold() == "turkey"
     ]
     assert len(turkey) == 1
     assert turkey[0].ownership == "shared"
@@ -118,10 +117,7 @@ def test_landscape_filters_one_off_external_names_but_keeps_known_competitors() 
     insights = summarize_insights(responses, prompts, kyc)
 
     assert insights is not None
-    names = {
-        entity.name.casefold()
-        for entity in insights.entityLandscape.entities
-    }
+    names = {entity.name.casefold() for entity in insights.entityLandscape.entities}
     assert "globex" in names
     assert "initech" in names
     assert "paris" not in names

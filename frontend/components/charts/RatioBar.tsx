@@ -1,15 +1,20 @@
 // A single labelled n/m bar. The fill never carries the value alone — the
 // ratio text sits next to it, so nothing here needs colour to be read.
 interface RatioBarProps {
-  label: string
-  mentioned: number
-  total: number
+  label: string;
+  mentioned: number;
+  total: number;
   // Compact wording for tight rows (engine grids); default is "n/m answers".
-  compact?: boolean
+  compact?: boolean;
 }
 
-export default function RatioBar({ label, mentioned, total, compact }: RatioBarProps) {
-  const pct = total > 0 ? Math.round((mentioned / total) * 100) : 0
+export default function RatioBar({
+  label,
+  mentioned,
+  total,
+  compact,
+}: RatioBarProps) {
+  const pct = total > 0 ? Math.round((mentioned / total) * 100) : 0;
 
   return (
     <div className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] items-center gap-3">
@@ -22,12 +27,15 @@ export default function RatioBar({ label, mentioned, total, compact }: RatioBarP
         aria-valuemax={100}
         aria-label={`${label}: mentioned in ${mentioned} of ${total} answers`}
       >
-        <div className="h-full rounded bg-primary" style={{ width: `${pct}%` }} />
+        <div
+          className="h-full rounded bg-primary"
+          style={{ width: `${pct}%` }}
+        />
       </div>
       <span className="whitespace-nowrap text-xs tabular-nums text-surface-subtle">
         {mentioned}/{total}
-        {compact ? '' : ` · ${pct}%`}
+        {compact ? "" : ` · ${pct}%`}
       </span>
     </div>
-  )
+  );
 }

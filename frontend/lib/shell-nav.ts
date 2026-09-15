@@ -23,100 +23,105 @@
  * reference link belongs.
  */
 
-import { isPublicPath } from '@/lib/route-access'
+import { isPublicPath } from "@/lib/route-access";
 
-export type NavBadge = 'live' | 'soon' | null
+export type NavBadge = "live" | "soon" | null;
 
 export type ShellSectionId =
-  | 'home'
-  | 'search-visibility'
-  | 'ai-visibility'
-  | 'backlinks'
-  | 'admin'
-  | 'settings'
+  | "home"
+  | "search-visibility"
+  | "ai-visibility"
+  | "backlinks"
+  | "admin"
+  | "settings";
 
 export interface ShellFlyoutItem {
-  id: string
-  label: string
-  href: string | null
-  badge: NavBadge
+  id: string;
+  label: string;
+  href: string | null;
+  badge: NavBadge;
 }
 
 export interface ShellSection {
-  id: ShellSectionId
-  label: string
-  href: string | null
+  id: ShellSectionId;
+  label: string;
+  href: string | null;
   /** When null, section is N/A (no flyout destinations). */
-  flyoutTitle: string | null
-  items: ShellFlyoutItem[]
+  flyoutTitle: string | null;
+  items: ShellFlyoutItem[];
 }
 
 export const SHELL_SECTIONS: ShellSection[] = [
   {
-    id: 'home',
-    label: 'Home',
-    href: '/dashboard',
+    id: "home",
+    label: "Home",
+    href: "/dashboard",
     flyoutTitle: null,
     items: [],
   },
   {
-    id: 'search-visibility',
-    label: 'Search Visibility',
-    href: '/search-visibility',
-    flyoutTitle: 'Search Visibility',
+    id: "search-visibility",
+    label: "Search Visibility",
+    href: "/search-visibility",
+    flyoutTitle: "Search Visibility",
     items: [
       {
-        id: 'overview',
-        label: 'Overview',
-        href: '/search-visibility',
-        badge: 'live',
+        id: "overview",
+        label: "Overview",
+        href: "/search-visibility",
+        badge: "live",
       },
       // Site Audit is fully built (crawler, worker, dashboard) and was badged
       // "N/A" — the single most misleading entry in the file.
-      { id: 'site-audit', label: 'Site Audit', href: '/site-audit', badge: 'live' },
       {
-        id: 'keyword-overview',
-        label: 'Keyword Overview',
-        href: '/search-visibility/keywords',
-        badge: 'live',
+        id: "site-audit",
+        label: "Site Audit",
+        href: "/site-audit",
+        badge: "live",
       },
       {
-        id: 'keyword-magic',
-        label: 'Keyword Magic',
-        href: '/search-visibility/keywords/magic',
-        badge: 'live',
+        id: "keyword-overview",
+        label: "Keyword Overview",
+        href: "/search-visibility/keywords",
+        badge: "live",
+      },
+      {
+        id: "keyword-magic",
+        label: "Keyword Magic",
+        href: "/search-visibility/keywords/magic",
+        badge: "live",
       },
     ],
   },
   {
-    id: 'ai-visibility',
-    label: 'AI Visibility',
-    href: '/ai-visibility',
-    flyoutTitle: 'AI Visibility',
+    id: "ai-visibility",
+    label: "AI Visibility",
+    href: "/ai-visibility",
+    flyoutTitle: "AI Visibility",
     items: [
       {
-        id: 'overview',
-        label: 'Overview',
-        href: '/ai-visibility',
-        badge: 'live',
+        id: "overview",
+        label: "Overview",
+        href: "/ai-visibility",
+        badge: "live",
       },
       {
-        id: 'prompts',
-        label: 'Prompts & Answers',
-        href: '/ai-visibility/prompts',
-        badge: 'live',
+        id: "prompts",
+        label: "Prompts & Answers",
+        href: "/ai-visibility/prompts",
+        badge: "live",
       },
       {
-        id: 'citations',
-        label: 'Citations',
-        href: '/ai-visibility/citations',
-        badge: 'live',
+        id: "citations",
+        label: "Citations",
+        href: "/ai-visibility/citations",
+        badge: "live",
       },
       {
-        id: 'drivers',
-        label: 'Drivers & Gaps',
-        href: '/ai-visibility/drivers',
-        badge: 'live',
+        id: "drivers",
+        label: "Drivers & Gaps",
+        href: "/ai-visibility/drivers",
+        badge: "live",
       },
       // The record of what this organization has actually run. It belongs in
       // this section rather than under Home because a GEO analysis *is* the AI
@@ -124,16 +129,16 @@ export const SHELL_SECTIONS: ShellSection[] = [
       // belonging to an organization in P7.6, which made "where are my previous
       // ones?" a question with a real answer for the first time.
       {
-        id: 'analysis-history',
-        label: 'Your analyses',
-        href: '/analyses',
-        badge: 'live',
+        id: "analysis-history",
+        label: "Your analyses",
+        href: "/analyses",
+        badge: "live",
       },
       {
-        id: 'entities',
-        label: 'Entities',
-        href: '/ai-visibility/entities',
-        badge: 'live',
+        id: "entities",
+        label: "Entities",
+        href: "/ai-visibility/entities",
+        badge: "live",
       },
     ],
   },
@@ -147,12 +152,17 @@ export const SHELL_SECTIONS: ShellSection[] = [
     // opens one is told plainly that no index is connected yet. That is a
     // different statement from "this feature does not exist", which is what
     // 'soon' claimed and what a hidden entry would imply.
-    id: 'backlinks',
-    label: 'Backlinks',
-    href: '/backlinks',
-    flyoutTitle: 'Backlinks',
+    id: "backlinks",
+    label: "Backlinks",
+    href: "/backlinks",
+    flyoutTitle: "Backlinks",
     items: [
-      { id: 'bl-inventory', label: 'Backlink inventory', href: '/backlinks', badge: 'live' },
+      {
+        id: "bl-inventory",
+        label: "Backlink inventory",
+        href: "/backlinks",
+        badge: "live",
+      },
     ],
   },
   {
@@ -161,45 +171,56 @@ export const SHELL_SECTIONS: ShellSection[] = [
     // different person, from "change my password" — and burying them one level
     // down under a personal-preferences heading is what made an account feel
     // like it granted nothing (tech-debt #52).
-    id: 'admin',
-    label: 'Admin Panel',
-    href: '/admin',
-    flyoutTitle: 'Admin Panel',
+    id: "admin",
+    label: "Admin Panel",
+    href: "/admin",
+    flyoutTitle: "Admin Panel",
     items: [
-      { id: 'members', label: 'Members & roles', href: '/admin', badge: 'live' },
-      { id: 'invitations', label: 'Invitations', href: '/admin/invitations', badge: 'live' },
-      { id: 'audit', label: 'Audit log', href: '/admin/audit', badge: 'live' },
+      {
+        id: "members",
+        label: "Members & roles",
+        href: "/admin",
+        badge: "live",
+      },
+      {
+        id: "invitations",
+        label: "Invitations",
+        href: "/admin/invitations",
+        badge: "live",
+      },
+      { id: "audit", label: "Audit log", href: "/admin/audit", badge: "live" },
     ],
   },
   {
-    id: 'settings',
-    label: 'Settings',
-    href: '/settings',
-    flyoutTitle: 'Settings',
+    id: "settings",
+    label: "Settings",
+    href: "/settings",
+    flyoutTitle: "Settings",
     items: [
-      { id: 'profile', label: 'Profile', href: '/settings', badge: 'live' },
-      { id: 'billing', label: 'Plan & usage', href: null, badge: 'soon' },
+      { id: "profile", label: "Profile", href: "/settings", badge: "live" },
+      { id: "billing", label: "Plan & usage", href: null, badge: "soon" },
     ],
   },
-]
+];
 
 /** The Admin Panel's own tabs, in the order the sub-pages present them. */
 export const ADMIN_PANEL_TABS: { id: string; label: string; href: string }[] = [
-  { id: 'members', label: 'Members & roles', href: '/admin' },
-  { id: 'invitations', label: 'Invitations', href: '/admin/invitations' },
-  { id: 'audit', label: 'Audit log', href: '/admin/audit' },
-]
+  { id: "members", label: "Members & roles", href: "/admin" },
+  { id: "invitations", label: "Invitations", href: "/admin/invitations" },
+  { id: "audit", label: "Audit log", href: "/admin/audit" },
+];
 
 export function sectionFromPath(pathname: string): ShellSectionId {
-  if (pathname === '/dashboard' || pathname === '/' || pathname === '') return 'home'
-  if (pathname.startsWith('/search-visibility')) return 'search-visibility'
-  if (pathname.startsWith('/site-audit')) return 'search-visibility'
-  if (pathname.startsWith('/admin')) return 'admin'
-  if (pathname.startsWith('/settings')) return 'settings'
-  if (pathname.startsWith('/ai-visibility')) return 'ai-visibility'
-  if (pathname.startsWith('/analyses')) return 'ai-visibility'
-  if (pathname.startsWith('/backlinks')) return 'backlinks'
-  return 'home'
+  if (pathname === "/dashboard" || pathname === "/" || pathname === "")
+    return "home";
+  if (pathname.startsWith("/search-visibility")) return "search-visibility";
+  if (pathname.startsWith("/site-audit")) return "search-visibility";
+  if (pathname.startsWith("/admin")) return "admin";
+  if (pathname.startsWith("/settings")) return "settings";
+  if (pathname.startsWith("/ai-visibility")) return "ai-visibility";
+  if (pathname.startsWith("/analyses")) return "ai-visibility";
+  if (pathname.startsWith("/backlinks")) return "backlinks";
+  return "home";
 }
 
 /**
@@ -211,20 +232,26 @@ export function sectionFromPath(pathname: string): ShellSectionId {
  * visibility overviews are here.
  */
 const EXACT_MATCH_HREFS = new Set([
-  '/',
-  '/admin',
-  '/ai-visibility',
-  '/search-visibility',
-  '/search-visibility/keywords',
-])
+  "/",
+  "/admin",
+  "/ai-visibility",
+  "/search-visibility",
+  "/search-visibility/keywords",
+]);
 
-export function flyoutItemActive(pathname: string, item: ShellFlyoutItem): boolean {
-  if (!item.href) return false
+export function flyoutItemActive(
+  pathname: string,
+  item: ShellFlyoutItem,
+): boolean {
+  if (!item.href) return false;
   if (EXACT_MATCH_HREFS.has(item.href)) {
-    const normalized = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname
-    return normalized === item.href || (item.href === '/' && normalized === '')
+    const normalized =
+      pathname.endsWith("/") && pathname !== "/"
+        ? pathname.slice(0, -1)
+        : pathname;
+    return normalized === item.href || (item.href === "/" && normalized === "");
   }
-  return pathname === item.href || pathname.startsWith(`${item.href}/`)
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 /** Paths that use the product shell (vertical nav) instead of marketing header.
@@ -233,17 +260,17 @@ export function flyoutItemActive(pathname: string, item: ShellFlyoutItem): boole
  * from both chromes now — a link in the header and in the shell's top bar — and
  * a page you reach by link does not need to carry the whole product rail. */
 export function isShellPath(pathname: string): boolean {
-  if (pathname === '/dashboard') return true
+  if (pathname === "/dashboard") return true;
   return (
-    pathname.startsWith('/dashboard') ||
-    pathname.startsWith('/admin') ||
-    pathname.startsWith('/settings') ||
-    pathname.startsWith('/site-audit') ||
-    pathname.startsWith('/backlinks') ||
-    pathname.startsWith('/ai-visibility') ||
-    pathname.startsWith('/search-visibility') ||
-    pathname.startsWith('/analyses')
-  )
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/site-audit") ||
+    pathname.startsWith("/backlinks") ||
+    pathname.startsWith("/ai-visibility") ||
+    pathname.startsWith("/search-visibility") ||
+    pathname.startsWith("/analyses")
+  );
 }
 
 /**
@@ -262,6 +289,6 @@ export function isShellPath(pathname: string): boolean {
  * the shell while `RequireAuth` renders inside it.
  */
 export function showsAppShell(pathname: string, signedIn: boolean): boolean {
-  if (!isShellPath(pathname)) return false
-  return signedIn || !isPublicPath(pathname)
+  if (!isShellPath(pathname)) return false;
+  return signedIn || !isPublicPath(pathname);
 }

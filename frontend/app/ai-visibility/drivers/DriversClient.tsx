@@ -1,16 +1,19 @@
-'use client'
+"use client";
 
-import AnalysisBoundSubpage from '@/components/ai-visibility/AnalysisBoundSubpage'
-import { driversFromAnalysis, type ClaimBucket } from '@/lib/ai-visibility-data'
-import VisibilityDrivers from '@/components/insights/VisibilityDrivers'
-import VisibilityGap from '@/components/insights/VisibilityGap'
+import AnalysisBoundSubpage from "@/components/ai-visibility/AnalysisBoundSubpage";
+import {
+  driversFromAnalysis,
+  type ClaimBucket,
+} from "@/lib/ai-visibility-data";
+import VisibilityDrivers from "@/components/insights/VisibilityDrivers";
+import VisibilityGap from "@/components/insights/VisibilityGap";
 
 export default function DriversPage() {
   return (
     <AnalysisBoundSubpage title="Drivers & Gaps">
       {(analysis) => {
-        const model = driversFromAnalysis(analysis)
-        const insights = analysis.result.insights
+        const model = driversFromAnalysis(analysis);
+        const insights = analysis.result.insights;
         return (
           <div className="space-y-8">
             <section className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary-soft/70 via-white to-white px-5 py-5 shadow-sm sm:px-6">
@@ -163,10 +166,10 @@ export default function DriversPage() {
               </div>
             </section>
           </div>
-        )
+        );
       }}
     </AnalysisBoundSubpage>
-  )
+  );
 }
 
 function ClaimSection({
@@ -176,21 +179,21 @@ function ClaimSection({
   buckets,
   tone,
 }: {
-  title: string
-  description: string
-  empty: string
-  buckets: ClaimBucket[]
-  tone: 'success' | 'warning'
+  title: string;
+  description: string;
+  empty: string;
+  buckets: ClaimBucket[];
+  tone: "success" | "warning";
 }) {
   const accent =
-    tone === 'success'
-      ? 'bg-success-soft text-success-strong'
-      : 'bg-warning-soft text-warning-strong'
-  const dot = tone === 'success' ? 'bg-success' : 'bg-warning'
+    tone === "success"
+      ? "bg-success-soft text-success-strong"
+      : "bg-warning-soft text-warning-strong";
+  const dot = tone === "success" ? "bg-success" : "bg-warning";
   const totalClaims = buckets.reduce(
     (sum, bucket) => sum + bucket.claims.length,
     0,
-  )
+  );
 
   return (
     <section className="overflow-hidden rounded-2xl border border-surface-border bg-white shadow-sm">
@@ -235,7 +238,7 @@ function ClaimSection({
                         {bucket.label}
                       </p>
                       <p className="mt-0.5 text-xs text-surface-subtle">
-                        {bucket.claims.length} observations from{' '}
+                        {bucket.claims.length} observations from{" "}
                         {bucket.sourceCount} scored answers
                       </p>
                     </div>
@@ -266,5 +269,5 @@ function ClaimSection({
         )}
       </div>
     </section>
-  )
+  );
 }

@@ -119,8 +119,6 @@ def build_geo_out(analysis: Analysis) -> GeoOut:
         engine_presence=engine_presence,
         competitors_appeared=competitors_appeared,
         insights=(
-            InsightsOut.model_validate(insight_summary)
-            if insight_summary is not None
-            else None
+            InsightsOut.model_validate(insight_summary) if insight_summary is not None else None
         ),
     )

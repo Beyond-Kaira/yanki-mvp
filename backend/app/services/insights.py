@@ -44,7 +44,7 @@ class PromptLike(Protocol):
 
 class ResponseLike(Protocol):
     prompt_id: Any
-    engine: str
+    model: str
     footprint: bool | None
     raw_text: str
 
@@ -129,9 +129,7 @@ class Insights:
     engines: list[EngineInsight] = field(default_factory=list)
     gap: VisibilityGap = field(default_factory=lambda: VisibilityGap(0, 0))
     entityCoverage: EntityCoverage = field(default_factory=lambda: EntityCoverage(0, 0))
-    entityLandscape: EntityLandscape = field(
-        default_factory=lambda: EntityLandscape(0)
-    )
+    entityLandscape: EntityLandscape = field(default_factory=lambda: EntityLandscape(0))
     drivers: list[DriverStat] = field(default_factory=list)
 
 
@@ -179,22 +177,34 @@ def _known_competitor_keys(kyc: dict[str, Any] | None) -> set[str]:
     if not isinstance(values, list):
         return set()
     return {
-        value.strip().casefold()
-        for value in values
-        if isinstance(value, str) and value.strip()
+        value.strip().casefold() for value in values if isinstance(value, str) and value.strip()
     }
 
 
 def _contains(text: str, name: str) -> bool:
-    return re.search(
-        rf"(?<!\w){re.escape(name)}(?!\w)",
-        text or "",
-        flags=re.IGNORECASE,
-    ) is not None
+    return (
+        re.search(
+            rf"(?<!\w){re.escape(name)}(?!\w)",
+            text or "",
+            flags=re.IGNORECASE,
+        )
+        is not None
+    )
 
 
 def _answer_count(rows: list[ResponseLike], name: str) -> int:
     return sum(1 for row in rows if _contains(row.raw_text, name))
+
+
+def _model_key(row: ResponseLike) -> str:
+    """Return the per-LLM grouping key, with legacy fixture compatibility."""
+    model = getattr(row, "model", None)
+    if isinstance(model, str) and model.strip():
+        return model.strip()
+    legacy_engine = getattr(row, "engine", None)
+    if isinstance(legacy_engine, str) and legacy_engine.strip():
+        return legacy_engine.strip()
+    return "unknown"
 
 
 def _first_brand_index(text: str, exclusions: set[str]) -> int | None:
@@ -243,10 +253,10 @@ def summarize_insights(
             competitor_counts[key] += 1
             competitor_display.setdefault(key, name)
 
-    engine_order = list(dict.fromkeys(row.engine for row in rows))
+    engine_order = list(dict.fromkeys(_model_key(row) for row in rows))
     engines: list[EngineInsight] = []
     for engine in engine_order:
-        engine_pairs = [(row, prompt) for row, prompt in scored if row.engine == engine]
+        engine_pairs = [(row, prompt) for row, prompt in scored if _model_key(row) == engine]
         engine_rows = [row for row, _prompt in engine_pairs]
         engine_competitors = [names_in_answer(row.raw_text, exclusions) for row in engine_rows]
         engine_competitor_counts: Counter[str] = Counter()
@@ -271,9 +281,7 @@ def summarize_insights(
                 first_mentions += 1
         groups = []
         for group, categories in INTENT_GROUPS.items():
-            group_rows = [
-                row for row, prompt in engine_pairs if prompt.category in categories
-            ]
+            group_rows = [row for row, prompt in engine_pairs if prompt.category in categories]
             groups.append(
                 IntentGroupStat(
                     group=group,
@@ -290,8 +298,7 @@ def summarize_insights(
                 groups=groups,
                 brandAnswers=brand_answers,
                 competitors=[
-                    CompetitorMention(engine_display[key], count)
-                    for key, count in ranked[:5]
+                    CompetitorMention(engine_display[key], count) for key, count in ranked[:5]
                 ],
                 share=brand_answers / share_base if share_base else None,
                 firstMentions=first_mentions,
@@ -300,9 +307,7 @@ def summarize_insights(
 
     gap_categories: list[CategoryGap] = []
     for category in _ORDERED_CATEGORIES:
-        category_rows = [
-            row for row, prompt in scored if prompt.category == category
-        ]
+        category_rows = [row for row, prompt in scored if prompt.category == category]
         lost_rows = [
             row
             for row in category_rows
@@ -330,18 +335,10 @@ def summarize_insights(
     own_entities: list[EntityStat] = []
     for term in own_terms:
         answers = _answer_count(rows, term)
-        co_mentions = sum(
-            1 for row in rows if row.footprint and _contains(row.raw_text, term)
-        )
-        ownership: Ownership = (
-            "shared" if co_mentions else "competitor" if answers else "unclaimed"
-        )
+        co_mentions = sum(1 for row in rows if row.footprint and _contains(row.raw_text, term))
+        ownership: Ownership = "shared" if co_mentions else "competitor" if answers else "unclaimed"
         presence: Presence = (
-            "present"
-            if co_mentions
-            else "high-impact-missing"
-            if answers
-            else "missing"
+            "present" if co_mentions else "high-impact-missing" if answers else "missing"
         )
         own_entities.append(
             EntityStat(
@@ -380,9 +377,7 @@ def summarize_insights(
         )
 
     category_mentions = {
-        category: sum(
-            1 for row, prompt in scored if prompt.category == category and row.footprint
-        )
+        category: sum(1 for row, prompt in scored if prompt.category == category and row.footprint)
         for category in _ORDERED_CATEGORIES
     }
     total_brand_mentions = sum(category_mentions.values())

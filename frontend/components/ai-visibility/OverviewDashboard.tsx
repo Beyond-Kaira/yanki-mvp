@@ -1,10 +1,10 @@
 "use client";
 
-import Link from 'next/link'
-import type { ReactNode } from 'react'
-import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
-import PageContainer from '@/components/shell/PageContainer'
-import PageHeaderRow from '@/components/shell/PageHeaderRow'
+import Link from "next/link";
+import type { ReactNode } from "react";
+import NewAnalysisButton from "@/components/ai-visibility/NewAnalysisButton";
+import PageContainer from "@/components/shell/PageContainer";
+import PageHeaderRow from "@/components/shell/PageHeaderRow";
 import {
   IconCheck,
   IconChevron,
@@ -311,5 +311,5 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
         {model.analysisId ? ` · ${model.analysisId.slice(0, 8)}…` : ""}
       </p>
     </PageContainer>
-  )
+  );
 }

@@ -1,8 +1,9 @@
 """On-demand domain rank checks for selected keyword queries (preview).
 
-Reuses SearXNG via ``SerpSource`` and host matching from ``serp_visibility``.
-Text/brand snippet hits are out of scope here — only own-domain / subdomain
-matches count. Budget is small (default 10 queries) to protect the instance.
+Reuses the configured :class:`~app.serp.base.SerpSource` (SearXNG or DataForSEO)
+and host matching from ``serp_visibility``. Text/brand snippet hits are out of
+scope — only own-domain / subdomain matches count. Budget is small (default 10
+queries) to protect the operator's SERP politeness budget.
 """
 
 from __future__ import annotations
@@ -83,10 +84,10 @@ def check_keyword_ranks(
         if len(cleaned_queries) >= max(1, max_queries):
             break
 
-    # Locale maps onto SearXNG language when the source supports it.
-    previous = getattr(source, "language", None)
-    if previous is not None and hasattr(source, "language"):
-        source.language = (locale or "en").strip() or "en"  # type: ignore[attr-defined]
+    language = (locale or "en").strip() or "en"
+    previous_language = getattr(source, "language", None)
+    if hasattr(source, "language"):
+        source.language = language  # type: ignore[attr-defined]
 
     hits: list[KeywordRankHit] = []
     try:
@@ -142,7 +143,7 @@ def check_keyword_ranks(
                     )
                 )
     finally:
-        if previous is not None and hasattr(source, "language"):
-            source.language = previous  # type: ignore[attr-defined]
+        if hasattr(source, "language") and isinstance(previous_language, str):
+            source.language = previous_language  # type: ignore[attr-defined]
 
     return host, hits

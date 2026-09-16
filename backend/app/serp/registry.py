@@ -21,13 +21,12 @@ def _serp_provider(settings) -> str:
     return (getattr(settings, "serp_provider", "") or "searxng").strip().lower()
 
 
-def get_serp_source(settings) -> SerpSource | None:
-    """The source for this run, or ``None`` when SERP visibility is off."""
-    if not getattr(settings, "serp_enabled", False):
-        return None
-    if getattr(settings, "dry_run", True):
-        return MockSerpSource()
+def build_configured_serp_source(settings) -> SerpSource | None:
+    """Live SERP adapter from operator settings, or ``None`` when unconfigured.
 
+    Ignores ``SERP_ENABLED`` and ``DRY_RUN`` — callers gate those themselves.
+    Shared by analysis SERP visibility and keyword preview (expand / rank-check).
+    """
     language = getattr(settings, "serp_language", "en")
     timeout_seconds = getattr(settings, "serp_timeout_seconds", 10.0)
     max_results = getattr(settings, "serp_max_results", 20)
@@ -50,9 +49,9 @@ def get_serp_source(settings) -> SerpSource | None:
 
     base_url = (getattr(settings, "serp_base_url", "") or "").strip()
     if not base_url:
-        # Enabled but unconfigured. Returning None (rather than a source that
-        # raises on every query) keeps the failure legible: the run records
-        # "not measured" instead of six identical connection errors.
+        # Unconfigured. Returning None (rather than a source that raises on every
+        # query) keeps the failure legible: "not measured", not six identical
+        # connection errors.
         return None
     return SearxngSource(
         base_url,
@@ -63,3 +62,12 @@ def get_serp_source(settings) -> SerpSource | None:
         timeout_seconds=timeout_seconds,
         max_results=max_results,
     )
+
+
+def get_serp_source(settings) -> SerpSource | None:
+    """The source for this run, or ``None`` when SERP visibility is off."""
+    if not getattr(settings, "serp_enabled", False):
+        return None
+    if getattr(settings, "dry_run", True):
+        return MockSerpSource()
+    return build_configured_serp_source(settings)

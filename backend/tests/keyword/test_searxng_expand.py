@@ -1,13 +1,22 @@
-"""SearXNG keyword expander: variants + suggestions + PAA + related titles."""
+"""SERP-backed keyword expander: variants + suggestions + PAA + related titles."""
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from app.keyword.base import KeywordUnavailable
-from app.keyword.searxng_expand import SearxngKeywordSource
+from app.keyword.serp_expand import SerpKeywordSource
 from app.serp.base import SerpPage, SerpResult, SerpUnavailable
+from app.serp.dataforseo import page_from_api_payload
+
+DATAFORSEO_FIXTURE = (
+    Path(__file__).resolve().parents[1] / "serp" / "fixtures" / "dataforseo_organic.json"
+)
 
 
 class _FakeSerp:
+    name = "searxng"
     language = "en"
     base_url = "http://searxng:8080"
 
@@ -42,7 +51,7 @@ def test_expand_includes_seed_variants_suggestions_paa_and_related():
         suggestions=("money transfer uk", "international money transfer"),
         answers=("is money transfer safe", "A long prose answer that ends."),
     )
-    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
     result = source.expand("money transfer", locale="en-GB", max_ideas=50)
 
     assert result.provider == "searxng"
@@ -77,7 +86,7 @@ def test_expand_merge_order_is_suggestions_before_variants():
         suggestions=("seo apps ranking", "free seo apps"),
         answers=("what are seo apps",),
     )
-    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
     result = source.expand("seo apps", max_ideas=6)
     sources = [idea.source for idea in result.ideas]
     assert sources[0] == "seed"
@@ -102,7 +111,7 @@ def test_expand_prefers_suggestions_when_max_ideas_is_tight():
         query="crm",
         suggestions=("crm software", "crm tools", "crm platforms"),
     )
-    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
     result = source.expand("crm", max_ideas=4)
     assert [idea.source for idea in result.ideas] == [
         "seed",
@@ -115,7 +124,7 @@ def test_expand_prefers_suggestions_when_max_ideas_is_tight():
 
 def test_expand_respects_max_variants_zero():
     page = SerpPage(query="seo apps", suggestions=("seo apps ranking",))
-    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
     result = source.expand("seo apps", max_ideas=50, max_variants=0)
     assert all(idea.source != "variant" for idea in result.ideas)
     assert any(idea.source == "suggestion" for idea in result.ideas)
@@ -123,7 +132,7 @@ def test_expand_respects_max_variants_zero():
 
 def test_expand_caps_variants_at_max_variants():
     page = SerpPage(query="seo apps")
-    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
     result = source.expand("seo apps", max_ideas=50, max_variants=2)
     variants = [idea for idea in result.ideas if idea.source == "variant"]
     assert len(variants) == 2
@@ -134,7 +143,7 @@ def test_expand_drops_excluded_brands_and_respects_max_ideas():
         query="transfer",
         suggestions=("Wise transfer", "transfer comparison", "transfer reviews"),
     )
-    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
     result = source.expand(
         "transfer",
         max_ideas=4,
@@ -149,16 +158,14 @@ def test_expand_dedupes_case_and_whitespace():
         query="crm",
         suggestions=("Best CRM", "best   crm", "BEST CRM"),
     )
-    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
     result = source.expand("crm", max_ideas=20)
     keys = [idea.phrase.lower() for idea in result.ideas]
     assert len(keys) == len(set(keys))
 
 
 def test_expand_wraps_serp_unavailable():
-    source = SearxngKeywordSource(
-        _FakeSerp(error=SerpUnavailable("down"))  # type: ignore[arg-type]
-    )
+    source = SerpKeywordSource(_FakeSerp(error=SerpUnavailable("down")))  # type: ignore[arg-type]
     try:
         source.expand("money transfer")
         raise AssertionError("expected KeywordUnavailable")
@@ -167,7 +174,7 @@ def test_expand_wraps_serp_unavailable():
 
 
 def test_expand_empty_seed_returns_no_ideas():
-    source = SearxngKeywordSource(_FakeSerp(SerpPage(query="")))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(SerpPage(query="")))  # type: ignore[arg-type]
     result = source.expand("   ")
     assert result.ideas == ()
 
@@ -189,7 +196,7 @@ def test_expand_drops_non_question_answers_and_weak_related_titles():
         ),
         answers=("money transfer tips", "is money transfer safe"),
     )
-    source = SearxngKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
+    source = SerpKeywordSource(_FakeSerp(page))  # type: ignore[arg-type]
     result = source.expand("money transfer", max_ideas=50, max_variants=0)
     by_source: dict[str, list[str]] = {}
     for idea in result.ideas:
@@ -198,3 +205,24 @@ def test_expand_drops_non_question_answers_and_weak_related_titles():
     assert "money transfer tips" not in by_source.get("paa", [])
     assert "Best money transfer apps" in by_source.get("related", [])
     assert "Money tips for travelers" not in by_source.get("related", [])
+
+
+def test_expand_from_dataforseo_fixture_reports_provider_and_suggestions():
+    payload = json.loads(DATAFORSEO_FIXTURE.read_text())
+    page = page_from_api_payload(payload, query="best crm software", max_results=20)
+
+    class _DfsSerp:
+        name = "dataforseo"
+        language = "en"
+
+        def search(self, query: str) -> SerpPage:
+            return page
+
+    result = SerpKeywordSource(_DfsSerp()).expand("best crm software", max_variants=0)
+
+    assert result.provider == "dataforseo"
+    assert result.seed == "best crm software"
+    phrases = {idea.phrase for idea in result.ideas}
+    assert "crm for small business" in phrases
+    assert "What is the best CRM for startups?" in phrases
+    assert {idea.source for idea in result.ideas} >= {"seed", "suggestion", "paa"}

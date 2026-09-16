@@ -135,3 +135,43 @@ def test_live_serp_searxng_requires_base_url(tmp_path):
     proc = run(tmp_path, contents)
     assert proc.returncode == 1
     assert "SERP_BASE_URL" in proc.stderr
+
+
+def test_live_keyword_dataforseo_requires_credentials(tmp_path):
+    contents = (
+        LIVE_MEASURED
+        + "KEYWORD_ENABLED=1\nSERP_PROVIDER=dataforseo\n"
+        + "DATAFORSEO_LOGIN=\nDATAFORSEO_PASSWORD=\n"
+    )
+    proc = run(tmp_path, contents)
+    assert proc.returncode == 1
+    assert "DATAFORSEO_LOGIN" in proc.stderr
+    assert "KEYWORD_ENABLED" in proc.stderr
+
+
+def test_live_keyword_dataforseo_with_credentials_passes(tmp_path):
+    contents = (
+        LIVE_MEASURED
+        + "KEYWORD_ENABLED=1\nSERP_PROVIDER=dataforseo\n"
+        + "DATAFORSEO_LOGIN=user@example.com\nDATAFORSEO_PASSWORD=secret\n"
+    )
+    proc = run(tmp_path, contents)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_live_keyword_searxng_requires_base_url(tmp_path):
+    contents = LIVE_MEASURED + "KEYWORD_ENABLED=1\nSERP_PROVIDER=searxng\nSERP_BASE_URL=\n"
+    proc = run(tmp_path, contents)
+    assert proc.returncode == 1
+    assert "SERP_BASE_URL" in proc.stderr
+
+
+def test_serp_and_keyword_dataforseo_credentials_not_duplicated_in_error(tmp_path):
+    contents = (
+        LIVE_MEASURED
+        + "SERP_ENABLED=1\nKEYWORD_ENABLED=1\nSERP_PROVIDER=dataforseo\n"
+        + "DATAFORSEO_LOGIN=\n"
+    )
+    proc = run(tmp_path, contents)
+    assert proc.returncode == 1
+    assert proc.stderr.count("DATAFORSEO_LOGIN") == 1

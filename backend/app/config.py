@@ -266,10 +266,10 @@ class Settings(BaseSettings):
     serp_safesearch: int = 0
     serp_max_results: int = 20
 
-    # Keyword research preview (docs/keyword-preview-oss.md) — expand seeds via
-    # the same SearXNG instance as SERP visibility. Default OFF until the
-    # operator opts in. Under DRY_RUN an enabled run uses MockKeywordSource so
-    # CI needs no instance; live/default product path is SearXNG.
+    # Keyword research preview (docs/keyword-preview-oss.md) — expand seeds and
+    # rank-check via the same ``SERP_PROVIDER`` as SERP visibility (SearXNG or
+    # DataForSEO). Does not require ``SERP_ENABLED``. Default OFF until the
+    # operator opts in. Under DRY_RUN uses mock sources so CI needs no instance.
     keyword_enabled: bool = False
     # Cap on ideas returned from one expand call (politeness / payload size).
     keyword_max_ideas: int = 50

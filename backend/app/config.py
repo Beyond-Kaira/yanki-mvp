@@ -231,17 +231,22 @@ class Settings(BaseSettings):
     # cost is 0, so any positive cap never trips.
     checker_daily_usd_cap: float = 5.0
 
-    # SERP visibility (ADR-28) — read an OPEN-SOURCE metasearch instance
-    # (SearXNG) to see whether the company also shows up in ordinary search
-    # results, alongside the AI-answer GEO score. No vendor, no per-query bill:
-    # the operator runs the instance.
+    # SERP visibility (ADR-28) — see whether the company shows up in ordinary
+    # search results alongside the AI-answer GEO score. Provider is ``searxng``
+    # (operator-run metasearch) or ``dataforseo`` (licensed SERP API).
     #
     # Default OFF, like checker_enabled and emails_enabled, because unlike the
-    # LLM panel this needs a piece of infrastructure no environment has until
-    # somebody stands it up. Under DRY_RUN an enabled run uses the deterministic
-    # mock source instead, so CI exercises the whole path with no instance and
-    # no outbound packet.
+    # LLM panel this needs configuration no environment has until an operator
+    # opts in. Under DRY_RUN an enabled run uses the deterministic mock source
+    # instead, so CI exercises the whole path with no instance and no outbound
+    # packet.
     serp_enabled: bool = False
+    serp_provider: str = "searxng"
+    dataforseo_login: str = ""
+    dataforseo_password: str = ""
+    # 0 = derive from ``serp_language`` (en→2840 US, tr→2792, …).
+    dataforseo_location_code: int = 0
+    dataforseo_device: str = "desktop"
     # Base URL of the SearXNG instance, e.g. http://searxng:8080 on the compose
     # network. The instance must have the JSON format enabled — it is off by
     # default (search.formats: [html, json] in its settings.yml).

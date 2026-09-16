@@ -107,11 +107,7 @@ def main() -> int:
         print("check_env: DRY_RUN is on — no API keys required. OK.")
         return 0
 
-    missing = [
-        (key, reason)
-        for key, reason in required_when_live(values)
-        if not values.get(key)
-    ]
+    missing = [(key, reason) for key, reason in required_when_live(values) if not values.get(key)]
     if missing:
         print(
             "check_env: DRY_RUN is off but required variables are empty:",

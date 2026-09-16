@@ -119,7 +119,12 @@ def _related_search_suggestions(items: list[dict[str, Any]]) -> list[str]:
         if not isinstance(related, list):
             continue
         for raw in related:
-            text = _text(raw, 120) if isinstance(raw, str) else _text(raw.get("title"), 120) if isinstance(raw, dict) else ""
+            if isinstance(raw, str):
+                text = _text(raw, 120)
+            elif isinstance(raw, dict):
+                text = _text(raw.get("title"), 120)
+            else:
+                text = ""
             if not text:
                 continue
             key = text.casefold()

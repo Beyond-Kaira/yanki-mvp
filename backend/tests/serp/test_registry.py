@@ -102,14 +102,18 @@ def test_enabled_live_dataforseo_builds_source_from_settings():
 
 
 def test_dataforseo_enabled_but_unconfigured_yields_no_source():
-    assert get_serp_source(
-        _settings(serp_enabled=True, dry_run=False, serp_provider="dataforseo")
-    ) is None
-    assert get_serp_source(
-        _settings(
-            serp_enabled=True,
-            dry_run=False,
-            serp_provider="dataforseo",
-            dataforseo_login="only-login",
+    assert (
+        get_serp_source(_settings(serp_enabled=True, dry_run=False, serp_provider="dataforseo"))
+        is None
+    )
+    assert (
+        get_serp_source(
+            _settings(
+                serp_enabled=True,
+                dry_run=False,
+                serp_provider="dataforseo",
+                dataforseo_login="only-login",
+            )
         )
-    ) is None
+        is None
+    )

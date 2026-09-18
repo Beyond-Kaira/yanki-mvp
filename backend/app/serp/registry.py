@@ -12,7 +12,7 @@ honest answer to "which source should this run use" when the answer is "none".
 from __future__ import annotations
 
 from app.serp.base import SerpSource
-from app.serp.dataforseo import DataForSeoSource
+from app.serp.dataforseo import DEFAULT_TIMEOUT_SECONDS, DataForSeoSource
 from app.serp.mock import MockSerpSource
 from app.serp.searxng import SearxngSource
 
@@ -43,7 +43,7 @@ def build_configured_serp_source(settings) -> SerpSource | None:
             language=language,
             location_code=location_code,
             device=getattr(settings, "dataforseo_device", "desktop"),
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=max(float(timeout_seconds), DEFAULT_TIMEOUT_SECONDS),
             max_results=max_results,
         )
 

@@ -89,6 +89,34 @@ def test_check_keyword_ranks_hits_dataforseo_fixture_domain():
     assert hits[0].matched_url == "https://www.acmecrm.example/"
 
 
+def test_one_bad_query_does_not_abort_the_batch():
+    calls = {"n": 0}
+
+    class _Flaky:
+        name = "flaky"
+        language = "en"
+
+        def search(self, query: str) -> SerpPage:
+            calls["n"] += 1
+            if query == "boom":
+                raise RuntimeError("simulated vendor bug")
+            return SerpPage(
+                query=query,
+                results=(SerpResult(rank=1, url="https://yankidemo.co/x", title="x"),),
+            )
+
+    domain, hits = check_keyword_ranks(
+        _Flaky(),  # type: ignore[arg-type]
+        domain="yankidemo.co",
+        queries=["ok phrase", "boom", "another ok"],
+    )
+    assert domain == "yankidemo.co"
+    assert len(hits) == 3
+    assert hits[0].appeared is True
+    assert hits[1].measurable is False
+    assert hits[2].appeared is True
+
+
 def test_rank_check_uses_keyword_registry_dataforseo_without_serp_enabled():
     source = get_keyword_serp_source(
         SimpleNamespace(

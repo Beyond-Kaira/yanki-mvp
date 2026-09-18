@@ -17,7 +17,8 @@ import httpx
 from app.serp.base import SerpPage, SerpResult, SerpUnavailable
 
 USER_AGENT = "YankiBot/0.1"
-DEFAULT_TIMEOUT_SECONDS = 10.0
+# Live Advanced often exceeds 10s (especially from Docker). SearXNG defaults stay lower.
+DEFAULT_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_RESULTS = 20
 DEFAULT_LOCATION_CODE = 2840  # United States
 DEFAULT_DEVICE = "desktop"
@@ -212,8 +213,14 @@ class DataForSeoSource:
         if not self.login or not self.password:
             raise SerpUnavailable("DataForSEO credentials are not configured")
         try:
+            timeout = httpx.Timeout(
+                connect=10.0,
+                read=self.timeout_seconds,
+                write=10.0,
+                pool=10.0,
+            )
             with httpx.Client(
-                timeout=self.timeout_seconds,
+                timeout=timeout,
                 headers={"User-Agent": USER_AGENT},
             ) as client:
                 response = client.post(
@@ -221,7 +228,7 @@ class DataForSeoSource:
                     json=self._task_body(query),
                     auth=(self.login, self.password),
                 )
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, OSError) as exc:
             raise SerpUnavailable(f"could not reach DataForSEO: {exc}") from exc
 
         if response.status_code == 401:

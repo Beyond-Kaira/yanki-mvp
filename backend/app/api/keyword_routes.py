@@ -26,7 +26,7 @@ from app.config import Settings, get_settings
 from app.db.models import User
 from app.keyword.base import KeywordIdea, KeywordUnavailable
 from app.keyword.metrics.enrich import enrich_ideas_with_metrics
-from app.keyword.metrics.google_ads import GoogleAdsMetricsUnavailable
+from app.keyword.metrics.base import KeywordMetricsUnavailable
 from app.keyword.metrics.registry import get_keyword_metrics_source
 from app.keyword.rank_check import check_keyword_ranks
 from app.keyword.registry import get_keyword_serp_source, get_keyword_source
@@ -65,7 +65,7 @@ def _enrich_ideas_if_configured(
         return ideas
     try:
         return enrich_ideas_with_metrics(ideas, metrics_source, locale=locale)
-    except GoogleAdsMetricsUnavailable:
+    except KeywordMetricsUnavailable:
         return ideas
     except Exception:  # noqa: BLE001 — metrics must not break expand
         return ideas
@@ -180,6 +180,11 @@ def rank_check_keywords(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc) or "rank-check failed",
         ) from exc
 
     return KeywordRankCheckResponse(

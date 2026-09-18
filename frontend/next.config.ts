@@ -7,6 +7,10 @@ import type { NextConfig } from 'next'
 const apiOrigin = process.env.API_ORIGIN ?? 'http://localhost:8141'
 
 const nextConfig: NextConfig = {
+  // Rank-check fans out live DataForSEO calls; default 30s proxy timeout → 500.
+  experimental: {
+    proxyTimeout: 120_000,
+  },
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${apiOrigin}/api/:path*` },

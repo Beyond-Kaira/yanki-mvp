@@ -100,7 +100,9 @@ export default function KeywordsOverviewClient() {
               </p>
               <p className="mt-1 text-xs text-surface-subtle">
                 {overviewResult.signals?.volume_estimated === false
-                  ? 'Google Ads'
+                  ? overviewResult.signals?.metrics_provider === 'dataforseo'
+                    ? 'DataForSEO (Google Ads data)'
+                    : 'Google Ads'
                   : '— (enable KEYWORD_ADS_ENABLED)'}
               </p>
             </div>

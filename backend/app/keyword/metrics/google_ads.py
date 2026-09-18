@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from app.keyword.metrics.base import KeywordMetricRow
+from app.keyword.metrics.base import KeywordMetricRow, KeywordMetricsUnavailable
 from app.keyword.metrics.locale_map import ads_language_and_geo_for_locale
 from app.keyword.normalize import collapse_keyword_whitespace, keyword_dedupe_key
 
@@ -20,8 +20,8 @@ _ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
 _ADS_API_VERSION = "v22"
 
 
-class GoogleAdsMetricsUnavailable(Exception):
-    """Ads metrics could not be fetched (auth, quota, or transport)."""
+class GoogleAdsMetricsUnavailable(KeywordMetricsUnavailable):
+    """Direct Google Ads metrics could not be fetched (auth, quota, or transport)."""
 
 
 class GoogleAdsKeywordMetricsSource:

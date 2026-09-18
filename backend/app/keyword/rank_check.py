@@ -8,6 +8,7 @@ queries) to protect the operator's SERP politeness budget.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from app.keyword.normalize import collapse_keyword_whitespace
@@ -15,6 +16,19 @@ from app.pipeline.serp_visibility import site_hosts
 from app.serp.base import SerpPage, SerpSource, SerpUnavailable
 
 DEFAULT_RANK_QUERY_BUDGET = 10
+# DataForSEO Live calls are slow; parallelize a small fan-out to stay under proxy limits.
+MAX_RANK_CHECK_WORKERS = 5
+
+
+def _unmeasurable_hit(query: str) -> KeywordRankHit:
+    return KeywordRankHit(
+        query=query,
+        measurable=False,
+        appeared=None,
+        rank=None,
+        matched_url=None,
+        matched_via=None,
+    )
 
 
 @dataclass(frozen=True)
@@ -25,6 +39,41 @@ class KeywordRankHit:
     rank: int | None
     matched_url: str | None
     matched_via: str | None
+
+
+def _rank_hit_for_query(
+    source: SerpSource,
+    query: str,
+    hosts: frozenset[str],
+) -> KeywordRankHit:
+    try:
+        page = source.search(query)
+    except SerpUnavailable:
+        return _unmeasurable_hit(query)
+    except Exception:
+        # One bad query must not 500 the whole batch (live API flakiness).
+        return _unmeasurable_hit(query)
+    if not page.measurable:
+        return _unmeasurable_hit(query)
+    match = _domain_hit(page, hosts)
+    if match is None:
+        return KeywordRankHit(
+            query=query,
+            measurable=True,
+            appeared=False,
+            rank=None,
+            matched_url=None,
+            matched_via=None,
+        )
+    rank, url = match
+    return KeywordRankHit(
+        query=query,
+        measurable=True,
+        appeared=True,
+        rank=rank,
+        matched_url=url,
+        matched_via="domain",
+    )
 
 
 def _domain_hit(page: SerpPage, hosts: frozenset[str]) -> tuple[int, str] | None:
@@ -86,64 +135,31 @@ def check_keyword_ranks(
 
     language = (locale or "en").strip() or "en"
     previous_language = getattr(source, "language", None)
+    previous_location = getattr(source, "location_code", None)
     if hasattr(source, "language"):
         source.language = language  # type: ignore[attr-defined]
+    if hasattr(source, "location_code"):
+        from app.serp.dataforseo import location_code_for_language
+
+        source.location_code = location_code_for_language(language)  # type: ignore[attr-defined]
 
     hits: list[KeywordRankHit] = []
     try:
-        for query in cleaned_queries:
-            try:
-                page = source.search(query)
-            except SerpUnavailable:
-                hits.append(
-                    KeywordRankHit(
-                        query=query,
-                        measurable=False,
-                        appeared=None,
-                        rank=None,
-                        matched_url=None,
-                        matched_via=None,
-                    )
-                )
-                continue
-            if not page.measurable:
-                hits.append(
-                    KeywordRankHit(
-                        query=query,
-                        measurable=False,
-                        appeared=None,
-                        rank=None,
-                        matched_url=None,
-                        matched_via=None,
-                    )
-                )
-                continue
-            match = _domain_hit(page, hosts)
-            if match is None:
-                hits.append(
-                    KeywordRankHit(
-                        query=query,
-                        measurable=True,
-                        appeared=False,
-                        rank=None,
-                        matched_url=None,
-                        matched_via=None,
-                    )
-                )
-            else:
-                rank, url = match
-                hits.append(
-                    KeywordRankHit(
-                        query=query,
-                        measurable=True,
-                        appeared=True,
-                        rank=rank,
-                        matched_url=url,
-                        matched_via="domain",
+        if len(cleaned_queries) <= 1:
+            hits = [_rank_hit_for_query(source, query, hosts) for query in cleaned_queries]
+        else:
+            workers = min(MAX_RANK_CHECK_WORKERS, len(cleaned_queries))
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                hits = list(
+                    executor.map(
+                        lambda query: _rank_hit_for_query(source, query, hosts),
+                        cleaned_queries,
                     )
                 )
     finally:
         if hasattr(source, "language") and isinstance(previous_language, str):
             source.language = previous_language  # type: ignore[attr-defined]
+        if hasattr(source, "location_code") and previous_location is not None:
+            source.location_code = previous_location  # type: ignore[attr-defined]
 
     return host, hits

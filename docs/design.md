@@ -2521,3 +2521,45 @@ things the PR did not intend.*
   blocklist match, which would reject `a-brand-new-password` for containing
   `password` and with it most of the passphrases the policy is trying to
   encourage.
+
+
+### ADR-52 — Standalone module runs: no auto-trigger (2026-09-19, mod-0)
+
+- **Context:** `POST /api/v1/analyses` runs discovery → kyc → prompts → execute →
+  footprint (+ SERP) → scoring as one worker job. Keywords and Backlinks already
+  expose module-scoped APIs, but AI Visibility, KYC, and SERP visibility are only
+  reachable through the bundle. Cross-module features (e.g. backlink
+  `unlinked_mentions`) scan `geo_records` and `serp_checks` by domain without
+  explicit run references — coupling that makes product surfaces hard to ship
+  independently and obscures cost attribution.
+
+- **Decision:** each product module gets its own **run lifecycle** (create → poll →
+  artifact GET) and **must not automatically enqueue another module's run**. Shared
+  context is optional via `BrandContext` (`brand_contexts` table, optional
+  `analyses.brand_context_id` link — mod-1). The monolith remains an optional
+  **bundle orchestrator** during transition (mod-8), not the only entry point.
+
+  - **No auto-trigger.** Saving a BrandContext does not start GEO. Starting GEO
+    does not run KYC unless the caller explicitly requests it (or uses the bundle
+    with flags). SERP runs are not a side effect of footprint unless the bundle
+    says so.
+  - **Opt-in cross-module joins.** Features that combine GEO + SERP data accept
+    explicit `geo_run_ids` / `serp_run_ids` (mod-7), not "latest rows for this
+    domain."
+  - **Per-module billing seam.** Each run type is the unit for quota and cost
+    attribution, even before per-module caps ship.
+  - **Phased rollout.** Phase A = docs + `BrandContext` entity (no breaking API
+    changes). Phase B = standalone POST/GET run APIs + worker job kinds. Phase C =
+    thin bundle + explicit joins. Phase D = module-first UI + deprecation timeline.
+    See [standalone-modules-plan.md](standalone-modules-plan.md).
+
+- **Consequences:** new tables and routes land alongside the existing pipeline;
+  nothing removes `POST /analyses` in Phase A. Frontend guided flows may still use
+  the bundle until mod-9 composes standalone APIs client-side. DataForSEO swap
+  branches (SERP, Keywords, Backlinks) remain independent PRs — they change
+  vendors inside modules but do not define the module boundary (documented in
+  [module-coupling-map.md](module-coupling-map.md)).
+
+- **Rejected:** rewriting every `analysis_id` FK in one release; removing the
+  bundle before standalone paths are production-ready; implicit auto-refresh
+  ("re-run GEO when KYC updates").

@@ -51,6 +51,7 @@ class Analysis(Base):
             sa.text("(geo_run->>'mode')"),
             postgresql_where=sa.text("geo_run IS NOT NULL"),
         ),
+        sa.Index("ix_analyses_brand_context_id", "brand_context_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
@@ -147,6 +148,11 @@ class Analysis(Base):
     geo_run: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+    # Optional link to a durable brand profile (ADR-52 / mod-1). Null on every
+    # legacy row and on checker/MVP runs that never created a BrandContext.
+    brand_context_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("brand_contexts.id", ondelete="SET NULL"), nullable=True
+    )
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -171,6 +177,51 @@ class Analysis(Base):
     geo_records: Mapped[list["GeoRecord"]] = relationship(
         cascade="all, delete-orphan", order_by="GeoRecord.created_at"
     )
+    brand_context: Mapped["BrandContext | None"] = relationship(back_populates="analyses")
+
+
+
+class BrandContext(Base):
+    """Durable brand profile decoupled from a single analysis bundle (ADR-52, mod-1).
+
+    Standalone KYC CRUD (mod-5) will write here; the monolith pipeline still
+    stores its snapshot on ``analyses.kyc`` until callers opt into linking.
+    """
+
+    __tablename__ = "brand_contexts"
+    __table_args__ = (
+        sa.Index("ix_brand_contexts_org_id", "org_id"),
+        sa.Index("ix_brand_contexts_created_by_user_id", "created_by_user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    # Same tenancy posture as ``analyses.org_id`` — nullable, no FK yet (ADR-35).
+    org_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    source_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    brand: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    domain: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    locale: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default="en", server_default="en"
+    )
+    category: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    competitors: Mapped[list[Any]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        server_default=sa.text("'[]'"),
+    )
+    # Full KYC-shaped extraction when available; mirrors ``pipeline.kyc.KYC`` keys.
+    profile: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    analyses: Mapped[list["Analysis"]] = relationship(back_populates="brand_context")
 
 
 class Prompt(Base):

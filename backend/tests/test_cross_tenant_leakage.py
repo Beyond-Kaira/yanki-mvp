@@ -149,6 +149,9 @@ ORG = {
         "DELETE",
         "/api/v1/seo-projects/{project_id}/backlinks/competitors/{competitor_id}",
     ),
+    ("POST", "/api/v1/kyc/profiles"),
+    ("GET", "/api/v1/kyc/profiles/{profile_id}"),
+    ("PATCH", "/api/v1/kyc/profiles/{profile_id}"),
 }
 
 CLASSIFIED = PUBLIC | SELF | CAPABILITY | ORG
@@ -327,6 +330,14 @@ class Tenant:
         assert audit_id is not None, "project creation should have queued the first crawl"
         self.audit_id = audit_id
 
+        profile = client.post(
+            "/api/v1/kyc/profiles",
+            headers=self.headers,
+            json={"brand": f"{label.title()} Co", "category": "widgets"},
+        )
+        assert profile.status_code == 201, profile.text
+        self.profile_id = uuid.UUID(profile.json()["id"])
+
 
 @pytest.fixture
 def tenants(client, db_session):
@@ -399,6 +410,19 @@ def test_a_project_scoped_write_is_404_for_the_other_tenant(
     # And the owner can do it, so a broken payload is not what produced the 404.
     mine = template.format(project_id=alpha.project_id)
     assert _probe(client, method, mine, alpha.headers, json=payload).status_code in (200, 201)
+
+
+def test_a_brand_context_is_404_across_the_boundary(client, tenants) -> None:
+    alpha, bravo = tenants
+
+    mine = f"/api/v1/kyc/profiles/{alpha.profile_id}"
+    assert client.get(mine, headers=alpha.headers).status_code == 200
+
+    theirs = f"/api/v1/kyc/profiles/{bravo.profile_id}"
+    assert client.get(theirs, headers=alpha.headers).status_code == 404
+    assert (
+        client.patch(theirs, headers=alpha.headers, json={"brand": "Stolen"}).status_code == 404
+    )
 
 
 def test_a_site_audit_is_404_across_the_boundary(client, tenants) -> None:

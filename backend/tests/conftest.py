@@ -94,9 +94,11 @@ def resolve_test_domains(monkeypatch):
     from urllib.parse import urlsplit
 
     from app.api import routes, seo_project_routes
+    from app.services import brand_contexts
 
     real_routes = routes.is_public_url
     real_seo = seo_project_routes.is_public_url
+    real_brand_contexts = brand_contexts.is_public_url
 
     def guard(url: str) -> bool:
         host = urlsplit(url).hostname or ""
@@ -110,8 +112,15 @@ def resolve_test_domains(monkeypatch):
             return True
         return real_seo(url)
 
+    def brand_guard(url: str) -> bool:
+        host = urlsplit(url).hostname or ""
+        if host.endswith(".test"):
+            return True
+        return real_brand_contexts(url)
+
     monkeypatch.setattr(routes, "is_public_url", guard)
     monkeypatch.setattr(seo_project_routes, "is_public_url", seo_guard)
+    monkeypatch.setattr(brand_contexts, "is_public_url", brand_guard)
 
 
 @pytest.fixture()

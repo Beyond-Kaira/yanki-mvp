@@ -128,7 +128,7 @@ See [dataforseo-touchpoint-map.md](./dataforseo-touchpoint-map.md) for file-leve
 
 - [ ] `mod-3` `POST /serp/runs` — SERP visibility only (uses DataForSEO adapter when merged)
 - [ ] `mod-4` `POST /ai-visibility/runs` — GEO execute + audit without KYC/discovery
-- [ ] `mod-5` `POST /kyc/profiles` — brand context CRUD decoupled from analysis id
+- [x] `mod-5` `POST /kyc/profiles` — brand context CRUD decoupled from analysis id
 - [ ] `mod-6` Worker job types: `serp_run`, `geo_run`, `kyc_extract` (separate from `analysis` kind)
 
 ### Phase C — Opt-in cross-module & bundle

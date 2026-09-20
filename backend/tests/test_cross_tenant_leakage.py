@@ -84,6 +84,8 @@ PUBLIC = {
 #: Keyword preview routes are stateless compute (seed in, ideas out) — no
 #: org-owned row is read or written, so there is nothing for another tenant to
 #: enumerate.
+#: Industry rankings expose global aggregates without tenant identifiers; the
+#: question endpoint uses only the caller's organization for its usage counter.
 SELF = {
     ("GET", "/api/v1/auth/me"),
     ("GET", "/api/v1/auth/sessions"),
@@ -92,6 +94,9 @@ SELF = {
     ("POST", "/api/v1/keywords/expand"),
     ("POST", "/api/v1/keywords/overview"),
     ("POST", "/api/v1/keywords/rank-check"),
+    ("GET", "/api/v1/industry-citations/sectors"),
+    ("GET", "/api/v1/industry-citations/ranking"),
+    ("POST", "/api/v1/industry-citations/questions"),
 }
 
 #: Readable by anyone holding the id, **on purpose**. Exactly one operation, and
@@ -101,6 +106,7 @@ SELF = {
 CAPABILITY = {
     ("GET", "/api/v1/analyses/{analysis_id}"),
     ("GET", "/api/v1/analyses/{analysis_id}/geo"),
+    ("GET", "/api/v1/analyses/{analysis_id}/citation-sources"),
     ("GET", "/api/v1/analyses/{analysis_id}/kyc"),
     ("GET", "/api/v1/analyses/{analysis_id}/prompts"),
     ("GET", "/api/v1/analyses/{analysis_id}/seo"),
@@ -642,3 +648,11 @@ def test_a_competitor_row_alone_does_not_make_it_visible(client, db_session, ten
     ).json()
 
     assert "smuggled-rival.test" not in {item["competitor_domain"] for item in listed}
+
+
+def test_citation_sources_preserve_analysis_tenancy(client, tenants):
+    alpha, bravo = tenants
+    path = f"/api/v1/analyses/{bravo.analysis_id}/citation-sources"
+    assert client.get(path, headers=bravo.headers).status_code == 200
+    assert client.get(path, headers=alpha.headers).status_code == 404
+    assert client.get(path).status_code == 404

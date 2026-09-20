@@ -314,3 +314,7 @@ export type KeywordOverviewResponse = Schemas['KeywordOverviewResponse']
 export type KeywordRankCheckRequest = Schemas['KeywordRankCheckRequest']
 export type KeywordRankCheckResponse = Schemas['KeywordRankCheckResponse']
 export type KeywordRankHit = Schemas['KeywordRankHitOut']
+
+/** Evidence-backed, single-analysis source ranking. */
+export type CitationSourcesReport = components['schemas']['CitationSourcesOut']
+export type CitationSourceRow = components['schemas']['CitationSourceRow']

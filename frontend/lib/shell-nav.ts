@@ -113,6 +113,12 @@ export const SHELL_SECTIONS: ShellSection[] = [
         badge: 'live',
       },
       {
+        id: 'industry-citations',
+        label: 'Top Cited Pages for Your Industry',
+        href: '/ai-visibility/industry-citations',
+        badge: 'live',
+      },
+      {
         id: 'drivers',
         label: 'Drivers & Gaps',
         href: '/ai-visibility/drivers',

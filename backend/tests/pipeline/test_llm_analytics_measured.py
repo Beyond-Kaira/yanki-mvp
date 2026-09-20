@@ -4,6 +4,7 @@ import json
 
 from app.pipeline.llm_analytics_measured import (
     AUDIT_EXTRACTION_SYSTEM_PROMPT,
+    CITATION_MARKER_REPAIR_SYSTEM_PROMPT,
     GROUNDED_ANSWER_SYSTEM_PROMPT,
     measure_search_visibility,
     run_measured_audit,
@@ -55,6 +56,61 @@ class _CountingLLM:
                 "citations": [],
                 "competitors": ["Acme"],
                 "answer_summary": "summary",
+            }
+        else:
+            raise AssertionError(f"unexpected system prompt: {system[:40]!r}")
+
+        class _Result:
+            text = json.dumps(payload)
+            cost_usd = 0.001
+
+        return _Result()
+
+
+class _MarkerRepairLLM:
+    model = "openai/gpt-4o-mini"
+
+    def __init__(self, *, valid_repair: bool) -> None:
+        self.valid_repair = valid_repair
+        self.repair_calls = 0
+
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.2,
+        max_tokens: int = 3000,
+        json_object: bool = True,
+    ):
+        system = messages[0]["content"]
+        if system.strip() == GROUNDED_ANSWER_SYSTEM_PROMPT.strip():
+            payload = {
+                "grounded_answer": "Acme is recommended by the supplied sources.",
+                "citations": [{"result_rank": 1}, {"result_rank": 2}],
+                "competitors": [],
+                "answer_summary": "summary",
+            }
+        elif system == CITATION_MARKER_REPAIR_SYSTEM_PROMPT:
+            self.repair_calls += 1
+            payload = {
+                "grounded_answer": (
+                    "Acme is recommended by the supplied sources [1, 2]."
+                    if self.valid_repair
+                    else "Acme and Globex are recommended by the supplied sources [1, 2]."
+                )
+            }
+        elif system == AUDIT_EXTRACTION_SYSTEM_PROMPT:
+            payload = {
+                "intent": "informational",
+                "mention_context": "primary_recommendation",
+                "recommendation_reasoning": "supported",
+                "reasoning_trace": {},
+                "visibility_drivers": {},
+                "visibility_gaps": {},
+                "trust_signals": [],
+                "entities_associated_with_brand": [],
+                "sentiment": "neutral",
+                "content_improvement_opportunities": [],
             }
         else:
             raise AssertionError(f"unexpected system prompt: {system[:40]!r}")
@@ -160,3 +216,53 @@ def test_run_measured_audit_remains_single_record_wrapper():
         dry_run=True,
     )
     assert record["model"] == "mock"
+
+
+def test_live_run_repairs_missing_inline_citation_markers_once():
+    llm = _MarkerRepairLLM(valid_repair=True)
+    record = run_measured_audits(
+        brand="Acme",
+        prompt="Best tools",
+        prompt_group="recommendation",
+        owned_domains=["acme.com"],
+        llm=llm,
+        dry_run=False,
+        model_slugs=[llm.model],
+        search_payload=mock_search("Best tools", brand="Acme"),
+    )[0]
+
+    assert llm.repair_calls == 1
+    assert record["grounded_answer"].endswith("[1, 2].")
+    assert record["citation_quality"] == {
+        "status": "valid",
+        "cited_ranks": [1, 2],
+        "inline_ranks": [1, 2],
+        "missing_inline_ranks": [],
+        "unexpected_inline_ranks": [],
+        "initial_status": "missing_inline_markers",
+        "repair_attempted": True,
+        "repair_succeeded": True,
+    }
+    assert record["_cost_usd"] == 0.003
+
+
+def test_failed_marker_repair_keeps_original_answer_and_quality_state():
+    llm = _MarkerRepairLLM(valid_repair=False)
+    record = run_measured_audits(
+        brand="Acme",
+        prompt="Best tools",
+        prompt_group="recommendation",
+        owned_domains=["acme.com"],
+        llm=llm,
+        dry_run=False,
+        model_slugs=[llm.model],
+        search_payload=mock_search("Best tools", brand="Acme"),
+    )[0]
+
+    assert llm.repair_calls == 1
+    assert record["grounded_answer"] == "Acme is recommended by the supplied sources."
+    assert record["citation_quality"]["status"] == "repair_failed"
+    assert record["citation_quality"]["missing_inline_ranks"] == [1, 2]
+    assert record["citation_quality"]["repair_succeeded"] is False
+    assert record["citation_quality"]["repair_rejection"] == "answer_content_changed"
+    assert record["_cost_usd"] == 0.003

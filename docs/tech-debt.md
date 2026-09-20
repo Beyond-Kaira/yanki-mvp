@@ -1455,3 +1455,37 @@ devDependencies).)
     change, which had one job. Whoever picks this up: it is a schema change, so
     it needs `make gen-types` and the frontend chain (`api.ts`, `AuthProvider`,
     `InviteClient`) in the same commit.
+
+## Top cited pages follow-up (2026-09-17, prod-1)
+
+- Runs predating explicit `geo_run.dry_run` cannot prove live provenance. The new
+  report excludes them as unknown; it does not rewrite history or infer live
+  status from costs/model names. A trusted historical provenance backfill would
+  require separate evidence and review.
+- Citation reporting is single-analysis and computed from stored response audit
+  JSON. There is no market-wide index or trend comparison. At larger analysis
+  sizes, consider normalized observations and asynchronous exports; current CSV
+  explicitly refuses truncation beyond its 5,000-row fetch ceiling.
+- KYC competitor names do not prove domain ownership. Users enter competitor
+  domains for classification; domain discovery/verification is future work.
+- Inline evidence accepts `[1]` and `[1, 2]`, matching the current grounded-answer
+  prompt contract. Other citation syntaxes need a provider-specific adapter;
+  an unrecognized marker is excluded, not guessed.
+- Stored live-data QA on 2026-09-18 found 22 GPT-4o-mini citation entries across
+  nine answers with no inline bracketed markers at all. They are correctly
+  rejected by the report, but generation needs validation/repair or explicit
+  observability before treating model coverage differences as performance.
+  KYC/prompt relevance also needs review: the inspected Trendyol run lists
+  Decathlon, IKEA, UGG, Adidas and Nike as rivals. No remediation in this step;
+  see `sessions/2026-09-18-01.md`.
+
+- Industry citations part 1 is an explicitly labeled setup preview only.
+  Country is free text and language is a requested preference; normalization,
+  provider language support, questions, persistence and execution are pending.
+  The shared shell may append an existing `analysis` query parameter; this
+  independent page does not read it. No shell behavior was changed in this part.
+
+- Industry question generation records request count, model, provider-reported
+  cost and audit outcome, but does not yet debit the billing ledger. Edited
+  questions are client-only and reset on reload. Both belong with the part-3
+  persistent industry-analysis job contract; do not present edits as saved.

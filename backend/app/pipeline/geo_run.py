@@ -15,6 +15,7 @@ def build_geo_run(
     llm_models: list[str],
     search_provider: str | None,
     schema_version: str,
+    dry_run: bool | None = None,
 ) -> dict[str, Any]:
     """One run-level metadata blob stored on ``analyses.geo_run``."""
 
@@ -22,6 +23,7 @@ def build_geo_run(
     primary = models[0] if models else "openai/gpt-4o-mini"
     return {
         "mode": mode,
+        "dry_run": dry_run,
         "llm": {"provider": LLM_PROVIDER, "model": primary, "models": models},
         "search": {"provider": search_provider} if search_provider else None,
         "schema_version": schema_version,

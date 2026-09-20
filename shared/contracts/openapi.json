@@ -1610,6 +1610,347 @@
         "title": "CheckerSubmitResponse",
         "type": "object"
       },
+      "CitationCoverage": {
+        "properties": {
+          "eligible_prompts": {
+            "default": 0,
+            "title": "Eligible Prompts",
+            "type": "integer"
+          },
+          "eligible_responses": {
+            "default": 0,
+            "title": "Eligible Responses",
+            "type": "integer"
+          },
+          "excluded_responses": {
+            "default": 0,
+            "title": "Excluded Responses",
+            "type": "integer"
+          },
+          "exclusion_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Exclusion Reasons",
+            "type": "object"
+          },
+          "rejected_citations": {
+            "default": 0,
+            "title": "Rejected Citations",
+            "type": "integer"
+          },
+          "rejection_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Rejection Reasons",
+            "type": "object"
+          }
+        },
+        "title": "CitationCoverage",
+        "type": "object"
+      },
+      "CitationEvidence": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "competitors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Competitors",
+            "type": "array"
+          },
+          "mentioned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mentioned"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "response_id": {
+            "title": "Response Id",
+            "type": "string"
+          },
+          "result_rank": {
+            "title": "Result Rank",
+            "type": "integer"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "response_id",
+          "prompt_id",
+          "prompt",
+          "model",
+          "answer",
+          "source_url",
+          "result_rank",
+          "observed_at",
+          "mentioned",
+          "competitors"
+        ],
+        "title": "CitationEvidence",
+        "type": "object"
+      },
+      "CitationScope": {
+        "properties": {
+          "analysis_id": {
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "competitor_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Competitor Domains",
+            "type": "array"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "prompt_groups": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Prompt Groups",
+            "type": "array"
+          },
+          "provenance": {
+            "enum": [
+              "grounded",
+              "simulated",
+              "mock",
+              "unknown"
+            ],
+            "title": "Provenance",
+            "type": "string"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector"
+          }
+        },
+        "required": [
+          "analysis_id",
+          "sector",
+          "observed_at",
+          "provenance",
+          "models",
+          "prompt_groups",
+          "competitor_domains"
+        ],
+        "title": "CitationScope",
+        "type": "object"
+      },
+      "CitationSourceRow": {
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/CitationEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "ownership": {
+            "enum": [
+              "owned",
+              "competitor",
+              "third_party"
+            ],
+            "title": "Ownership",
+            "type": "string"
+          },
+          "page_count": {
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "prompt_count": {
+            "title": "Prompt Count",
+            "type": "integer"
+          },
+          "response_count": {
+            "title": "Response Count",
+            "type": "integer"
+          },
+          "response_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Coverage"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "key",
+          "url",
+          "title",
+          "domain",
+          "ownership",
+          "response_count",
+          "prompt_count",
+          "page_count",
+          "response_coverage",
+          "models",
+          "evidence"
+        ],
+        "title": "CitationSourceRow",
+        "type": "object"
+      },
+      "CitationSourcesOut": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/CitationCoverage"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "methodology": {
+            "title": "Methodology",
+            "type": "string"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CitationSourceRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CitationScope"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CitationSummary"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "methodology",
+          "coverage",
+          "summary",
+          "rows",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "CitationSourcesOut",
+        "type": "object"
+      },
+      "CitationSummary": {
+        "properties": {
+          "domains": {
+            "title": "Domains",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pages",
+          "domains"
+        ],
+        "title": "CitationSummary",
+        "type": "object"
+      },
       "CompetitorMention": {
         "description": "A competitor brand that showed up in the answers and how many answers\nnamed it (P5.3) \u2014 a proper-noun co-mention over the raw text, not the KYC\ncompetitor list.",
         "properties": {
@@ -2379,6 +2720,191 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IndustryQuestionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "country": {
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Country",
+            "type": "string"
+          },
+          "industry": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Industry",
+            "type": "string"
+          },
+          "language": {
+            "maxLength": 2,
+            "minLength": 2,
+            "title": "Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "industry",
+          "country",
+          "language"
+        ],
+        "title": "IndustryQuestionRequest",
+        "type": "object"
+      },
+      "IndustryQuestionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cost_usd": {
+            "minimum": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "country": {
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Country",
+            "type": "string"
+          },
+          "industry": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Industry",
+            "type": "string"
+          },
+          "language": {
+            "maxLength": 2,
+            "minLength": 2,
+            "title": "Language",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 10,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 10,
+            "title": "Questions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "industry",
+          "country",
+          "language",
+          "questions",
+          "model",
+          "cost_usd"
+        ],
+        "title": "IndustryQuestionResponse",
+        "type": "object"
+      },
+      "IndustryRankingPage": {
+        "properties": {
+          "candidate_responses": {
+            "default": 0,
+            "title": "Candidate Responses",
+            "type": "integer"
+          },
+          "distinct_questions": {
+            "default": 0,
+            "title": "Distinct Questions",
+            "type": "integer"
+          },
+          "eligible_responses": {
+            "default": 0,
+            "title": "Eligible Responses",
+            "type": "integer"
+          },
+          "excluded_responses": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Excluded Responses",
+            "type": "object"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "methodology": {
+            "default": "Stored sector labels; brand-probe questions excluded. Only explicitly live, Tavily-grounded answers with citations matching stored search results and inline markers contribute citations. Each answer counts once per site or page. Successful uncited answers remain in the coverage denominator. Repeated runs count separately; identical question text is counted once after case/space normalization. Sites are exact hostnames, not registrable domains.",
+            "title": "Methodology",
+            "type": "string"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "page_count": {
+            "default": 0,
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "page_limit_per_site": {
+            "default": 50,
+            "title": "Page Limit Per Site",
+            "type": "integer"
+          },
+          "rejected_citations": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Rejected Citations",
+            "type": "object"
+          },
+          "scope": {
+            "default": "GEO analyses of companies in this sector, across organizations.",
+            "title": "Scope",
+            "type": "string"
+          },
+          "sector": {
+            "title": "Sector",
+            "type": "string"
+          },
+          "site_count": {
+            "default": 0,
+            "title": "Site Count",
+            "type": "integer"
+          },
+          "sites": {
+            "items": {
+              "$ref": "#/components/schemas/RankedSite"
+            },
+            "title": "Sites",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sector",
+          "offset",
+          "limit"
+        ],
+        "title": "IndustryRankingPage",
+        "type": "object"
+      },
+      "IndustrySector": {
+        "properties": {
+          "record_count": {
+            "title": "Record Count",
+            "type": "integer"
+          },
+          "sector": {
+            "title": "Sector",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sector",
+          "record_count"
+        ],
+        "title": "IndustrySector",
         "type": "object"
       },
       "InvitationAcceptRequest": {
@@ -3287,6 +3813,91 @@
           "category"
         ],
         "title": "PromptPatchItem",
+        "type": "object"
+      },
+      "RankedPage": {
+        "properties": {
+          "model_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Model Counts",
+            "type": "object"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "response_count": {
+            "title": "Response Count",
+            "type": "integer"
+          },
+          "response_coverage": {
+            "title": "Response Coverage",
+            "type": "number"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "response_count",
+          "question_count",
+          "response_coverage",
+          "model_counts",
+          "url"
+        ],
+        "title": "RankedPage",
+        "type": "object"
+      },
+      "RankedSite": {
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "model_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Model Counts",
+            "type": "object"
+          },
+          "page_count": {
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/RankedPage"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "response_count": {
+            "title": "Response Count",
+            "type": "integer"
+          },
+          "response_coverage": {
+            "title": "Response Coverage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "response_count",
+          "question_count",
+          "response_coverage",
+          "model_counts",
+          "domain",
+          "page_count",
+          "pages"
+        ],
+        "title": "RankedSite",
         "type": "object"
       },
       "ReferringDomainOut": {
@@ -6310,6 +6921,182 @@
         ]
       }
     },
+    "/api/v1/analyses/{analysis_id}/citation-sources": {
+      "get": {
+        "operationId": "read_citation_sources_api_v1_analyses__analysis_id__citation_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "pages",
+              "enum": [
+                "pages",
+                "domains"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Model",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "prompt_group",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Prompt Group",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ownership",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "owned",
+                    "competitor",
+                    "third_party"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ownership"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 300,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "competitor_domains",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 1000,
+              "title": "Competitor Domains",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "opportunities",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Opportunities",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CitationSourcesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Citation Sources",
+        "tags": [
+          "analyses"
+        ]
+      }
+    },
     "/api/v1/analyses/{analysis_id}/execute-prompts-and-score": {
       "post": {
         "description": "Resume a guided run: execute the approved prompt set and score GEO.\n\nOnly ``status='awaiting_review'`` guided analyses accept this call. Profile\nrows (KYC, prompts, SEO) are kept; prior measure outputs are cleared before\nthe worker runs steps 4\u20136. Does not re-charge the monthly analysis quota.",
@@ -7281,6 +8068,217 @@
         "summary": "Submit Checker Lead",
         "tags": [
           "analyses"
+        ]
+      }
+    },
+    "/api/v1/industry-citations/questions": {
+      "post": {
+        "operationId": "questions_api_v1_industry_citations_questions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndustryQuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndustryQuestionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Questions",
+        "tags": [
+          "industry-citations"
+        ]
+      }
+    },
+    "/api/v1/industry-citations/ranking": {
+      "get": {
+        "operationId": "ranking_api_v1_industry_citations_ranking_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sector",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Sector",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndustryRankingPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ranking",
+        "tags": [
+          "industry-citations"
+        ]
+      }
+    },
+    "/api/v1/industry-citations/sectors": {
+      "get": {
+        "operationId": "sectors_api_v1_industry_citations_sectors_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IndustrySector"
+                  },
+                  "title": "Response Sectors Api V1 Industry Citations Sectors Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sectors",
+        "tags": [
+          "industry-citations"
         ]
       }
     },

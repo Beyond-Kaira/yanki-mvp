@@ -2521,3 +2521,35 @@ things the PR did not intend.*
   blocklist match, which would reject `a-brand-new-password` for containing
   `password` and with it most of the passphrases the policy is trying to
   encourage.
+
+### ADR-52 — Evidence-backed citation source rankings (2026-09-17)
+
+The Top Cited Pages report reads `Response.audit` once, joined to its existing
+prompt and analysis. `GeoRecord` is its stored twin, so aggregating both would
+count the same observation twice. Source identities come from stored search
+results, matched by a non-ambiguous result rank; a rank must also appear inline
+in the grounded answer. Pipeline normalization now takes URL/title/domain from
+that search record, not from an LLM-proposed URL.
+
+`geo_run.dry_run` records test provenance for new runs without a migration.
+Only explicitly live, Tavily-grounded runs enter rankings. Legacy runs missing
+this field remain unknown; simulated and mock runs are excluded. This reduces
+historical coverage deliberately rather than treating plausible sources as
+observed citations. A new measured run restores coverage.
+
+The additive `/analyses/{id}/citation-sources` route uses `readable_analysis`,
+including its existing org-less capability policy and per-user/tenant checks.
+Pages count distinct responses; Domains union response ids across matching
+pages. Successful uncited answers remain in the denominator. Model and prompt
+group filters set the population; page/search/ownership/opportunity filters
+select sources within that population. No database migration or provider call
+is needed to read a report. CSV uses the same route and filters.
+
+Competitor ownership requires explicitly supplied domains because the current
+KYC competitor list contains names, not verified domains. Opportunities use
+known competitor names in the answer and an explicit false target mention;
+they do not assert absence of a mention or backlink on the external page.
+
+Native AI-platform observation, longitudinal source storage and market-wide
+industry sampling remain separate work. This report describes the selected
+analysis's questions and shared-search model answers.

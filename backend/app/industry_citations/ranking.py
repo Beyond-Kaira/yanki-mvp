@@ -18,12 +18,7 @@ from sqlalchemy.orm import Session
 from app.citations.evidence import canonical_url, inline_ranks, result_lookup, result_rank
 from app.citations.report import provenance
 from app.db.models import Analysis, GeoRecord, Response
-
-
-def normalize_sector(value: str) -> str:
-    """Normalize spelling only; never infer the topic of a question."""
-    text = " ".join(unicodedata.normalize("NFKC", value).casefold().split())
-    return "e-commerce" if text in {"e commerce", "ecommerce", "e-commerce"} else text
+from app.services.sectors import normalize_sector
 
 
 def question_key(value: str) -> str:
@@ -81,15 +76,15 @@ class IndustryRankingPage(IndustryRanking):
 
 
 def list_industry_sectors(session: Session) -> list[IndustrySector]:
-    counts: Counter[str] = Counter()
-    for raw, count in session.execute(
-        select(GeoRecord.sector, func.count()).group_by(GeoRecord.sector)
-    ):
-        sector = normalize_sector(raw or "")
-        if sector and len(sector) <= 200:
-            counts[sector] += count
     return [
-        IndustrySector(sector=label, record_count=count) for label, count in sorted(counts.items())
+        IndustrySector(sector=sector, record_count=count)
+        for sector, count in session.execute(
+            select(GeoRecord.sector_key, func.count())
+            .where(GeoRecord.sector_key.is_not(None))
+            .group_by(GeoRecord.sector_key)
+            .order_by(GeoRecord.sector_key)
+        )
+        if sector
     ]
 
 
@@ -134,11 +129,10 @@ def build_industry_ranking(session: Session, sector: str) -> IndustryRanking:
             & (GeoRecord.analysis_id == Response.analysis_id),
         )
         .join(Analysis, GeoRecord.analysis_id == Analysis.id)
+        .where(GeoRecord.sector_key == sector)
         .execution_options(yield_per=500)
     )
     for record, model, audit, status, run in session.execute(statement):
-        if normalize_sector(record.sector or "") != sector:
-            continue
         report.candidate_responses += 1
         origin = provenance(run if isinstance(run, dict) else {})
         audit = audit if isinstance(audit, dict) else {}

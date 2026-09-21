@@ -77,3 +77,25 @@ def notify_analysis_enqueued(analysis_id: uuid.UUID, settings: Settings) -> None
     """Push an analysis id onto the Redis dispatch list (no-op when Redis is off)."""
 
     connect_from_settings(settings).push(QUEUE_ANALYSIS, str(analysis_id))
+
+
+def redis_is_enabled(settings: Settings) -> bool:
+    return bool((settings.redis_url or "").strip())
+
+
+def queue_depth(settings: Settings, queue: str) -> int | None:
+    """Return the Redis list length, or ``None`` when dispatch uses Postgres fallback."""
+
+    backend = connect_from_settings(settings)
+    if not isinstance(backend, RedisListDispatch):
+        return None
+    return int(backend._client.llen(queue) or 0)
+
+
+def ping_redis(settings: Settings) -> bool:
+    """Return whether Redis answers PING when dispatch is configured."""
+
+    backend = connect_from_settings(settings)
+    if not isinstance(backend, RedisListDispatch):
+        return False
+    return bool(backend._client.ping())

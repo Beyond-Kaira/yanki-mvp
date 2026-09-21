@@ -46,6 +46,24 @@ def test_redis_list_dispatch_push_pop_fifo(redis_queue):
     assert redis_queue.pop(redis_dispatch_queue.QUEUE_ANALYSIS, timeout_seconds=0) is None
 
 
+def test_queue_depth_returns_none_when_redis_disabled(settings):
+    assert redis_dispatch_queue.queue_depth(settings, redis_dispatch_queue.QUEUE_ANALYSIS) is None
+    assert redis_dispatch_queue.redis_is_enabled(settings) is False
+
+
+def test_queue_depth_reports_list_length(settings):
+    try:
+        backend = redis_dispatch_queue.RedisListDispatch("redis://127.0.0.1:6379/15")
+        backend._client.ping()
+    except Exception as exc:
+        pytest.skip(f"local redis not available: {exc}")
+
+    backend._client.flushdb()
+    backend.push(redis_dispatch_queue.QUEUE_ANALYSIS, "job-1")
+    settings = Settings(redis_url="redis://127.0.0.1:6379/15")
+    assert redis_dispatch_queue.queue_depth(settings, redis_dispatch_queue.QUEUE_ANALYSIS) == 1
+
+
 def test_redis_list_dispatch_try_pop_is_nonblocking(redis_queue):
     assert redis_queue.try_pop(redis_dispatch_queue.QUEUE_ANALYSIS) is None
     redis_queue.push(redis_dispatch_queue.QUEUE_ANALYSIS, "job-1")

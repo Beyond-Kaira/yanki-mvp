@@ -79,3 +79,31 @@ class PatchBrandContextRequest(BaseModel):
         if not self.model_fields_set:
             raise ValueError("at least one field is required")
         return self
+
+
+class ExtractBrandContextRequest(BaseModel):
+    """Enqueue async KYC extraction for an existing profile (mod-6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_url: str | None = None
+
+
+class ModuleRunOut(BaseModel):
+    """One standalone module job row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    job_kind: str
+    status: str
+    progress: int
+    current_step: str | None
+    error: str | None
+    org_id: uuid.UUID | None
+    brand_context_id: uuid.UUID | None
+    linked_analysis_id: uuid.UUID | None
+    payload: dict[str, Any]
+    result: dict[str, Any] | None
+    created_at: datetime
+    updated_at: datetime

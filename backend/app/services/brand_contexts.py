@@ -114,6 +114,30 @@ def create_brand_context(
     return ctx
 
 
+def extract_brand_context_profile(
+    session: Session,
+    *,
+    context: BrandContext,
+    source_url: str,
+    settings: Settings,
+) -> BrandContext:
+    """Discovery + KYC extract for an existing profile (mod-6 ``kyc_extract`` job)."""
+
+    if not is_public_url(source_url):
+        raise BrandContextValidationError("url is not allowed")
+    crawl = discovery.discover_detailed(source_url)
+    provider = UsageTrackingProvider(registry.get_analysis_provider(settings))
+    kyc = generate_kyc(crawl.text, source_url, provider)
+    context.source_url = source_url
+    context.brand = kyc.company
+    context.domain = _domain_from_url(source_url)
+    context.category = kyc.category or None
+    context.competitors = list(kyc.competitors or [])
+    context.profile = kyc.model_dump()
+    session.flush()
+    return context
+
+
 def patch_brand_context(
     session: Session,
     *,

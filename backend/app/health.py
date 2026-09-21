@@ -42,7 +42,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.db.models import Analysis, Plan
+from app.db.models import Analysis, ModuleRun, Plan
 
 PASS = "pass"
 WARN = "warn"
@@ -151,11 +151,28 @@ def _queue(session: Session) -> Component:
         oldest = session.scalar(
             select(func.min(Analysis.created_at)).where(Analysis.status == "queued")
         )
+        module_depth = (
+            session.scalar(
+                select(func.count()).select_from(ModuleRun).where(ModuleRun.status == "queued")
+            )
+            or 0
+        )
+        module_by_kind = dict(
+            session.execute(
+                select(ModuleRun.job_kind, func.count())
+                .where(ModuleRun.status == "queued")
+                .group_by(ModuleRun.job_kind)
+            ).all()
+        )
     except Exception as exc:
         _recover(session)
         return Component(WARN, detail=f"unreadable ({type(exc).__name__})")
 
-    data: dict[str, Any] = {"queued": depth}
+    data: dict[str, Any] = {
+        "queued": depth,
+        "module_queued": module_depth,
+        "module_queued_by_kind": module_by_kind,
+    }
     if oldest is None:
         return Component(PASS, data=data)
 

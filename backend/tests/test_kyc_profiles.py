@@ -7,7 +7,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from app.db.models import Analysis, BrandContext
+from app.db.models import Analysis, BrandContext, ModuleRun
 from app.pipeline import discovery
 from app.pipeline.discovery import CrawlResult
 
@@ -132,3 +132,36 @@ def test_create_profile_does_not_enqueue_analysis(client, signed_in, db_session)
 def test_unknown_profile_is_404(client, signed_in):
     signed_in()
     assert client.get(f"{PROFILES}/{uuid.uuid4()}").status_code == 404
+
+
+def test_enqueue_extract_returns_module_run(client, signed_in, allow_test_urls, db_session):
+    signed_in()
+    created = client.post(
+        PROFILES,
+        json={"brand": "Acme Pay", "category": "money transfer", "domain": "acme.test"},
+    ).json()
+
+    response = client.post(
+        f"{PROFILES}/{created['id']}/extract",
+        json={"source_url": "https://acme.test/"},
+    )
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["job_kind"] == "kyc_extract"
+    assert body["status"] == "queued"
+    assert body["brand_context_id"] == created["id"]
+
+    run = db_session.get(ModuleRun, uuid.UUID(body["id"]))
+    assert run is not None
+    assert run.payload["source_url"] == "https://acme.test/"
+
+
+def test_extract_requires_source_url_when_profile_has_none(client, signed_in):
+    signed_in()
+    created = client.post(
+        PROFILES,
+        json={"brand": "Acme Pay", "category": "money transfer"},
+    ).json()
+
+    response = client.post(f"{PROFILES}/{created['id']}/extract", json={})
+    assert response.status_code == 422

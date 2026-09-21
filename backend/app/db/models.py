@@ -222,7 +222,58 @@ class BrandContext(Base):
     )
 
     analyses: Mapped[list["Analysis"]] = relationship(back_populates="brand_context")
+    module_runs: Mapped[list["ModuleRun"]] = relationship(back_populates="brand_context")
 
+
+class ModuleRun(Base):
+    """Standalone module job queue — separate from the monolith ``analyses`` queue (mod-6).
+
+    Each row is one module-scoped run (``serp_run``, ``geo_run``, ``kyc_extract``).
+    Handlers must not chain into other modules (ADR-52). GEO/SERP handlers may
+    create a linked ``Analysis`` shell for artifact storage until mod-3/mod-4
+    expose dedicated run tables.
+    """
+
+    __tablename__ = "module_runs"
+    __table_args__ = (
+        sa.Index("ix_module_runs_status_created", "status", "created_at"),
+        sa.Index("ix_module_runs_job_kind_status", "job_kind", "status"),
+        sa.Index("ix_module_runs_org_id", "org_id"),
+        sa.Index("ix_module_runs_brand_context_id", "brand_context_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    job_kind: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status: Mapped[str] = mapped_column(sa.Text, nullable=False, default="queued")
+    progress: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    current_step: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True)
+    brand_context_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("brand_contexts.id", ondelete="SET NULL"), nullable=True
+    )
+    linked_analysis_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        server_default=sa.text("'{}'"),
+    )
+    result: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    brand_context: Mapped["BrandContext | None"] = relationship(back_populates="module_runs")
 
 class Prompt(Base):
     __tablename__ = "prompts"

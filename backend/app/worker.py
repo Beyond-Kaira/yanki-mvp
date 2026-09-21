@@ -5,6 +5,10 @@ The worker is the same Docker image as the api, started with a different command
 time and runs the six pipeline steps. Heartbeats and per-step progress are handled
 inside ``run_pipeline``; here we only claim, run, and mark done/failed.
 
+Standalone module runs (``module_runs`` table, mod-6) are claimed first so
+module-scoped jobs do not sit behind a long monolith backlog. Failures there are
+isolated from the ``analyses`` queue.
+
 The pipeline package is built by a separate agent, so its import is deferred into
 ``run_once`` — the rest of this module (and the queue tests) import cleanly even
 before the pipeline exists.
@@ -18,8 +22,9 @@ import uuid
 
 from app import health
 from app.config import Settings, get_settings
-from app.db.models import Analysis
+from app.db.models import Analysis, ModuleRun
 from app.db.session import SessionLocal
+from app.jobs.module_queue import claim_next_module_run
 from app.jobs.queue import claim_next
 from app.services import audit
 from app.services.analyses import (
@@ -105,59 +110,108 @@ def _record_terminal_event(session, analysis: Analysis) -> None:
         logger.exception("terminal audit event failed for analysis %s", analysis.id)
 
 
+def _record_module_terminal_event(session, run: ModuleRun) -> None:
+    failed = run.status == "failed"
+    action = "module_run:failed" if failed else "module_run:complete"
+    try:
+        audit.emit(
+            session,
+            action=action,
+            context=OrgContext(org_id=run.org_id, is_system=True),
+            actor_type="job",
+            actor_label="module worker",
+            entity_type="module_run",
+            entity_id=run.id,
+            after={
+                "job_kind": run.job_kind,
+                "status": run.status,
+                "brand_context_id": run.brand_context_id,
+                "linked_analysis_id": run.linked_analysis_id,
+            },
+            outcome="error" if failed else "success",
+            detail={"error": run.error} if failed and run.error else None,
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("terminal audit event failed for module run %s", run.id)
+
+
+def _run_analysis_once(session, settings: Settings) -> bool:
+    analysis = claim_next(session, settings)
+    if analysis is None:
+        return False
+
+    analysis_id: uuid.UUID = analysis.id
+    try:
+        from app.pipeline.runner import (
+            is_guided_measure_job,
+            run_execute_prompts_and_score,
+            run_pipeline,
+        )
+
+        if is_guided_measure_job(analysis):
+            run_execute_prompts_and_score(session, analysis_id, settings)
+        else:
+            run_pipeline(session, analysis_id, settings)
+    except Exception as exc:
+        session.rollback()
+        failed = session.get(Analysis, analysis_id)
+        if failed is not None:
+            failed.status = "failed"
+            failed.error = str(exc)[:500]
+            session.commit()
+            _record_terminal_event(session, failed)
+            _settle(session, failed)
+            _alert(failed, settings)
+            if should_auto_purge_failed(failed):
+                purge_analysis(session, failed)
+        logger.exception("analysis %s failed", analysis_id)
+        return True
+
+    done = session.get(Analysis, analysis_id)
+    if done is not None:
+        if done.status == "running":
+            done.status = "done"
+            done.progress = 100
+            done.current_step = None
+            session.commit()
+        if done.status in ("done", "failed"):
+            _record_terminal_event(session, done)
+            _settle(session, done)
+            _alert(done, settings)
+        elif done.status == "awaiting_review":
+            _settle(session, done)
+    return True
+
+
+def _run_module_once(session, settings: Settings) -> bool:
+    run = claim_next_module_run(session, settings)
+    if run is None:
+        return False
+
+    run_id = run.id
+    try:
+        from app.pipeline.module_handlers import run_module_run
+
+        run_module_run(session, run_id, settings)
+    except Exception:
+        # Handler marks failed and commits on expected errors; unexpected ones too.
+        logger.exception("module run %s failed", run_id)
+
+    finished = session.get(ModuleRun, run_id)
+    if finished is not None and finished.status in ("done", "failed"):
+        _record_module_terminal_event(session, finished)
+    return True
+
+
 def run_once(settings: Settings) -> bool:
     """Claim and run at most one job. Returns True if a job was processed."""
     session = SessionLocal()
     try:
-        analysis = claim_next(session, settings)
-        if analysis is None:
-            return False
-
-        analysis_id: uuid.UUID = analysis.id
-        try:
-            from app.pipeline.runner import (
-                is_guided_measure_job,
-                run_execute_prompts_and_score,
-                run_pipeline,
-            )
-
-            if is_guided_measure_job(analysis):
-                run_execute_prompts_and_score(session, analysis_id, settings)
-            else:
-                run_pipeline(session, analysis_id, settings)
-        except Exception as exc:
-            # Keep whatever partial rows earlier steps committed (FR-7); only the
-            # in-flight step's uncommitted work is rolled back.
-            session.rollback()
-            failed = session.get(Analysis, analysis_id)
-            if failed is not None:
-                failed.status = "failed"
-                failed.error = str(exc)[:500]
-                session.commit()
-                _record_terminal_event(session, failed)
-                _settle(session, failed)
-                _alert(failed, settings)
-                if should_auto_purge_failed(failed):
-                    purge_analysis(session, failed)
-            logger.exception("analysis %s failed", analysis_id)
+        if _run_module_once(session, settings):
             return True
-
-        done = session.get(Analysis, analysis_id)
-        if done is not None:
-            # Quick runs finish inside ``run_pipeline`` with ``status=done``.
-            # Guided profile phase sets ``awaiting_review`` — do not overwrite.
-            if done.status == "running":
-                done.status = "done"
-                done.progress = 100
-                done.current_step = None
-                session.commit()
-            if done.status in ("done", "failed"):
-                _record_terminal_event(session, done)
-                _settle(session, done)
-                _alert(done, settings)
-            elif done.status == "awaiting_review":
-                _settle(session, done)
-        return True
+        return _run_analysis_once(session, settings)
     finally:
         session.close()
 
@@ -166,12 +220,6 @@ def main() -> None:
     settings = get_settings()
     logger.info("worker starting (dry_run=%s)", settings.dry_run)
     while True:
-        # Beat first, every tick, before anything that can fail. A `while True`
-        # that stops looping was previously invisible — the container stays
-        # "running", the queue just quietly stops draining — and the only way
-        # anyone found out was noticing jobs stuck in `queued` (ADR-47).
-        # `run_pipeline` beats again at each step, so a worker busy on one long
-        # job is not mistaken for a dead one.
         health.beat(settings)
         try:
             run_once(settings)

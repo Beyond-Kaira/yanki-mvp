@@ -160,6 +160,55 @@ def _run_measure_phase(
     return analysis
 
 
+def run_geo_only(
+    session,
+    analysis: Analysis,
+    prompt_rows: list[Prompt],
+    kyc: kyc_step.KYC,
+    settings,
+) -> Analysis:
+    """GEO execute + scoring only — no SERP (mod-6 ``geo_run`` handler)."""
+
+    _start_step(session, analysis, "execute", settings)
+    responses = execute_step.run_measured_execute(session, analysis, prompt_rows, settings)
+    _complete_step(session, analysis, _EXECUTE_DONE)
+
+    _start_step(session, analysis, "footprint", settings)
+    if not responses:
+        responses = (
+            session.execute(select(Response).where(Response.analysis_id == analysis.id))
+            .scalars()
+            .all()
+        )
+    audit_records = [r.audit for r in responses if isinstance(r.audit, dict)]
+    reliability_report = reliability_step.analyze_records(audit_records)
+    analysis.reliability_score = reliability_report.get("reliability_score")
+    footprint_count = sum(1 for response in responses if response.footprint)
+    session.flush()
+    _complete_step(session, analysis, _FOOTPRINT_DONE)
+
+    _start_step(session, analysis, "scoring", settings)
+    intervention_report = interventions_step.analyze_records(audit_records)
+    analysis.interventions = intervention_report.get("aggregated_interventions") or []
+    total = len(responses)
+    analysis.footprint_count = footprint_count
+    analysis.total_responses = total
+    if audit_records:
+        analysis.geo_score = scoring_step.geo_score(
+            audit_records,
+            reliability_score=analysis.reliability_score,
+        )
+    else:
+        analysis.geo_score = scoring_step.mention_rate(footprint_count, total) * 100.0
+    analysis.citation_summary = geo_records_step.aggregate_citation_summary(audit_records)
+    analysis.status = "done"
+    analysis.current_step = None
+    analysis.progress = _SCORING_DONE
+    analysis.claimed_at = _now()
+    session.commit()
+    return analysis
+
+
 def run_execute_prompts_and_score(session, analysis_id, settings) -> Analysis:
     """Resume a guided run: execute the stored prompt set and produce GEO scores."""
 

@@ -129,7 +129,7 @@ See [dataforseo-touchpoint-map.md](./dataforseo-touchpoint-map.md) for file-leve
 - [ ] `mod-3` `POST /serp/runs` — SERP visibility only (uses DataForSEO adapter when merged)
 - [ ] `mod-4` `POST /ai-visibility/runs` — GEO execute + audit without KYC/discovery
 - [x] `mod-5` `POST /kyc/profiles` — brand context CRUD decoupled from analysis id
-- [ ] `mod-6` Worker job types: `serp_run`, `geo_run`, `kyc_extract` (separate from `analysis` kind)
+- [x] `mod-6` Worker job types: `serp_run`, `geo_run`, `kyc_extract` (separate from `analysis` kind)
 
 ### Phase C — Opt-in cross-module & bundle
 
@@ -142,6 +142,26 @@ See [dataforseo-touchpoint-map.md](./dataforseo-touchpoint-map.md) for file-leve
 - [ ] `mod-9` Frontend: module-first nav; wizard composes APIs client-side
 - [ ] `mod-11` Site audit standalone run + worker deploy
 - [ ] `mod-12` Deprecation timeline for analysis-as-only-entry-point
+
+### Phase Q — Redis queue (hybrid, optional)
+
+**Principle:** Redis/Valkey holds **dispatch pointers only** (`run_id` / `analysis_id`).
+Postgres keeps **run state** (`module_runs`, `analyses`), artifacts, audit, and poll APIs.
+When `REDIS_URL` is unset, behaviour falls back to today's Postgres `claim_next` path.
+
+| ID | Task | When |
+|----|------|------|
+| `rq-0` | ADR — hybrid queue, at-least-once, fallback rules | Before any Redis code |
+| `rq-1` | Valkey/Redis in `deploy/docker-compose.yml` + `Settings.redis_url` | After rq-0 |
+| `rq-2` | `app/jobs/broker.py` — Redis LPUSH/BRPOP vs DbBroker noop | After rq-1 |
+| `rq-3` | Wire `module_runs` enqueue + worker (first migration) | After mod-6 + mod-4/mod-3 APIs |
+| `rq-4` | Migrate monolith `analyses` queue | After rq-3 stable |
+| `rq-5` | Site audit worker queue + ops (AOF, memory) | With mod-11 |
+
+**Recommended order:** finish Phase B product APIs (`mod-4` → `mod-3`), then `rq-0` → `rq-3`.
+Enable `rq-4`/`rq-5` when `/healthz` queue depth or worker count justifies it.
+
+Progress canvas: `canvases/standalone-modules-progress.canvas.tsx` (Phase Q tab).
 
 ---
 

@@ -43,6 +43,22 @@ services:
       timeout: 5s
       retries: 10
 
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     image: yanki-api:${GIT_SHA:-latest}
     build:
@@ -65,6 +81,7 @@ services:
       - "127.0.0.1:${YANKI_PROD_API_PORT:-8143}:8141"
     environment:
       DATABASE_URL: postgresql+psycopg://yanki:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@db:5432/yanki
+      REDIS_URL: redis://valkey:6379/0
     env_file:
       - path: .env
         required: false
@@ -88,6 +105,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      valkey:
+        condition: service_healthy
 
   worker:
     image: yanki-api:${GIT_SHA:-latest}
@@ -96,6 +115,7 @@ services:
     command: python -m app.worker
     environment:
       DATABASE_URL: postgresql+psycopg://yanki:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@db:5432/yanki
+      REDIS_URL: redis://valkey:6379/0
     env_file:
       - path: .env
         required: false
@@ -137,6 +157,8 @@ services:
         max-file: "3"
     depends_on:
       db:
+        condition: service_healthy
+      valkey:
         condition: service_healthy
       api:
         condition: service_started

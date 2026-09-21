@@ -67,6 +67,7 @@ from app.services.checker import (
     find_cached_checker_analysis,
     normalize_triple,
 )
+from app.jobs import redis_dispatch_queue
 from app.services.emailer import send_waitlist_emails
 from app.services.guided_execute import request_execute_prompts_and_score
 from app.services.guided_profile import patch_kyc_and_regenerate_prompts
@@ -191,6 +192,7 @@ def submit_analysis(
         },
     )
     session.commit()
+    redis_dispatch_queue.notify_analysis_enqueued(analysis.id, settings)
     return CreateAnalysisResponse(id=analysis.id)
 
 
@@ -259,6 +261,8 @@ def submit_checker(
         detail={"cache_hit": is_cache_hit, "submission": str(submission.id)},
     )
     session.commit()
+    if analysis.status == "queued":
+        redis_dispatch_queue.notify_analysis_enqueued(analysis.id, settings)
     return CheckerSubmitResponse(id=analysis.id, submission_id=submission.id)
 
 
@@ -600,6 +604,7 @@ def execute_prompts_and_score(
         after={"status": analysis.status, "progress": analysis.progress},
     )
     session.commit()
+    redis_dispatch_queue.notify_analysis_enqueued(analysis_id, settings)
     return _to_out(analysis)
 
 

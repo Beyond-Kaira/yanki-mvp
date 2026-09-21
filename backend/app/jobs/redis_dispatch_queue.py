@@ -2,12 +2,13 @@
 
 When ``Settings.redis_url`` is set, enqueue pushes job ids to Redis lists and
 workers pop them with BRPOP. Run state (status, results, artifacts) stays in
-Postgres. When Redis is disabled, ``NullDispatchQueue`` is a no-op and existing
-``claim_next*`` polling handles dispatch.
+Postgres. When Redis is disabled, ``PostgresFallbackDispatch`` is a no-op and
+existing ``claim_next*`` polling handles dispatch.
 """
 
 from __future__ import annotations
 
+import uuid
 from typing import Protocol
 
 from app.config import Settings
@@ -19,13 +20,15 @@ QUEUE_SITE_AUDIT = "queue:site_audit"
 DEFAULT_POP_TIMEOUT_SECONDS = 1
 
 
-class DispatchQueue(Protocol):
+class JobDispatchBackend(Protocol):
     def push(self, queue: str, job_id: str) -> None: ...
 
     def pop(self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS) -> str | None: ...
 
+    def try_pop(self, queue: str) -> str | None: ...
 
-class NullDispatchQueue:
+
+class PostgresFallbackDispatch:
     """Fallback when Redis is off — dispatch stays on Postgres ``claim_next``."""
 
     def push(self, queue: str, job_id: str) -> None:
@@ -34,9 +37,12 @@ class NullDispatchQueue:
     def pop(self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS) -> str | None:
         return None
 
+    def try_pop(self, queue: str) -> str | None:
+        return None
 
-class RedisDispatchQueue:
-    """Redis list queue: LPUSH to enqueue, BRPOP to dequeue."""
+
+class RedisListDispatch:
+    """Redis list queue: LPUSH to enqueue, BRPOP/RPOP to dequeue."""
 
     def __init__(self, redis_url: str) -> None:
         import redis
@@ -54,9 +60,20 @@ class RedisDispatchQueue:
         _key, job_id = result
         return job_id
 
+    def try_pop(self, queue: str) -> str | None:
+        return self._client.rpop(queue)
 
-def get_dispatch_queue(settings: Settings) -> DispatchQueue:
+
+def connect_from_settings(settings: Settings) -> JobDispatchBackend:
+    """Return the configured job-id dispatch backend for this process."""
+
     url = (settings.redis_url or "").strip()
     if url:
-        return RedisDispatchQueue(url)
-    return NullDispatchQueue()
+        return RedisListDispatch(url)
+    return PostgresFallbackDispatch()
+
+
+def notify_analysis_enqueued(analysis_id: uuid.UUID, settings: Settings) -> None:
+    """Push an analysis id onto the Redis dispatch list (no-op when Redis is off)."""
+
+    connect_from_settings(settings).push(QUEUE_ANALYSIS, str(analysis_id))

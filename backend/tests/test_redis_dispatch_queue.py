@@ -5,34 +5,31 @@ from __future__ import annotations
 import pytest
 
 from app.config import Settings
-from app.jobs.redis_dispatch_queue import (
-    QUEUE_ANALYSIS,
-    NullDispatchQueue,
-    RedisDispatchQueue,
-    get_dispatch_queue,
-)
+from app.jobs import redis_dispatch_queue
 
 
-def test_null_dispatch_queue_push_pop_are_noops():
-    queue = NullDispatchQueue()
-    queue.push(QUEUE_ANALYSIS, "job-1")
-    assert queue.pop(QUEUE_ANALYSIS) is None
+def test_postgres_fallback_dispatch_push_pop_are_noops():
+    queue = redis_dispatch_queue.PostgresFallbackDispatch()
+    queue.push(redis_dispatch_queue.QUEUE_ANALYSIS, "job-1")
+    assert queue.try_pop(redis_dispatch_queue.QUEUE_ANALYSIS) is None
 
 
-def test_get_dispatch_queue_returns_null_when_redis_url_unset(settings):
-    queue = get_dispatch_queue(settings)
-    assert isinstance(queue, NullDispatchQueue)
+def test_connect_from_settings_returns_postgres_fallback_when_redis_url_unset(settings):
+    queue = redis_dispatch_queue.connect_from_settings(settings)
+    assert isinstance(queue, redis_dispatch_queue.PostgresFallbackDispatch)
 
 
-def test_get_dispatch_queue_returns_redis_when_url_set():
-    queue = get_dispatch_queue(Settings(redis_url="redis://localhost:6379/0"))
-    assert isinstance(queue, RedisDispatchQueue)
+def test_connect_from_settings_returns_redis_when_url_set():
+    queue = redis_dispatch_queue.connect_from_settings(
+        Settings(redis_url="redis://localhost:6379/0")
+    )
+    assert isinstance(queue, redis_dispatch_queue.RedisListDispatch)
 
 
 @pytest.fixture(scope="module")
 def redis_queue():
     try:
-        queue = RedisDispatchQueue("redis://127.0.0.1:6379/15")
+        queue = redis_dispatch_queue.RedisListDispatch("redis://127.0.0.1:6379/15")
         queue._client.ping()
     except Exception as exc:
         pytest.skip(f"local redis not available: {exc}")
@@ -41,9 +38,16 @@ def redis_queue():
     queue._client.flushdb()
 
 
-def test_redis_dispatch_queue_push_pop_fifo(redis_queue):
-    redis_queue.push(QUEUE_ANALYSIS, "first")
-    redis_queue.push(QUEUE_ANALYSIS, "second")
-    assert redis_queue.pop(QUEUE_ANALYSIS, timeout_seconds=1) == "first"
-    assert redis_queue.pop(QUEUE_ANALYSIS, timeout_seconds=1) == "second"
-    assert redis_queue.pop(QUEUE_ANALYSIS, timeout_seconds=0) is None
+def test_redis_list_dispatch_push_pop_fifo(redis_queue):
+    redis_queue.push(redis_dispatch_queue.QUEUE_ANALYSIS, "first")
+    redis_queue.push(redis_dispatch_queue.QUEUE_ANALYSIS, "second")
+    assert redis_queue.pop(redis_dispatch_queue.QUEUE_ANALYSIS, timeout_seconds=1) == "first"
+    assert redis_queue.pop(redis_dispatch_queue.QUEUE_ANALYSIS, timeout_seconds=1) == "second"
+    assert redis_queue.pop(redis_dispatch_queue.QUEUE_ANALYSIS, timeout_seconds=0) is None
+
+
+def test_redis_list_dispatch_try_pop_is_nonblocking(redis_queue):
+    assert redis_queue.try_pop(redis_dispatch_queue.QUEUE_ANALYSIS) is None
+    redis_queue.push(redis_dispatch_queue.QUEUE_ANALYSIS, "job-1")
+    assert redis_queue.try_pop(redis_dispatch_queue.QUEUE_ANALYSIS) == "job-1"
+    assert redis_queue.try_pop(redis_dispatch_queue.QUEUE_ANALYSIS) is None

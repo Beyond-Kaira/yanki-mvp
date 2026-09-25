@@ -15,9 +15,10 @@ from typing import Any, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base
+from app.services.sectors import normalize_sector
 
 
 def _utcnow() -> datetime:
@@ -324,6 +325,14 @@ class GeoRecord(Base):
     )
     brand: Mapped[str] = mapped_column(sa.Text, nullable=False)
     sector: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Derived lookup key; preserve the original sector label separately.
+    sector_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True, index=True)
+
+    @validates("sector")
+    def _set_sector_key(self, _name: str, value: str | None) -> str | None:
+        self.sector_key = normalize_sector(value) or None
+        return value
+
     prompt: Mapped[str] = mapped_column(sa.Text, nullable=False)
     prompt_group: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     intent: Mapped[str | None] = mapped_column(sa.Text, nullable=True)

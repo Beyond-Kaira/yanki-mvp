@@ -115,6 +115,7 @@ def run_measured_execute(session, analysis, prompt_rows, settings) -> list[Respo
         llm_models=model_slugs,
         search_provider=SEARCH_PROVIDER_TAVILY if mode == "measured" else None,
         schema_version=SCHEMA_VERSION,
+        dry_run=dry_run,
     )
     session.flush()
 

@@ -296,11 +296,15 @@ export type LinkEventKind = "new" | "lost" | "regained" | "changed";
 
 // Keyword Research preview (OSS / SearXNG). Responses carry `estimated: true`
 // while demand/difficulty are proxies — see docs/keyword-preview-oss.md.
-export type KeywordExpandRequest = Schemas["KeywordExpandRequest"];
-export type KeywordExpandResponse = Schemas["KeywordExpandResponse"];
-export type KeywordIdea = Schemas["KeywordIdeaOut"];
-export type KeywordOverviewRequest = Schemas["KeywordOverviewRequest"];
-export type KeywordOverviewResponse = Schemas["KeywordOverviewResponse"];
-export type KeywordRankCheckRequest = Schemas["KeywordRankCheckRequest"];
-export type KeywordRankCheckResponse = Schemas["KeywordRankCheckResponse"];
-export type KeywordRankHit = Schemas["KeywordRankHitOut"];
+export type KeywordExpandRequest = Schemas['KeywordExpandRequest']
+export type KeywordExpandResponse = Schemas['KeywordExpandResponse']
+export type KeywordIdea = Schemas['KeywordIdeaOut']
+export type KeywordOverviewRequest = Schemas['KeywordOverviewRequest']
+export type KeywordOverviewResponse = Schemas['KeywordOverviewResponse']
+export type KeywordRankCheckRequest = Schemas['KeywordRankCheckRequest']
+export type KeywordRankCheckResponse = Schemas['KeywordRankCheckResponse']
+export type KeywordRankHit = Schemas['KeywordRankHitOut']
+
+/** Evidence-backed, single-analysis source ranking. */
+export type CitationSourcesReport = components['schemas']['CitationSourcesOut']
+export type CitationSourceRow = components['schemas']['CitationSourceRow']

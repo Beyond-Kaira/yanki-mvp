@@ -4,6 +4,38 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
+## 2026-09-17 — Top cited pages, local implementation
+
+2026-09-20 latest: review the existing-GEO ranking results in
+[session notes](sessions/2026-09-20-01.md). No operator setup is needed. The new
+ranking is exposed through authenticated read-only endpoints and the browser
+shows the stored-sector report. The retained question-generation endpoint is not
+called by this screen.
+
+Latest scope (2026-09-19): review the question-generation page at
+`http://localhost:8140/ai-visibility/industry-citations` after starting the local
+stack. A live OpenRouter request produced 10 Turkish questions for “Koşu
+ayakkabıları / Türkiye”; the page and API were verified locally. No migration
+is needed. Approve part 2 before job/persistence and answer collection work.
+Older analysis-bound implementation notes below are historical.
+
+No operator action is required for local development. This feature is on
+`feat/top-cited-pages`; it has not been pushed or deployed. No migration is
+needed. Review the code and validation in
+[sessions/2026-09-17-01.md](sessions/2026-09-17-01.md). After deployment, new live
+measured runs can populate the report; old runs lacking explicit provenance
+show an explanatory empty state. The historical operational notes below are
+preserved and are not a fresh production-status check.
+
+2026-09-18: CSV export tests now pass (10 focused frontend tests). No operator
+action is needed for this step. Live-data validation is still pending and awaits
+the user's next-step approval; see [session notes](sessions/2026-09-18-01.md).
+
+Follow-up completed: existing live-data report and actual Chrome downloads
+verified locally. No new provider run or deployment. Next-step decision concerns
+missing inline citation markers and KYC/prompt relevance; no operator command
+is required yet.
+
 Last updated: 2026-08-09, **session 26 close — both PRs merged and live**.
 
 > **Read this first. B17 is closed — both pull requests are merged, deployed and

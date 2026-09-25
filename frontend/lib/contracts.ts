@@ -7,83 +7,75 @@
 // strings / free-form objects (status, current_step, kyc) to their locked SPEC
 // shapes. Import app types from here, never from `./types`.
 
-import type { components } from './types'
+import type { components } from "./types";
+import type { Insights } from "./insights";
 
-type Schemas = components['schemas']
+type Schemas = components["schemas"];
 
 // The backend serializes these as plain strings; narrow to the locked SPEC values.
 export type AnalysisStatus =
-  | 'queued'
-  | 'running'
-  | 'awaiting_review'
-  | 'done'
-  | 'failed'
+  "queued" | "running" | "awaiting_review" | "done" | "failed";
 
-export type RunMode = 'quick' | 'guided'
+export type RunMode = "quick" | "guided";
 
 export type PipelineStep =
-  | 'discovery'
-  | 'kyc'
-  | 'prompts'
-  | 'execute'
-  | 'footprint'
-  | 'scoring'
+  "discovery" | "kyc" | "prompts" | "execute" | "footprint" | "scoring";
 
 // KYC is stored/serialized as a free-form JSON object; this is its locked shape.
 export interface KYC {
-  company: string
-  description: string
-  industry: string
-  aliases: string[]
-  products: string[]
-  services: string[]
-  keywords: string[]
-  locations: string[]
-  competitors: string[]
+  company: string;
+  description: string;
+  industry: string;
+  aliases: string[];
+  products: string[];
+  services: string[];
+  keywords: string[];
+  locations: string[];
+  competitors: string[];
   // Added with the pipeline quality pass (docs/pipeline-quality-plan.md, K1):
   // the buying category and the use cases prompt generation is built from.
   // Optional because analyses run before that change have no such key in their
   // stored JSON — KycCard already coerces every field defensively.
-  category?: string
-  use_cases?: string[]
+  category?: string;
+  use_cases?: string[];
 }
 
-export type Prompt = Schemas['PromptOut']
+export type Prompt = Schemas["PromptOut"];
 
-export type AnalysisResponse = Schemas['ResponseOut']
+export type AnalysisResponse = Schemas["ResponseOut"];
 
-export type CreateAnalysisResponse = Schemas['CreateAnalysisResponse']
+export type CreateAnalysisResponse = Schemas["CreateAnalysisResponse"];
 
-export type PatchAnalysisKycRequest = Schemas['PatchAnalysisKycRequest']
+export type PatchAnalysisKycRequest = Schemas["PatchAnalysisKycRequest"];
 
-export type PromptPatchItem = Schemas['PromptPatchItem']
+export type PromptPatchItem = Schemas["PromptPatchItem"];
 
-export type AnalysisProfileOut = Schemas['AnalysisProfileOut']
+export type AnalysisProfileOut = Schemas["AnalysisProfileOut"];
 
-export type AnalysisPromptsOut = Schemas['AnalysisPromptsOut']
+export type AnalysisPromptsOut = Schemas["AnalysisPromptsOut"];
 
 // Public checker (P5.4). The submit returns both the analysis id (polled via the
 // shared getAnalysis) and a submission_id carried to the results route for
 // P5.5's email gate. EnginePresence / CompetitorMention are the read-time
 // checker aggregates that ride on the shared result envelope.
-export type CheckerSubmitResponse = Schemas['CheckerSubmitResponse']
+export type CheckerSubmitResponse = Schemas["CheckerSubmitResponse"];
 
 // Public product-updates waitlist (P5.13). The backend records + normalizes the
 // email and returns a simple ok envelope; the request carries only the email.
-export type WaitlistSignupResponse = Schemas['WaitlistResponse']
+export type WaitlistSignupResponse = Schemas["WaitlistResponse"];
 
-export type EnginePresence = Schemas['EnginePresence']
+export type EnginePresence = Schemas["EnginePresence"];
 
-export type CompetitorMention = Schemas['CompetitorMention']
+export type CompetitorMention = Schemas["CompetitorMention"];
 
 // SERP visibility (ADR-28) — whether the brand also shows up in ordinary search
 // results, read from an open-source metasearch instance. `AnalysisResult.serp`
 // is null on every run that did not measure it, and `serp.score` is separately
 // null on a run that measured and could not read the results: "we did not look"
 // and "we looked and could not see" are both distinct from a zero.
-export type SerpVisibility = Schemas['SerpVisibilityOut']
+export type SerpVisibility = Schemas["SerpVisibilityOut"];
 
-export type SerpCheck = Schemas['SerpCheckOut']
+export type SerpCheck = Schemas["SerpCheckOut"];
 
 // SEO / AI-readiness audit (ADR-31) — why an answer engine can or cannot read
 // the site, computed from the crawl discovery already performed. `AnalysisResult.seo`
@@ -91,51 +83,49 @@ export type SerpCheck = Schemas['SerpCheckOut']
 // look at). Within a present audit, `seo.grade`/`seo.score` are separately null on
 // a run that produced no scorable checks. The grade is the headline, capped by
 // critical failures so a fatal problem can't be averaged away.
-export type SeoAudit = Schemas['SeoAuditOut']
+export type SeoAudit = Schemas["SeoAuditOut"];
 
-export type SeoCheck = Schemas['SeoCheckOut']
+export type SeoCheck = Schemas["SeoCheckOut"];
 
-export type AnalysisResult = Schemas['GeoOut'] & {
-  kyc: KYC | null
-  prompts: Prompt[]
-  serp: SerpVisibility | null
-  seo: SeoAudit | null
-}
+export type AnalysisResult = Omit<Schemas["GeoOut"], "insights"> & {
+  kyc: KYC | null;
+  prompts: Prompt[];
+  serp: SerpVisibility | null;
+  seo: SeoAudit | null;
+  insights?: Insights | null;
+};
 
 /** Thin poll payload from ``GET /analyses/{id}`` (phase 2). */
 export type AnalysisEnvelope = Omit<
-  Schemas['AnalysisOut'],
-  'status' | 'current_step'
+  Schemas["AnalysisOut"],
+  "status" | "current_step"
 > & {
-  status: AnalysisStatus
-  current_step: PipelineStep | null
-}
+  status: AnalysisStatus;
+  current_step: PipelineStep | null;
+};
 
 /** Full analysis for UI helpers — envelope plus merged ``result`` from slice GETs. */
 export type Analysis = AnalysisEnvelope & {
-  result: AnalysisResult
-}
+  result: AnalysisResult;
+};
 
 // One row of the organization's analysis history. Narrowed the same way
 // `Analysis` is — `status` and `current_step` are open strings on the wire and
 // closed unions here, so a `switch` over them stays exhaustive.
 export type AnalysisSummary = Omit<
-  Schemas['AnalysisSummaryOut'],
-  'status' | 'current_step'
+  Schemas["AnalysisSummaryOut"],
+  "status" | "current_step"
 > & {
-  status: AnalysisStatus
-  current_step: PipelineStep | null
-}
+  status: AnalysisStatus;
+  current_step: PipelineStep | null;
+};
 
-export type AnalysisList = Omit<
-  Schemas['AnalysisListOut'],
-  'analyses'
-> & {
-  analyses: AnalysisSummary[]
+export type AnalysisList = Omit<Schemas["AnalysisListOut"], "analyses"> & {
+  analyses: AnalysisSummary[];
   /** Interim per-user stock limit metadata from ``GET /analyses``. */
-  user_analyses_used: number
-  user_analyses_limit: number
-}
+  user_analyses_used: number;
+  user_analyses_limit: number;
+};
 
 // Accounts (PR #9). Login answers with the user plus a bearer token while
 // setting the refresh cookie. Re-exported here rather than restated in
@@ -145,15 +135,15 @@ export type AnalysisList = Omit<
 // caller's role in it, and the permission list. Login and signup still return
 // the narrow UserOut, so the org-dependent fields are optional here and the
 // shell renders without them until /me resolves.
-export type AuthUser = Schemas['UserOut'] &
-  Partial<Omit<Schemas['CurrentUserOut'], keyof Schemas['UserOut']>>
+export type AuthUser = Schemas["UserOut"] &
+  Partial<Omit<Schemas["CurrentUserOut"], keyof Schemas["UserOut"]>>;
 
-export type Organization = Schemas['OrganizationOut']
+export type Organization = Schemas["OrganizationOut"];
 
 // One organization the signed-in user belongs to, with their role in it. The
 // multi-org list on `/auth/me`; the singular `organization` on AuthUser is the
 // one currently being acted in, this is the full set the switcher offers.
-export type OrganizationMembership = Schemas['OrganizationMembershipOut']
+export type OrganizationMembership = Schemas["OrganizationMembershipOut"];
 
 // --- Sessions / devices ----------------------------------------------------
 //
@@ -161,13 +151,13 @@ export type OrganizationMembership = Schemas['OrganizationMembershipOut']
 // carries NO token and no replayable material — `id` is a family id that names a
 // session for revocation only. See backend/app/api/auth_routes.py.
 
-export type AuthSession = Schemas['AuthSessionOut']
+export type AuthSession = Schemas["AuthSessionOut"];
 
-export type AuthSessionList = Schemas['AuthSessionListOut']
+export type AuthSessionList = Schemas["AuthSessionListOut"];
 
-export type SessionRevokeAllResult = Schemas['SessionRevokeAllOut']
+export type SessionRevokeAllResult = Schemas["SessionRevokeAllOut"];
 
-export type Credentials = Schemas['LoginRequest']
+export type Credentials = Schemas["LoginRequest"];
 
 // Sign-up carries its own schema even though it is {email, password} today, so
 // each call site is typed against the endpoint it actually posts to. They are
@@ -183,73 +173,73 @@ export type Credentials = Schemas['LoginRequest']
 // without an account type and treats it as an individual, which is what keeps
 // an older client working. Corrected here rather than by making every caller
 // pass a value it does not care about.
-type SignupWire = Schemas['SignupRequest']
-export type SignupCredentials = Pick<SignupWire, 'email' | 'password'> &
-  Partial<Pick<SignupWire, 'account_type' | 'organization_name'>>
+type SignupWire = Schemas["SignupRequest"];
+export type SignupCredentials = Pick<SignupWire, "email" | "password"> &
+  Partial<Pick<SignupWire, "account_type" | "organization_name">>;
 
-export type LoginResponse = Schemas['LoginResponse']
+export type LoginResponse = Schemas["LoginResponse"];
 
 // Which provider sign-ins this deployment can complete, and the client id each
 // one needs. Served rather than built in, so a provider configured after the
 // build still appears — and one that is not configured stays absent instead of
 // offering a button that cannot work.
-export type AuthProviders = Schemas['AuthProvidersOut']
+export type AuthProviders = Schemas["AuthProvidersOut"];
 
-export type OAuthProvider = Schemas['OAuthSignInRequest']['provider']
+export type OAuthProvider = Schemas["OAuthSignInRequest"]["provider"];
 
 // Same correction as SignupCredentials above: the account fields carry defaults
 // server-side, so a caller that has nothing to say about them may say nothing.
-type OAuthWire = Schemas['OAuthSignInRequest']
-export type OAuthCredentials = Pick<OAuthWire, 'provider' | 'id_token'> &
-  Partial<Pick<OAuthWire, 'account_type' | 'organization_name' | 'password'>>
+type OAuthWire = Schemas["OAuthSignInRequest"];
+export type OAuthCredentials = Pick<OAuthWire, "provider" | "id_token"> &
+  Partial<Pick<OAuthWire, "account_type" | "organization_name" | "password">>;
 
 // Independent Site Audit projects. These aliases stay deliberately thin: the
 // backend OpenAPI schema is the source of truth for every field rendered by the
 // project dashboard.
-export type SeoProject = Schemas['SeoProjectOut']
+export type SeoProject = Schemas["SeoProjectOut"];
 
-export type SeoProjectDetail = Schemas['SeoProjectDetailOut']
+export type SeoProjectDetail = Schemas["SeoProjectDetailOut"];
 
-export type SiteAuditRunSummary = Schemas['SiteAuditSummaryOut']
+export type SiteAuditRunSummary = Schemas["SiteAuditSummaryOut"];
 
-export type SiteAuditDetail = Schemas['SiteAuditDetailOut']
+export type SiteAuditDetail = Schemas["SiteAuditDetailOut"];
 
-export type SiteAuditPage = Schemas['SiteAuditPageOut']
+export type SiteAuditPage = Schemas["SiteAuditPageOut"];
 
-export type SiteAuditIssue = Schemas['SiteAuditIssueOut']
+export type SiteAuditIssue = Schemas["SiteAuditIssueOut"];
 
-export type SiteAuditSchema = Schemas['SiteAuditSchemaOut']
+export type SiteAuditSchema = Schemas["SiteAuditSchemaOut"];
 
-export type CreateSeoProjectInput = Schemas['CreateSeoProjectRequest']
+export type CreateSeoProjectInput = Schemas["CreateSeoProjectRequest"];
 
 // --- Administration -------------------------------------------------------
 
-export type AdminMember = Schemas['AdminMemberOut']
+export type AdminMember = Schemas["AdminMemberOut"];
 
-export type AdminMemberList = Schemas['AdminUserListOut']
+export type AdminMemberList = Schemas["AdminUserListOut"];
 
-export type AdminOrganization = Schemas['AdminOrganizationOut']
+export type AdminOrganization = Schemas["AdminOrganizationOut"];
 
-export type AdminInvitation = Schemas['AdminInvitationOut']
+export type AdminInvitation = Schemas["AdminInvitationOut"];
 
-export type AdminInvitationList = Schemas['AdminInvitationListOut']
+export type AdminInvitationList = Schemas["AdminInvitationListOut"];
 
 // The create/resend response — the only shape in the API that carries an
 // invitation token, and only in `accept_url`. Nothing persists it client-side.
-export type AdminInvitationCreated = Schemas['AdminInvitationCreatedOut']
+export type AdminInvitationCreated = Schemas["AdminInvitationCreatedOut"];
 
 // The public accept flow. The preview is what an invited person sees before
 // they commit; the accept response is an ordinary login response, so the invitee
 // lands signed in rather than at a login form.
-export type InvitationPreview = Schemas['InvitationPreviewOut']
+export type InvitationPreview = Schemas["InvitationPreviewOut"];
 
 // --- Audit log ------------------------------------------------------------
 
-export type AuditEvent = Schemas['AuditEventOut']
+export type AuditEvent = Schemas["AuditEventOut"];
 
-export type AuditEventList = Schemas['AuditEventListOut']
+export type AuditEventList = Schemas["AuditEventListOut"];
 
-export type AuditIntegrity = Schemas['AuditIntegrityOut']
+export type AuditIntegrity = Schemas["AuditIntegrityOut"];
 
 // --- Backlink Intelligence (P8.3) -----------------------------------------
 //
@@ -261,48 +251,48 @@ export type AuditIntegrity = Schemas['AuditIntegrityOut']
 // toxicity score of `null` renders as "—". Collapsing that to 0 would state a
 // confident number the backend deliberately declined to state.
 
-export type BacklinkSummary = Schemas['BacklinkSummaryOut']
+export type BacklinkSummary = Schemas["BacklinkSummaryOut"];
 
-export type BacklinkImportSummary = Schemas['BacklinkImportOut']
+export type BacklinkImportSummary = Schemas["BacklinkImportOut"];
 
-export type Backlink = Schemas['BacklinkOut']
+export type Backlink = Schemas["BacklinkOut"];
 
-export type BacklinkPage = Schemas['BacklinkPageOut']
+export type BacklinkPage = Schemas["BacklinkPageOut"];
 
-export type ReferringDomain = Schemas['ReferringDomainOut']
+export type ReferringDomain = Schemas["ReferringDomainOut"];
 
-export type ReferringDomainPage = Schemas['ReferringDomainPageOut']
+export type ReferringDomainPage = Schemas["ReferringDomainPageOut"];
 
-export type AnchorDistribution = Schemas['AnchorDistributionOut']
+export type AnchorDistribution = Schemas["AnchorDistributionOut"];
 
-export type VelocityPoint = Schemas['VelocityPointOut']
+export type VelocityPoint = Schemas["VelocityPointOut"];
 
-export type LinkEvent = Schemas['LinkEventOut']
+export type LinkEvent = Schemas["LinkEventOut"];
 
-export type LinkEventPage = Schemas['LinkEventPageOut']
+export type LinkEventPage = Schemas["LinkEventPageOut"];
 
-export type BacklinkOpportunities = Schemas['OpportunitiesOut']
+export type BacklinkOpportunities = Schemas["OpportunitiesOut"];
 
-export type LinkGapRow = Schemas['GapRowOut']
+export type LinkGapRow = Schemas["GapRowOut"];
 
-export type UnlinkedMention = Schemas['UnlinkedMentionOut']
+export type UnlinkedMention = Schemas["UnlinkedMentionOut"];
 
-export type BacklinkRefreshResult = Schemas['RefreshOut']
+export type BacklinkRefreshResult = Schemas["RefreshOut"];
 
 // The toxicity reasons ride along with every flagged domain as a free-form
 // list; this is the shape the backend actually emits for each one. Typed here
 // rather than inline so the panel that renders the evidence cannot drift from
 // the panel that renders the band.
 export interface ToxicityReason {
-  code: string
-  label: string
-  weight: number
-  evidence: string
+  code: string;
+  label: string;
+  weight: number;
+  evidence: string;
 }
 
-export type ToxicityBand = 'low' | 'medium' | 'high'
+export type ToxicityBand = "low" | "medium" | "high";
 
-export type LinkEventKind = 'new' | 'lost' | 'regained' | 'changed'
+export type LinkEventKind = "new" | "lost" | "regained" | "changed";
 
 // Keyword Research preview (OSS / SearXNG). Responses carry `estimated: true`
 // while demand/difficulty are proxies — see docs/keyword-preview-oss.md.

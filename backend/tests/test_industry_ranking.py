@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from sqlalchemy import event
 
 from app.db.models import GeoRecord, Prompt, Response
 from app.industry_citations.ranking import build_industry_ranking
@@ -94,6 +95,30 @@ def test_sector_label_is_used_without_reclassifying_question(db_session, record_
     assert report.candidate_responses == 3
     assert report.eligible_responses == 1
     assert report.excluded_responses == {"brand_probe": 1, "unknown_provenance": 1}
+
+
+def test_ranking_filters_by_sector_key_in_sql(db_session, record_factory):
+    record_factory(sector="e-commerce")
+    record_factory(sector="artificial intelligence")
+    statements = []
+
+    def capture(_connection, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    event.listen(db_session.bind, "before_cursor_execute", capture)
+    try:
+        report = build_industry_ranking(db_session, "ecommerce")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture)
+
+    assert report.candidate_responses == 1
+    ranking_selects = [
+        statement
+        for statement in statements
+        if "FROM geo_records" in statement and "JOIN responses" in statement
+    ]
+    assert len(ranking_selects) == 1
+    assert "geo_records.sector_key =" in ranking_selects[0]
 
 
 @pytest.mark.parametrize(

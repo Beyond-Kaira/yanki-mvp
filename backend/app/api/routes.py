@@ -54,6 +54,7 @@ from app.citations.schemas import CitationSourcesOut, Ownership, ReportView
 from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import get_session
+from app.jobs import redis_dispatch_queue
 from app.net_guard import is_public_url
 from app.services import audit, billing, quota
 from app.services.analyses import (
@@ -69,7 +70,6 @@ from app.services.checker import (
     find_cached_checker_analysis,
     normalize_triple,
 )
-from app.jobs import redis_dispatch_queue
 from app.services.emailer import send_waitlist_emails
 from app.services.guided_execute import request_execute_prompts_and_score
 from app.services.guided_profile import patch_kyc_and_regenerate_prompts

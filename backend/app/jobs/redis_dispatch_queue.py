@@ -23,7 +23,9 @@ DEFAULT_POP_TIMEOUT_SECONDS = 1
 class JobDispatchBackend(Protocol):
     def push(self, queue: str, job_id: str) -> None: ...
 
-    def pop(self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS) -> str | None: ...
+    def pop(
+        self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS
+    ) -> str | None: ...
 
     def try_pop(self, queue: str) -> str | None: ...
 
@@ -34,7 +36,9 @@ class PostgresFallbackDispatch:
     def push(self, queue: str, job_id: str) -> None:
         return None
 
-    def pop(self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS) -> str | None:
+    def pop(
+        self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS
+    ) -> str | None:
         return None
 
     def try_pop(self, queue: str) -> str | None:
@@ -52,7 +56,9 @@ class RedisListDispatch:
     def push(self, queue: str, job_id: str) -> None:
         self._client.lpush(queue, job_id)
 
-    def pop(self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS) -> str | None:
+    def pop(
+        self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS
+    ) -> str | None:
         timeout = max(0, int(timeout_seconds))
         result = self._client.brpop(queue, timeout=timeout)
         if result is None:

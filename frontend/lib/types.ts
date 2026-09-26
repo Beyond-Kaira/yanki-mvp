@@ -371,6 +371,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyses/{analysis_id}/citation-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Citation Sources */
+        get: operations["read_citation_sources_api_v1_analyses__analysis_id__citation_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analyses/{analysis_id}/execute-prompts-and-score": {
         parameters: {
             query?: never;
@@ -775,6 +792,57 @@ export interface paths {
         put?: never;
         /** Submit Checker Lead */
         post: operations["submit_checker_lead_api_v1_checker_leads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/industry-citations/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Questions */
+        post: operations["questions_api_v1_industry_citations_questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/industry-citations/ranking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ranking */
+        get: operations["ranking_api_v1_industry_citations_ranking_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/industry-citations/sectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sectors */
+        get: operations["sectors_api_v1_industry_citations_sectors_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1901,6 +1969,17 @@ export interface components {
             /** Velocity */
             velocity?: components["schemas"]["VelocityPointOut"][];
         };
+        /** CategoryGapOut */
+        CategoryGapOut: {
+            /** Category */
+            category: string;
+            /** Competitors */
+            competitors: string[];
+            /** Lost */
+            lost: number;
+            /** Total */
+            total: number;
+        };
         /** CheckerLeadRequest */
         CheckerLeadRequest: {
             /** Email */
@@ -1938,6 +2017,131 @@ export interface components {
              * Format: uuid
              */
             submission_id: string;
+        };
+        /** CitationCoverage */
+        CitationCoverage: {
+            /**
+             * Eligible Prompts
+             * @default 0
+             */
+            eligible_prompts: number;
+            /**
+             * Eligible Responses
+             * @default 0
+             */
+            eligible_responses: number;
+            /**
+             * Excluded Responses
+             * @default 0
+             */
+            excluded_responses: number;
+            /** Exclusion Reasons */
+            exclusion_reasons?: {
+                [key: string]: number;
+            };
+            /**
+             * Rejected Citations
+             * @default 0
+             */
+            rejected_citations: number;
+            /** Rejection Reasons */
+            rejection_reasons?: {
+                [key: string]: number;
+            };
+        };
+        /** CitationEvidence */
+        CitationEvidence: {
+            /** Answer */
+            answer: string;
+            /** Competitors */
+            competitors: string[];
+            /** Mentioned */
+            mentioned: boolean | null;
+            /** Model */
+            model: string;
+            /** Observed At */
+            observed_at: string | null;
+            /** Prompt */
+            prompt: string;
+            /** Prompt Id */
+            prompt_id: string;
+            /** Response Id */
+            response_id: string;
+            /** Result Rank */
+            result_rank: number;
+            /** Source Url */
+            source_url: string;
+        };
+        /** CitationScope */
+        CitationScope: {
+            /** Analysis Id */
+            analysis_id: string;
+            /** Competitor Domains */
+            competitor_domains: string[];
+            /** Models */
+            models: string[];
+            /** Observed At */
+            observed_at: string | null;
+            /** Prompt Groups */
+            prompt_groups: string[];
+            /**
+             * Provenance
+             * @enum {string}
+             */
+            provenance: "grounded" | "simulated" | "mock" | "unknown";
+            /** Sector */
+            sector: string | null;
+        };
+        /** CitationSourceRow */
+        CitationSourceRow: {
+            /** Domain */
+            domain: string;
+            /** Evidence */
+            evidence: components["schemas"]["CitationEvidence"][];
+            /** Key */
+            key: string;
+            /** Models */
+            models: string[];
+            /**
+             * Ownership
+             * @enum {string}
+             */
+            ownership: "owned" | "competitor" | "third_party";
+            /** Page Count */
+            page_count: number;
+            /** Prompt Count */
+            prompt_count: number;
+            /** Response Count */
+            response_count: number;
+            /** Response Coverage */
+            response_coverage: number | null;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string | null;
+        };
+        /** CitationSourcesOut */
+        CitationSourcesOut: {
+            coverage: components["schemas"]["CitationCoverage"];
+            /** Limit */
+            limit: number;
+            /** Methodology */
+            methodology: string;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["CitationSourceRow"][];
+            scope: components["schemas"]["CitationScope"];
+            summary: components["schemas"]["CitationSummary"];
+            /** Total */
+            total: number;
+        };
+        /** CitationSummary */
+        CitationSummary: {
+            /** Domains */
+            domains: number;
+            /** Pages */
+            pages: number;
         };
         /**
          * CompetitorMention
@@ -2056,6 +2260,36 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** DriverStatOut */
+        DriverStatOut: {
+            /** Category */
+            category: string;
+            /** Contribution */
+            contribution: number;
+            /** Mentioned */
+            mentioned: number;
+            /** Total */
+            total: number;
+        };
+        /** EngineInsightOut */
+        EngineInsightOut: {
+            /** Brandanswers */
+            brandAnswers: number;
+            /** Competitors */
+            competitors: components["schemas"]["InsightCompetitorMentionOut"][];
+            /** Engine */
+            engine: string;
+            /** Firstmentions */
+            firstMentions: number;
+            /** Groups */
+            groups: components["schemas"]["IntentGroupStatOut"][];
+            /** Mentioned */
+            mentioned: number;
+            /** Share */
+            share: number | null;
+            /** Total */
+            total: number;
+        };
         /**
          * EnginePresence
          * @description One model's presence in a checker run: ``mentioned`` of ``total`` answers
@@ -2070,6 +2304,35 @@ export interface components {
             mentioned: number;
             /** Total */
             total: number;
+        };
+        /** EntityCoverageOut */
+        EntityCoverageOut: {
+            /** Entities */
+            entities: components["schemas"]["EntityStatOut"][];
+            /** Present */
+            present: number;
+            /** Total */
+            total: number;
+        };
+        /** EntityLandscapeOut */
+        EntityLandscapeOut: {
+            /** Corethreshold */
+            coreThreshold: number;
+            /** Entities */
+            entities: components["schemas"]["EntityStatOut"][];
+        };
+        /** EntityStatOut */
+        EntityStatOut: {
+            /** Answers */
+            answers: number;
+            /** Name */
+            name: string;
+            /** Ownership */
+            ownership: string;
+            /** Presence */
+            presence?: string | null;
+            /** Tier */
+            tier: string;
         };
         /** GapRowOut */
         GapRowOut: {
@@ -2108,6 +2371,7 @@ export interface components {
             geo_records: components["schemas"]["GeoRecordOut"][];
             /** Geo Score */
             geo_score: number | null;
+            insights?: components["schemas"]["InsightsOut"] | null;
             /** Interventions */
             interventions?: {
                 [key: string]: unknown;
@@ -2209,6 +2473,138 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IndustryQuestionRequest */
+        IndustryQuestionRequest: {
+            /** Country */
+            country: string;
+            /** Industry */
+            industry: string;
+            /** Language */
+            language: string;
+        };
+        /** IndustryQuestionResponse */
+        IndustryQuestionResponse: {
+            /** Cost Usd */
+            cost_usd: number;
+            /** Country */
+            country: string;
+            /** Industry */
+            industry: string;
+            /** Language */
+            language: string;
+            /** Model */
+            model: string;
+            /** Questions */
+            questions: string[];
+        };
+        /** IndustryRankingPage */
+        IndustryRankingPage: {
+            /**
+             * Candidate Responses
+             * @default 0
+             */
+            candidate_responses: number;
+            /**
+             * Distinct Questions
+             * @default 0
+             */
+            distinct_questions: number;
+            /**
+             * Eligible Responses
+             * @default 0
+             */
+            eligible_responses: number;
+            /** Excluded Responses */
+            excluded_responses?: {
+                [key: string]: number;
+            };
+            /** Limit */
+            limit: number;
+            /**
+             * Methodology
+             * @default Stored sector labels; brand-probe questions excluded. Only explicitly live, Tavily-grounded answers with citations matching stored search results and inline markers contribute citations. Each answer counts once per site or page. Successful uncited answers remain in the coverage denominator. Repeated runs count separately; identical question text is counted once after case/space normalization. Sites are exact hostnames, not registrable domains.
+             */
+            methodology: string;
+            /** Offset */
+            offset: number;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /**
+             * Page Limit Per Site
+             * @default 50
+             */
+            page_limit_per_site: number;
+            /** Rejected Citations */
+            rejected_citations?: {
+                [key: string]: number;
+            };
+            /**
+             * Scope
+             * @default GEO analyses of companies in this sector, across organizations.
+             */
+            scope: string;
+            /** Sector */
+            sector: string;
+            /**
+             * Site Count
+             * @default 0
+             */
+            site_count: number;
+            /** Sites */
+            sites?: components["schemas"]["RankedSite"][];
+        };
+        /** IndustrySector */
+        IndustrySector: {
+            /** Record Count */
+            record_count: number;
+            /** Sector */
+            sector: string;
+        };
+        /** InsightCompetitorMentionOut */
+        InsightCompetitorMentionOut: {
+            /** Answers */
+            answers: number;
+            /** Name */
+            name: string;
+        };
+        /** InsightRatioOut */
+        InsightRatioOut: {
+            /** Mentioned */
+            mentioned: number;
+            /** Total */
+            total: number;
+        };
+        /** InsightsOut */
+        InsightsOut: {
+            /** Brand */
+            brand: string;
+            /** Drivers */
+            drivers: components["schemas"]["DriverStatOut"][];
+            /** Engines */
+            engines: components["schemas"]["EngineInsightOut"][];
+            entityCoverage: components["schemas"]["EntityCoverageOut"];
+            entityLandscape: components["schemas"]["EntityLandscapeOut"];
+            gap: components["schemas"]["VisibilityGapOut"];
+            probe: components["schemas"]["InsightRatioOut"] | null;
+            /** Promptset */
+            promptSet: string;
+            /** Scoredanswers */
+            scoredAnswers: number;
+            /** Subject */
+            subject: string;
+        };
+        /** IntentGroupStatOut */
+        IntentGroupStatOut: {
+            /** Group */
+            group: string;
+            /** Mentioned */
+            mentioned: number;
+            /** Total */
+            total: number;
         };
         /**
          * InvitationAcceptRequest
@@ -2584,6 +2980,40 @@ export interface components {
             id?: string | null;
             /** Text */
             text: string;
+        };
+        /** RankedPage */
+        RankedPage: {
+            /** Model Counts */
+            model_counts: {
+                [key: string]: number;
+            };
+            /** Question Count */
+            question_count: number;
+            /** Response Count */
+            response_count: number;
+            /** Response Coverage */
+            response_coverage: number;
+            /** Url */
+            url: string;
+        };
+        /** RankedSite */
+        RankedSite: {
+            /** Domain */
+            domain: string;
+            /** Model Counts */
+            model_counts: {
+                [key: string]: number;
+            };
+            /** Page Count */
+            page_count: number;
+            /** Pages */
+            pages: components["schemas"]["RankedPage"][];
+            /** Question Count */
+            question_count: number;
+            /** Response Count */
+            response_count: number;
+            /** Response Coverage */
+            response_coverage: number;
         };
         /** ReferringDomainOut */
         ReferringDomainOut: {
@@ -3153,6 +3583,15 @@ export interface components {
             new: number;
             /** Reported Total */
             reported_total?: number | null;
+        };
+        /** VisibilityGapOut */
+        VisibilityGapOut: {
+            /** Answerslost */
+            answersLost: number;
+            /** Categories */
+            categories: components["schemas"]["CategoryGapOut"][];
+            /** Total */
+            total: number;
         };
         /**
          * WaitlistRequest
@@ -3769,6 +4208,49 @@ export interface operations {
             };
         };
     };
+    read_citation_sources_api_v1_analyses__analysis_id__citation_sources_get: {
+        parameters: {
+            query?: {
+                view?: "pages" | "domains";
+                model?: string;
+                prompt_group?: string;
+                ownership?: ("owned" | "competitor" | "third_party") | null;
+                q?: string;
+                competitor_domains?: string;
+                opportunities?: boolean;
+                offset?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationSourcesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     execute_prompts_and_score_api_v1_analyses__analysis_id__execute_prompts_and_score_post: {
         parameters: {
             query?: never;
@@ -4353,6 +4835,107 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    questions_api_v1_industry_citations_questions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndustryQuestionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndustryQuestionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ranking_api_v1_industry_citations_ranking_get: {
+        parameters: {
+            query: {
+                sector: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndustryRankingPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sectors_api_v1_industry_citations_sectors_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Org-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndustrySector"][];
                 };
             };
             /** @description Validation Error */

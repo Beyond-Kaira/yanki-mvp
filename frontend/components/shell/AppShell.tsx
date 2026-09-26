@@ -424,7 +424,7 @@ function AppShellChrome({ children, boundAnalysisId }: AppShellChromeProps) {
                         >
                           {item.label}
                           <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px]">
-                            Coming soon
+                            {item.badge === 'na' ? 'N/A' : 'Coming soon'}
                           </span>
                         </span>
                       ),
@@ -447,7 +447,7 @@ function AppShellChrome({ children, boundAnalysisId }: AppShellChromeProps) {
                     // due seconds later and pull the panel out from under a
                     // pointer that is already inside it.
                     onMouseEnter={cancelSwap}
-                    className="absolute left-full top-0 ml-2 hidden w-[216px] flex-col gap-0.5 rounded-xl border border-white/10 bg-ink p-1.5 shadow-[12px_0_28px_rgba(5,20,16,0.24)] lg:flex"
+                    className="absolute left-full top-0 ml-2 hidden max-h-[calc(100dvh-18rem)] w-[216px] flex-col gap-0.5 overflow-y-auto rounded-xl border border-white/10 bg-ink p-1.5 shadow-[12px_0_28px_rgba(5,20,16,0.24)] lg:flex"
                   >
                     {section.items.map((item) => {
                       const active = flyoutItemActive(pathname, item)
@@ -476,7 +476,7 @@ function AppShellChrome({ children, boundAnalysisId }: AppShellChromeProps) {
                         >
                           <span className="truncate">{item.label}</span>
                           <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px]">
-                            Soon
+                            {item.badge === 'na' ? 'N/A' : 'Soon'}
                           </span>
                         </span>
                       )

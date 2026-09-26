@@ -16,7 +16,9 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
+from app.citations.evidence import canonical_url, inline_ranks, result_lookup, result_rank
 from app.providers.tavily import mock_search, normalize_domain
 
 SCHEMA_VERSION = "3.0"
@@ -62,6 +64,9 @@ Write an answer using ONLY the provided search results.
 
 Rules:
 - Cite sources inline as [1], [2], etc. matching result rank numbers.
+- Every item in citations MUST have its [result_rank] marker in grounded_answer.
+- Place each marker immediately after the sentence supported by that source.
+- Do not return a citation object for a source that is not marked in grounded_answer.
 - Do not invent brands, facts, or URLs not supported by the results.
 - Do not assume knowledge outside the provided results.
 - Return ONLY valid JSON:
@@ -86,6 +91,19 @@ Rules:
 - citations must reference only result ranks present in the input.
 - competitors lists brands mentioned in grounded_answer.
 - maximum 5 citations.
+"""
+
+CITATION_MARKER_REPAIR_SYSTEM_PROMPT = """
+You repair citation markers in an already grounded answer.
+
+Use ONLY the supplied original answer and cited search results. Preserve the
+answer text exactly except for citation markers. Add each required [result_rank] marker immediately
+after a sentence supported by that result. Do not add facts, URLs, sources, or
+rank numbers. Every required rank must appear at least once and no other bracketed
+rank may appear.
+
+Return ONLY valid JSON:
+{"grounded_answer": "string"}
 """
 
 AUDIT_EXTRACTION_SYSTEM_PROMPT = (
@@ -355,6 +373,118 @@ def call_grounded_answer(
         return {"error": True, "error_response": str(exc), "stage": "grounded_answer"}
 
 
+def _citation_marker_quality(grounded_payload: dict[str, Any]) -> dict[str, Any]:
+    answer = grounded_payload.get("grounded_answer")
+    answer_text = answer if isinstance(answer, str) else ""
+    cited = sorted(
+        {
+            rank
+            for citation in grounded_payload.get("citations") or []
+            if isinstance(citation, dict)
+            if (rank := result_rank(citation.get("result_rank"))) is not None
+        }
+    )
+    marked = sorted(inline_ranks(answer_text))
+    missing = sorted(set(cited) - set(marked))
+    unexpected = sorted(set(marked) - set(cited))
+    if not cited:
+        status = "no_citations"
+    elif not missing and not unexpected:
+        status = "valid"
+    elif len(missing) == len(cited):
+        status = "missing_inline_markers"
+    else:
+        status = "invalid_inline_markers"
+    return {
+        "status": status,
+        "cited_ranks": cited,
+        "inline_ranks": marked,
+        "missing_inline_ranks": missing,
+        "unexpected_inline_ranks": unexpected,
+    }
+
+
+def _answer_without_citation_markers(answer: str) -> str:
+    return re.sub(r"\s*\[\d+(?:\s*,\s*\d+)*\]", "", answer)
+
+
+def repair_grounded_citation_markers(
+    llm: ChatLLM,
+    grounded_payload: dict[str, Any],
+    search_payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Make one bounded attempt to add missing inline markers without guessing."""
+
+    initial = _citation_marker_quality(grounded_payload)
+    grounded_payload["citation_quality"] = {
+        **initial,
+        "initial_status": initial["status"],
+        "repair_attempted": False,
+        "repair_succeeded": False,
+    }
+    if initial["status"] in {"valid", "no_citations"}:
+        return grounded_payload
+
+    lookup = result_lookup(search_payload)
+    cited_results = [lookup[rank] for rank in initial["cited_ranks"] if rank in lookup]
+    if len(cited_results) != len(initial["cited_ranks"]):
+        return grounded_payload
+
+    grounded_payload["citation_quality"]["repair_attempted"] = True
+    evidence = {
+        "original_answer": grounded_payload.get("grounded_answer", ""),
+        "required_ranks": initial["cited_ranks"],
+        "cited_search_results": cited_results,
+    }
+    try:
+        result = llm.chat(
+            [
+                {"role": "system", "content": CITATION_MARKER_REPAIR_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(evidence, ensure_ascii=False)},
+            ],
+            temperature=0.0,
+            max_tokens=3000,
+            json_object=True,
+        )
+        repaired, _ = parse_llm_json(result.text)
+        candidate = {**grounded_payload, "grounded_answer": repaired.get("grounded_answer", "")}
+        final = _citation_marker_quality(candidate)
+        content_unchanged = _answer_without_citation_markers(
+            str(candidate["grounded_answer"])
+        ) == _answer_without_citation_markers(str(grounded_payload.get("grounded_answer", "")))
+        repair_cost = float(getattr(result, "cost_usd", 0) or 0)
+        grounded_payload["_cost_usd"] = _call_cost(grounded_payload) + repair_cost
+        if final["status"] == "valid" and content_unchanged:
+            grounded_payload["grounded_answer"] = candidate["grounded_answer"]
+            grounded_payload["citation_quality"] = {
+                **final,
+                "initial_status": initial["status"],
+                "repair_attempted": True,
+                "repair_succeeded": True,
+            }
+        else:
+            grounded_payload["citation_quality"] = {
+                **initial,
+                "status": "repair_failed",
+                "initial_status": initial["status"],
+                "repair_attempted": True,
+                "repair_succeeded": False,
+                "repair_rejection": (
+                    "answer_content_changed" if not content_unchanged else "invalid_markers"
+                ),
+            }
+    except Exception as exc:  # noqa: BLE001 - retain original evidence and expose quality
+        grounded_payload["citation_quality"] = {
+            **initial,
+            "status": "repair_error",
+            "initial_status": initial["status"],
+            "repair_attempted": True,
+            "repair_succeeded": False,
+            "repair_error": str(exc),
+        }
+    return grounded_payload
+
+
 def _build_result_lookup(search_payload: dict[str, Any]) -> dict[int, dict]:
     return {int(result["rank"]): result for result in search_payload.get("results", [])}
 
@@ -367,17 +497,22 @@ def normalize_grounded_citations(
     owned_domains: list[str],
     aliases: list[str] | None = None,
 ) -> dict[str, Any]:
-    lookup = _build_result_lookup(search_payload)
+    lookup = result_lookup(search_payload)
     brand_lower = brand.lower()
     citations = []
 
     for index, citation in enumerate(grounded_payload.get("citations") or [], start=1):
-        rank = citation.get("result_rank") or citation.get("citation_position") or index
-        source = lookup.get(int(rank), {})
-        domain = citation.get("source_domain") or source.get("domain", "")
-        title = citation.get("source_title") or source.get("title", "")
-        url = citation.get("url") or source.get("url", "")
-        brands_referenced = citation.get("brands_referenced") or source.get("brands_mentioned", [])
+        if not isinstance(citation, dict):
+            continue
+        rank = result_rank(citation.get("result_rank"))
+        source = lookup.get(rank) if rank is not None else None
+        if source is None or canonical_url(source.get("url")) is None:
+            continue
+        # The search record owns source identity, never the LLM's proposed URL.
+        url = source["url"]
+        domain = urlsplit(url).hostname or ""
+        title = source.get("title") or ""
+        brands_referenced = source.get("brands_mentioned") or []
         mentions_target = (
             _text_mentions_brand(title, brand, aliases)
             or _text_mentions_brand(url, brand, aliases)
@@ -493,6 +628,7 @@ def call_audit_extraction(
         "search_results": search_payload.get("results", []),
         "grounded_answer": grounded_payload.get("grounded_answer", ""),
         "citations": grounded_payload.get("citations", []),
+        "citation_quality": grounded_payload.get("citation_quality", {}),
     }
     try:
         result = llm.chat(
@@ -598,6 +734,7 @@ def merge_measured_record(
         "recommendation_reasoning": audit_payload.get("recommendation_reasoning", ""),
         "reasoning_trace": audit_payload.get("reasoning_trace", {}),
         "citations": grounded_payload.get("citations", []),
+        "citation_quality": grounded_payload.get("citation_quality", {}),
         "citation_metrics": answer_visibility.get(
             "citation_metrics", deepcopy(DEFAULT_CITATION_METRICS)
         ),
@@ -981,6 +1118,10 @@ def run_measured_audits(
             owned_domains=owned_domains,
             aliases=aliases,
         )
+        grounded_payload = repair_grounded_citation_markers(
+            model_llm, grounded_payload, search_payload
+        )
+        grounded_cost = _call_cost(grounded_payload)
         answer_visibility = measure_answer_visibility(
             brand,
             grounded_payload,

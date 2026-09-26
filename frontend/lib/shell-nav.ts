@@ -1,104 +1,103 @@
 /** The product shell's navigation.
  *
- * One rule governs this file: **the nav may not advertise something that does
- * not exist.** It shipped with fifteen entries badged "N/A" — Position
- * Tracking, Keyword Magic, Backlink Audit, Traffic Analytics and the rest —
- * which read to a customer as a roadmap commitment nobody had made, and made a
- * feature that DID exist (Site Audit) look equally unavailable.
- *
- * So each entry is now one of three things:
- *   - a real destination, badged 'live';
- *   - deliberately absent, if the feature does not exist;
- *   - present and honestly marked 'soon', reserved for work that is genuinely
- *     underway and has a card on the plan.
- *
- * "N/A" is gone entirely: it told the user nothing except that something was
- * missing, without saying whether it was coming.
- *
- * A second rule followed from the first: **the rail lists what the account can
- * do.** Free checker and Methodology are not that. One is a demo aimed at a
- * visitor who has no account, the other is a document explaining how the score
- * is computed — neither is a place you work. They took two of eight rows here
- * and now live in the marketing header and the shell's top bar instead, where a
- * reference link belongs.
+ * Live entries must point to built routes. Requested feature inventories use
+ * N/A for entries without a destination; that badge does not imply a delivery
+ * date. "Soon" remains reserved for planned work.
+ * Free checker and Methodology are reference links in the header and top bar.
  */
 
-import { isPublicPath } from '@/lib/route-access'
+import { isPublicPath } from "@/lib/route-access";
 
-export type NavBadge = 'live' | 'soon' | null
+export type NavBadge = 'live' | 'soon' | 'na' | null
 
 export type ShellSectionId =
   | 'home'
   | 'search-visibility'
   | 'ai-visibility'
   | 'backlinks'
+  | 'traffic-market'
+  | 'content'
+  | 'ai-pr'
+  | 'advertising'
+  | 'local'
+  | 'social'
   | 'admin'
   | 'settings'
 
 export interface ShellFlyoutItem {
-  id: string
-  label: string
-  href: string | null
-  badge: NavBadge
+  id: string;
+  label: string;
+  href: string | null;
+  badge: NavBadge;
 }
 
 export interface ShellSection {
   id: ShellSectionId
   label: string
   href: string | null
-  /** When null, section is N/A (no flyout destinations). */
+  /** Null for sections without a flyout. */
   flyoutTitle: string | null
   items: ShellFlyoutItem[]
 }
 
+/** Visible features that do not have an application destination yet. */
+function unavailable(id: string, label: string): ShellFlyoutItem {
+  return { id, label, href: null, badge: 'na' }
+}
+
 export const SHELL_SECTIONS: ShellSection[] = [
   {
-    id: 'home',
-    label: 'Home',
-    href: '/dashboard',
+    id: "home",
+    label: "Home",
+    href: "/dashboard",
     flyoutTitle: null,
     items: [],
   },
   {
-    id: 'search-visibility',
-    label: 'Search Visibility',
-    href: '/search-visibility',
-    flyoutTitle: 'Search Visibility',
+    id: "search-visibility",
+    label: "Search Visibility",
+    href: "/search-visibility",
+    flyoutTitle: "Search Visibility",
     items: [
       {
-        id: 'overview',
-        label: 'Overview',
-        href: '/search-visibility',
-        badge: 'live',
+        id: "overview",
+        label: "Overview",
+        href: "/search-visibility",
+        badge: "live",
       },
       // Site Audit is fully built (crawler, worker, dashboard) and was badged
       // "N/A" — the single most misleading entry in the file.
-      { id: 'site-audit', label: 'Site Audit', href: '/site-audit', badge: 'live' },
       {
-        id: 'keyword-overview',
-        label: 'Keyword Overview',
-        href: '/search-visibility/keywords',
-        badge: 'live',
+        id: "site-audit",
+        label: "Site Audit",
+        href: "/site-audit",
+        badge: "live",
       },
       {
-        id: 'keyword-magic',
-        label: 'Keyword Magic',
-        href: '/search-visibility/keywords/magic',
-        badge: 'live',
+        id: "keyword-overview",
+        label: "Keyword Overview",
+        href: "/search-visibility/keywords",
+        badge: "live",
+      },
+      {
+        id: "keyword-magic",
+        label: "Keyword Magic",
+        href: "/search-visibility/keywords/magic",
+        badge: "live",
       },
     ],
   },
   {
-    id: 'ai-visibility',
-    label: 'AI Visibility',
-    href: '/ai-visibility',
-    flyoutTitle: 'AI Visibility',
+    id: "ai-visibility",
+    label: "AI Visibility",
+    href: "/ai-visibility",
+    flyoutTitle: "AI Visibility",
     items: [
       {
-        id: 'overview',
-        label: 'Overview',
-        href: '/ai-visibility',
-        badge: 'live',
+        id: "overview",
+        label: "Overview",
+        href: "/ai-visibility",
+        badge: "live",
       },
       {
         id: 'prompts',
@@ -113,10 +112,16 @@ export const SHELL_SECTIONS: ShellSection[] = [
         badge: 'live',
       },
       {
-        id: 'drivers',
-        label: 'Drivers & Gaps',
-        href: '/ai-visibility/drivers',
+        id: 'industry-citations',
+        label: 'Top Cited Pages for Your Industry',
+        href: '/ai-visibility/industry-citations',
         badge: 'live',
+      },
+      {
+        id: "drivers",
+        label: "Drivers & Gaps",
+        href: "/ai-visibility/drivers",
+        badge: "live",
       },
       // The record of what this organization has actually run. It belongs in
       // this section rather than under Home because a GEO analysis *is* the AI
@@ -124,10 +129,16 @@ export const SHELL_SECTIONS: ShellSection[] = [
       // belonging to an organization in P7.6, which made "where are my previous
       // ones?" a question with a real answer for the first time.
       {
-        id: 'analysis-history',
-        label: 'Your analyses',
-        href: '/analyses',
-        badge: 'live',
+        id: "analysis-history",
+        label: "Your analyses",
+        href: "/analyses",
+        badge: "live",
+      },
+      {
+        id: "entities",
+        label: "Entities",
+        href: "/ai-visibility/entities",
+        badge: "live",
       },
     ],
   },
@@ -146,54 +157,181 @@ export const SHELL_SECTIONS: ShellSection[] = [
     href: '/backlinks',
     flyoutTitle: 'Backlinks',
     items: [
-      { id: 'bl-inventory', label: 'Backlink inventory', href: '/backlinks', badge: 'live' },
+       {
+        id: "bl-inventory",
+        label: "Backlink inventory",
+        href: "/backlinks",
+        badge: "live",
+      },
     ],
   },
+  {
+    id: 'traffic-market',
+    label: 'Traffic & Market',
+    href: null,
+    flyoutTitle: 'Traffic & Market',
+    items: [
+      unavailable('get-started', 'Get Started'),
+      unavailable('traffic-analytics', 'Traffic Analytics'),
+      unavailable('market-overview', 'Market Overview'),
+      unavailable('competitor-monitoring', 'Competitor Monitoring'),
+      unavailable('ai-traffic', 'AI Traffic'),
+      unavailable('referral', 'Referral'),
+      unavailable('organic-search', 'Organic Search'),
+      unavailable('paid-search', 'Paid Search'),
+      unavailable('organic-social', 'Organic Social'),
+      unavailable('paid-social', 'Paid Social'),
+      unavailable('email', 'Email'),
+      unavailable('display-ads', 'Display Ads'),
+      unavailable('sources-destinations', 'Sources & Destinations'),
+      unavailable('top-pages', 'Top Pages'),
+      unavailable('subfolders-subdomains', 'Subfolders & Subdomains'),
+      unavailable('page-groups', 'Page Groups'),
+      unavailable('usa', 'USA'),
+      unavailable('countries', 'Countries'),
+      unavailable('business-regions', 'Business Regions'),
+      unavailable('geographical-regions', 'Geographical Regions'),
+      unavailable('demographics', 'Demographics'),
+      unavailable('audience-overlap', 'Audience Overlap'),
+      unavailable('socioeconomics', 'Socioeconomics'),
+      unavailable('behavior', 'Behavior'),
+      unavailable('daily-trends', 'Daily Trends'),
+      unavailable('industry-bulk-analysis', 'Industry & Bulk Analysis'),
+      unavailable('trends-api', 'Trends API'),
+      unavailable('trending-websites', 'Trending Websites'),
+    ],
+  },
+  {
+    id: 'content',
+    label: 'Content',
+    href: null,
+    flyoutTitle: 'Content',
+    items: [
+      unavailable('content-dashboard', 'Content Dashboard'),
+      unavailable('topic-finder', 'Topic Finder'),
+      unavailable('seo-brief-generator', 'SEO Brief Generator'),
+      unavailable('ai-article-generator', 'AI Article Generator'),
+      unavailable('content-optimizer', 'Content Optimizer'),
+      unavailable('converter-smm-email', 'Converter to SMM or Email'),
+      unavailable('my-content', 'My Content'),
+    ],
+  },
+  {
+    id: 'ai-pr',
+    label: 'AI PR',
+    href: null,
+    flyoutTitle: 'AI PR',
+    items: [
+      unavailable('dashboard', 'Dashboard'),
+      unavailable('ai-cited-media', 'AI-Cited Media'),
+      unavailable('contact-search', 'Contact Search'),
+      unavailable('media-lists', 'Media Lists'),
+      unavailable('your-emails', 'Your Emails'),
+      unavailable('senders-domains', 'Senders and Domains'),
+      unavailable('media-monitoring', 'Media Monitoring'),
+      unavailable('alerts-digests', 'Alerts and Digests'),
+    ],
+  },
+  {
+    id: 'advertising',
+    label: 'Advertising',
+    href: null,
+    flyoutTitle: 'Advertising',
+    items: [
+      unavailable('get-started', 'Get Started'),
+      unavailable('ads-launch-assistant', 'Ads Launch Assistant'),
+      unavailable('ads-ai-agent', 'Ads AI Agent'),
+      unavailable('advertising-research', 'Advertising Research'),
+      unavailable('pla-research', 'PLA Research'),
+      unavailable('adclarity', 'AdClarity'),
+    ],
+  },
+  {
+    id: 'local',
+    label: 'Local',
+    href: null,
+    flyoutTitle: 'Local',
+    items: [
+      unavailable('dashboard', 'Local Dashboard'),
+      unavailable('listing-management', 'Listing Management'),
+      unavailable('review-management', 'Review Management'),
+      unavailable('gbp-optimization', 'GBP Optimization'),
+      unavailable('gbp-ai-agent', 'GBP AI Agent'),
+      unavailable('map-rank-tracker', 'Map Rank Tracker'),
+    ],
+  },
+  {
+    id: 'social',
+    label: 'Social',
+    href: null,
+    flyoutTitle: 'Social',
+    items: [
+      unavailable('dashboard', 'Social Dashboard'),
+      unavailable('social-poster', 'Social Poster'),
+      unavailable('social-tracker', 'Social Tracker'),
+      unavailable('social-content-insights', 'Social Content Insights'),
+      unavailable('social-analytics', 'Social Analytics'),
+      unavailable('influencer-analytics', 'Influencer Analytics'),
+      unavailable('media-monitoring', 'Media Monitoring'),
+    ],
+  },
+  
   {
     // The Admin Panel is a SECTION, not an item hidden inside Settings. Members,
     // invitations and the audit log are governance — a different job, done by a
     // different person, from "change my password" — and burying them one level
     // down under a personal-preferences heading is what made an account feel
     // like it granted nothing (tech-debt #52).
-    id: 'admin',
-    label: 'Admin Panel',
-    href: '/admin',
-    flyoutTitle: 'Admin Panel',
+    id: "admin",
+    label: "Admin Panel",
+    href: "/admin",
+    flyoutTitle: "Admin Panel",
     items: [
-      { id: 'members', label: 'Members & roles', href: '/admin', badge: 'live' },
-      { id: 'invitations', label: 'Invitations', href: '/admin/invitations', badge: 'live' },
-      { id: 'audit', label: 'Audit log', href: '/admin/audit', badge: 'live' },
+      {
+        id: "members",
+        label: "Members & roles",
+        href: "/admin",
+        badge: "live",
+      },
+      {
+        id: "invitations",
+        label: "Invitations",
+        href: "/admin/invitations",
+        badge: "live",
+      },
+      { id: "audit", label: "Audit log", href: "/admin/audit", badge: "live" },
     ],
   },
   {
-    id: 'settings',
-    label: 'Settings',
-    href: '/settings',
-    flyoutTitle: 'Settings',
+    id: "settings",
+    label: "Settings",
+    href: "/settings",
+    flyoutTitle: "Settings",
     items: [
-      { id: 'profile', label: 'Profile', href: '/settings', badge: 'live' },
-      { id: 'billing', label: 'Plan & usage', href: null, badge: 'soon' },
+      { id: "profile", label: "Profile", href: "/settings", badge: "live" },
+      { id: "billing", label: "Plan & usage", href: null, badge: "soon" },
     ],
   },
-]
+];
 
 /** The Admin Panel's own tabs, in the order the sub-pages present them. */
 export const ADMIN_PANEL_TABS: { id: string; label: string; href: string }[] = [
-  { id: 'members', label: 'Members & roles', href: '/admin' },
-  { id: 'invitations', label: 'Invitations', href: '/admin/invitations' },
-  { id: 'audit', label: 'Audit log', href: '/admin/audit' },
-]
+  { id: "members", label: "Members & roles", href: "/admin" },
+  { id: "invitations", label: "Invitations", href: "/admin/invitations" },
+  { id: "audit", label: "Audit log", href: "/admin/audit" },
+];
 
 export function sectionFromPath(pathname: string): ShellSectionId {
-  if (pathname === '/dashboard' || pathname === '/' || pathname === '') return 'home'
-  if (pathname.startsWith('/search-visibility')) return 'search-visibility'
-  if (pathname.startsWith('/site-audit')) return 'search-visibility'
-  if (pathname.startsWith('/admin')) return 'admin'
-  if (pathname.startsWith('/settings')) return 'settings'
-  if (pathname.startsWith('/ai-visibility')) return 'ai-visibility'
-  if (pathname.startsWith('/analyses')) return 'ai-visibility'
-  if (pathname.startsWith('/backlinks')) return 'backlinks'
-  return 'home'
+  if (pathname === "/dashboard" || pathname === "/" || pathname === "")
+    return "home";
+  if (pathname.startsWith("/search-visibility")) return "search-visibility";
+  if (pathname.startsWith("/site-audit")) return "search-visibility";
+  if (pathname.startsWith("/admin")) return "admin";
+  if (pathname.startsWith("/settings")) return "settings";
+  if (pathname.startsWith("/ai-visibility")) return "ai-visibility";
+  if (pathname.startsWith("/analyses")) return "ai-visibility";
+  if (pathname.startsWith("/backlinks")) return "backlinks";
+  return "home";
 }
 
 /**
@@ -205,20 +343,26 @@ export function sectionFromPath(pathname: string): ShellSectionId {
  * visibility overviews are here.
  */
 const EXACT_MATCH_HREFS = new Set([
-  '/',
-  '/admin',
-  '/ai-visibility',
-  '/search-visibility',
-  '/search-visibility/keywords',
-])
+  "/",
+  "/admin",
+  "/ai-visibility",
+  "/search-visibility",
+  "/search-visibility/keywords",
+]);
 
-export function flyoutItemActive(pathname: string, item: ShellFlyoutItem): boolean {
-  if (!item.href) return false
+export function flyoutItemActive(
+  pathname: string,
+  item: ShellFlyoutItem,
+): boolean {
+  if (!item.href) return false;
   if (EXACT_MATCH_HREFS.has(item.href)) {
-    const normalized = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname
-    return normalized === item.href || (item.href === '/' && normalized === '')
+    const normalized =
+      pathname.endsWith("/") && pathname !== "/"
+        ? pathname.slice(0, -1)
+        : pathname;
+    return normalized === item.href || (item.href === "/" && normalized === "");
   }
-  return pathname === item.href || pathname.startsWith(`${item.href}/`)
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 /** Paths that use the product shell (vertical nav) instead of marketing header.
@@ -227,17 +371,17 @@ export function flyoutItemActive(pathname: string, item: ShellFlyoutItem): boole
  * from both chromes now — a link in the header and in the shell's top bar — and
  * a page you reach by link does not need to carry the whole product rail. */
 export function isShellPath(pathname: string): boolean {
-  if (pathname === '/dashboard') return true
+  if (pathname === "/dashboard") return true;
   return (
-    pathname.startsWith('/dashboard') ||
-    pathname.startsWith('/admin') ||
-    pathname.startsWith('/settings') ||
-    pathname.startsWith('/site-audit') ||
-    pathname.startsWith('/backlinks') ||
-    pathname.startsWith('/ai-visibility') ||
-    pathname.startsWith('/search-visibility') ||
-    pathname.startsWith('/analyses')
-  )
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/site-audit") ||
+    pathname.startsWith("/backlinks") ||
+    pathname.startsWith("/ai-visibility") ||
+    pathname.startsWith("/search-visibility") ||
+    pathname.startsWith("/analyses")
+  );
 }
 
 /**
@@ -256,6 +400,6 @@ export function isShellPath(pathname: string): boolean {
  * the shell while `RequireAuth` renders inside it.
  */
 export function showsAppShell(pathname: string, signedIn: boolean): boolean {
-  if (!isShellPath(pathname)) return false
-  return signedIn || !isPublicPath(pathname)
+  if (!isShellPath(pathname)) return false;
+  return signedIn || !isPublicPath(pathname);
 }

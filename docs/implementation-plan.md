@@ -15,6 +15,18 @@ Related: [architecture.md](architecture.md) (how it's built),
 
 ## How to use this doc
 
+2026-09-20 supersedes the question-generation plan below: the user chose global
+aggregation of existing GEO records by their stored sector label, excluding
+brand probes. The read-only ranking module, authenticated API and industry
+ranking screen are implemented and tested. See the current decision at the top of
+[top-cited-pages-plan.md](top-cited-pages-plan.md).
+
+2026-09-19 scope correction: industry-first Top Cited Pages is being reviewed
+in separate parts. Parts 1–2 add the independent setup, authenticated question
+generation and editable question sample; original Citations remains restored.
+Jobs, persistence and results are pending user review. See
+[current scope](top-cited-pages-plan.md).
+
 - **Tasks are the unit of work.** Each is sized so one autonomous agent finishes
   it in a single focused session. IDs are stable (`P<phase>.<n>`); never renumber
   — mark `superseded` instead.
@@ -2670,3 +2682,23 @@ decisions.
 - **Assumption:** SQLite covers unit tests and Postgres covers queue/jsonb
   tests; if a model needs a Postgres-only type in a hot path, revisit P1.2.
 </content>
+
+## Product task prod-1 — Top cited pages (2026-09-17)
+
+User-prioritized additive feature on `feat/top-cited-pages`, based on main
+`382692e`. Implementation: source evidence validation, explicit mock provenance,
+single-analysis citation report API, Pages/Domains ranking, model/group/ownership
+filters, answer evidence dialog, source opportunities and filtered CSV export.
+See [implementation scope](top-cited-pages-plan.md) and
+[session validation](sessions/2026-09-17-01.md). Broader industry sampling and
+trends remain deferred; no production deployment or migration is included.
+
+2026-09-18 incremental validation: CSV download tests completed (10 focused
+frontend tests pass, TypeScript and touched-file ESLint pass). Live provider
+end-to-end validation remains pending. Continue one step at a time with user
+approval; see [session notes](sessions/2026-09-18-01.md).
+
+Follow-up: stored live-data reporting and actual browser CSV downloads checked
+successfully. Fresh provider execution remains untested. Found missing inline
+source markers in nine GPT-4o-mini answers (22 citations excluded); remediation
+and KYC/prompt relevance review require the next step's user approval.

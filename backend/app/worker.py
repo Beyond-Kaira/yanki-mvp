@@ -20,7 +20,8 @@ from app import health
 from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import SessionLocal
-from app.jobs.queue import claim_next
+from app.jobs import redis_dispatch_queue
+from app.jobs.queue import claim_analysis_by_id, claim_next
 from app.services import audit
 from app.services.analyses import (
     cost_breakdown,
@@ -105,11 +106,30 @@ def _record_terminal_event(session, analysis: Analysis) -> None:
         logger.exception("terminal audit event failed for analysis %s", analysis.id)
 
 
+def _claim_analysis(session, settings: Settings) -> Analysis | None:
+    """Prefer a Redis dispatch hint, then fall back to Postgres FIFO claim."""
+
+    job_id = redis_dispatch_queue.connect_from_settings(settings).try_pop(
+        redis_dispatch_queue.QUEUE_ANALYSIS
+    )
+    if job_id:
+        try:
+            analysis_id = uuid.UUID(job_id)
+        except ValueError:
+            logger.warning("ignored invalid analysis job id from redis: %r", job_id)
+        else:
+            analysis = claim_analysis_by_id(session, analysis_id, settings)
+            if analysis is not None:
+                return analysis
+
+    return claim_next(session, settings)
+
+
 def run_once(settings: Settings) -> bool:
     """Claim and run at most one job. Returns True if a job was processed."""
     session = SessionLocal()
     try:
-        analysis = claim_next(session, settings)
+        analysis = _claim_analysis(session, settings)
         if analysis is None:
             return False
 

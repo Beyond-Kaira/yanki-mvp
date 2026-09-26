@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     # Worker / queue
     worker_poll_seconds: int = 2
     stale_claim_seconds: int = 300
+    # Optional Redis/Valkey URL for job dispatch (LPUSH/BRPOP). When unset, the
+    # worker falls back to Postgres claim_next polling — the pre-Redis behaviour.
+    redis_url: str | None = None
 
     # Worker liveness (ADR-47). The worker owns no HTTP surface, so it proves it
     # is alive by touching a file on a volume the api also mounts — the cheapest

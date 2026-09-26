@@ -100,6 +100,116 @@ describe('shell navigation', () => {
     expect(isShellPath('/backlinks/some-project-id')).toBe(true)
   })
 
+  it('shows the complete Traffic & Market inventory as unavailable', () => {
+    const traffic = SHELL_SECTIONS.find((section) => section.id === 'traffic-market')!
+    expect(traffic.href).toBeNull()
+    expect(traffic.items.map((item) => item.label)).toEqual([
+      'Get Started',
+      'Traffic Analytics',
+      'Market Overview',
+      'Competitor Monitoring',
+      'AI Traffic',
+      'Referral',
+      'Organic Search',
+      'Paid Search',
+      'Organic Social',
+      'Paid Social',
+      'Email',
+      'Display Ads',
+      'Sources & Destinations',
+      'Top Pages',
+      'Subfolders & Subdomains',
+      'Page Groups',
+      'USA',
+      'Countries',
+      'Business Regions',
+      'Geographical Regions',
+      'Demographics',
+      'Audience Overlap',
+      'Socioeconomics',
+      'Behavior',
+      'Daily Trends',
+      'Industry & Bulk Analysis',
+      'Trends API',
+      'Trending Websites',
+    ])
+    expect(traffic.items.every((item) => item.href === null && item.badge === 'na')).toBe(true)
+  })
+
+  it('shows all seven Content tools as unavailable', () => {
+    const content = SHELL_SECTIONS.find((section) => section.id === 'content')!
+    expect(content.href).toBeNull()
+    expect(content.items.map((item) => item.label)).toEqual([
+      'Content Dashboard',
+      'Topic Finder',
+      'SEO Brief Generator',
+      'AI Article Generator',
+      'Content Optimizer',
+      'Converter to SMM or Email',
+      'My Content',
+    ])
+    expect(content.items.every((item) => item.href === null && item.badge === 'na')).toBe(true)
+  })
+
+  it('shows all eight AI PR tools as unavailable', () => {
+    const aiPr = SHELL_SECTIONS.find((section) => section.id === 'ai-pr')!
+    expect(aiPr.href).toBeNull()
+    expect(aiPr.items.map((item) => item.label)).toEqual([
+      'Dashboard',
+      'AI-Cited Media',
+      'Contact Search',
+      'Media Lists',
+      'Your Emails',
+      'Senders and Domains',
+      'Media Monitoring',
+      'Alerts and Digests',
+    ])
+    expect(aiPr.items.every((item) => item.href === null && item.badge === 'na')).toBe(true)
+  })
+
+  it('shows all six Advertising tools as unavailable', () => {
+    const advertising = SHELL_SECTIONS.find((section) => section.id === 'advertising')!
+    expect(advertising.href).toBeNull()
+    expect(advertising.items.map((item) => item.label)).toEqual([
+      'Get Started',
+      'Ads Launch Assistant',
+      'Ads AI Agent',
+      'Advertising Research',
+      'PLA Research',
+      'AdClarity',
+    ])
+    expect(advertising.items.every((item) => item.href === null && item.badge === 'na')).toBe(true)
+  })
+
+  it('shows all six Local tools as unavailable', () => {
+    const local = SHELL_SECTIONS.find((section) => section.id === 'local')!
+    expect(local.href).toBeNull()
+    expect(local.items.map((item) => item.label)).toEqual([
+      'Local Dashboard',
+      'Listing Management',
+      'Review Management',
+      'GBP Optimization',
+      'GBP AI Agent',
+      'Map Rank Tracker',
+    ])
+    expect(local.items.every((item) => item.href === null && item.badge === 'na')).toBe(true)
+  })
+
+  it('shows all seven Social tools as unavailable', () => {
+    const social = SHELL_SECTIONS.find((section) => section.id === 'social')!
+    expect(social.href).toBeNull()
+    expect(social.items.map((item) => item.label)).toEqual([
+      'Social Dashboard',
+      'Social Poster',
+      'Social Tracker',
+      'Social Content Insights',
+      'Social Analytics',
+      'Influencer Analytics',
+      'Media Monitoring',
+    ])
+    expect(social.items.every((item) => item.href === null && item.badge === 'na')).toBe(true)
+  })
+
   /**
    * The rail lists what the account can do. A document and a signed-out demo
    * are neither, and they took two of its eight rows; they are reference links
@@ -124,7 +234,7 @@ describe('shell navigation', () => {
     for (const section of SHELL_SECTIONS) {
       for (const item of section.items) {
         if (item.badge === 'live') expect(item.href).toBeTruthy()
-        if (!item.href) expect(item.badge).toBe('soon')
+        if (!item.href) expect(['soon', 'na']).toContain(item.badge)
       }
     }
   })

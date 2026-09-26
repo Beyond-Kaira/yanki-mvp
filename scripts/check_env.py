@@ -73,6 +73,28 @@ def required_when_live(values: dict[str, str]) -> list[tuple[str, str]]:
                 "GEO_MODE=measured (DRY_RUN=0) — each audit runs a Tavily search",
             )
         )
+    if values.get("SERP_ENABLED", "0").strip().lower() in TRUTHY:
+        provider = (values.get("SERP_PROVIDER", "searxng") or "searxng").strip().lower()
+        if provider == "dataforseo":
+            reqs.append(
+                (
+                    "DATAFORSEO_LOGIN",
+                    "SERP_ENABLED=1 and SERP_PROVIDER=dataforseo (DRY_RUN=0)",
+                )
+            )
+            reqs.append(
+                (
+                    "DATAFORSEO_PASSWORD",
+                    "SERP_ENABLED=1 and SERP_PROVIDER=dataforseo (DRY_RUN=0)",
+                )
+            )
+        elif not values.get("SERP_BASE_URL"):
+            reqs.append(
+                (
+                    "SERP_BASE_URL",
+                    "SERP_ENABLED=1 and SERP_PROVIDER=searxng (DRY_RUN=0)",
+                )
+            )
     return reqs
 
 
@@ -85,11 +107,7 @@ def main() -> int:
         print("check_env: DRY_RUN is on — no API keys required. OK.")
         return 0
 
-    missing = [
-        (key, reason)
-        for key, reason in required_when_live(values)
-        if not values.get(key)
-    ]
+    missing = [(key, reason) for key, reason in required_when_live(values) if not values.get(key)]
     if missing:
         print(
             "check_env: DRY_RUN is off but required variables are empty:",

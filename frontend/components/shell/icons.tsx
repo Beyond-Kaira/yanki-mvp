@@ -138,11 +138,46 @@ export function IconShield(props: IconProps) {
   )
 }
 
+export function IconMegaphone(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 10v4a2 2 0 0 0 2 2h3l2 5h3l-2-5 9-4V6l-9 4H5a2 2 0 0 0-2 2" />
+      <path d="M20 8a4 4 0 0 1 0 8" />
+    </svg>
+  )
+}
+
+export function IconMapPin(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  )
+}
+
+export function IconSocial(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="19" cy="5" r="2" />
+      <circle cx="19" cy="19" r="2" />
+      <path d="m7 11 10-5M7 13l10 5" />
+    </svg>
+  )
+}
+
 export const SECTION_ICONS = {
   home: IconHome,
   'search-visibility': IconSearch,
   'ai-visibility': IconSpark,
   backlinks: IconLink,
+  'traffic-market': IconChart,
+  content: IconFile,
+  'ai-pr': IconGrid,
+  advertising: IconMegaphone,
+  local: IconMapPin,
+  social: IconSocial,
   admin: IconShield,
   settings: IconSettings,
 } as const

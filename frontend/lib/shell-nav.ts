@@ -1,39 +1,28 @@
 /** The product shell's navigation.
  *
- * One rule governs this file: **the nav may not advertise something that does
- * not exist.** It shipped with fifteen entries badged "N/A" — Position
- * Tracking, Keyword Magic, Backlink Audit, Traffic Analytics and the rest —
- * which read to a customer as a roadmap commitment nobody had made, and made a
- * feature that DID exist (Site Audit) look equally unavailable.
- *
- * So each entry is now one of three things:
- *   - a real destination, badged 'live';
- *   - deliberately absent, if the feature does not exist;
- *   - present and honestly marked 'soon', reserved for work that is genuinely
- *     underway and has a card on the plan.
- *
- * "N/A" is gone entirely: it told the user nothing except that something was
- * missing, without saying whether it was coming.
- *
- * A second rule followed from the first: **the rail lists what the account can
- * do.** Free checker and Methodology are not that. One is a demo aimed at a
- * visitor who has no account, the other is a document explaining how the score
- * is computed — neither is a place you work. They took two of eight rows here
- * and now live in the marketing header and the shell's top bar instead, where a
- * reference link belongs.
+ * Live entries must point to built routes. Requested feature inventories use
+ * N/A for entries without a destination; that badge does not imply a delivery
+ * date. "Soon" remains reserved for planned work.
+ * Free checker and Methodology are reference links in the header and top bar.
  */
 
 import { isPublicPath } from "@/lib/route-access";
 
-export type NavBadge = "live" | "soon" | null;
+export type NavBadge = 'live' | 'soon' | 'na' | null
 
 export type ShellSectionId =
-  | "home"
-  | "search-visibility"
-  | "ai-visibility"
-  | "backlinks"
-  | "admin"
-  | "settings";
+  | 'home'
+  | 'search-visibility'
+  | 'ai-visibility'
+  | 'backlinks'
+  | 'traffic-market'
+  | 'content'
+  | 'ai-pr'
+  | 'advertising'
+  | 'local'
+  | 'social'
+  | 'admin'
+  | 'settings'
 
 export interface ShellFlyoutItem {
   id: string;
@@ -43,12 +32,17 @@ export interface ShellFlyoutItem {
 }
 
 export interface ShellSection {
-  id: ShellSectionId;
-  label: string;
-  href: string | null;
-  /** When null, section is N/A (no flyout destinations). */
-  flyoutTitle: string | null;
-  items: ShellFlyoutItem[];
+  id: ShellSectionId
+  label: string
+  href: string | null
+  /** Null for sections without a flyout. */
+  flyoutTitle: string | null
+  items: ShellFlyoutItem[]
+}
+
+/** Visible features that do not have an application destination yet. */
+function unavailable(id: string, label: string): ShellFlyoutItem {
+  return { id, label, href: null, badge: 'na' }
 }
 
 export const SHELL_SECTIONS: ShellSection[] = [
@@ -158,12 +152,12 @@ export const SHELL_SECTIONS: ShellSection[] = [
     // opens one is told plainly that no index is connected yet. That is a
     // different statement from "this feature does not exist", which is what
     // 'soon' claimed and what a hidden entry would imply.
-    id: "backlinks",
-    label: "Backlinks",
-    href: "/backlinks",
-    flyoutTitle: "Backlinks",
+    id: 'backlinks',
+    label: 'Backlinks',
+    href: '/backlinks',
+    flyoutTitle: 'Backlinks',
     items: [
-      {
+       {
         id: "bl-inventory",
         label: "Backlink inventory",
         href: "/backlinks",
@@ -171,6 +165,117 @@ export const SHELL_SECTIONS: ShellSection[] = [
       },
     ],
   },
+  {
+    id: 'traffic-market',
+    label: 'Traffic & Market',
+    href: null,
+    flyoutTitle: 'Traffic & Market',
+    items: [
+      unavailable('get-started', 'Get Started'),
+      unavailable('traffic-analytics', 'Traffic Analytics'),
+      unavailable('market-overview', 'Market Overview'),
+      unavailable('competitor-monitoring', 'Competitor Monitoring'),
+      unavailable('ai-traffic', 'AI Traffic'),
+      unavailable('referral', 'Referral'),
+      unavailable('organic-search', 'Organic Search'),
+      unavailable('paid-search', 'Paid Search'),
+      unavailable('organic-social', 'Organic Social'),
+      unavailable('paid-social', 'Paid Social'),
+      unavailable('email', 'Email'),
+      unavailable('display-ads', 'Display Ads'),
+      unavailable('sources-destinations', 'Sources & Destinations'),
+      unavailable('top-pages', 'Top Pages'),
+      unavailable('subfolders-subdomains', 'Subfolders & Subdomains'),
+      unavailable('page-groups', 'Page Groups'),
+      unavailable('usa', 'USA'),
+      unavailable('countries', 'Countries'),
+      unavailable('business-regions', 'Business Regions'),
+      unavailable('geographical-regions', 'Geographical Regions'),
+      unavailable('demographics', 'Demographics'),
+      unavailable('audience-overlap', 'Audience Overlap'),
+      unavailable('socioeconomics', 'Socioeconomics'),
+      unavailable('behavior', 'Behavior'),
+      unavailable('daily-trends', 'Daily Trends'),
+      unavailable('industry-bulk-analysis', 'Industry & Bulk Analysis'),
+      unavailable('trends-api', 'Trends API'),
+      unavailable('trending-websites', 'Trending Websites'),
+    ],
+  },
+  {
+    id: 'content',
+    label: 'Content',
+    href: null,
+    flyoutTitle: 'Content',
+    items: [
+      unavailable('content-dashboard', 'Content Dashboard'),
+      unavailable('topic-finder', 'Topic Finder'),
+      unavailable('seo-brief-generator', 'SEO Brief Generator'),
+      unavailable('ai-article-generator', 'AI Article Generator'),
+      unavailable('content-optimizer', 'Content Optimizer'),
+      unavailable('converter-smm-email', 'Converter to SMM or Email'),
+      unavailable('my-content', 'My Content'),
+    ],
+  },
+  {
+    id: 'ai-pr',
+    label: 'AI PR',
+    href: null,
+    flyoutTitle: 'AI PR',
+    items: [
+      unavailable('dashboard', 'Dashboard'),
+      unavailable('ai-cited-media', 'AI-Cited Media'),
+      unavailable('contact-search', 'Contact Search'),
+      unavailable('media-lists', 'Media Lists'),
+      unavailable('your-emails', 'Your Emails'),
+      unavailable('senders-domains', 'Senders and Domains'),
+      unavailable('media-monitoring', 'Media Monitoring'),
+      unavailable('alerts-digests', 'Alerts and Digests'),
+    ],
+  },
+  {
+    id: 'advertising',
+    label: 'Advertising',
+    href: null,
+    flyoutTitle: 'Advertising',
+    items: [
+      unavailable('get-started', 'Get Started'),
+      unavailable('ads-launch-assistant', 'Ads Launch Assistant'),
+      unavailable('ads-ai-agent', 'Ads AI Agent'),
+      unavailable('advertising-research', 'Advertising Research'),
+      unavailable('pla-research', 'PLA Research'),
+      unavailable('adclarity', 'AdClarity'),
+    ],
+  },
+  {
+    id: 'local',
+    label: 'Local',
+    href: null,
+    flyoutTitle: 'Local',
+    items: [
+      unavailable('dashboard', 'Local Dashboard'),
+      unavailable('listing-management', 'Listing Management'),
+      unavailable('review-management', 'Review Management'),
+      unavailable('gbp-optimization', 'GBP Optimization'),
+      unavailable('gbp-ai-agent', 'GBP AI Agent'),
+      unavailable('map-rank-tracker', 'Map Rank Tracker'),
+    ],
+  },
+  {
+    id: 'social',
+    label: 'Social',
+    href: null,
+    flyoutTitle: 'Social',
+    items: [
+      unavailable('dashboard', 'Social Dashboard'),
+      unavailable('social-poster', 'Social Poster'),
+      unavailable('social-tracker', 'Social Tracker'),
+      unavailable('social-content-insights', 'Social Content Insights'),
+      unavailable('social-analytics', 'Social Analytics'),
+      unavailable('influencer-analytics', 'Influencer Analytics'),
+      unavailable('media-monitoring', 'Media Monitoring'),
+    ],
+  },
+  
   {
     // The Admin Panel is a SECTION, not an item hidden inside Settings. Members,
     // invitations and the audit log are governance — a different job, done by a

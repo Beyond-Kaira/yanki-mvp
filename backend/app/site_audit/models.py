@@ -33,6 +33,8 @@ class CrawlConfig:
     max_html_chars: int
     max_queue_urls: int
     max_query_variants_per_path: int = 3
+    failure_backoff_max_seconds: float = 10.0
+    max_consecutive_failures: int = 10
 
 
 @dataclass

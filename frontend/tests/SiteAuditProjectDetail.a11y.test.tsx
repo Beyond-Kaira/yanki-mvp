@@ -9,7 +9,12 @@ const mockedGetSiteAudit = vi.hoisted(() => vi.fn())
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ projectId: 'project-1' }) }))
 vi.mock('@/components/AuthProvider', () => ({ useAuth: mockedUseAuth }))
-vi.mock('@/lib/api', () => ({ getSeoProject: mockedGetSeoProject, getSiteAudit: mockedGetSiteAudit }))
+vi.mock('@/lib/api', () => ({
+  ApiError: class ApiError extends Error {},
+  getSeoProject: mockedGetSeoProject,
+  getSiteAudit: mockedGetSiteAudit,
+  startSiteAudit: vi.fn(),
+}))
 
 import SiteAuditProjectDetail from '@/components/site-audit/detail/SiteAuditProjectDetail'
 

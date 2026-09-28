@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AnalysisBoundSubpage from "@/components/ai-visibility/AnalysisBoundSubpage";
 import {
@@ -62,6 +63,8 @@ function ScoreBar({
 }
 
 function ImpactMap({ items }: { items: InterventionDetail[] }) {
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selectionRef = useRef<HTMLDivElement>(null);
   const points = new Map<
     string,
     { impact: number; effort: number; indices: number[] }
@@ -77,6 +80,16 @@ function ImpactMap({ items }: { items: InterventionDetail[] }) {
     point.indices.push(index);
     points.set(key, point);
   });
+
+  const selected = selectedKey ? points.get(selectedKey) : null;
+
+  useEffect(() => {
+    if (selectedKey)
+      selectionRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "nearest",
+      });
+  }, [selectedKey]);
 
   if (points.size === 0) return null;
 
@@ -98,7 +111,7 @@ function ImpactMap({ items }: { items: InterventionDetail[] }) {
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-subtle">
             The number in each circle shows how many actions share those scores.
-            Select a circle to jump to its first action.
+            Select a circle to see the matching actions below the map.
           </p>
         </div>
         <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-medium text-primary-strong">
@@ -128,19 +141,23 @@ function ImpactMap({ items }: { items: InterventionDetail[] }) {
               <div className="p-3 text-right self-end">Plan carefully</div>
             </div>
             {[...points.values()].map((point) => (
-              <Link
+              <button
+                type="button"
                 key={`${point.impact}-${point.effort}`}
-                href={`#intervention-${point.indices[0] + 1}`}
+                aria-pressed={selectedKey === `${point.impact}-${point.effort}`}
                 aria-label={`${point.indices.length} recommendation${point.indices.length === 1 ? "" : "s"} with impact ${point.impact} of 5 and effort ${point.effort} of 5`}
                 title={`Impact ${point.impact}/5 · Effort ${point.effort}/5`}
-                className="absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-primary text-xs font-bold text-white shadow-md transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 sm:h-10 sm:w-10"
+                className={`absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-xs font-bold shadow-md transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 sm:h-10 sm:w-10 ${selectedKey === `${point.impact}-${point.effort}` ? "border-primary bg-white text-primary ring-4 ring-primary/20" : "border-white bg-primary text-white"}`}
                 style={{
                   left: `${10 + (point.effort - 1) * 20}%`,
                   top: `${90 - (point.impact - 1) * 20}%`,
                 }}
+                onClick={() =>
+                  setSelectedKey(`${point.impact}-${point.effort}`)
+                }
               >
                 {point.indices.length}
-              </Link>
+              </button>
             ))}
           </div>
           <div className="mt-2 flex justify-between text-[11px] font-medium text-surface-subtle">
@@ -149,6 +166,44 @@ function ImpactMap({ items }: { items: InterventionDetail[] }) {
           </div>
         </div>
       </div>
+      {selected ? (
+        <div
+          ref={selectionRef}
+          role="region"
+          aria-label="Selected recommendations"
+          aria-live="polite"
+          className="mt-5 rounded-xl border border-primary/20 bg-primary-soft/30 p-4 sm:p-5"
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary-strong">
+            Selected actions · impact {selected.impact}/5 · effort{" "}
+            {selected.effort}/5
+          </p>
+          <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+            {selected.indices.map((index) => {
+              const item = items[index];
+              return (
+                <li
+                  key={`${item.id}-${index}`}
+                  className="rounded-lg border border-surface-border bg-white p-3"
+                >
+                  <p className="text-sm font-semibold text-surface-foreground">
+                    {index + 1}. {item.title}
+                  </p>
+                  {item.expectedOutcome ? (
+                    <p className="mt-1 text-xs leading-5 text-surface-subtle">
+                      Expected: {item.expectedOutcome}
+                    </p>
+                  ) : item.description ? (
+                    <p className="mt-1 text-xs leading-5 text-surface-subtle">
+                      {item.description}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { InterventionsContent } from "@/app/ai-visibility/interventions/InterventionsClient";
 import { interventionsFromAnalysis } from "@/lib/ai-visibility-data";
@@ -13,7 +14,7 @@ function analysisWith(interventions: unknown[]): Analysis {
 }
 
 describe("recommended interventions page", () => {
-  it("ranks the real run data and explains impact, effort and evidence", () => {
+  it("ranks the real run data and opens matching actions from the map", async () => {
     const model = interventionsFromAnalysis(
       analysisWith([
         {
@@ -63,9 +64,24 @@ describe("recommended interventions page", () => {
     expect(
       screen.getByText("Distinct matched prompts").previousSibling,
     ).toHaveTextContent("2");
+    const highImpact = screen.getByRole("button", {
+      name: /impact 4 of 5 and effort 1 of 5/i,
+    });
+    await userEvent.click(highImpact);
+    expect(highImpact).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.getByRole("link", { name: /impact 4 of 5 and effort 1 of 5/i }),
-    ).toHaveAttribute("href", "#intervention-1");
+      within(
+        screen.getByRole("region", { name: "Selected recommendations" }),
+      ).getByText("1. Fix owned pages"),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /impact 3 of 5 and effort 3 of 5/i }),
+    );
+    expect(
+      within(
+        screen.getByRole("region", { name: "Selected recommendations" }),
+      ).getByText("2. Improve comparison content"),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /explore drivers & gaps/i }),
     ).toHaveAttribute("href", "/ai-visibility/drivers?analysis=run-123");

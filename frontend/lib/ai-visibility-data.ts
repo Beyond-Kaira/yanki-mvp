@@ -241,6 +241,14 @@ export interface InterventionDetail {
   description: string | null;
   label: string | null;
   priority: number | null;
+  impact: number | null;
+  effort: number | null;
+  expectedOutcome: string | null;
+  theory: string | null;
+  triggerCount: number | null;
+  prompts: string[];
+  gapClaims: string[];
+  evidence: string[];
 }
 
 export interface DriversPageModel {
@@ -297,6 +305,26 @@ function collectInterventionDetails(analysis: Analysis): InterventionDetail[] {
   const raw = (analysis.result as { interventions?: unknown }).interventions;
   if (!Array.isArray(raw)) return [];
   const rows: InterventionDetail[] = [];
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? [
+          ...new Set(
+            value
+              .filter(
+                (item): item is string =>
+                  typeof item === "string" && !!item.trim(),
+              )
+              .map((item) => item.trim()),
+          ),
+        ]
+      : [];
+  const score = (value: unknown): number | null =>
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 1 &&
+    value <= 5
+      ? value
+      : null;
   for (const [index, item] of raw.entries()) {
     const rec = asRecord(item);
     if (!rec) continue;
@@ -306,16 +334,45 @@ function collectInterventionDetails(analysis: Analysis): InterventionDetail[] {
       (typeof rec.label === "string" && rec.label) ||
       null;
     if (!title) continue;
+    const triggered = asRecord(rec.triggered_by);
     rows.push({
       id: (typeof rec.id === "string" && rec.id) || `${title}-${index}`,
       title,
       description: typeof rec.description === "string" ? rec.description : null,
       label: typeof rec.label === "string" ? rec.label : null,
       priority:
-        typeof rec.priority_score === "number" ? rec.priority_score : null,
+        typeof rec.priority_score === "number" &&
+        Number.isFinite(rec.priority_score)
+          ? rec.priority_score
+          : null,
+      impact: score(rec.geo_impact_score),
+      effort: score(rec.applicability_score),
+      expectedOutcome:
+        typeof rec.expected_outcome === "string" && rec.expected_outcome.trim()
+          ? rec.expected_outcome.trim()
+          : null,
+      theory:
+        typeof rec.geo_theory_basis === "string" && rec.geo_theory_basis.trim()
+          ? rec.geo_theory_basis.trim()
+          : null,
+      triggerCount:
+        typeof rec.trigger_count === "number" &&
+        Number.isInteger(rec.trigger_count) &&
+        rec.trigger_count > 0
+          ? rec.trigger_count
+          : null,
+      prompts: strings(
+        rec.triggered_prompts ??
+          triggered?.record_prompts ??
+          (triggered?.prompt ? [triggered.prompt] : []),
+      ),
+      gapClaims: strings(triggered?.gap_claims),
+      evidence: strings(triggered?.evidence),
     });
   }
-  return rows;
+  return rows.sort(
+    (a, b) => (b.priority ?? -Infinity) - (a.priority ?? -Infinity),
+  );
 }
 
 export function driversFromAnalysis(analysis: Analysis): DriversPageModel {
@@ -324,6 +381,14 @@ export function driversFromAnalysis(analysis: Analysis): DriversPageModel {
     analysisId: analysis.id,
     drivers: collectCategoryClaims(analysis, "visibility_drivers"),
     gaps: collectCategoryClaims(analysis, "visibility_gaps"),
+    interventions: collectInterventionDetails(analysis),
+  };
+}
+
+export function interventionsFromAnalysis(analysis: Analysis) {
+  return {
+    domain: analysisDomain(analysis),
+    analysisId: analysis.id,
     interventions: collectInterventionDetails(analysis),
   };
 }

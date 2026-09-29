@@ -91,7 +91,7 @@ describe('RouteGuard on a public route', () => {
     expect(replace).not.toHaveBeenCalled()
   })
 
-  it('leaves a capability URL reachable', () => {
+  it('lets a retired analysis URL reach its 404 without sending visitors to login', () => {
     authState = { status: 'anonymous' }
     pathname = '/analyses/abc123'
     renderGuard()

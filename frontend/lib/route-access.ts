@@ -15,9 +15,9 @@ const PUBLIC_PATHS = new Set([
 ])
 
 /**
- * Capability URLs and the invitation flow. A single analysis or check is
- * reachable by anyone holding its id — that is what makes a result shareable —
- * while the lists they belong to (`/analyses`) stay behind the gate.
+ * Capability URLs, retired analysis URLs, and the invitation flow. The retired
+ * `/analyses/:id` path stays public solely so an anonymous visitor sees its 404
+ * instead of being sent to login. The analysis list remains gated.
  */
 const PUBLIC_PATTERNS = [
   /^\/analyses\/[^/]+$/,

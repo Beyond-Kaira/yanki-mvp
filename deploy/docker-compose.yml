@@ -111,6 +111,8 @@ services:
       - "${YANKI_WEB_PORT:-8140}:8140"
     environment:
       API_ORIGIN: http://api:8141
+      # Colima's bind mount can miss host file events; poll so Next recompiles edits.
+      WATCHPACK_POLLING: "1000"
     env_file:
       - .env
     volumes:

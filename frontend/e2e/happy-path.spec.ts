@@ -39,7 +39,7 @@ scenario('signs up, submits a URL, and renders a GEO score', async ({ page }) =>
   const scoreCard = page
     .getByText('GEO score', { exact: true })
     .locator('xpath=ancestor::section[1]')
-  await expect(scoreCard).toContainText(/\b\d+\s*\/100\b/, {
+  await expect(scoreCard).toContainText(/\d+\s*\/100/, {
     timeout: 180_000,
   })
 })

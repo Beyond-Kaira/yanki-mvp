@@ -53,8 +53,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        // Wired to next/font CSS variables set in app/layout.tsx (self-hosted at
-        // build; no runtime CDN). Fallback stacks match brandkit v2 §3.
+        // Wired to --font-sans / --font-mono in app/globals.css (@fontsource).
+        // Fallback stacks match brandkit v2 §3.
         sans: [
           'var(--font-sans)',
           'ui-sans-serif',

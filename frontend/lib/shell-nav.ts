@@ -335,7 +335,7 @@ export function sectionFromPath(pathname: string): ShellSectionId {
   if (pathname.startsWith("/admin")) return "admin";
   if (pathname.startsWith("/settings")) return "settings";
   if (pathname.startsWith("/ai-visibility")) return "ai-visibility";
-  if (pathname.startsWith("/analyses")) return "ai-visibility";
+  if (pathname === "/analyses") return "ai-visibility";
   if (pathname.startsWith("/backlinks")) return "backlinks";
   return "home";
 }
@@ -386,24 +386,16 @@ export function isShellPath(pathname: string): boolean {
     pathname.startsWith("/backlinks") ||
     pathname.startsWith("/ai-visibility") ||
     pathname.startsWith("/search-visibility") ||
-    pathname.startsWith("/analyses")
+    pathname === "/analyses"
   );
 }
 
 /**
  * Whether this visitor gets the product shell on this route.
  *
- * One route is public *and* wears the shell: `/analyses/:id`, the capability URL
- * that makes a result shareable. For a signed-out reader the rail there
- * advertised a product they had no account for, ending in a "Not signed in"
- * card where the account should be. So on a public route the shell is an
- * upgrade the session earns, and the marketing header is the default.
- *
- * `signedIn` is false while the session is still resolving, which is
- * deliberate: on a public route the anonymous chrome is the safe guess, and a
- * rail that appears for one frame and then vanishes is the same wrong answer
- * with a flicker attached. Gated routes are unaffected either way — they keep
- * the shell while `RequireAuth` renders inside it.
+ * Gated routes keep the shell while `RequireAuth` resolves the session. Public
+ * routes do not currently use the shell, including retired analysis URLs that
+ * return 404.
  */
 export function showsAppShell(pathname: string, signedIn: boolean): boolean {
   if (!isShellPath(pathname)) return false;

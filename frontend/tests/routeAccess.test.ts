@@ -30,6 +30,7 @@ describe('isPublicPath', () => {
       '/ai-visibility',
       '/ai-visibility/citations',
       '/ai-visibility/drivers',
+      '/ai-visibility/interventions',
       '/ai-visibility/prompts',
       '/ai-visibility/settings',
       '/search-visibility',

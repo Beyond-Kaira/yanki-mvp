@@ -285,7 +285,7 @@ function AppShellChrome({ children, boundAnalysisId }: AppShellChromeProps) {
   }
 
   return (
-    <div className="relative flex h-[100dvh] overflow-hidden bg-surface-muted text-surface-foreground">
+    <div className="fixed inset-0 flex h-[100dvh] overflow-hidden bg-surface-muted text-surface-foreground">
       {/* Below `lg` the rail is an off-canvas drawer. A fixed 220px column on a
           375px screen left ~123px for content, which is not a layout so much as
           a promise that nobody opened this on a phone. */}

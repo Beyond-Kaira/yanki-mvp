@@ -1,6 +1,12 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import Link from "next/link";
 import AnalysisBoundSubpage from "@/components/ai-visibility/AnalysisBoundSubpage";
 import {
@@ -20,6 +26,162 @@ function matchesScore(value: number | null, filter: ScoreFilter): boolean {
   if (filter === "medium") return value === 3;
   return value <= 2;
 }
+
+type FilterOption = { value: string; label: string; hint?: string };
+
+function FilterDropdown({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: FilterOption[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxId = useId();
+  const selected =
+    options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    containerRef.current
+      ?.querySelector<HTMLButtonElement>('[aria-selected="true"] button')
+      ?.focus();
+    const closeOutside = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("mousedown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  function moveWithArrows(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    if (!open) {
+      setOpen(true);
+      return;
+    }
+    const buttons = Array.from(
+      containerRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="listbox"] button',
+      ) ?? [],
+    );
+    if (buttons.length === 0) return;
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "ArrowDown" ? index + 1 : index - 1;
+    buttons[(next + buttons.length) % buttons.length].focus();
+  }
+
+  return (
+    <div ref={containerRef} onKeyDown={moveWithArrows} className="relative">
+      <span className="mb-1 block text-xs font-medium text-surface-subtle">
+        {label}
+      </span>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label={`${label}: ${selected.label}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        onClick={() => setOpen((current) => !current)}
+        className="flex min-h-[42px] min-w-[190px] items-center justify-between gap-3 rounded-lg border border-surface-border bg-white px-3 py-2 text-left text-sm font-medium text-surface-foreground shadow-sm transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <span className="truncate">{selected.label}</span>
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-4 w-4 shrink-0 text-surface-subtle transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open ? (
+        <ul
+          id={listboxId}
+          role="listbox"
+          aria-label={label}
+          className="absolute left-0 top-full z-40 mt-1.5 max-h-64 w-64 max-w-[calc(100vw-3rem)] overflow-y-auto rounded-xl border border-surface-border bg-white p-1 shadow-[0_16px_32px_rgba(11,29,38,0.16)]"
+        >
+          {options.map((option) => {
+            const active = option.value === value;
+            return (
+              <li key={option.value} role="option" aria-selected={active}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${active ? "bg-primary-soft text-primary-strong" : "text-surface-foreground hover:bg-surface-muted"}`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{option.label}</span>
+                    {option.hint ? (
+                      <span className="block text-xs text-surface-subtle">
+                        {option.hint}
+                      </span>
+                    ) : null}
+                  </span>
+                  {active ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4 shrink-0 text-primary"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="m5 12 4 4L19 6" />
+                    </svg>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+const IMPACT_OPTIONS: FilterOption[] = [
+  { value: "all", label: "All impact scores" },
+  { value: "high", label: "Highest impact", hint: "Scores 4–5" },
+  { value: "medium", label: "Medium impact", hint: "Score 3" },
+  { value: "low", label: "Lowest impact", hint: "Scores 1–2" },
+  { value: "unscored", label: "Not scored", hint: "No impact estimate" },
+];
+
+const EFFORT_OPTIONS: FilterOption[] = [
+  { value: "all", label: "All effort scores" },
+  { value: "low", label: "Lowest effort", hint: "Scores 1–2" },
+  { value: "medium", label: "Medium effort", hint: "Score 3" },
+  { value: "high", label: "Highest effort", hint: "Scores 4–5" },
+  { value: "unscored", label: "Not scored", hint: "No effort estimate" },
+];
 
 function category(label: string | null): string {
   return label ? label.replaceAll("_", " ") : "Action";
@@ -77,10 +239,14 @@ function ImpactMap({
   items,
   selectedKey,
   onSelect,
+  onReview,
+  onClear,
 }: {
   items: InterventionDetail[];
   selectedKey: string | null;
   onSelect: (key: string | null) => void;
+  onReview: () => void;
+  onClear: () => void;
 }) {
   const points = new Map<
     string,
@@ -120,7 +286,7 @@ function ImpactMap({
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-subtle">
             The number in each circle shows how many actions share those scores.
-            Select a circle to filter the recommendations table by those scores.
+            Select a circle to filter the recommendations list by those scores.
           </p>
         </div>
         <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-medium text-primary-strong">
@@ -191,19 +357,29 @@ function ImpactMap({
             {selected.indices.length === 1 ? "" : "s"} with impact{" "}
             {selected.impact}/5 and effort {selected.effort}/5.
           </p>
-          <a
-            href="#action-table"
-            className="mt-2 inline-flex text-sm font-medium text-primary hover:text-primary-hover"
-          >
-            Review matching actions →
-          </a>
+          <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <button
+              type="button"
+              onClick={onReview}
+              className="text-sm font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              Review matching actions →
+            </button>
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-sm font-medium text-surface-subtle underline hover:text-surface-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              Show all recommendations
+            </button>
+          </div>
         </div>
       ) : null}
     </section>
   );
 }
 
-function InterventionDetails({
+function InterventionCard({
   item,
   index,
 }: {
@@ -215,7 +391,7 @@ function InterventionDetails({
     .filter((label): label is string => label !== null)
     .slice(0, 3);
   return (
-    <div className="overflow-hidden rounded-xl border border-surface-border bg-white">
+    <li className="overflow-hidden rounded-2xl border border-surface-border bg-white shadow-sm">
       <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_220px]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -319,18 +495,18 @@ function InterventionDetails({
           ) : null}
         </div>
       ) : null}
-    </div>
+    </li>
   );
 }
 
 export function InterventionsContent({ model }: { model: Model }) {
   const { interventions } = model;
+  const actionListRef = useRef<HTMLElement>(null);
   const [selectedPoint, setSelectedPoint] = useState<string | null>(null);
   const [impactFilter, setImpactFilter] = useState<ScoreFilter>("all");
   const [effortFilter, setEffortFilter] = useState<ScoreFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [page, setPage] = useState(1);
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const categories = [
     ...new Set(interventions.map((item) => category(item.label))),
   ].sort();
@@ -352,9 +528,36 @@ export function InterventionsContent({ model }: { model: Model }) {
   );
   const changeFilter = () => {
     setPage(1);
-    setExpandedIndex(null);
     setSelectedPoint(null);
   };
+  const clearMapSelection = () => {
+    setSelectedPoint(null);
+    setPage(1);
+  };
+  const scrollToList = () => {
+    const list = actionListRef.current;
+    const scroller = list?.closest("main");
+    if (!list || !scroller) return;
+    scroller.scrollTo({
+      top:
+        scroller.scrollTop +
+        list.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top -
+        24,
+      behavior: "smooth",
+    });
+  };
+
+  useEffect(() => {
+    if (window.location.hash !== "#action-table") return;
+    window.history.replaceState(
+      window.history.state,
+      "",
+      window.location.pathname + window.location.search,
+    );
+    window.scrollTo(0, 0);
+    scrollToList();
+  }, []);
   const quickWins = interventions.filter(
     (item) =>
       item.impact != null &&
@@ -424,11 +627,12 @@ export function InterventionsContent({ model }: { model: Model }) {
               setEffortFilter("all");
               setCategoryFilter("all");
               setPage(1);
-              setExpandedIndex(null);
             }}
+            onReview={scrollToList}
+            onClear={clearMapSelection}
           />
           <section
-            id="action-table"
+            ref={actionListRef}
             aria-labelledby="action-list-heading"
             className="scroll-mt-24"
           >
@@ -445,7 +649,7 @@ export function InterventionsContent({ model }: { model: Model }) {
                 </h2>
                 <p className="mt-1 text-sm text-surface-subtle">
                   Ranked by the run’s priority score. Filter by score or
-                  category, then open a row for its supporting details.
+                  category to focus on the actions that matter most.
                 </p>
               </div>
               <Link
@@ -456,145 +660,67 @@ export function InterventionsContent({ model }: { model: Model }) {
               </Link>
             </div>
             <div className="mb-4 flex flex-wrap gap-3">
-              <label className="text-xs font-medium text-surface-subtle">
-                Impact
-                <select
-                  value={impactFilter}
-                  onChange={(event) => {
-                    changeFilter();
-                    setImpactFilter(event.target.value as ScoreFilter);
-                  }}
-                  className="mt-1 block rounded-lg border border-surface-border bg-white px-3 py-2 text-sm text-surface-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  <option value="all">All impact scores</option>
-                  <option value="high">Highest (4–5)</option>
-                  <option value="medium">Medium (3)</option>
-                  <option value="low">Lowest (1–2)</option>
-                  <option value="unscored">Not scored</option>
-                </select>
-              </label>
-              <label className="text-xs font-medium text-surface-subtle">
-                Effort
-                <select
-                  value={effortFilter}
-                  onChange={(event) => {
-                    changeFilter();
-                    setEffortFilter(event.target.value as ScoreFilter);
-                  }}
-                  className="mt-1 block rounded-lg border border-surface-border bg-white px-3 py-2 text-sm text-surface-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  <option value="all">All effort scores</option>
-                  <option value="low">Lowest (1–2)</option>
-                  <option value="medium">Medium (3)</option>
-                  <option value="high">Highest (4–5)</option>
-                  <option value="unscored">Not scored</option>
-                </select>
-              </label>
-              <label className="text-xs font-medium text-surface-subtle">
-                Category
-                <select
-                  value={categoryFilter}
-                  onChange={(event) => {
-                    changeFilter();
-                    setCategoryFilter(event.target.value);
-                  }}
-                  className="mt-1 block rounded-lg border border-surface-border bg-white px-3 py-2 text-sm text-surface-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  <option value="all">All categories</option>
-                  {categories.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <FilterDropdown
+                label="Impact"
+                value={impactFilter}
+                options={IMPACT_OPTIONS}
+                onChange={(next) => {
+                  changeFilter();
+                  setImpactFilter(next as ScoreFilter);
+                }}
+              />
+              <FilterDropdown
+                label="Effort"
+                value={effortFilter}
+                options={EFFORT_OPTIONS}
+                onChange={(next) => {
+                  changeFilter();
+                  setEffortFilter(next as ScoreFilter);
+                }}
+              />
+              <FilterDropdown
+                label="Category"
+                value={categoryFilter}
+                options={[
+                  { value: "all", label: "All categories" },
+                  ...categories.map((name) => ({ value: name, label: name })),
+                ]}
+                onChange={(next) => {
+                  changeFilter();
+                  setCategoryFilter(next);
+                }}
+              />
             </div>
-            <p role="status" className="mb-3 text-sm text-surface-subtle">
-              {filtered.length} of {interventions.length} recommendations shown
-            </p>
-            <div className="overflow-x-auto rounded-2xl border border-surface-border bg-white shadow-sm">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <caption className="sr-only">
-                  Ranked recommendations for this analysis
-                </caption>
-                <thead className="bg-surface-muted/60 text-xs uppercase tracking-wide text-surface-subtle">
-                  <tr>
-                    <th scope="col" className="px-4 py-3">
-                      Rank
-                    </th>
-                    <th scope="col" className="px-4 py-3">
-                      Recommendation
-                    </th>
-                    <th scope="col" className="px-4 py-3">
-                      Category
-                    </th>
-                    <th scope="col" className="px-4 py-3">
-                      Impact
-                    </th>
-                    <th scope="col" className="px-4 py-3">
-                      Effort
-                    </th>
-                    <th scope="col" className="px-4 py-3">
-                      Prompts
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-border">
-                  {visible.map(({ item, index }) => (
-                    <Fragment key={`${item.id}-${index}`}>
-                      <tr>
-                        <td className="px-4 py-3 tabular-nums text-surface-subtle">
-                          {index + 1}
-                        </td>
-                        <th scope="row" className="px-4 py-3 font-medium">
-                          <button
-                            type="button"
-                            aria-expanded={expandedIndex === index}
-                            onClick={() =>
-                              setExpandedIndex(
-                                expandedIndex === index ? null : index,
-                              )
-                            }
-                            className="text-left text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                          >
-                            {item.title}
-                          </button>
-                        </th>
-                        <td className="px-4 py-3 capitalize text-surface-subtle">
-                          {category(item.label)}
-                        </td>
-                        <td className="px-4 py-3 tabular-nums text-surface-foreground">
-                          {item.impact == null ? "—" : `${item.impact}/5`}
-                        </td>
-                        <td className="px-4 py-3 tabular-nums text-surface-foreground">
-                          {item.effort == null ? "—" : `${item.effort}/5`}
-                        </td>
-                        <td className="px-4 py-3 tabular-nums text-surface-foreground">
-                          {item.triggerCount ?? "—"}
-                        </td>
-                      </tr>
-                      {expandedIndex === index ? (
-                        <tr id={`intervention-details-${index}`}>
-                          <td colSpan={6} className="bg-surface-muted/20 p-4">
-                            <InterventionDetails item={item} index={index} />
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  ))}
-                  {visible.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-8 text-center text-surface-subtle"
-                      >
-                        No recommendations match these filters.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+              <p role="status" className="text-surface-subtle">
+                {filtered.length} of {interventions.length} recommendations
+                shown
+              </p>
+              {selectedPoint ? (
+                <button
+                  type="button"
+                  onClick={clearMapSelection}
+                  className="font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  Show all recommendations
+                </button>
+              ) : null}
             </div>
+            {visible.length > 0 ? (
+              <ol className="space-y-4" aria-label="Ranked recommendations">
+                {visible.map(({ item, index }) => (
+                  <InterventionCard
+                    key={`${item.id}-${index}`}
+                    item={item}
+                    index={index}
+                  />
+                ))}
+              </ol>
+            ) : (
+              <p className="rounded-2xl border border-surface-border bg-white px-4 py-8 text-center text-sm text-surface-subtle shadow-sm">
+                No recommendations match these filters.
+              </p>
+            )}
             {totalPages > 1 ? (
               <nav
                 aria-label="Recommendations pagination"
@@ -603,10 +729,7 @@ export function InterventionsContent({ model }: { model: Model }) {
                 <button
                   type="button"
                   disabled={currentPage === 1}
-                  onClick={() => {
-                    setPage(currentPage - 1);
-                    setExpandedIndex(null);
-                  }}
+                  onClick={() => setPage(currentPage - 1)}
                   className="rounded-lg border border-surface-border bg-white px-3 py-2 text-surface-foreground hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                 >
                   Previous
@@ -617,10 +740,7 @@ export function InterventionsContent({ model }: { model: Model }) {
                 <button
                   type="button"
                   disabled={currentPage === totalPages}
-                  onClick={() => {
-                    setPage(currentPage + 1);
-                    setExpandedIndex(null);
-                  }}
+                  onClick={() => setPage(currentPage + 1)}
                   className="rounded-lg border border-surface-border bg-white px-3 py-2 text-surface-foreground hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                 >
                   Next

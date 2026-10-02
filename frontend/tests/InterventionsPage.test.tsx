@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InterventionsContent } from "@/app/ai-visibility/interventions/InterventionsClient";
 import { interventionsFromAnalysis } from "@/lib/ai-visibility-data";
 import type { Analysis } from "@/lib/contracts";
@@ -11,6 +11,17 @@ function analysisWith(interventions: unknown[]): Analysis {
     url: "https://example.com",
     result: { kyc: null, interventions },
   } as unknown as Analysis;
+}
+
+async function chooseFilter(label: string, option: string) {
+  await userEvent.click(
+    screen.getByRole("button", { name: new RegExp(`^${label}:`, "i") }),
+  );
+  await userEvent.click(
+    within(screen.getByRole("listbox", { name: label })).getByRole("button", {
+      name: new RegExp(option, "i"),
+    }),
+  );
 }
 
 describe("recommended interventions page", () => {
@@ -53,10 +64,16 @@ describe("recommended interventions page", () => {
     expect(
       screen.getByText("A focused action plan for example.com"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("table")).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Fix owned pages" }),
-    );
+    expect(
+      screen.getByRole("list", { name: "Ranked recommendations" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("list", { name: "Ranked recommendations" })
+        .firstElementChild,
+    ).toHaveTextContent("Fix owned pages");
+    expect(
+      screen.getByRole("heading", { name: "Fix owned pages" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("More owned citations")).toBeInTheDocument();
     expect(screen.getByText("• Owned pages are missing")).toBeInTheDocument();
     expect(
@@ -79,29 +96,55 @@ describe("recommended interventions page", () => {
       ).getByText(/Showing 1 action/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Fix owned pages" }),
+      screen.getByRole("heading", { name: "Fix owned pages" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Improve comparison content" }),
+      screen.queryByRole("heading", { name: "Improve comparison content" }),
     ).not.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("button", { name: /impact 3 of 5 and effort 3 of 5/i }),
     );
     expect(
-      screen.getByRole("button", { name: "Improve comparison content" }),
+      screen.getByRole("heading", { name: "Improve comparison content" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Fix owned pages" }),
+      screen.queryByRole("heading", { name: "Fix owned pages" }),
     ).not.toBeInTheDocument();
-    await userEvent.selectOptions(
-      screen.getByLabelText("Category"),
-      "codebase",
+    await userEvent.click(
+      within(screen.getByRole("region", { name: "What to do next" })).getByRole(
+        "button",
+        { name: "Show all recommendations" },
+      ),
     );
     expect(
-      screen.getByRole("button", { name: "Fix owned pages" }),
+      screen.getByText("2 of 2 recommendations shown"),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Improve comparison content" }),
+      screen.getByRole("heading", { name: "Fix owned pages" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Improve comparison content" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Selected recommendations" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(highImpact);
+    await userEvent.click(
+      within(
+        screen.getByRole("region", { name: "Selected recommendations" }),
+      ).getByRole("button", { name: "Show all recommendations" }),
+    );
+    expect(
+      screen.getByText("2 of 2 recommendations shown"),
+    ).toBeInTheDocument();
+    expect(highImpact).toHaveAttribute("aria-pressed", "false");
+    await chooseFilter("Category", "codebase");
+    expect(
+      screen.getByRole("heading", { name: "Fix owned pages" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Improve comparison content" }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /explore drivers & gaps/i }),
@@ -123,43 +166,79 @@ describe("recommended interventions page", () => {
     );
 
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
-    expect(screen.getAllByRole("row")).toHaveLength(11);
     expect(
-      screen.queryByRole("button", { name: "Action 12" }),
+      screen.getByRole("list", { name: "Ranked recommendations" }).children,
+    ).toHaveLength(10);
+    expect(
+      screen.queryByRole("heading", { name: "Action 12" }),
     ).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Action 12" }),
+      screen.getByRole("heading", { name: "Action 12" }),
     ).toBeInTheDocument();
 
-    await userEvent.selectOptions(screen.getByLabelText("Impact"), "high");
+    await chooseFilter("Impact", "Highest impact");
     expect(
       screen.getByText("2 of 12 recommendations shown"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Page 2 of 2")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Action 1" }),
+      screen.getByRole("heading", { name: "Action 1" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Action 12" }),
+      screen.queryByRole("heading", { name: "Action 12" }),
     ).not.toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText("Effort"), "low");
+    await chooseFilter("Effort", "Lowest effort");
     expect(
       screen.getByText("1 of 12 recommendations shown"),
     ).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText("Effort"), "all");
-    await userEvent.selectOptions(screen.getByLabelText("Impact"), "low");
+    await chooseFilter("Effort", "All effort scores");
+    await chooseFilter("Impact", "Lowest impact");
     expect(
       screen.getByText("10 of 12 recommendations shown"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Action 12" }),
+      screen.getByRole("heading", { name: "Action 12" }),
     ).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText("Effort"), "low");
+    await chooseFilter("Effort", "Lowest effort");
     expect(
       screen.getByText("No recommendations match these filters."),
     ).toBeInTheDocument();
+  });
+
+  it("scrolls the app content to matching actions without a page anchor", async () => {
+    const { container } = render(
+      <main>
+        <InterventionsContent
+          model={interventionsFromAnalysis(
+            analysisWith([
+              {
+                id: "action-1",
+                title: "Fix owned pages",
+                geo_impact_score: 4,
+                applicability_score: 2,
+              },
+            ]),
+          )}
+        />
+      </main>,
+    );
+    const main = container.querySelector("main")!;
+    const scrollTo = vi.fn();
+    main.scrollTo = scrollTo;
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /impact 4 of 5 and effort 2 of 5/i }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review matching actions →" }),
+    );
+
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: "smooth" }),
+    );
+    expect(window.location.hash).toBe("");
   });
 
   it("offers the gap view when no intervention matched", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import AnalysisBoundSubpage from "@/components/ai-visibility/AnalysisBoundSubpage";
 import {
@@ -9,6 +9,17 @@ import {
 } from "@/lib/ai-visibility-data";
 
 type Model = ReturnType<typeof interventionsFromAnalysis>;
+const PAGE_SIZE = 10;
+type ScoreFilter = "all" | "high" | "medium" | "low" | "unscored";
+
+function matchesScore(value: number | null, filter: ScoreFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "unscored") return value == null;
+  if (value == null) return false;
+  if (filter === "high") return value >= 4;
+  if (filter === "medium") return value === 3;
+  return value <= 2;
+}
 
 function category(label: string | null): string {
   return label ? label.replaceAll("_", " ") : "Action";
@@ -62,9 +73,15 @@ function ScoreBar({
   );
 }
 
-function ImpactMap({ items }: { items: InterventionDetail[] }) {
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const selectionRef = useRef<HTMLDivElement>(null);
+function ImpactMap({
+  items,
+  selectedKey,
+  onSelect,
+}: {
+  items: InterventionDetail[];
+  selectedKey: string | null;
+  onSelect: (key: string | null) => void;
+}) {
   const points = new Map<
     string,
     { impact: number; effort: number; indices: number[] }
@@ -82,14 +99,6 @@ function ImpactMap({ items }: { items: InterventionDetail[] }) {
   });
 
   const selected = selectedKey ? points.get(selectedKey) : null;
-
-  useEffect(() => {
-    if (selectedKey)
-      selectionRef.current?.scrollIntoView?.({
-        behavior: "smooth",
-        block: "nearest",
-      });
-  }, [selectedKey]);
 
   if (points.size === 0) return null;
 
@@ -111,7 +120,7 @@ function ImpactMap({ items }: { items: InterventionDetail[] }) {
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-subtle">
             The number in each circle shows how many actions share those scores.
-            Select a circle to see the matching actions below the map.
+            Select a circle to filter the recommendations table by those scores.
           </p>
         </div>
         <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-medium text-primary-strong">
@@ -153,7 +162,11 @@ function ImpactMap({ items }: { items: InterventionDetail[] }) {
                   top: `${90 - (point.impact - 1) * 20}%`,
                 }}
                 onClick={() =>
-                  setSelectedKey(`${point.impact}-${point.effort}`)
+                  onSelect(
+                    selectedKey === `${point.impact}-${point.effort}`
+                      ? null
+                      : `${point.impact}-${point.effort}`,
+                  )
                 }
               >
                 {point.indices.length}
@@ -168,47 +181,29 @@ function ImpactMap({ items }: { items: InterventionDetail[] }) {
       </div>
       {selected ? (
         <div
-          ref={selectionRef}
           role="region"
           aria-label="Selected recommendations"
           aria-live="polite"
           className="mt-5 rounded-xl border border-primary/20 bg-primary-soft/30 p-4 sm:p-5"
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary-strong">
-            Selected actions · impact {selected.impact}/5 · effort{" "}
-            {selected.effort}/5
+          <p className="text-sm text-surface-foreground">
+            Showing {selected.indices.length} action
+            {selected.indices.length === 1 ? "" : "s"} with impact{" "}
+            {selected.impact}/5 and effort {selected.effort}/5.
           </p>
-          <ul className="mt-3 grid gap-3 sm:grid-cols-2">
-            {selected.indices.map((index) => {
-              const item = items[index];
-              return (
-                <li
-                  key={`${item.id}-${index}`}
-                  className="rounded-lg border border-surface-border bg-white p-3"
-                >
-                  <p className="text-sm font-semibold text-surface-foreground">
-                    {index + 1}. {item.title}
-                  </p>
-                  {item.expectedOutcome ? (
-                    <p className="mt-1 text-xs leading-5 text-surface-subtle">
-                      Expected: {item.expectedOutcome}
-                    </p>
-                  ) : item.description ? (
-                    <p className="mt-1 text-xs leading-5 text-surface-subtle">
-                      {item.description}
-                    </p>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <a
+            href="#action-table"
+            className="mt-2 inline-flex text-sm font-medium text-primary hover:text-primary-hover"
+          >
+            Review matching actions →
+          </a>
         </div>
       ) : null}
     </section>
   );
 }
 
-function InterventionCard({
+function InterventionDetails({
   item,
   index,
 }: {
@@ -220,10 +215,7 @@ function InterventionCard({
     .filter((label): label is string => label !== null)
     .slice(0, 3);
   return (
-    <li
-      id={`intervention-${index + 1}`}
-      className="scroll-mt-24 overflow-hidden rounded-2xl border border-surface-border bg-white shadow-sm"
-    >
+    <div className="overflow-hidden rounded-xl border border-surface-border bg-white">
       <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_220px]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -327,12 +319,42 @@ function InterventionCard({
           ) : null}
         </div>
       ) : null}
-    </li>
+    </div>
   );
 }
 
 export function InterventionsContent({ model }: { model: Model }) {
   const { interventions } = model;
+  const [selectedPoint, setSelectedPoint] = useState<string | null>(null);
+  const [impactFilter, setImpactFilter] = useState<ScoreFilter>("all");
+  const [effortFilter, setEffortFilter] = useState<ScoreFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const categories = [
+    ...new Set(interventions.map((item) => category(item.label))),
+  ].sort();
+  const filtered = interventions
+    .map((item, index) => ({ item, index }))
+    .filter(
+      ({ item }) =>
+        matchesScore(item.impact, impactFilter) &&
+        matchesScore(item.effort, effortFilter) &&
+        (categoryFilter === "all" || category(item.label) === categoryFilter) &&
+        (selectedPoint === null ||
+          `${item.impact}-${item.effort}` === selectedPoint),
+    );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const visible = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const changeFilter = () => {
+    setPage(1);
+    setExpandedIndex(null);
+    setSelectedPoint(null);
+  };
   const quickWins = interventions.filter(
     (item) =>
       item.impact != null &&
@@ -393,8 +415,23 @@ export function InterventionsContent({ model }: { model: Model }) {
         </section>
       ) : (
         <>
-          <ImpactMap items={interventions} />
-          <section aria-labelledby="action-list-heading">
+          <ImpactMap
+            items={interventions}
+            selectedKey={selectedPoint}
+            onSelect={(key) => {
+              setSelectedPoint(key);
+              setImpactFilter("all");
+              setEffortFilter("all");
+              setCategoryFilter("all");
+              setPage(1);
+              setExpandedIndex(null);
+            }}
+          />
+          <section
+            id="action-table"
+            aria-labelledby="action-list-heading"
+            className="scroll-mt-24"
+          >
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
@@ -407,8 +444,8 @@ export function InterventionsContent({ model }: { model: Model }) {
                   What to do next
                 </h2>
                 <p className="mt-1 text-sm text-surface-subtle">
-                  Ordered by estimated impact relative to effort and repeated
-                  matches across the run.
+                  Ranked by the run’s priority score. Filter by score or
+                  category, then open a row for its supporting details.
                 </p>
               </div>
               <Link
@@ -418,15 +455,178 @@ export function InterventionsContent({ model }: { model: Model }) {
                 Explore drivers & gaps →
               </Link>
             </div>
-            <ol className="space-y-4">
-              {interventions.map((item, index) => (
-                <InterventionCard
-                  key={`${item.id}-${index}`}
-                  item={item}
-                  index={index}
-                />
-              ))}
-            </ol>
+            <div className="mb-4 flex flex-wrap gap-3">
+              <label className="text-xs font-medium text-surface-subtle">
+                Impact
+                <select
+                  value={impactFilter}
+                  onChange={(event) => {
+                    changeFilter();
+                    setImpactFilter(event.target.value as ScoreFilter);
+                  }}
+                  className="mt-1 block rounded-lg border border-surface-border bg-white px-3 py-2 text-sm text-surface-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="all">All impact scores</option>
+                  <option value="high">Highest (4–5)</option>
+                  <option value="medium">Medium (3)</option>
+                  <option value="low">Lowest (1–2)</option>
+                  <option value="unscored">Not scored</option>
+                </select>
+              </label>
+              <label className="text-xs font-medium text-surface-subtle">
+                Effort
+                <select
+                  value={effortFilter}
+                  onChange={(event) => {
+                    changeFilter();
+                    setEffortFilter(event.target.value as ScoreFilter);
+                  }}
+                  className="mt-1 block rounded-lg border border-surface-border bg-white px-3 py-2 text-sm text-surface-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="all">All effort scores</option>
+                  <option value="low">Lowest (1–2)</option>
+                  <option value="medium">Medium (3)</option>
+                  <option value="high">Highest (4–5)</option>
+                  <option value="unscored">Not scored</option>
+                </select>
+              </label>
+              <label className="text-xs font-medium text-surface-subtle">
+                Category
+                <select
+                  value={categoryFilter}
+                  onChange={(event) => {
+                    changeFilter();
+                    setCategoryFilter(event.target.value);
+                  }}
+                  className="mt-1 block rounded-lg border border-surface-border bg-white px-3 py-2 text-sm text-surface-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="all">All categories</option>
+                  {categories.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p role="status" className="mb-3 text-sm text-surface-subtle">
+              {filtered.length} of {interventions.length} recommendations shown
+            </p>
+            <div className="overflow-x-auto rounded-2xl border border-surface-border bg-white shadow-sm">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <caption className="sr-only">
+                  Ranked recommendations for this analysis
+                </caption>
+                <thead className="bg-surface-muted/60 text-xs uppercase tracking-wide text-surface-subtle">
+                  <tr>
+                    <th scope="col" className="px-4 py-3">
+                      Rank
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      Recommendation
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      Category
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      Impact
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      Effort
+                    </th>
+                    <th scope="col" className="px-4 py-3">
+                      Prompts
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-border">
+                  {visible.map(({ item, index }) => (
+                    <Fragment key={`${item.id}-${index}`}>
+                      <tr>
+                        <td className="px-4 py-3 tabular-nums text-surface-subtle">
+                          {index + 1}
+                        </td>
+                        <th scope="row" className="px-4 py-3 font-medium">
+                          <button
+                            type="button"
+                            aria-expanded={expandedIndex === index}
+                            onClick={() =>
+                              setExpandedIndex(
+                                expandedIndex === index ? null : index,
+                              )
+                            }
+                            className="text-left text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          >
+                            {item.title}
+                          </button>
+                        </th>
+                        <td className="px-4 py-3 capitalize text-surface-subtle">
+                          {category(item.label)}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-surface-foreground">
+                          {item.impact == null ? "—" : `${item.impact}/5`}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-surface-foreground">
+                          {item.effort == null ? "—" : `${item.effort}/5`}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-surface-foreground">
+                          {item.triggerCount ?? "—"}
+                        </td>
+                      </tr>
+                      {expandedIndex === index ? (
+                        <tr id={`intervention-details-${index}`}>
+                          <td colSpan={6} className="bg-surface-muted/20 p-4">
+                            <InterventionDetails item={item} index={index} />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  ))}
+                  {visible.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-4 py-8 text-center text-surface-subtle"
+                      >
+                        No recommendations match these filters.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+            {totalPages > 1 ? (
+              <nav
+                aria-label="Recommendations pagination"
+                className="mt-4 flex items-center justify-between gap-3 text-sm"
+              >
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => {
+                    setPage(currentPage - 1);
+                    setExpandedIndex(null);
+                  }}
+                  className="rounded-lg border border-surface-border bg-white px-3 py-2 text-surface-foreground hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="tabular-nums text-surface-subtle">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => {
+                    setPage(currentPage + 1);
+                    setExpandedIndex(null);
+                  }}
+                  className="rounded-lg border border-surface-border bg-white px-3 py-2 text-surface-foreground hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </nav>
+            ) : null}
           </section>
         </>
       )}

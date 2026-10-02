@@ -53,6 +53,10 @@ describe("recommended interventions page", () => {
     expect(
       screen.getByText("A focused action plan for example.com"),
     ).toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Fix owned pages" }),
+    );
     expect(screen.getByText("More owned citations")).toBeInTheDocument();
     expect(screen.getByText("• Owned pages are missing")).toBeInTheDocument();
     expect(
@@ -72,19 +76,90 @@ describe("recommended interventions page", () => {
     expect(
       within(
         screen.getByRole("region", { name: "Selected recommendations" }),
-      ).getByText("1. Fix owned pages"),
+      ).getByText(/Showing 1 action/),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Fix owned pages" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Improve comparison content" }),
+    ).not.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("button", { name: /impact 3 of 5 and effort 3 of 5/i }),
     );
     expect(
-      within(
-        screen.getByRole("region", { name: "Selected recommendations" }),
-      ).getByText("2. Improve comparison content"),
+      screen.getByRole("button", { name: "Improve comparison content" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Fix owned pages" }),
+    ).not.toBeInTheDocument();
+    await userEvent.selectOptions(
+      screen.getByLabelText("Category"),
+      "codebase",
+    );
+    expect(
+      screen.getByRole("button", { name: "Fix owned pages" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Improve comparison content" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /explore drivers & gaps/i }),
     ).toHaveAttribute("href", "/ai-visibility/drivers?analysis=run-123");
+  });
+
+  it("paginates long results and filters by impact and effort", async () => {
+    const interventions = Array.from({ length: 12 }, (_, index) => ({
+      id: `action-${index}`,
+      title: `Action ${index + 1}`,
+      priority_score: 12 - index,
+      geo_impact_score: index < 2 ? 5 : 1,
+      applicability_score: index === 0 ? 1 : 5,
+    }));
+    render(
+      <InterventionsContent
+        model={interventionsFromAnalysis(analysisWith(interventions))}
+      />,
+    );
+
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(11);
+    expect(
+      screen.queryByRole("button", { name: "Action 12" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Action 12" }),
+    ).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Impact"), "high");
+    expect(
+      screen.getByText("2 of 12 recommendations shown"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Page 2 of 2")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Action 1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Action 12" }),
+    ).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Effort"), "low");
+    expect(
+      screen.getByText("1 of 12 recommendations shown"),
+    ).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Effort"), "all");
+    await userEvent.selectOptions(screen.getByLabelText("Impact"), "low");
+    expect(
+      screen.getByText("10 of 12 recommendations shown"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Action 12" }),
+    ).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Effort"), "low");
+    expect(
+      screen.getByText("No recommendations match these filters."),
+    ).toBeInTheDocument();
   });
 
   it("offers the gap view when no intervention matched", () => {

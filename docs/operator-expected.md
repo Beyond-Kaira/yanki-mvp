@@ -4,6 +4,12 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
+## 2026-10-05 — PR #75 CI repair
+
+No new operator setup is required. Fonts are bundled with their licenses, so CI
+and container builds no longer fetch them from Google. Review and merge PR #75
+through the normal repository review process once checks pass.
+
 ## 2026-09-17 — Top cited pages, local implementation
 
 2026-09-20 latest: review the existing-GEO ranking results in

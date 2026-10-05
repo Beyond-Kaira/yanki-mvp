@@ -6,6 +6,11 @@ roughly by risk.*
 
 Last updated: 2026-08-09 (**session 26** — the audit-coverage session).
 
+2026-10-05 CI maintenance: removed the Google Fonts build-time dependency after
+PR #75 failed in the Next.js Google font loader. Official Sora and IBM Plex Mono
+files and licenses are now pinned in the repository. Font updates are intentional
+asset updates; no new runtime dependency or remaining workaround was introduced.
+
 **Session 26 changes to this list, up front:** **#71 REPAID** — the six mutating
 paths that emitted nothing now emit, including refresh-token **reuse
 detection**, which revoked an entire sign-in family for suspected theft and

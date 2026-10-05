@@ -763,6 +763,10 @@ decision → consequences**, with one line on why the alternative was rejected.
   the `success-700`/`danger-700` names are removed in favor of the `-strong`
   shades. Fonts self-host via `next/font/google` in `app/layout.tsx` (CSS
   variables wired to tailwind `fontFamily`; no runtime CDN, no `<link>` tags).
+  **2026-10-05 amendment (PR #75):** use `next/font/local` with pinned font
+  assets and SIL licenses in `frontend/app/fonts/` instead. The Google loader
+  failed on an upstream font URL during CI, so builds must not download fonts.
+  Brand families and CSS variables stay the same; no migration is needed.
   Every existing surface is restyled token-for-token; radius moves to
   `rounded-xl` cards per §4.
 - **Score-band semantic change:** `ScoreGauge`/`lib/score.ts` now map 30–59% to

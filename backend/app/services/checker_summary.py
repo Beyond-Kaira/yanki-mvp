@@ -393,9 +393,9 @@ def names_in_answer(raw_text: str, excluded: set[str]) -> set[str]:
 
 
 def audited_competitor_pool(
-    responses: Sequence[ResponseLike], kyc: dict[str, Any] | None, excluded: set[str]
+    responses: Sequence[object], kyc: dict[str, Any] | None, excluded: set[str]
 ) -> dict[str, str]:
-    """Collect answer-audited names once per run, excluding the brand and locations."""
+    """Collect optional answer-audited names, excluding the brand and locations."""
     locations = (kyc or {}).get("locations")
     location_keys: set[str] = set()
     if isinstance(locations, list):

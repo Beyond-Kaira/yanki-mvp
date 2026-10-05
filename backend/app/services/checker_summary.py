@@ -17,15 +17,10 @@ Two aggregates, one pass:
   ``total_responses`` and the per-engine ``mentioned`` counts sum to its
   ``footprint_count``, so the map is always consistent with the headline score.
 
-* **competitors_appeared** — a deterministic **proper-noun co-mention
-  heuristic** over the raw answers. We scan each answer for Title-Case brand
-  names, **exclude** the searched company + its ``aliases`` (case-insensitively)
-  and a small EN/TR stoplist of sentence-starters / connectives, count how many
-  distinct answers each surviving name appears in, and return the top
-  :data:`TOP_N` by that count. This deliberately does **not** intersect against
-  ``kyc.competitors`` — that list is whatever the KYC step happened to name and
-  would miss brands the answers actually surfaced. It captures "brands that
-  showed up" faithfully, from the answers alone.
+* **competitors_appeared** — measured runs pool names from the stored answer
+  audits, then count only complete-name matches in each answer. KYC locations
+  and the searched brand are excluded. Legacy rows without audits retain the
+  proper-noun heuristic below so their existing summaries remain readable.
 
 Heuristic design notes (why this is more than a naive Title-Case grep):
 
@@ -397,6 +392,43 @@ def names_in_answer(raw_text: str, excluded: set[str]) -> set[str]:
     return found
 
 
+def audited_competitor_pool(
+    responses: Sequence[ResponseLike], kyc: dict[str, Any] | None, excluded: set[str]
+) -> dict[str, str]:
+    """Collect answer-audited names once per run, excluding the brand and locations."""
+    locations = (kyc or {}).get("locations")
+    location_keys: set[str] = set()
+    if isinstance(locations, list):
+        location_keys = {
+            value.strip().casefold()
+            for value in locations
+            if isinstance(value, str) and value.strip()
+        }
+    names: dict[str, str] = {}
+    for response in responses:
+        audit = getattr(response, "audit", None)
+        candidates = audit.get("competitors") if isinstance(audit, dict) else None
+        if not isinstance(candidates, list):
+            continue
+        for candidate in candidates:
+            if not isinstance(candidate, str):
+                continue
+            name = candidate.strip()
+            key = name.casefold()
+            if key and key not in excluded and key not in location_keys:
+                names.setdefault(key, name)
+    return names
+
+
+def audited_names_in_answer(raw_text: str, pool: dict[str, str]) -> set[str]:
+    """Only count a pooled name when its complete spelling appears in the answer."""
+    return {
+        name
+        for name in pool.values()
+        if re.search(rf"(?<!\w){re.escape(name)}(?!\w)", raw_text or "", re.IGNORECASE)
+    }
+
+
 def _presence_engine(response: ResponseLike) -> str:
     """Group key for engine_presence: model slug, with legacy llm_provider fallback."""
 
@@ -430,9 +462,9 @@ def _engine_presence(responses: list[ResponseLike]) -> list[EnginePresenceStat]:
 
 
 def _competitors_appeared(
-    responses: list[ResponseLike], excluded: set[str]
+    responses: list[ResponseLike], excluded: set[str], kyc: dict[str, Any] | None
 ) -> list[CompetitorStat]:
-    """Top proper-noun co-mentions across answers, ranked by answer count.
+    """Top audited names (legacy: proper nouns), ranked by answer count.
 
     Each name is counted once per answer it appears in (so a verbose answer that
     repeats a brand cannot dominate). Ties break alphabetically on the casefolded
@@ -440,8 +472,15 @@ def _competitors_appeared(
     """
     counts: Counter[str] = Counter()
     display: dict[str, str] = {}
+    has_audits = any(isinstance(getattr(row, "audit", None), dict) for row in responses)
+    pool = audited_competitor_pool(responses, kyc, excluded) if has_audits else {}
     for response in responses:
-        for name in names_in_answer(response.raw_text, excluded):
+        names = (
+            audited_names_in_answer(response.raw_text, pool)
+            if has_audits
+            else names_in_answer(response.raw_text, excluded)
+        )
+        for name in names:
             key = name.casefold()
             counts[key] += 1
             display.setdefault(key, name)
@@ -462,5 +501,5 @@ def summarize_checker(
     excluded = brand_exclusions(kyc)
     return CheckerSummary(
         engine_presence=_engine_presence(rows),
-        competitors_appeared=_competitors_appeared(rows, excluded),
+        competitors_appeared=_competitors_appeared(rows, excluded, kyc),
     )

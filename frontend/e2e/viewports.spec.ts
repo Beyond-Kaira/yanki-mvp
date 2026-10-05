@@ -108,6 +108,7 @@ scenario('the icon column holds still while submenus open', async ({ page }) => 
 
   const rail = page.locator('#product-nav')
   const settings = rail.getByRole('button', { name: 'Settings' })
+  await expect(settings).toBeVisible()
   const collapsed = await settings.boundingBox()
 
   await rail.getByRole('button', { name: 'AI Visibility' }).hover()

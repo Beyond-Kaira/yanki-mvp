@@ -15,7 +15,9 @@ const sora = Sora({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600'],
   variable: '--font-sans',
-  display: 'swap',
+  // A late font swap can rewrap the start heading and move the history below.
+  // Preloaded Sora is used when ready; slow loads keep the first-render font.
+  display: 'optional',
 })
 
 const plexMono = IBM_Plex_Mono({

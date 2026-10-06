@@ -434,6 +434,18 @@ Every scenario is gated on `E2E_BASE_URL` and skipped without it.
   height and scroll position remain unchanged. The failure fixture tests frontend
   rendering; it does not change the backend's automatic cleanup policy.
 
+The delayed quota/history/font scenario checks three start routes at 1512, 375
+and 320px. It excludes next/font's adjusted Arial fallback from the sans font
+stack so hosts with Arial also exercise the fallback used when Arial is absent
+on Linux. It then releases API data and webfonts separately, reporting the
+phase in each position assertion. Sora's `display=optional` keeps a late load
+from rewrapping the start heading and shifting the history; preloaded Sora can
+still render when ready. IBM Plex Mono's `display=swap` is unchanged.
+
+Navigation geometry tests target the visible complementary/main regions rather
+than hidden Suspense shell copies. They wait for initial visibility and width
+before measuring; the position and expansion requirements are unchanged.
+
 The happy path proves the whole loop renders:
 
 1. open the landing page, sign up, then submit `https://example.com` from the

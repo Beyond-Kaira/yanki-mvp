@@ -85,9 +85,11 @@ scenario('desktop nav expands over the page without shifting its content', async
   await signUp(page)
   await page.goto('/dashboard')
 
-  const rail = page.locator('#product-nav')
-  const content = page.locator('main').first()
+  const rail = page.getByRole('complementary', { name: 'Product navigation' })
+  // Suspense keeps a hidden copy of the shell during route hydration.
+  const content = page.getByRole('main')
   await expect(rail).toHaveCSS('width', '74px')
+  await expect(content).toBeVisible()
   const contentBefore = await content.boundingBox()
 
   await rail.getByRole('button', { name: 'AI Visibility' }).hover()
@@ -106,8 +108,10 @@ scenario('the icon column holds still while submenus open', async ({ page }) => 
   await signUp(page)
   await page.goto('/ai-visibility')
 
-  const rail = page.locator('#product-nav')
+  const rail = page.getByRole('complementary', { name: 'Product navigation' })
   const settings = rail.getByRole('button', { name: 'Settings' })
+  await expect(rail).toHaveCSS('width', '74px')
+  await expect(settings).toBeVisible()
   const collapsed = await settings.boundingBox()
 
   await rail.getByRole('button', { name: 'AI Visibility' }).hover()

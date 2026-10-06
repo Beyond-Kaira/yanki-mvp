@@ -310,6 +310,12 @@ scenario('history headings stay in position through delayed quota, history and f
       await page.route('**/api/v1/analyses?**', async route => { await dataReady; await route.fallback() })
       await page.goto(path, { waitUntil: 'domcontentloaded' })
       await expect(page.getByRole('heading', { name: 'Your analyses', exact: true })).toBeVisible()
+      // Linux may not have Arial, the local font used by next/font's adjusted
+      // fallback. Exercise that case even on hosts where Arial is installed.
+      const primaryFont = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-sans').split(',')[0])
+      await page.addStyleTag({ content: `:root { --font-sans: ${primaryFont}, sans-serif !important; }` })
+      // Hold the font past its initial block period to exercise a late load.
+      await page.waitForTimeout(200)
       const capture = () => page.evaluate(() => {
         const heading = document.getElementById('recent-analyses-heading')!
         const link = heading.closest('section')!.querySelector('a')!
@@ -327,10 +333,10 @@ scenario('history headings stay in position through delayed quota, history and f
       releaseFonts()
       await page.evaluate(async () => { await document.fonts.ready })
       const loaded = await capture()
-      for (const state of [withData, loaded]) {
+      for (const [phase, state] of [['data', withData], ['fonts', loaded]] as const) {
         for (const element of ['heading', 'link'] as const) {
-          expect(Math.abs(state[element].boxY - initial[element].boxY), `${path}, ${width}px: ${element} box`).toBeLessThan(1)
-          expect(Math.abs(state[element].textY - initial[element].textY), `${path}, ${width}px: ${element} text`).toBeLessThan(1)
+          expect(Math.abs(state[element].boxY - initial[element].boxY), `${path}, ${width}px, ${phase}: ${element} box`).toBeLessThan(1)
+          expect(Math.abs(state[element].textY - initial[element].textY), `${path}, ${width}px, ${phase}: ${element} text`).toBeLessThan(1)
         }
       }
       await page.unroute('**/*.woff2')

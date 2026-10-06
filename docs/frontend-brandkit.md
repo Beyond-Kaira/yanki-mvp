@@ -105,9 +105,13 @@ clear the floor. No new hexes were invented to reach compliance.
 ## 3. Typography
 
 Two webfonts, **self-hosted by `next/font/google`** at build (no runtime CDN, no
-`<link>` tags): Sora 300/400/500/600 and IBM Plex Mono 400/500, `display=swap`.
-Wired to CSS variables (`--font-sans`, `--font-mono`) consumed by tailwind
-`fontFamily`. Mono is the "evidence" voice: KYC JSON, snippets, scores, ids.
+`<link>` tags): Sora 300/400/500/600 uses `display=optional`; IBM Plex Mono
+400/500 keeps `display=swap`. Preloaded Sora renders when ready; when its load
+is slow, the browser keeps the first-render fallback font instead of swapping
+it late and rewrapping headings above **Your analyses**. A slow first visit may
+therefore retain the fallback font for that page view. Wired to CSS variables
+(`--font-sans`, `--font-mono`) consumed by tailwind `fontFamily`. Mono is the
+"evidence" voice: KYC JSON, snippets, scores, ids.
 
 ```
 font-sans: 'Sora', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif

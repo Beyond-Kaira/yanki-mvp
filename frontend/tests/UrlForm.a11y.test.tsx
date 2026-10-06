@@ -8,7 +8,8 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }))
 
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (original) => ({
+  ...(await original<typeof import('@/lib/api')>()),
   createAnalysis: vi.fn(),
 }))
 

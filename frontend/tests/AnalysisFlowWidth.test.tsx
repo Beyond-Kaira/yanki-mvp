@@ -6,8 +6,11 @@ const RUNNING = {
   id: 'a1',
   status: 'running',
   progress: 40,
-  current_step: 'prompting',
+  current_step: 'prompts',
+  url: 'https://acme.test',
+  run_mode: 'quick',
   created_at: '2026-08-12T09:00:00Z',
+  updated_at: '2026-08-12T09:00:00Z',
   error: null,
   result: {},
   input: { domain: 'acme.test' },
@@ -32,10 +35,12 @@ vi.mock('@/components/AnalysisSessionProvider', () => ({
 vi.mock('@/lib/api', () => ({
   getAnalysis: vi.fn(async () => RUNNING),
   listAnalyses: vi.fn(async () => ({
-    items: [],
+    analyses: [],
     total: 0,
     limit: 20,
     offset: 0,
+    user_analyses_used: 1,
+    user_analyses_limit: 5,
   })),
   ApiError: class ApiError extends Error {
     status = 500
@@ -58,7 +63,8 @@ import AnalysisHistoryClient from '@/app/analyses/AnalysisHistoryClient'
 
 /** The width class on the box that actually holds the page's content. */
 function contentWidth(container: HTMLElement): string {
-  const box = container.querySelector('.mx-auto')
+  const box = container.querySelector('[aria-labelledby="recent-analyses-heading"]')?.closest('.mx-auto')
+    ?? container.querySelector('.mx-auto')
   expect(box, 'the screen renders a centred content container').not.toBeNull()
   const width = [...box!.classList].find((name) => name.startsWith('max-w-'))
   expect(width, 'the content container declares a width').toBeDefined()
@@ -86,7 +92,7 @@ describe('analysis flow content width', () => {
   it('holds a running analysis at the same width on every tab', async () => {
     const overview = render(<AiOverviewClient />)
     await waitFor(() =>
-      expect(screen.getByText('Running analysis…')).toBeInTheDocument(),
+      expect(screen.getByRole('progressbar')).toBeInTheDocument(),
     )
     const overviewWidth = contentWidth(overview.container)
     overview.unmount()
@@ -112,7 +118,7 @@ describe('analysis flow content width', () => {
     )
     const running = render(<AiOverviewClient />)
     await waitFor(() =>
-      expect(screen.getByText('Running analysis…')).toBeInTheDocument(),
+      expect(screen.getByRole('progressbar')).toBeInTheDocument(),
     )
     const runningWidth = contentWidth(running.container)
     running.unmount()
@@ -150,7 +156,7 @@ describe('analysis flow content width', () => {
 
     const running = render(<AiOverviewClient />)
     await waitFor(() =>
-      expect(screen.getByText('Running analysis…')).toBeInTheDocument(),
+      expect(screen.getByRole('progressbar')).toBeInTheDocument(),
     )
 
     expect(historyWidth).toBe(contentWidth(running.container))

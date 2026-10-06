@@ -21,10 +21,10 @@ function looksLikeUrl(value: string): boolean {
 
 const ERROR_ID = 'url-error'
 
-export default function UrlForm() {
+export default function UrlForm({ disabled = false }: { disabled?: boolean }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { setAnalysisId } = useAnalysisSession()
+  const { setAnalysisId, trackAnalysis } = useAnalysisSession()
   const [url, setUrl] = useState('')
   const [mode, setMode] = useState<RunMode>('quick')
   const [error, setError] = useState<string | null>(null)
@@ -32,6 +32,7 @@ export default function UrlForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (disabled || submitting) return
     setError(null)
 
     const trimmed = url.trim()
@@ -59,9 +60,12 @@ export default function UrlForm() {
         mode,
         ...(source ? { source } : {}),
       })
-      notifyAnalysisQuotaChanged()
+      const now = new Date().toISOString()
+      trackAnalysis?.({ id, url: trimmed, status: 'queued', progress: 0, current_step: null, error: null, created_at: now, updated_at: now })
       setAnalysisId(id)
-      router.push(analysisSubmitLandingHref(id, { mode, pathname }))
+      notifyAnalysisQuotaChanged()
+      setSubmitting(false)
+      router.push(analysisSubmitLandingHref(pathname))
     } catch (err) {
       setSubmitting(false)
       setError(
@@ -86,7 +90,7 @@ export default function UrlForm() {
               value="quick"
               checked={mode === 'quick'}
               onChange={() => setMode('quick')}
-              disabled={submitting}
+              disabled={disabled || submitting}
               className="mt-1"
             />
             <span>
@@ -103,7 +107,7 @@ export default function UrlForm() {
               value="guided"
               checked={mode === 'guided'}
               onChange={() => setMode('guided')}
-              disabled={submitting}
+              disabled={disabled || submitting}
               className="mt-1"
             />
             <span>
@@ -128,12 +132,12 @@ export default function UrlForm() {
           placeholder="https://your-company.com"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
-          disabled={submitting}
+          disabled={disabled || submitting}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? ERROR_ID : undefined}
           className="w-full rounded-lg border border-surface-subtle bg-white px-4 py-3 text-base text-surface-foreground placeholder:text-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
         />
-        <Button type="submit" loading={submitting} className="shrink-0">
+        <Button type="submit" disabled={disabled} loading={submitting} className="shrink-0">
           {mode === 'guided' ? 'Start guided run' : 'Run analysis'}
         </Button>
       </div>

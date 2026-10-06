@@ -4,7 +4,7 @@ import Link from 'next/link'
 import PageContainer from '@/components/shell/PageContainer'
 import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
-import StepProgress from '@/components/StepProgress'
+import RecentAnalysesPanel from '@/components/ai-visibility/RecentAnalysesPanel'
 import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
 import GuidedReviewLinkPanel from '@/components/guided/GuidedReviewLinkPanel'
 import SerpVisibility from '@/components/SerpVisibility'
@@ -27,25 +27,6 @@ export default function SearchVisibilityOverviewClient() {
         </PageContainer>
       ) : null}
 
-      {status === 'running' && analysis ? (
-        <PageContainer>
-          <PageHeaderRow className="mb-6" action={<NewAnalysisButton path="/search-visibility" />}>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Running analysis…
-            </h1>
-          </PageHeaderRow>
-          <StepProgress
-            status={analysis.status}
-            progress={analysis.progress}
-            currentStep={analysis.current_step}
-            createdAt={analysis.created_at}
-          />
-          <p className="mt-4 text-sm text-surface-subtle">
-            Search results visibility and the AI readiness audit appear here
-            when this run finishes.
-          </p>
-        </PageContainer>
-      ) : null}
 
       {status === 'review' && analysisId ? (
         <PageContainer>
@@ -69,11 +50,16 @@ export default function SearchVisibilityOverviewClient() {
         </PageContainer>
       ) : null}
 
-      {status === 'empty' ? (
-        <StartAnalysisPanel
-          title="Search Visibility"
-          description="Enter a domain to measure ordinary search visibility and AI readiness. This overview uses the same analysis as AI Visibility."
-        />
+      {status === 'empty' || status === 'running' ? (
+        <>
+          <StartAnalysisPanel
+            title="Search Visibility"
+            description="Enter a domain to measure ordinary search visibility and AI readiness. This overview uses the same analysis as AI Visibility."
+          />
+          <PageContainer className="pb-12 pt-0">
+            <RecentAnalysesPanel activeAnalysis={status === 'running' ? analysis : null} overviewPath="/search-visibility" />
+          </PageContainer>
+        </>
       ) : null}
 
       {status === 'ready' && analysis ? (

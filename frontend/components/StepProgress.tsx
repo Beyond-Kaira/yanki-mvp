@@ -1,74 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import type { AnalysisStatus, PipelineStep } from '@/lib/contracts'
 import { GEO_LLM_MODELS, modelSlugLabel } from '@/lib/engines'
-import { STEP_DESCRIPTIONS, STEP_PHRASES } from '@/lib/steps'
-
-type StepState = 'done' | 'active' | 'failed' | 'pending'
-
-interface StepDef {
-  key: PipelineStep
-  label: string
-  // The `progress` value the backend sets once this step COMPLETES (SPEC).
-  threshold: number
-}
-
-const STEPS: StepDef[] = [
-  { key: 'discovery', label: 'Discovery', threshold: 15 },
-  { key: 'kyc', label: 'KYC', threshold: 30 },
-  { key: 'prompts', label: 'Prompts', threshold: 45 },
-  { key: 'execute', label: 'Executing', threshold: 80 },
-  { key: 'footprint', label: 'Footprint', threshold: 90 },
-  { key: 'scoring', label: 'Scoring', threshold: 100 },
-]
+import {
+  ANALYSIS_STEPS as STEPS, analysisStepState, STEP_STATE_WORD as STATE_WORD,
+  STEP_DESCRIPTIONS, STEP_PHRASES, type StepState,
+} from '@/lib/steps'
+import { formatElapsed, useElapsedSeconds } from '@/components/useElapsedSeconds'
 
 // The backend does not report per-model completion, so the panel only ever
 // shows all configured models as being asked; no fabricated checkmarks.
 const EXECUTE_MODELS = GEO_LLM_MODELS.map(modelSlugLabel)
 
-const STATE_WORD: Record<StepState, string> = {
-  done: 'completed',
-  active: 'in progress',
-  failed: 'failed',
-  pending: 'waiting',
-}
-
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
-}
-
-// Wall-clock seconds since the run was CREATED, not since this component
-// mounted: reloading the tab mid-run must not restart the count. Falls back to
-// mount time only when the envelope carries no timestamp.
-//
-// `enabled` is false on a terminal screen, where the value is not rendered —
-// the interval would otherwise tick forever with nothing to show.
-function useElapsedSeconds(startedAt: string | null, enabled: boolean): number {
-  const [seconds, setSeconds] = useState(0)
-
-  useEffect(() => {
-    if (!enabled) return
-
-    const parsed = startedAt ? Date.parse(startedAt) : Number.NaN
-    const base = Number.isNaN(parsed) ? Date.now() : parsed
-
-    function tick() {
-      setSeconds(Math.max(0, Math.floor((Date.now() - base) / 1000)))
-    }
-
-    tick()
-    const timer = setInterval(tick, 1000)
-    return () => clearInterval(timer)
-  }, [startedAt, enabled])
-
-  return seconds
-}
-
-function formatElapsed(seconds: number): string {
-  const minutes = Math.floor(seconds / 60)
-  const rest = seconds % 60
-  return `${minutes}:${String(rest).padStart(2, '0')}`
 }
 
 interface StepProgressProps {
@@ -87,30 +32,9 @@ export default function StepProgress({
 }: StepProgressProps) {
   const isFailed = status === 'failed'
   const elapsed = useElapsedSeconds(createdAt, !isFailed)
-  const firstPendingIndex = STEPS.findIndex((step) => progress < step.threshold)
-  const failedIndex = STEPS.findIndex((step) => step.key === currentStep)
-
-  // A failed run is read from `current_step` FIRST, never from `progress`: a
-  // re-claimed job restarts at discovery without resetting `progress` (the
-  // pipeline only ever moves it forward, and the queue re-claims stale running
-  // rows), so a leftover high value would otherwise paint the very step that
-  // died — and every step after it — as completed.
-  function stateFor(step: StepDef, index: number): StepState {
-    if (isFailed) {
-      if (index === failedIndex) return 'failed'
-      if (failedIndex >= 0 && index > failedIndex) return 'pending'
-      return progress >= step.threshold ? 'done' : 'pending'
-    }
-    if (progress >= step.threshold) return 'done'
-    if (status === 'running') {
-      if (currentStep === step.key) return 'active'
-      if (currentStep === null && index === firstPendingIndex) return 'active'
-    }
-    return 'pending'
-  }
 
   const activeStep = STEPS.find(
-    (step, index) => stateFor(step, index) === 'active',
+    (_, index) => analysisStepState(index, status, progress, currentStep) === 'active',
   )
   const headline =
     status === 'queued'
@@ -144,7 +68,7 @@ export default function StepProgress({
 
       <ol className="space-y-3">
         {STEPS.map((step, index) => {
-          const state = stateFor(step, index)
+          const state = analysisStepState(index, status, progress, currentStep)
           return (
             <li key={step.key} className="flex items-start gap-3">
               <span className={dotClass(state)} aria-hidden="true">

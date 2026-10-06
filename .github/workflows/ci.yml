@@ -332,6 +332,11 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost:8140
         run: npx playwright test e2e/viewports.spec.ts --workers=1
+      - name: Run compact analysis history journeys
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:8140
+        run: npx playwright test e2e/compact-analysis.spec.ts --workers=1
       - name: Dump stack logs on failure
         if: failure()
         run: docker compose -f deploy/docker-compose.yml logs

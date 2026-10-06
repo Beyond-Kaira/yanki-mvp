@@ -415,8 +415,7 @@ run — the same reason the e2e (§5) is browser-based.
 
 ## 5. End-to-end (Playwright)
 
-Three specs, **22 scenarios** (corrected 2026-08-08, session 24 — this section
-described only the first, which was accurate until PR #30 added the other two).
+Four specs, **30 scenarios** (updated 2026-10-06 for compact analysis history).
 Every scenario is gated on `E2E_BASE_URL` and skipped without it.
 
 - **`e2e/happy-path.spec.ts`** (1) — the original: proves the whole loop renders.
@@ -425,14 +424,22 @@ Every scenario is gated on `E2E_BASE_URL` and skipped without it.
 - **`e2e/viewports.spec.ts`** (5) — the viewport matrix down to 375px, which
   exists because the shell shipped a fixed 220px sidebar that left ~123px of
   content on a phone.
+- **`e2e/compact-analysis.spec.ts`** (8) — uses intercepted API fixtures against
+  the real frontend, without paid runs or database writes. Covers live and
+  completed history, missing list rows and reload recovery, failed-run display,
+  responsive layout, smooth/reversible details and reduced motion, delayed
+  quota/fonts, and the first collapse after scrolling to the bottom. Checks
+  that the history heading and View all stay in place and temporary scroll
+  space disappears when scrolling upward. The failure fixture tests frontend
+  rendering; it does not change the backend's automatic cleanup policy.
 
 The happy path proves the whole loop renders:
 
-1. open the landing page, fill the URL field with `https://example.com`, click
-   **Run analysis**;
-2. wait (up to 180 s, since the pipeline runs its steps) for the `role="img"`
-   gauge whose accessible name matches `/GEO score/i` to become visible;
-3. assert a percentage (`%`) is rendered on the results screen.
+1. open the landing page, sign up, then submit `https://example.com` from the
+   dashboard's **Run analysis** form;
+2. stay on the dashboard and wait up to 180 s for the completed history link;
+3. open that result, wait up to 30 s for the `role="img"` GEO score gauge, and
+   assert a percentage (`%`) is rendered on the results screen.
 
 It runs against a real, already-running stack in `DRY_RUN=1` mode (so it costs
 $0 and is deterministic). It is **gated on `E2E_BASE_URL`**: the spec picks

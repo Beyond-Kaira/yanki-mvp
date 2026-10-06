@@ -7,7 +7,41 @@
 // backend/app/pipeline/runner.py). Discovery therefore cannot claim to be
 // reading a website — a checker run has no website to read.
 
-import type { PipelineStep } from './contracts'
+import type { AnalysisStatus, PipelineStep } from './contracts'
+
+export type StepState = 'done' | 'active' | 'failed' | 'pending'
+
+export const ANALYSIS_STEPS: { key: PipelineStep; label: string; threshold: number }[] = [
+  { key: 'discovery', label: 'Discovery', threshold: 15 },
+  { key: 'kyc', label: 'KYC', threshold: 30 },
+  { key: 'prompts', label: 'Prompts', threshold: 45 },
+  { key: 'execute', label: 'Executing', threshold: 80 },
+  { key: 'footprint', label: 'Footprint', threshold: 90 },
+  { key: 'scoring', label: 'Scoring', threshold: 100 },
+]
+
+export const STEP_STATE_WORD: Record<StepState, string> = {
+  done: 'completed', active: 'in progress', failed: 'failed', pending: 'waiting',
+}
+
+export function analysisStepState(
+  index: number,
+  status: AnalysisStatus,
+  progress: number,
+  currentStep: PipelineStep | null,
+): StepState {
+  const claimedIndex = ANALYSIS_STEPS.findIndex((step) => step.key === currentStep)
+  // Reclaimed jobs can restart without resetting progress. The claimed step
+  // takes precedence so neither it nor later steps falsely appear completed.
+  if ((status === 'running' || status === 'failed') && claimedIndex >= 0) {
+    if (index === claimedIndex) return status === 'failed' ? 'failed' : 'active'
+    if (index > claimedIndex) return 'pending'
+  }
+  if (status === 'done' || progress >= ANALYSIS_STEPS[index].threshold) return 'done'
+  if (status === 'running' && currentStep === null &&
+      index === ANALYSIS_STEPS.findIndex((step) => progress < step.threshold)) return 'active'
+  return 'pending'
+}
 
 // Present-continuous phrase describing what a step is doing. Shown live for the
 // active step, and reused by the failure card ("It stopped while …").

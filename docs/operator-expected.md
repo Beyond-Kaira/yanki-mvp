@@ -4,6 +4,13 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
+## 2026-10-06 — Compact analysis history
+
+No environment variables, migrations or operator setup are needed. Review the
+PR from `feat/compact-analysis-dock` after CI finishes. Backend automatic cleanup
+of failed analyses is unchanged and the user deferred that follow-up. Details
+and validation: [session notes](sessions/2026-10-06-01.md).
+
 ## 2026-09-17 — Top cited pages, local implementation
 
 2026-09-20 latest: review the existing-GEO ranking results in

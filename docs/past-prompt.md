@@ -478,3 +478,11 @@ first application call site of `tenancy.scoped()`, the fail-closed seam three
 documents had described as shipped with zero callers.
 
 **The next brief lives at the end of `sessions/2026-08-09-02.md` §8.**
+
+## 2026-10-06 handoff archive
+
+The preceding feature brief is retained in
+[2026-09-20-01](sessions/2026-09-20-01.md): review the stored-sector report before
+further feature changes. The subsequent user-directed task was compact analysis
+history, documented in [2026-10-06-01](sessions/2026-10-06-01.md). It does not
+authorize further industry ranking work or changing backend failure cleanup.

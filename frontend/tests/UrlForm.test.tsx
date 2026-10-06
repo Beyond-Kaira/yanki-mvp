@@ -11,7 +11,8 @@ vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
 }))
 
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (original) => ({
+  ...(await original<typeof import('@/lib/api')>()),
   createAnalysis: vi.fn(),
 }))
 
@@ -54,7 +55,7 @@ describe('UrlForm', () => {
     )
   })
 
-  it('sends guided runs from the dashboard to the AI Visibility review wizard', async () => {
+  it('keeps guided runs on the dashboard and leaves the form usable', async () => {
     const user = userEvent.setup()
     pathname = '/dashboard'
     mockedCreate.mockResolvedValue({ id: 'run-123' })
@@ -65,7 +66,8 @@ describe('UrlForm', () => {
     await user.click(screen.getByRole('button', { name: /start guided run/i }))
 
     expect(mockedCreate).toHaveBeenCalledWith('https://example.com', { mode: 'guided' })
-    expect(push).toHaveBeenCalledWith('/ai-visibility?analysis=run-123')
+    expect(push).toHaveBeenCalledWith('/dashboard')
+    expect(screen.getByRole('button', { name: /start guided run/i })).toBeEnabled()
   })
 
   it('records the product area together with the selected run mode', async () => {
@@ -81,6 +83,6 @@ describe('UrlForm', () => {
       mode: 'quick',
       source: 'search_visibility',
     })
-    expect(push).toHaveBeenCalledWith('/search-visibility?analysis=run-456')
+    expect(push).toHaveBeenCalledWith('/search-visibility')
   })
 })

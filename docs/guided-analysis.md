@@ -16,6 +16,11 @@ pause before the expensive execute step.
 | `quick` (default) | `POST /analyses` or `{"mode":"quick"}` | All 6 steps; `status=done` |
 | `guided` | `POST /analyses` with `{"mode":"guided"}` | Steps 1–3 then `status=awaiting_review` |
 
+Both modes keep the default start form visible after submission. Progress
+appears in **Your analyses** with completed runs. Once a guided run pauses,
+**Review profile and prompts** opens `/ai-visibility?analysis={id}` and its
+existing review wizard; starting the run no longer opens the wizard immediately.
+
 ## Quota (ADR-50)
 
 - **Org billing quota** and **user stock limit** are consumed at **`POST /analyses`**

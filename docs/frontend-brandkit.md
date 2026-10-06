@@ -159,9 +159,27 @@ driven entirely by the API response — no hard-coded copy in the data path.
 - Client-side validation: non-empty, looks like a URL; show an inline `danger`
   message under the field (never an alert box).
 - On submit: disable the button + show loading, `POST /api/v1/analyses` via
-  `lib/api.ts`, then `router.push('/analyses/{id}')`. On API error, re-enable and
-  show the message.
+  `lib/api.ts`, then keep the default start screen at `/dashboard`,
+  `/ai-visibility`, or `/search-visibility`. Add the queued run to **Your analyses**
+  alongside completed runs. On API error, re-enable and show the message.
 - The `<input>` has an associated `<label>` (visually hidden is fine).
+- Keep the form mounted but disabled at the stock limit; reserve quota space
+  during loading so the history heading stays in place.
+
+### `AnalysisProgressCard` (live history)
+- Expandable six-step progress with percentage, current activity and elapsed
+  time; completed runs remain links to their results. Guided runs offer a
+  review link when ready. The history retains its `max-w-6xl` width.
+- Animate details below the card header, respect reduced motion and make
+  collapsed details inaccessible to focus. **Your analyses** and **View all**
+  remain in place while details open or close.
+- Closing details at the bottom temporarily preserves enough section height
+  to prevent the browser from clamping scroll position. Scrolling upward or
+  expanding again releases the unused space.
+- Track pending IDs per user and organization in session storage; poll while
+  work is pending and resolve missing list entries by ID. A definitive missing
+  response settles tracking and shows an explanation. Existing backend failure
+  cleanup behavior is unchanged.
 
 ### `StepProgress` (Screen 2)
 - Renders the 6 pipeline steps: discovery → KYC → prompts → executing → footprint

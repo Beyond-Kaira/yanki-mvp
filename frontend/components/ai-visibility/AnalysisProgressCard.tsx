@@ -8,7 +8,7 @@ import { ANALYSIS_STEPS, analysisStepState, STEP_DESCRIPTIONS, STEP_STATE_WORD }
 import { IconChevron, IconSpark } from '@/components/shell/icons'
 import { formatElapsed, useElapsedSeconds } from '@/components/useElapsedSeconds'
 
-export default function AnalysisProgressCard({ analysis, onCollapse }: { analysis: AnalysisSummary; onCollapse?: () => void }) {
+export default function AnalysisProgressCard({ analysis }: { analysis: AnalysisSummary }) {
   const [expanded, setExpanded] = useState(false)
   const detailsId = useId()
   const live = analysis.status === 'running' || analysis.status === 'queued'
@@ -36,7 +36,6 @@ export default function AnalysisProgressCard({ analysis, onCollapse }: { analysi
         type="button" aria-expanded={expanded} aria-controls={detailsId}
         aria-label={`${expanded ? 'Collapse' : 'Show'} analysis steps for ${target}`}
         onClick={() => {
-          if (expanded) onCollapse?.()
           setExpanded(!expanded)
         }}
         className="flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-surface-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-5"
@@ -54,7 +53,7 @@ export default function AnalysisProgressCard({ analysis, onCollapse }: { analysi
         </span>
         <span className="shrink-0 text-xl font-semibold tabular-nums">{progress}%</span>
         <span aria-hidden className="flex h-11 w-11 shrink-0 items-center justify-center text-surface-subtle">
-          <IconChevron className={`h-4 w-4 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out ${expanded ? 'rotate-90' : '-rotate-90'}`} />
+          <IconChevron className={`h-4 w-4 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out ${expanded ? '-rotate-90' : 'rotate-90'}`} />
         </span>
       </button>
       <div id={detailsId} aria-hidden={!expanded} inert={!expanded}

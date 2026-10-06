@@ -8,9 +8,11 @@ import { useUserAnalysisQuota } from '@/components/ai-visibility/useUserAnalysis
 export default function StartAnalysisPanel({
   title = 'Run an analysis',
   description = 'Enter your company domain. We crawl the site, ask AI engines about your brand, and build your GEO score.',
+  disabled = false,
 }: {
   title?: string
   description?: string
+  disabled?: boolean
 }) {
   const { quota, atLimit } = useUserAnalysisQuota()
 
@@ -26,7 +28,7 @@ export default function StartAnalysisPanel({
         </div>
       </header>
       <div className="rounded-2xl border border-surface-border bg-surface p-6 shadow-sm">
-        <UrlForm disabled={atLimit} />
+        <UrlForm disabled={disabled || atLimit} />
       </div>
     </div>
   )

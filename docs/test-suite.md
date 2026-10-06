@@ -34,7 +34,7 @@ API/integration tests, and a single thin end-to-end happy path at the top.
 
 ```
         ┌───────────────────────────┐
-        │  e2e (Playwright) ×22     │   3 specs, gated on E2E_BASE_URL
+        │  e2e (Playwright) ×45     │   4 specs, gated on E2E_BASE_URL
         ├───────────────────────────┤
         │  API tests (TestClient)   │   FastAPI routes, in-process
         │  component tests (vitest) │   React components, jsdom
@@ -52,7 +52,7 @@ API/integration tests, and a single thin end-to-end happy path at the top.
 | Backend queue (real PG) | pytest + `TEST_DATABASE_URL` | real Postgres (skips if unset/unreachable) | medium | `test_queue_postgres.py` |
 | Frontend component | vitest + testing-library | React in jsdom | fast | per component |
 | Backend integration (real SearXNG) | pytest + a live instance | a self-hosted SearXNG (skips unless `SERP_TEST_BASE_URL` set) | slow | `tests/integration/` |
-| End-to-end | Playwright | a running `DRY_RUN=1` stack | slow | 3 specs, 22 scenarios |
+| End-to-end | Playwright | a running `DRY_RUN=1` stack | slow | 4 specs, 45 scenarios |
 
 **Why the base is so wide:** the whole GEO engine is built from pure, sync
 functions (`scoring`, `footprint`, `prompts`, plus KYC JSON parsing). Pure
@@ -415,22 +415,23 @@ run — the same reason the e2e (§5) is browser-based.
 
 ## 5. End-to-end (Playwright)
 
-Four specs, **30 scenarios** (updated 2026-10-06 for compact analysis history).
+Four specs, **45 scenarios** (updated 2026-10-06 for compact analysis history).
 Every scenario is gated on `E2E_BASE_URL` and skipped without it.
 
 - **`e2e/happy-path.spec.ts`** (1) — the original: proves the whole loop renders.
-- **`e2e/journeys.spec.ts`** (16) — signed-in browser journeys: sign-up as an
+- **`e2e/journeys.spec.ts`** (17) — signed-in browser journeys: sign-up as an
   individual and as an organization, sign-in, route guards, the admin panel.
-- **`e2e/viewports.spec.ts`** (5) — the viewport matrix down to 375px, which
+- **`e2e/viewports.spec.ts`** (17) — the viewport matrix down to 320px, which
   exists because the shell shipped a fixed 220px sidebar that left ~123px of
   content on a phone.
-- **`e2e/compact-analysis.spec.ts`** (8) — uses intercepted API fixtures against
+- **`e2e/compact-analysis.spec.ts`** (10) — uses intercepted API fixtures against
   the real frontend, without paid runs or database writes. Covers live and
   completed history, missing list rows and reload recovery, failed-run display,
   responsive layout, smooth/reversible details and reduced motion, delayed
-  quota/fonts, and the first collapse after scrolling to the bottom. Checks
-  that the history heading and View all stay in place and temporary scroll
-  space disappears when scrolling upward. The failure fixture tests frontend
+  quota/fonts, development mock reset and partially visible card headers. Checks
+  the history heading and View all at middle and bottom scroll positions:
+  expanding pushes older rows down inside the list while its viewport, main page
+  height and scroll position remain unchanged. The failure fixture tests frontend
   rendering; it does not change the backend's automatic cleanup policy.
 
 The happy path proves the whole loop renders:
@@ -438,8 +439,8 @@ The happy path proves the whole loop renders:
 1. open the landing page, sign up, then submit `https://example.com` from the
    dashboard's **Run analysis** form;
 2. stay on the dashboard and wait up to 180 s for the completed history link;
-3. open that result, wait up to 30 s for the `role="img"` GEO score gauge, and
-   assert a percentage (`%`) is rendered on the results screen.
+3. open that result in AI Visibility, wait up to 30 s for the GEO score metric
+   card, and assert that a measured number out of 100 is rendered.
 
 It runs against a real, already-running stack in `DRY_RUN=1` mode (so it costs
 $0 and is deterministic). It is **gated on `E2E_BASE_URL`**: the spec picks
@@ -679,7 +680,7 @@ gate (§10).
 | **Accounts (API)** — P6.0 | `backend/tests/test_auth_api.py`, `test_auth_service.py`, `test_auth_sessions.py` | signup issues **no** session; login returns bearer + sets the refresh cookie; rotation is single-use and a replay revokes the family; `/me` needs the bearer |
 | **Accounts (UI + session layer)** — P6.1 | `frontend/tests/{auth,session}.test.ts`, `{LoginPage,SignupPage,SiteHeader}.test.tsx` | one rotation per refresh **within a tab and across tabs**; a 401 refreshes once and replays carrying the new bearer; sign-out clears local state even when the request fails; the account-created-but-not-signed-in split; the header's status, not its chrome |
 | **Accounts (UI) — a11y** | `frontend/tests/{LoginPage,SignupPage}.a11y.test.tsx` | axe across default, field-error and rejected-submit states; every field error is a live region and each input is described by its own; the reveal toggle keeps its name and `aria-pressed` |
-| **Whole-MVP happy path** | `frontend/e2e/happy-path.spec.ts` | submit → wait for gauge → a percentage renders (DRY_RUN=1); gated on `E2E_BASE_URL` |
+| **Whole-MVP happy path** | `frontend/e2e/happy-path.spec.ts` | sign up → submit → completed history → overview GEO metric out of 100 (DRY_RUN=1); gated on `E2E_BASE_URL` |
 | *(supporting)* Full pipeline walk | `tests/pipeline/test_runner.py` | `run_pipeline` reaches `done`/progress 100; prompts + `prompt_count×4` responses; `geo_score == hits/total` |
 | *(supporting)* Queue reliability (NFR-3) | `tests/test_queue.py`, `test_queue_postgres.py` | portable claim / stale-reaper / `attempts>3 → failed` (SQLite); `FOR UPDATE SKIP LOCKED` no-double-claim (real PG) |
 | *(supporting, ADR-28)* SERP visibility | `tests/serp/*`, `tests/pipeline/test_serp_visibility.py`, `frontend/tests/SerpVisibility.test.tsx`, + SERP cases in `test_runner.py` / `test_api.py` | queries never name the brand; hit = domain OR text; unreadable page dropped from the denominator; three distinct nulls; fail-open; off by default |

@@ -5,7 +5,6 @@ import type { AnalysisEnvelope } from '@/lib/contracts'
 import { analysisStatusLabel } from '@/lib/guided-analysis'
 import AnalysisProgressCard from '@/components/ai-visibility/AnalysisProgressCard'
 import { useAnalysesList } from '@/components/ai-visibility/useAnalysesList'
-import { useCollapseScrollGuard } from '@/components/ai-visibility/useCollapseScrollGuard'
 
 const RECENT_LIMIT = 5
 
@@ -50,37 +49,39 @@ export default function RecentAnalysesPanel({
   const visibleRows = activeAnalysis && !rows.some((row) => row.id === activeAnalysis.id)
     ? [activeAnalysis, ...rows] : rows
   const visible = loading || Boolean(error) || visibleRows.length > 0
-  const { sectionRef, contentRef, preserveScroll } = useCollapseScrollGuard(visible)
 
   if (!visible) {
     return null
   }
 
   return (
-    <section ref={sectionRef} className={`[overflow-anchor:none] ${className}`} aria-labelledby="recent-analyses-heading">
-      <div ref={contentRef}>
-        <p aria-live="polite" className="sr-only">{announcement}</p>
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2
-            id="recent-analyses-heading"
-            className="text-lg font-semibold tracking-tight"
-          >
-            Your analyses
-          </h2>
-          <Link
-            href="/analyses"
-            className="text-sm font-medium text-primary-strong underline underline-offset-2"
-          >
-            View all
-          </Link>
-        </div>
+    <section className={`[overflow-anchor:none] ${className}`} aria-labelledby="recent-analyses-heading">
+      <p aria-live="polite" className="sr-only">{announcement}</p>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2
+          id="recent-analyses-heading"
+          className="text-lg font-semibold tracking-tight"
+        >
+          Your analyses
+        </h2>
+        <Link
+          href="/analyses"
+          className="text-sm font-medium text-primary-strong underline underline-offset-2"
+        >
+          View all
+        </Link>
+      </div>
+      <div
+        role="region" aria-label="Analysis list" tabIndex={0}
+        className="h-[min(26rem,60dvh)] overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
         {loading && visibleRows.length === 0 ? <p className="text-sm text-surface-subtle">Loading…</p> : null}
         {error ? <p role="alert" className="mb-3 text-sm text-danger-strong">{error}</p> : null}
         <ul className="space-y-3">
           {visibleRows.map((row) => (
             <li key={row.id}>
               {row.status === 'running' || row.status === 'queued' || row.status === 'awaiting_review' || row.status === 'failed' ? (
-                <AnalysisProgressCard analysis={row} onCollapse={preserveScroll} />
+                <AnalysisProgressCard analysis={row} />
               ) : (
               <Link
                 href={`${overviewPath}?analysis=${encodeURIComponent(row.id)}`}

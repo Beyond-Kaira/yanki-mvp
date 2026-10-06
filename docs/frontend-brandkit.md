@@ -175,9 +175,10 @@ driven entirely by the API response — no hard-coded copy in the data path.
 - Animate details below the card header, respect reduced motion and make
   collapsed details inaccessible to focus. **Your analyses** and **View all**
   remain in place while details open or close.
-- Closing details at the bottom temporarily preserves enough section height
-  to prevent the browser from clamping scroll position. Scrolling upward or
-  expanding again releases the unused space.
+- Keep the heading and View all outside a fixed-height, responsive list
+  viewport (up to 26rem or 60dvh). Cards expand downward inside that viewport;
+  the list scrolls independently, so toggling details changes neither the main
+  page height nor its scroll position. The section retains its full width.
 - Track pending IDs per user and organization in session storage; poll while
   work is pending and resolve missing list entries by ID. A definitive missing
   response settles tracking and shows an explanation. Existing backend failure

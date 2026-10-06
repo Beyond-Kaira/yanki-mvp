@@ -42,6 +42,14 @@ async function mockApi(page: Page, initialRows = [finished], omitNewRun = false)
         user_analyses_used: rows.filter(row => row.status !== 'failed').length, user_analyses_limit: 5, limit: 5, offset: 0 }
     }
     else if (url.pathname.startsWith('/api/v1/analyses/')) {
+      const [, , , , id, slice] = url.pathname.split('/')
+      const row = details.get(decodeURIComponent(id))
+      if (row && slice === 'geo') return route.fulfill({ json: {
+        geo_score: row.geo_score, footprint_count: 1, total_responses: 2,
+        responses: [], geo_records: [], engine_presence: null, competitors_appeared: null,
+      } })
+      if (row && slice === 'kyc') return route.fulfill({ json: { kyc: null } })
+      if (row && slice === 'prompts') return route.fulfill({ json: { prompts: [] } })
       detailRequests += 1
       body = details.get(decodeURIComponent(url.pathname.split('/').at(-1)!))
       if (!body) return route.fulfill({ status: 404, json: { detail: 'Analysis not found.' } })
@@ -91,6 +99,10 @@ scenario('starting an analysis keeps the default page and full-width history unt
   const requests = api.requests()
   await page.waitForTimeout(2300)
   expect(api.requests()).toBe(requests)
+  await history.getByRole('link', { name: /acme\.example.*done/ }).click()
+  await expect(page).toHaveURL(/\/ai-visibility\?analysis=active$/)
+  const score = page.locator('section').filter({ has: page.getByText('GEO score', { exact: true }) })
+  await expect(score.getByText(/^72\s*\/100$/)).toBeVisible()
 })
 
 scenario('all start surfaces keep live and completed analyses usable on small screens', async ({ page }, testInfo) => {
@@ -201,58 +213,53 @@ scenario('details animate through intermediate heights, reverse smoothly and res
   await expect(card.getByRole('list', { name: 'Analysis steps' })).toBeHidden()
 })
 
-scenario('the history heading and View all stay anchored while details expand downwards', async ({ page }) => {
-  await mockApi(page, [active, finished, { ...finished, id: 'older', url: 'https://older.example/' }])
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
+scenario('history heading stays fixed at the middle and bottom while only the list grows downwards', async ({ page }, testInfo) => {
+  await mockApi(page, [active, ...Array.from({ length: 4 }, (_, i) => ({ ...finished, id: `older-${i}`, url: `https://older-${i}.example/` }))])
   for (const width of [1440, 375]) {
     await page.setViewportSize({ width, height: 740 })
     await page.goto('/ai-visibility')
     const card = page.getByRole('article', { name: 'Analysis for acme.example' })
     await expect(card).toBeVisible()
-    await page.locator('main').evaluate(element => { element.scrollTop = element.scrollHeight })
+    await page.evaluate(async () => { await document.fonts.ready })
     const capture = () => page.evaluate(() => {
       const heading = document.getElementById('recent-analyses-heading')!
       const section = heading.closest('section')!
       const link = section.querySelector('a')!
-      const toggle = section.querySelector('article button')!
+      const list = section.querySelector('[aria-label="Analysis list"]')!
       const main = section.closest('main')!
-      return { heading: heading.getBoundingClientRect().top, link: link.getBoundingClientRect().top, toggle: toggle.getBoundingClientRect().top,
-        scrollTop: main.scrollTop, maxScroll: main.scrollHeight - main.clientHeight }
+      const toggle = section.querySelector('article button')!
+      const result = section.querySelector('ul > li:nth-child(2)')!
+      return { heading: heading.getBoundingClientRect().top, link: link.getBoundingClientRect().top,
+        toggle: toggle.getBoundingClientRect().top, result: result.getBoundingClientRect().top,
+        scrollTop: main.scrollTop, scrollHeight: main.scrollHeight, listHeight: list.getBoundingClientRect().height,
+        sectionWidth: section.getBoundingClientRect().width }
     })
-    const initialCollapsed = await capture()
-    await expect(card.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
-    await card.getByRole('button', { name: /show analysis steps/i }).click()
-    await page.waitForTimeout(250)
-    const firstOpened = await capture()
-    expect(Math.abs(firstOpened.heading - initialCollapsed.heading)).toBeLessThan(1)
-    expect(Math.abs(firstOpened.link - initialCollapsed.link)).toBeLessThan(1)
-    await page.locator('main').evaluate(element => { element.scrollTop = element.scrollHeight })
-    const initialExpanded = await capture()
-    await card.getByRole('button').click()
-    await expect(card.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
-    await page.waitForTimeout(70)
-    const duringCollapse = await capture()
-    expect(Math.abs(duringCollapse.heading - initialExpanded.heading)).toBeLessThan(1)
-    expect(Math.abs(duringCollapse.link - initialExpanded.link)).toBeLessThan(1)
-    await page.waitForTimeout(200)
-    const before = await capture()
-    expect(Math.abs(before.heading - initialExpanded.heading)).toBeLessThan(1)
-    expect(Math.abs(before.link - initialExpanded.link)).toBeLessThan(1)
-    expect(Math.abs(before.toggle - initialExpanded.toggle)).toBeLessThan(1)
-    const target = await card.getByRole('button').boundingBox()
-    await page.mouse.click(target!.x + target!.width / 2, target!.y + target!.height / 2)
-    await page.waitForTimeout(250)
-    const after = await capture()
-    expect(Math.abs(after.heading - before.heading)).toBeLessThan(1)
-    expect(Math.abs(after.link - before.link)).toBeLessThan(1)
-    expect(Math.abs(after.toggle - before.toggle)).toBeLessThan(1)
-    await card.getByRole('button').click()
-    await page.waitForTimeout(250)
-    const collapsed = await capture()
-    expect(Math.abs(collapsed.heading - before.heading)).toBeLessThan(1)
-    expect(Math.abs(collapsed.link - before.link)).toBeLessThan(1)
-    await page.locator('main').evaluate(element => { element.scrollTop = 0 })
-    await expect.poll(() => page.getByRole('region', { name: 'Your analyses' }).evaluate(element => (element as HTMLElement).style.minHeight)).toBe('')
+    for (const fraction of [0.35, 0.65, 1]) {
+      await page.locator('main').evaluate((element, fraction) => { element.scrollTop = (element.scrollHeight - element.clientHeight) * fraction }, fraction)
+      const before = await capture()
+      const box = (await card.getByRole('button').boundingBox())!
+      await page.mouse.click(box.x + box.width / 2, box.y + 18)
+      await expect(card.getByRole('button')).toHaveAttribute('aria-expanded', 'true')
+      for (const wait of [70, 200]) {
+        await page.waitForTimeout(wait)
+        const after = await capture()
+        for (const property of ['heading', 'link', 'toggle', 'scrollTop', 'scrollHeight', 'listHeight', 'sectionWidth'] as const) {
+          expect(Math.abs(after[property] - before[property]), `${width}px, ${fraction}: ${property}`).toBeLessThan(1)
+        }
+      }
+      expect((await capture()).result - before.result).toBeGreaterThan(50)
+      await page.mouse.click(box.x + box.width / 2, box.y + 18)
+      await expect(card.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
+      await page.waitForTimeout(250)
+      const closed = await capture()
+      expect(Math.abs(closed.heading - before.heading)).toBeLessThan(1)
+      expect(Math.abs(closed.link - before.link)).toBeLessThan(1)
+      expect(Math.abs(closed.scrollTop - before.scrollTop)).toBeLessThan(1)
+      if (fraction === 0.65 && width === 1440) await page.screenshot({ path: testInfo.outputPath('fixed-history-header.png') })
+    }
+    const list = page.getByRole('region', { name: 'Analysis list', exact: true })
+    await list.evaluate(element => { element.scrollTop = element.scrollHeight })
+    await expect(list.getByRole('link', { name: /older-3\.example/ })).toBeVisible()
   }
 })
 
@@ -329,5 +336,53 @@ scenario('history headings stay in position through delayed quota, history and f
       await page.unroute('**/*.woff2')
       await page.unroute('**/api/v1/analyses?**')
     }
+  }
+})
+
+scenario('local mock preview opens real details and resets without submitting an analysis', async ({ page }, testInfo) => {
+  await mockApi(page)
+  const submissions: string[] = []
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/analyses') submissions.push(request.url())
+  })
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/ai-visibility/progress-preview')
+    const card = page.getByRole('article', { name: 'Analysis for preview.example' })
+    await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '45')
+    await expect(card.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
+    await expect(card.getByRole('list', { name: 'Analysis steps' })).toBeHidden()
+    await expect(page.getByRole('button', { name: 'Run analysis', exact: true })).toBeDisabled()
+    await expect(page.getByRole('link', { name: /finished\.example/ })).toBeVisible()
+    await card.getByRole('button').click()
+    await expect(card.getByRole('list', { name: 'Analysis steps' }).getByRole('listitem')).toHaveCount(6)
+    await page.getByRole('button', { name: 'Mock’u yeniden başlat' }).click()
+    await expect(card.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
+    await expect(card.getByRole('list', { name: 'Analysis steps' })).toBeHidden()
+    if (width === 1440) {
+      await page.locator('main').evaluate(element => { element.scrollTop = 0 })
+      await page.screenshot({ path: testInfo.outputPath('local-analysis-mock.png') })
+    }
+  }
+  expect(submissions).toEqual([])
+})
+
+scenario('partially visible card headers do not pull the page when clicked', async ({ page }) => {
+  await mockApi(page, [active, ...Array.from({ length: 4 }, (_, i) => ({ ...finished, id: `older-${i}`, url: `https://older-${i}.example/` }))])
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 740 })
+    await page.goto('/ai-visibility')
+    const card = page.getByRole('article', { name: 'Analysis for acme.example' })
+    await expect(card).toBeVisible()
+    await page.locator('main').evaluate(main => {
+      const toggle = main.querySelector('article button')!
+      main.scrollTop += toggle.getBoundingClientRect().top - (main.getBoundingClientRect().bottom - 18)
+    })
+    const before = (await page.getByRole('heading', { name: 'Your analyses', exact: true }).boundingBox())!.y
+    const box = (await card.getByRole('button').boundingBox())!
+    await page.mouse.click(box.x + box.width / 2, box.y + 8)
+    await expect(card.getByRole('button')).toHaveAttribute('aria-expanded', 'true')
+    await page.waitForTimeout(250)
+    expect(Math.abs((await page.getByRole('heading', { name: 'Your analyses', exact: true }).boundingBox())!.y - before)).toBeLessThan(1)
   }
 })

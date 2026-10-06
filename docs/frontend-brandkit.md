@@ -167,6 +167,8 @@ driven entirely by the API response — no hard-coded copy in the data path.
   during loading so the history heading stays in place.
 
 ### `AnalysisProgressCard` (live history)
+- Details start collapsed on page load and for newly submitted runs. Click
+  anywhere on the card header (or use Enter/Space) to open or close the steps.
 - Expandable six-step progress with percentage, current activity and elapsed
   time; completed runs remain links to their results. Guided runs offer a
   review link when ready. The history retains its `max-w-6xl` width.

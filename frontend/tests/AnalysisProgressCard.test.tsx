@@ -12,8 +12,14 @@ const running: AnalysisSummary = {
 }
 
 describe('compact analysis progress', () => {
-  it('keeps all six steps accessible and can collapse without losing progress', async () => {
+  it('starts collapsed and opens all six steps without losing progress', async () => {
     const { container } = render(<main><AnalysisProgressCard analysis={running} /></main>)
+    const toggle = screen.getByRole('button', { name: /show analysis steps/i })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('list', { name: 'Analysis steps' })).not.toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '45')
+    expect(await axeCheck(container)).toHaveNoViolations()
+    await userEvent.click(toggle)
     const steps = screen.getByRole('list', { name: 'Analysis steps' })
     expect(within(steps).getAllByRole('listitem')).toHaveLength(6)
     expect(within(steps).getAllByRole('listitem')[3]).toHaveAttribute('aria-current', 'step')
@@ -36,8 +42,9 @@ describe('compact analysis progress', () => {
     expect(await axeCheck(container)).toHaveNoViolations()
   })
 
-  it('marks a reclaimed running or failed step using current_step, not stale progress', () => {
+  it('marks a reclaimed running or failed step using current_step, not stale progress', async () => {
     const { rerender } = render(<AnalysisProgressCard analysis={{ ...running, progress: 80, current_step: 'discovery' }} />)
+    await userEvent.click(screen.getByRole('button', { name: /show analysis steps/i }))
     let steps = within(screen.getByRole('list', { name: 'Analysis steps' })).getAllByRole('listitem')
     expect(steps[0]).toHaveTextContent('in progress')
     expect(steps.slice(1).every(step => step.textContent?.includes('waiting'))).toBe(true)

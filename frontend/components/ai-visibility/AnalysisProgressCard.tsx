@@ -9,7 +9,7 @@ import { IconChevron, IconSpark } from '@/components/shell/icons'
 import { formatElapsed, useElapsedSeconds } from '@/components/useElapsedSeconds'
 
 export default function AnalysisProgressCard({ analysis, onCollapse }: { analysis: AnalysisSummary; onCollapse?: () => void }) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const detailsId = useId()
   const live = analysis.status === 'running' || analysis.status === 'queued'
   const failed = analysis.status === 'failed'
@@ -32,31 +32,31 @@ export default function AnalysisProgressCard({ analysis, onCollapse }: { analysi
 
   return (
     <article aria-label={`Analysis for ${target}`} className="overflow-hidden rounded-2xl border border-surface-border bg-surface shadow-sm">
-      <div className="flex items-center gap-3 px-4 py-4 sm:px-5">
+      <button
+        type="button" aria-expanded={expanded} aria-controls={detailsId}
+        aria-label={`${expanded ? 'Collapse' : 'Show'} analysis steps for ${target}`}
+        onClick={() => {
+          if (expanded) onCollapse?.()
+          setExpanded(!expanded)
+        }}
+        className="flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-surface-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-5"
+      >
         <span aria-hidden className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:flex ${failed ? 'bg-danger-soft text-danger-strong' : 'bg-primary-soft text-primary-strong'}`}>
           <IconSpark className="h-5 w-5" />
         </span>
-        <div className="min-w-0 flex-1">
-          <p aria-live="polite" className={`break-words text-sm font-semibold ${failed ? 'text-danger-strong' : 'text-surface-foreground'}`}>
+        <span className="min-w-0 flex-1">
+          <span aria-live="polite" className={`block break-words text-sm font-semibold ${failed ? 'text-danger-strong' : 'text-surface-foreground'}`}>
             {title}<span className="sr-only">{activeStep ? `: ${activeStep.label}` : ''}</span>
-          </p>
-          <p className="mt-0.5 break-all text-xs text-surface-subtle">
+          </span>
+          <span className="mt-0.5 block break-all text-xs text-surface-subtle">
             {target}{activeStep ? ` · ${activeStep.label}` : ''}
-          </p>
-        </div>
+          </span>
+        </span>
         <span className="shrink-0 text-xl font-semibold tabular-nums">{progress}%</span>
-        <button
-          type="button" aria-expanded={expanded} aria-controls={detailsId}
-          aria-label={`${expanded ? 'Collapse' : 'Show'} analysis steps for ${target}`}
-          onClick={() => {
-            if (expanded) onCollapse?.()
-            setExpanded(!expanded)
-          }}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-surface-subtle hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
+        <span aria-hidden className="flex h-11 w-11 shrink-0 items-center justify-center text-surface-subtle">
           <IconChevron className={`h-4 w-4 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out ${expanded ? 'rotate-90' : '-rotate-90'}`} />
-        </button>
-      </div>
+        </span>
+      </button>
       <div id={detailsId} aria-hidden={!expanded} inert={!expanded}
         className={`grid motion-safe:transition-[grid-template-rows,opacity,visibility] motion-safe:duration-200 motion-safe:ease-out ${expanded ? 'visible grid-rows-[1fr] opacity-100' : 'invisible grid-rows-[0fr] opacity-0'}`}>
         <div className="min-h-0 overflow-hidden">

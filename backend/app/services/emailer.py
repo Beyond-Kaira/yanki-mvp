@@ -143,10 +143,11 @@ def send_run_alert(analysis: Analysis, settings: Settings) -> None:
     ]
     if analysis.status == "done":
         lines.append(f"geo_score: {analysis.geo_score}")
-    # Kind-aware public results page: checker runs live under /checker/<id>, all
-    # other kinds under /analyses/<id>.
-    path = "checker" if kind == "checker" else "analyses"
-    lines.append(f"link: https://yanki.beyondkaira.com/{path}/{analysis.id}")
+    if kind == "checker":
+        link = f"https://yanki.beyondkaira.com/checker/{analysis.id}"
+    else:
+        link = f"https://yanki.beyondkaira.com/ai-visibility?analysis={analysis.id}"
+    lines.append(f"link: {link}")
     send_email(
         settings.notify_email,
         f"Yanki run {analysis.status}",

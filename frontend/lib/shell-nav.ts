@@ -123,6 +123,12 @@ export const SHELL_SECTIONS: ShellSection[] = [
         href: "/ai-visibility/drivers",
         badge: "live",
       },
+      {
+        id: "interventions",
+        label: "Recommended interventions",
+        href: "/ai-visibility/interventions",
+        badge: "live",
+      },
       // The record of what this organization has actually run. It belongs in
       // this section rather than under Home because a GEO analysis *is* the AI
       // Visibility product — and it exists at all because runs started

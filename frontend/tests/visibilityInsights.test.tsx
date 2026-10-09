@@ -97,6 +97,12 @@ describe("visibility insights", () => {
               ownership: "competitor",
               tier: "core",
             },
+            {
+              name: "United States",
+              answers: 3,
+              ownership: "location",
+              tier: "secondary",
+            },
           ],
         }}
       />,
@@ -105,6 +111,10 @@ describe("visibility insights", () => {
     expect(screen.getByText("How to read this")).toBeInTheDocument();
     expect(screen.getByText("Associated with you")).toBeInTheDocument();
     expect(screen.getByText("Seen without you")).toBeInTheDocument();
+    expect(screen.getByText("Profile location")).toBeInTheDocument();
+    expect(
+      screen.getByText(/The answer mention alone does not verify operations there/),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("progressbar", {
         name: "Yanki Demo Co: present in 6 of 12 scored answers",

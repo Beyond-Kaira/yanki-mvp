@@ -236,12 +236,14 @@ def _find_brands_in_text(
     text: str, known_brands: list[str], *, exclude_brand: str | None = None
 ) -> list[str]:
     found: list[str] = []
-    lower_text = (text or "").lower()
-    exclude = (exclude_brand or "").lower()
+    exclude = (exclude_brand or "").casefold()
     for brand in known_brands:
-        if brand.lower() == exclude:
+        if not brand or brand.casefold() == exclude:
             continue
-        if brand.lower() in lower_text and brand not in found:
+        if (
+            re.search(rf"(?<!\w){re.escape(brand)}(?!\w)", text or "", re.IGNORECASE)
+            and brand not in found
+        ):
             found.append(brand)
     return found
 
@@ -550,9 +552,10 @@ def measure_answer_visibility(
     mentioned = _text_mentions_brand(answer, brand, aliases)
 
     competitors: list[str] = []
-    raw_competitors = grounded_payload.get("competitors") or _find_brands_in_text(
-        answer, known_competitors, exclude_brand=brand
-    )
+    raw_competitors = [
+        *(grounded_payload.get("competitors") or []),
+        *_find_brands_in_text(answer, known_competitors, exclude_brand=brand),
+    ]
     for competitor in raw_competitors:
         if competitor.lower() != brand_lower and competitor not in competitors:
             competitors.append(competitor)
@@ -917,6 +920,7 @@ def _measured_error_record(
         "search_visibility": search_visibility,
         "grounded_answer": (grounded_payload or {}).get("grounded_answer"),
         "mentioned": mentioned,
+        "competitors": (answer_visibility.get("competitors", []) if answer_visibility else []),
         "mention_context": ("not_mentioned" if not mentioned else "secondary_recommendation"),
         "citation_metrics": (
             answer_visibility.get("citation_metrics", deepcopy(DEFAULT_CITATION_METRICS))

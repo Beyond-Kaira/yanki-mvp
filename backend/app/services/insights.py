@@ -14,7 +14,12 @@ from dataclasses import dataclass, field
 from math import ceil
 from typing import Any, Literal, Protocol
 
-from app.services.checker_summary import brand_exclusions, names_in_answer
+from app.services.checker_summary import (
+    audited_competitor_pool,
+    audited_names_in_answer,
+    brand_exclusions,
+    names_in_answer,
+)
 
 BRAND_PROBE = "brand-probe"
 INTENT_GROUPS: dict[str, tuple[str, ...]] = {
@@ -31,7 +36,7 @@ _ORDERED_CATEGORIES = [
     "use-case",
 ]
 
-Ownership = Literal["ours", "shared", "competitor", "unclaimed"]
+Ownership = Literal["ours", "shared", "competitor", "unclaimed", "location"]
 Tier = Literal["core", "secondary", "none"]
 Presence = Literal["present", "high-impact-missing", "missing"]
 
@@ -47,6 +52,7 @@ class ResponseLike(Protocol):
     model: str
     footprint: bool | None
     raw_text: str
+    audit: dict[str, Any] | None
 
 
 @dataclass(frozen=True)
@@ -152,7 +158,7 @@ def _entity_terms(kyc: dict[str, Any] | None) -> list[str]:
     if not kyc:
         return []
     terms: list[str] = []
-    for key in ("products", "services", "keywords", "locations", "use_cases"):
+    for key in ("products", "services", "keywords", "use_cases"):
         values = kyc.get(key)
         if isinstance(values, list):
             terms.extend(v.strip() for v in values if isinstance(v, str) and v.strip())
@@ -167,6 +173,23 @@ def _entity_terms(kyc: dict[str, Any] | None) -> list[str]:
             seen.add(folded)
             unique.append(term)
     return unique
+
+
+def _location_terms(kyc: dict[str, Any] | None) -> list[str]:
+    values = (kyc or {}).get("locations")
+    if not isinstance(values, list):
+        return []
+    seen: set[str] = set()
+    locations: list[str] = []
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        name = value.strip()
+        key = name.casefold()
+        if key not in seen:
+            seen.add(key)
+            locations.append(name)
+    return locations
 
 
 def _known_competitor_keys(kyc: dict[str, Any] | None) -> set[str]:
@@ -244,7 +267,17 @@ def summarize_insights(
 
     rows = [row for row, _prompt in scored]
     exclusions = brand_exclusions(kyc)
-    all_competitors = [names_in_answer(row.raw_text, exclusions) for row in rows]
+    audited_pool = audited_competitor_pool(rows, kyc, exclusions)
+    has_audits = any(isinstance(getattr(row, "audit", None), dict) for row in rows)
+    all_competitors = [
+        audited_names_in_answer(row.raw_text, audited_pool)
+        if has_audits
+        else names_in_answer(row.raw_text, exclusions)
+        for row in rows
+    ]
+    competitor_names_by_row = {
+        id(row): names for row, names in zip(rows, all_competitors, strict=True)
+    }
     competitor_counts: Counter[str] = Counter()
     competitor_display: dict[str, str] = {}
     for names in all_competitors:
@@ -258,7 +291,7 @@ def summarize_insights(
     for engine in engine_order:
         engine_pairs = [(row, prompt) for row, prompt in scored if _model_key(row) == engine]
         engine_rows = [row for row, _prompt in engine_pairs]
-        engine_competitors = [names_in_answer(row.raw_text, exclusions) for row in engine_rows]
+        engine_competitors = [competitor_names_by_row[id(row)] for row in engine_rows]
         engine_competitor_counts: Counter[str] = Counter()
         engine_display: dict[str, str] = {}
         for names in engine_competitors:
@@ -309,14 +342,12 @@ def summarize_insights(
     for category in _ORDERED_CATEGORIES:
         category_rows = [row for row, prompt in scored if prompt.category == category]
         lost_rows = [
-            row
-            for row in category_rows
-            if not row.footprint and names_in_answer(row.raw_text, exclusions)
+            row for row in category_rows if not row.footprint and competitor_names_by_row[id(row)]
         ]
         category_competitors: Counter[str] = Counter()
         display: dict[str, str] = {}
         for row in lost_rows:
-            for name in names_in_answer(row.raw_text, exclusions):
+            for name in competitor_names_by_row[id(row)]:
                 key = name.casefold()
                 category_competitors[key] += 1
                 display.setdefault(key, name)
@@ -357,19 +388,21 @@ def summarize_insights(
         for entity in own_entities
         if entity.answers > 0
     )
+    locations = _location_terms(kyc)
+    landscape_entities.extend(
+        EntityStat(location, answers, "location", _tier(answers, core_threshold))
+        for location in locations
+        if (answers := _answer_count(rows, location)) > 0
+    )
     own_term_keys = {entity.name.casefold() for entity in own_entities}
+    own_term_keys.update(location.casefold() for location in locations)
     known_competitor_keys = _known_competitor_keys(kyc)
     for key, count in sorted(competitor_counts.items(), key=lambda item: (-item[1], item[0])):
-        # A KYC term can also look like a proper-name competitor (for example
-        # a location such as "Turkey"). It already has an ownership-aware row
-        # above, so do not append a second, contradictory competitor row.
+        # Profile terms already have ownership-aware rows above.
         if key in own_term_keys:
             continue
-        # The proper-name heuristic intentionally casts a wide net, but a
-        # single capitalized phrase can be a place, publication or sentence
-        # fragment rather than a meaningful market entity. Keep known KYC
-        # competitors even when they appear once; require every newly
-        # discovered external name to repeat in two distinct answers.
+        # Keep known profile competitors with one answer. Newly discovered
+        # external names need two answers to avoid a long one-off tail.
         if count < 2 and key not in known_competitor_keys:
             continue
         landscape_entities.append(

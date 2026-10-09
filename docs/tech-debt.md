@@ -6,6 +6,12 @@ roughly by risk.*
 
 Last updated: 2026-08-09 (**session 26** — the audit-coverage session).
 
+2026-10-06 follow-up: compact analysis history now tracks pending IDs and handles
+transient missing list entries, but existing backend cleanup can still remove a
+failed run. The user explicitly deferred changing that cleanup; all attempted
+backend retention changes were reverted. This is an existing behavior, not a
+new retention guarantee. See [session notes](sessions/2026-10-06-01.md).
+
 **Session 26 changes to this list, up front:** **#71 REPAID** — the six mutating
 paths that emitted nothing now emit, including refresh-token **reuse
 detection**, which revoked an entire sign-in family for suspected theft and

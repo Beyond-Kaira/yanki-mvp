@@ -4,6 +4,16 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
+## 2026-10-06 — Compact analysis history
+
+No environment variables, migrations or operator setup are needed. Review the
+PR #76 from `feat/compact-analysis-dock`. The user authorized pushing the latest
+fixed history viewport, development mock and CI happy-path correction, and
+following the new CI run. The happy path asserts the overview GEO metric.
+No merge or deployment is authorized. Backend automatic cleanup
+of failed analyses is unchanged and the user deferred that follow-up. Details
+and validation: [session notes](sessions/2026-10-06-01.md).
+
 ## 2026-09-17 — Top cited pages, local implementation
 
 2026-09-20 latest: review the existing-GEO ranking results in

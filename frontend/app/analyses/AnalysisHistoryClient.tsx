@@ -1,15 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import AnalysisQuotaChip from '@/components/ai-visibility/AnalysisQuotaChip'
 import PageContainer from '@/components/shell/PageContainer'
 import IconRemoveButton from '@/components/shell/IconRemoveButton'
 import { useAnalysisBinding } from '@/components/ai-visibility/useAnalysisBinding'
-import { ApiError, deleteAnalysis, listAnalyses } from '@/lib/api'
-import type { AnalysisList, AnalysisSummary } from '@/lib/contracts'
+import { ApiError, deleteAnalysis } from '@/lib/api'
+import type { AnalysisSummary } from '@/lib/contracts'
 import { analysisStatusLabel } from '@/lib/guided-analysis'
+import AnalysisProgressCard from '@/components/ai-visibility/AnalysisProgressCard'
+import { useAnalysesList } from '@/components/ai-visibility/useAnalysesList'
 
 const PAGE_SIZE = 20
 
@@ -64,43 +66,16 @@ function readableTarget(url: string): string {
  * what the filter matched, not what this page happens to hold.
  */
 export default function AnalysisHistoryClient() {
-  const [page, setPage] = useState<AnalysisList | null>(null)
   const [status, setStatus] = useState('')
   const [offset, setOffset] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [pendingDelete, setPendingDelete] = useState<AnalysisSummary | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const { clearBinding, notifyQuotaChanged } = useAnalysisBinding()
 
-  const load = useCallback(
-    (signal?: AbortSignal) => {
-      setLoading(true)
-      setError(null)
-      listAnalyses({ status: status || undefined, limit: PAGE_SIZE, offset }, signal)
-        .then((result) => {
-          setPage(result)
-          setLoading(false)
-        })
-        .catch((cause: unknown) => {
-          if (cause instanceof Error && cause.name === 'AbortError') return
-          setError(
-            cause instanceof ApiError
-              ? cause.message
-              : "We couldn't load your analyses.",
-          )
-          setLoading(false)
-        })
-    },
-    [status, offset],
-  )
-
-  useEffect(() => {
-    const controller = new AbortController()
-    load(controller.signal)
-    return () => controller.abort()
-  }, [load])
+  const { page, error, loading, reload, announcement } = useAnalysesList({
+    status: status || undefined, limit: PAGE_SIZE, offset,
+  })
 
   function openDeleteDialog(row: AnalysisSummary) {
     if (row.status !== 'done') return
@@ -124,7 +99,7 @@ export default function AnalysisHistoryClient() {
       clearBinding(pendingDelete.id)
       notifyQuotaChanged()
       setPendingDelete(null)
-      load()
+      void reload()
     } catch (cause: unknown) {
       setDeleteError(
         cause instanceof ApiError
@@ -144,6 +119,7 @@ export default function AnalysisHistoryClient() {
   return (
     <PageContainer>
       <section aria-labelledby="history-heading">
+        <p aria-live="polite" className="sr-only">{announcement}</p>
         <header className="mb-6">
           <h1 id="history-heading" className="text-2xl font-semibold tracking-tight">
             Your analyses
@@ -246,7 +222,13 @@ export default function AnalysisHistoryClient() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {rows.map((row) => row.status === 'running' || row.status === 'queued' ? (
+                  <tr key={row.id} className="border-b border-surface-border">
+                    <td colSpan={5} className="p-3">
+                      <AnalysisProgressCard analysis={row} />
+                    </td>
+                  </tr>
+                ) : (
                   <tr key={row.id} className="border-b border-surface-border last:border-0">
                     <td className="px-4 py-3">
                       <Link
@@ -273,11 +255,6 @@ export default function AnalysisHistoryClient() {
                       >
                         {analysisStatusLabel(row.status)}
                       </span>
-                      {row.status === 'running' ? (
-                        <span className="ml-2 text-xs text-surface-subtle">
-                          {row.progress}%
-                        </span>
-                      ) : null}
                     </td>
                     <td className="px-4 py-3 tabular-nums">
                       {/* Never `row.geo_score ?? 0` — see the component docstring. */}

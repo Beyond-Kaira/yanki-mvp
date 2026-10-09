@@ -1,6 +1,8 @@
 'use client'
 
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
+import RecentAnalysesPanel from '@/components/ai-visibility/RecentAnalysesPanel'
+import PageContainer from '@/components/shell/PageContainer'
 
 /**
  * The signed-in home. This is what used to live at `/` — moved behind auth so
@@ -8,9 +10,14 @@ import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
  */
 export default function DashboardPage() {
   return (
-    <StartAnalysisPanel
-      title="See how AI answers talk about your brand"
-      description="Enter your company URL. We ask the AI engines what they say about you and measure how often you show up — with every raw answer one click away."
-    />
+    <>
+      <StartAnalysisPanel
+        title="See how AI answers talk about your brand"
+        description="Enter your company URL. We ask the AI engines what they say about you and measure how often you show up — with every raw answer one click away."
+      />
+      <PageContainer className="pb-12 pt-0">
+        <RecentAnalysesPanel />
+      </PageContainer>
+    </>
   )
 }

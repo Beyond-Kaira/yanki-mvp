@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import PageContainer from '@/components/shell/PageContainer'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
-import StepProgress from '@/components/StepProgress'
+import RecentAnalysesPanel from '@/components/ai-visibility/RecentAnalysesPanel'
 import NewAnalysisButton from '@/components/ai-visibility/NewAnalysisButton'
 import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import GuidedReviewLinkPanel from '@/components/guided/GuidedReviewLinkPanel'
@@ -62,12 +62,7 @@ export default function AnalysisBoundSubpage({
 
       {status === 'running' && analysis ? (
         <div className="mt-6 space-y-4">
-          <StepProgress
-            status={analysis.status}
-            progress={analysis.progress}
-            currentStep={analysis.current_step}
-            createdAt={analysis.created_at}
-          />
+          <RecentAnalysesPanel activeAnalysis={analysis} />
           <p className="text-sm text-surface-subtle">
             This tab uses the same run as Overview. Results appear here when the
             analysis finishes.

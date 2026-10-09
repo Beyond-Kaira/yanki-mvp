@@ -1,11 +1,14 @@
 'use client'
 
+import Link from 'next/link'
 import type { UserAnalysisQuota } from '@/components/ai-visibility/useUserAnalysisQuota'
 
 export default function AnalysisQuotaChip({
   quota,
+  historyHref,
 }: {
   quota: UserAnalysisQuota
+  historyHref?: string
 }) {
   const full = quota.used >= quota.limit
 
@@ -18,7 +21,9 @@ export default function AnalysisQuotaChip({
         {quota.used} / {quota.limit}
       </span>{' '}
       analyses active
-      {full ? ' — delete one to run another' : null}
+      {full ? historyHref ? (
+        <Link href={historyHref} aria-label="Open your analyses" className="underline underline-offset-2"> — delete one to run another</Link>
+      ) : ' — delete one to run another' : null}
     </p>
   )
 }

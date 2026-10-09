@@ -8,7 +8,6 @@ import CustomGeoGuidedWizard from '@/components/guided/CustomGeoGuidedWizard'
 import PageContainer from '@/components/shell/PageContainer'
 import PageHeaderRow from '@/components/shell/PageHeaderRow'
 import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
-import StepProgress from '@/components/StepProgress'
 import { useAnalysisQuery } from '@/components/ai-visibility/useAnalysisQuery'
 import { overviewFromAnalysis } from '@/lib/ai-overview'
 
@@ -27,25 +26,6 @@ export default function OverviewClient() {
         <PageContainer>
           <p className="text-sm text-surface-subtle" role="status">
             Loading analysis…
-          </p>
-        </PageContainer>
-      ) : null}
-      {status === 'running' && analysis ? (
-        <PageContainer>
-          <PageHeaderRow className="mb-6" action={<NewAnalysisButton />}>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Running analysis…
-            </h1>
-          </PageHeaderRow>
-          <StepProgress
-            status={analysis.status}
-            progress={analysis.progress}
-            currentStep={analysis.current_step}
-            createdAt={analysis.created_at}
-          />
-          <p className="mt-4 text-sm text-surface-subtle">
-            Prompts, Citations, and Drivers will fill with this same run when it
-            finishes.
           </p>
         </PageContainer>
       ) : null}
@@ -76,14 +56,14 @@ export default function OverviewClient() {
           </PageContainer>
         </>
       ) : null}
-      {status === 'empty' ? (
+      {status === 'empty' || status === 'running' ? (
         <>
           <StartAnalysisPanel
             title="AI Visibility"
             description="Enter a domain to start a measured GEO analysis. Overview and every AI Visibility tab will use this same run."
           />
           <PageContainer className="pb-12 pt-0">
-            <RecentAnalysesPanel />
+            <RecentAnalysesPanel activeAnalysis={status === 'running' ? analysis : null} />
           </PageContainer>
         </>
       ) : null}

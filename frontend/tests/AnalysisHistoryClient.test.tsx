@@ -73,7 +73,7 @@ describe('Analysis history', () => {
     )
   })
 
-  it('renders a missing score as an em dash, never a zero', async () => {
+  it('shows queued progress without reporting an unmeasured GEO score', async () => {
     // The rule this screen must never relax. A queued run has not been
     // measured; rendering `null` as `0` would tell a customer their brand is
     // invisible when the truth is that nobody has looked yet.
@@ -84,7 +84,8 @@ describe('Analysis history', () => {
     render(<AnalysisHistoryClient />)
 
     const table = await screen.findByRole('table')
-    expect(within(table).getByText('—')).toBeInTheDocument()
+    expect(within(table).getByText('Analysis queued')).toBeInTheDocument()
+    expect(within(table).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
     expect(within(table).queryByText('0.0')).not.toBeInTheDocument()
   })
 
@@ -205,7 +206,7 @@ describe('Analysis history', () => {
 
   it('offers delete only on finished runs', async () => {
     listAnalyses.mockResolvedValue(
-      page([row({ status: 'running', progress: 40 }), row({ id: 'an-2', status: 'done' })]),
+      page([row({ status: 'running', progress: 40 }), row({ id: 'an-2', status: 'done' }), row({ id: 'an-3', status: 'failed' })]),
     )
 
     render(<AnalysisHistoryClient />)

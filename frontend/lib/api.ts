@@ -359,10 +359,11 @@ async function analysisSliceFetch<T>(
 // the person who just started the analysis would be 404'd from their own
 // result. `authorizedFetch` sends nothing extra when nobody is signed in, so
 // the anonymous path is unchanged.
-export async function getAnalysis(id: string): Promise<AnalysisEnvelope> {
+export async function getAnalysis(id: string, signal?: AbortSignal): Promise<AnalysisEnvelope> {
   const res = await authorizedFetch(`/api/v1/analyses/${encodeURIComponent(id)}`, {
     headers: { Accept: 'application/json' },
     cache: 'no-store',
+    ...(signal ? { signal } : {}),
   })
   if (!res.ok) {
     // 422 = the path id is not a valid UUID (malformed URL). Treat it like 404

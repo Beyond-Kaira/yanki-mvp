@@ -32,28 +32,11 @@ describe('analysis route binding', () => {
     ).toBeNull()
   })
 
-  it('sends guided runs to the AI Visibility review wizard from any submit surface', () => {
-    expect(
-      analysisSubmitLandingHref('abc', { mode: 'guided', pathname: '/dashboard' }),
-    ).toBe('/ai-visibility?analysis=abc')
-    expect(
-      analysisSubmitLandingHref('abc', {
-        mode: 'guided',
-        pathname: '/search-visibility',
-      }),
-    ).toBe('/ai-visibility?analysis=abc')
-  })
-
-  it('keeps quick-run landing paths unchanged', () => {
-    expect(
-      analysisSubmitLandingHref('abc', { mode: 'quick', pathname: '/dashboard' }),
-    ).toBe('/analyses/abc')
-    expect(
-      analysisSubmitLandingHref('abc', {
-        mode: 'quick',
-        pathname: '/search-visibility',
-      }),
-    ).toBe('/search-visibility?analysis=abc')
+  it('keeps new runs on the default start surface rather than opening a result', () => {
+    expect(analysisSubmitLandingHref('/dashboard')).toBe('/dashboard')
+    expect(analysisSubmitLandingHref('/ai-visibility')).toBe('/ai-visibility')
+    expect(analysisSubmitLandingHref('/search-visibility')).toBe('/search-visibility')
+    expect(analysisSubmitLandingHref('/ai-visibility/prompts')).toBe('/ai-visibility')
   })
 
   it('builds the guided review href for legacy redirects', () => {

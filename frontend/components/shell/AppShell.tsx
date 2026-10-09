@@ -561,7 +561,7 @@ function AppShellChrome({ children, boundAnalysisId }: AppShellChromeProps) {
 
       <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col lg:ml-[74px]">
         <ShellAuthBar onOpenNav={() => setNavOpen(true)} navOpen={navOpen} />
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto has-[#recent-analyses-heading]:[overflow-anchor:none]">
           {children}
         </main>
       </div>

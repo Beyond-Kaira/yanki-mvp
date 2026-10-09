@@ -105,9 +105,13 @@ clear the floor. No new hexes were invented to reach compliance.
 ## 3. Typography
 
 Two webfonts, **self-hosted by `next/font/google`** at build (no runtime CDN, no
-`<link>` tags): Sora 300/400/500/600 and IBM Plex Mono 400/500, `display=swap`.
-Wired to CSS variables (`--font-sans`, `--font-mono`) consumed by tailwind
-`fontFamily`. Mono is the "evidence" voice: KYC JSON, snippets, scores, ids.
+`<link>` tags): Sora 300/400/500/600 uses `display=optional`; IBM Plex Mono
+400/500 keeps `display=swap`. Preloaded Sora renders when ready; when its load
+is slow, the browser keeps the first-render fallback font instead of swapping
+it late and rewrapping headings above **Your analyses**. A slow first visit may
+therefore retain the fallback font for that page view. Wired to CSS variables
+(`--font-sans`, `--font-mono`) consumed by tailwind `fontFamily`. Mono is the
+"evidence" voice: KYC JSON, snippets, scores, ids.
 
 ```
 font-sans: 'Sora', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif
@@ -159,9 +163,30 @@ driven entirely by the API response — no hard-coded copy in the data path.
 - Client-side validation: non-empty, looks like a URL; show an inline `danger`
   message under the field (never an alert box).
 - On submit: disable the button + show loading, `POST /api/v1/analyses` via
-  `lib/api.ts`, then `router.push('/analyses/{id}')`. On API error, re-enable and
-  show the message.
+  `lib/api.ts`, then keep the default start screen at `/dashboard`,
+  `/ai-visibility`, or `/search-visibility`. Add the queued run to **Your analyses**
+  alongside completed runs. On API error, re-enable and show the message.
 - The `<input>` has an associated `<label>` (visually hidden is fine).
+- Keep the form mounted but disabled at the stock limit; reserve quota space
+  during loading so the history heading stays in place.
+
+### `AnalysisProgressCard` (live history)
+- Details start collapsed on page load and for newly submitted runs. Click
+  anywhere on the card header (or use Enter/Space) to open or close the steps.
+- Expandable six-step progress with percentage, current activity and elapsed
+  time; completed runs remain links to their results. Guided runs offer a
+  review link when ready. The history retains its `max-w-6xl` width.
+- Animate details below the card header, respect reduced motion and make
+  collapsed details inaccessible to focus. **Your analyses** and **View all**
+  remain in place while details open or close.
+- Keep the heading and View all outside a fixed-height, responsive list
+  viewport (up to 26rem or 60dvh). Cards expand downward inside that viewport;
+  the list scrolls independently, so toggling details changes neither the main
+  page height nor its scroll position. The section retains its full width.
+- Track pending IDs per user and organization in session storage; poll while
+  work is pending and resolve missing list entries by ID. A definitive missing
+  response settles tracking and shows an explanation. Existing backend failure
+  cleanup behavior is unchanged.
 
 ### `StepProgress` (Screen 2)
 - Renders the 6 pipeline steps: discovery → KYC → prompts → executing → footprint

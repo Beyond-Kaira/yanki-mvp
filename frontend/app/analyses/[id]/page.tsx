@@ -22,6 +22,8 @@ import {
 import PageContainer from '@/components/shell/PageContainer'
 import FailedState from '@/components/FailedState'
 import StepProgress from '@/components/StepProgress'
+import StartAnalysisPanel from '@/components/shell/StartAnalysisPanel'
+import RecentAnalysesPanel from '@/components/ai-visibility/RecentAnalysesPanel'
 import ScoreSummary from '@/components/ScoreSummary'
 import EnginePresenceMap from '@/components/EnginePresenceMap'
 import QuestionBreakdown from '@/components/QuestionBreakdown'
@@ -98,6 +100,18 @@ export default function AnalysisPage() {
       stop()
     }
   }, [id, router, setAnalysisId])
+
+  if (analysis?.status === 'running' || analysis?.status === 'queued') {
+    return (
+      <>
+        <StartAnalysisPanel />
+        <PageContainer className="pb-12 pt-0">
+          {loadError ? <p role="alert" className="mb-3 text-sm text-warning-strong">{loadError}</p> : null}
+          <RecentAnalysesPanel activeAnalysis={analysis} />
+        </PageContainer>
+      </>
+    )
+  }
 
   // Nothing loaded and an error came back: there is no run to point at a step
   // within, so the load failure itself is the only thing to report.

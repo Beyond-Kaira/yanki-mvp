@@ -2537,6 +2537,11 @@ paragraph, as the record.*
   must never 500 a request). Neither is a code-correctness gate.
 
 ### P7.10 — Analysis history per organization
+- **2026-10-06 frontend follow-up:** compact live progress beside completed
+  runs, default start form retained, full history width preserved, scoped
+  pending-run recovery and stable bottom-scroll collapse implemented on
+  `feat/compact-analysis-dock` for PR review. Backend automatic failure cleanup
+  remains unchanged. See [session notes](sessions/2026-10-06-01.md).
 - **Goal:** let a customer find the analyses their organization has run.
 - **Why now:** P7.6 gave `analyses` an `org_id` and nothing read it. The only
   route back to a result was the URL the submitter was redirected to, so closing

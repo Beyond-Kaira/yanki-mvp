@@ -6,12 +6,14 @@ import { axeCheck } from './a11y'
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({ id: 'test-id' }),
+  usePathname: () => '/analyses/test-id',
 }))
 
 vi.mock('@/lib/api', () => ({
   getAnalysis: vi.fn(),
   fetchAnalysisSlices: vi.fn(),
   joinWaitlist: vi.fn(),
+  listAnalyses: vi.fn(async () => ({ analyses: [], total: 0, user_analyses_used: 1, user_analyses_limit: 5 })),
   ApiError: class ApiError extends Error {
     status: number
     constructor(message: string, status: number) {

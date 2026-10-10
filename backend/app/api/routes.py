@@ -54,6 +54,7 @@ from app.citations.schemas import CitationSourcesOut, Ownership, ReportView
 from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import get_session
+from app.jobs import redis_dispatch_queue
 from app.net_guard import is_public_url
 from app.services import audit, billing, quota
 from app.services.analyses import (
@@ -193,6 +194,7 @@ def submit_analysis(
         },
     )
     session.commit()
+    redis_dispatch_queue.notify_analysis_enqueued(analysis.id, settings)
     return CreateAnalysisResponse(id=analysis.id)
 
 
@@ -261,6 +263,8 @@ def submit_checker(
         detail={"cache_hit": is_cache_hit, "submission": str(submission.id)},
     )
     session.commit()
+    if analysis.status == "queued":
+        redis_dispatch_queue.notify_analysis_enqueued(analysis.id, settings)
     return CheckerSubmitResponse(id=analysis.id, submission_id=submission.id)
 
 
@@ -602,6 +606,7 @@ def execute_prompts_and_score(
         after={"status": analysis.status, "progress": analysis.progress},
     )
     session.commit()
+    redis_dispatch_queue.notify_analysis_enqueued(analysis_id, settings)
     return _to_out(analysis)
 
 

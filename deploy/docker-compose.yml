@@ -21,6 +21,16 @@ services:
       timeout: 5s
       retries: 10
 
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "127.0.0.1:${YANKI_VALKEY_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build:
       context: ../backend
@@ -29,6 +39,7 @@ services:
       - "${YANKI_API_PORT:-8141}:8141"
     environment:
       DATABASE_URL: postgresql+psycopg://yanki:yanki@db:5432/yanki
+      REDIS_URL: redis://valkey:6379/0
     env_file:
       - .env
     volumes:
@@ -41,6 +52,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      valkey:
+        condition: service_healthy
 
   worker:
     build:
@@ -48,6 +61,7 @@ services:
     command: python -m app.worker
     environment:
       DATABASE_URL: postgresql+psycopg://yanki:yanki@db:5432/yanki
+      REDIS_URL: redis://valkey:6379/0
     env_file:
       - .env
     volumes:
@@ -59,6 +73,8 @@ services:
       - yanki_worker_heartbeat:/var/run/yanki
     depends_on:
       db:
+        condition: service_healthy
+      valkey:
         condition: service_healthy
       api:
         condition: service_started

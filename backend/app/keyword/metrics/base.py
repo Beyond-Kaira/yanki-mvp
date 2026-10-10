@@ -1,8 +1,8 @@
 """Keyword metrics providers (volume / competition / CPC) — separate from discovery.
 
-Discovery stays on the SERP provider. Volume can come from direct Google Ads API
-or DataForSEO Keywords Data (Google Ads search volume proxy). See
-``docs/keyword-preview-oss.md``.
+Discovery stays on the SERP provider (SearXNG or DataForSEO). Volume enrichment
+uses DataForSEO Keywords Data when ``KEYWORD_ADS_ENABLED`` and
+``SERP_PROVIDER=dataforseo``. See ``docs/keyword-preview-oss.md``.
 """
 
 from __future__ import annotations

@@ -59,7 +59,7 @@ def _enrich_ideas_if_configured(
     *,
     locale: str,
 ) -> tuple[KeywordIdea, ...]:
-    """Optionally attach Ads volume; on failure leave discovery signals unchanged."""
+    """Optionally attach search volume; on failure leave discovery signals unchanged."""
     metrics_source = get_keyword_metrics_source(settings)
     if metrics_source is None:
         return ideas

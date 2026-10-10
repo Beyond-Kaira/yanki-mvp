@@ -58,12 +58,11 @@ def _related_keyword_phrases_from_serp_titles(seed: str, page: SerpPage) -> list
 class SerpKeywordSource:
     """Expand a seed via any configured :class:`~app.serp.base.SerpSource`."""
 
+    name: str
+
     def __init__(self, serp: SerpSource) -> None:
         self._serp = serp
-
-    @property
-    def name(self) -> str:
-        return getattr(self._serp, "name", "serp")
+        self.name = str(getattr(serp, "name", "serp"))
 
     @property
     def base_url(self) -> str:

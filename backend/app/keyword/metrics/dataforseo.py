@@ -172,6 +172,8 @@ class DataForSeoKeywordMetricsSource:
 def _bid_to_micros(value: object) -> int | None:
     if value is None:
         return None
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
         return int(float(value) * 1_000_000)
     except (TypeError, ValueError):

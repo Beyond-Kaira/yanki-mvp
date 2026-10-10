@@ -100,8 +100,10 @@ export default function KeywordsOverviewClient() {
               </p>
               <p className="mt-1 text-xs text-surface-subtle">
                 {overviewResult.signals?.volume_estimated === false
-                  ? 'Google Ads'
-                  : '— (enable KEYWORD_ADS_ENABLED)'}
+                  ? overviewResult.signals?.metrics_provider === 'dataforseo'
+                    ? 'DataForSEO search volume'
+                    : 'Licensed volume metrics'
+                  : '— (KEYWORD_ADS_ENABLED + DataForSEO)'}
               </p>
             </div>
             <div className="rounded-xl border border-surface-border bg-surface p-4">

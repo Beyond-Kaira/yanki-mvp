@@ -1,18 +1,19 @@
 """Pick the keyword source, honouring ``KEYWORD_ENABLED`` and ``DRY_RUN``.
 
 Mirrors ``app/serp/registry.py``. Returns ``None`` when the feature is off or
-SearXNG is enabled-but-unconfigured — better than a source that fails on every
-expand. Live/default product path is SearXNG; mock only when ``DRY_RUN`` is on.
+the configured SERP provider is enabled-but-unconfigured — better than a source
+that fails on every expand. Provider selection follows ``SERP_PROVIDER`` (SearXNG
+or DataForSEO); mock only when ``DRY_RUN`` is on.
 """
 
 from __future__ import annotations
 
 from app.keyword.base import KeywordSource
 from app.keyword.mock import MockKeywordSource
-from app.keyword.searxng_expand import SearxngKeywordSource
+from app.keyword.serp_expand import SerpKeywordSource
 from app.serp.base import SerpSource
 from app.serp.mock import MockSerpSource
-from app.serp.searxng import SearxngSource
+from app.serp.registry import build_configured_serp_source
 
 
 def get_keyword_source(settings) -> KeywordSource | None:
@@ -21,40 +22,21 @@ def get_keyword_source(settings) -> KeywordSource | None:
         return None
     if getattr(settings, "dry_run", True):
         return MockKeywordSource()
-    base_url = (getattr(settings, "serp_base_url", "") or "").strip()
-    if not base_url:
+    serp = build_configured_serp_source(settings)
+    if serp is None:
         return None
-    serp = SearxngSource(
-        base_url,
-        language=getattr(settings, "serp_language", "en"),
-        categories=getattr(settings, "serp_categories", "general"),
-        engines=getattr(settings, "serp_engines", ""),
-        safesearch=getattr(settings, "serp_safesearch", 0),
-        timeout_seconds=getattr(settings, "serp_timeout_seconds", 10.0),
-        max_results=getattr(settings, "serp_max_results", 20),
-    )
-    return SearxngKeywordSource(serp)
+    return SerpKeywordSource(serp)
 
 
 def get_keyword_serp_source(settings) -> SerpSource | None:
     """SERP reader for rank-check — same KEYWORD_ENABLED / DRY_RUN gates as expand.
 
-    Does not require ``SERP_ENABLED``: keyword preview already opted into SearXNG
-    via ``KEYWORD_ENABLED`` + ``SERP_BASE_URL``.
+    Does not require ``SERP_ENABLED``: keyword preview opts in via
+    ``KEYWORD_ENABLED`` plus a configured ``SERP_PROVIDER`` (and credentials or
+    ``SERP_BASE_URL`` for SearXNG).
     """
     if not getattr(settings, "keyword_enabled", False):
         return None
     if getattr(settings, "dry_run", True):
         return MockSerpSource()
-    base_url = (getattr(settings, "serp_base_url", "") or "").strip()
-    if not base_url:
-        return None
-    return SearxngSource(
-        base_url,
-        language=getattr(settings, "serp_language", "en"),
-        categories=getattr(settings, "serp_categories", "general"),
-        engines=getattr(settings, "serp_engines", ""),
-        safesearch=getattr(settings, "serp_safesearch", 0),
-        timeout_seconds=getattr(settings, "serp_timeout_seconds", 10.0),
-        max_results=getattr(settings, "serp_max_results", 20),
-    )
+    return build_configured_serp_source(settings)

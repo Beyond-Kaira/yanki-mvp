@@ -101,6 +101,21 @@ def test_enabled_live_dataforseo_builds_source_from_settings():
     assert source.max_results == 12
 
 
+def test_dataforseo_timeout_is_at_least_live_advanced_floor():
+    source = get_serp_source(
+        _settings(
+            serp_enabled=True,
+            dry_run=False,
+            serp_provider="dataforseo",
+            dataforseo_login="user@example.com",
+            dataforseo_password="secret",
+            serp_timeout_seconds=10.0,
+        )
+    )
+    assert isinstance(source, DataForSeoSource)
+    assert source.timeout_seconds >= 60.0
+
+
 def test_dataforseo_enabled_but_unconfigured_yields_no_source():
     assert (
         get_serp_source(_settings(serp_enabled=True, dry_run=False, serp_provider="dataforseo"))

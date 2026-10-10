@@ -1094,8 +1094,8 @@ export async function refreshBacklinks(
 
 // --- Keyword Research preview (OSS) ----------------------------------------
 //
-// Behind KEYWORD_ENABLED. Off → 404 (same darkness as backlinks). Metrics on
-// each idea are Estimated proxies until a licensed volume source lands.
+// Behind KEYWORD_ENABLED. Off → 404 (same darkness as backlinks). Demand/difficulty
+// are estimated; volume enriches via DataForSEO when KEYWORD_ADS_ENABLED.
 
 export async function expandKeywords(
   input: KeywordExpandRequest,

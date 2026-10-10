@@ -25,8 +25,8 @@ from app.api.keyword_schemas import (
 from app.config import Settings, get_settings
 from app.db.models import User
 from app.keyword.base import KeywordIdea, KeywordUnavailable
-from app.keyword.metrics.enrich import enrich_ideas_with_metrics
 from app.keyword.metrics.base import KeywordMetricsUnavailable
+from app.keyword.metrics.enrich import enrich_ideas_with_metrics
 from app.keyword.metrics.registry import get_keyword_metrics_source
 from app.keyword.rank_check import check_keyword_ranks
 from app.keyword.registry import get_keyword_serp_source, get_keyword_source

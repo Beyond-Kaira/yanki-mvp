@@ -57,19 +57,32 @@ beforeEach(() => {
 })
 
 describe('Analysis history', () => {
-  it('lists the organization runs with a link back to each result', async () => {
-    listAnalyses.mockResolvedValue(page([row(), row({ id: 'an-2', url: 'https://beta.test' })]))
+  it('opens analyses of every status in AI Visibility', async () => {
+    listAnalyses.mockResolvedValue(page([
+      row(),
+      row({ id: 'an-2', url: 'https://beta.test', status: 'awaiting_review' }),
+      row({ id: 'an-3', url: 'https://gamma.test', status: 'running' }),
+      row({ id: 'an-4', url: 'https://delta.test', status: 'failed' }),
+    ]))
 
     render(<AnalysisHistoryClient />)
 
     const table = await screen.findByRole('table')
     expect(within(table).getByRole('link', { name: 'acme.test' })).toHaveAttribute(
       'href',
-      '/analyses/an-1',
+      '/ai-visibility?analysis=an-1',
     )
     expect(within(table).getByRole('link', { name: 'beta.test' })).toHaveAttribute(
       'href',
-      '/analyses/an-2',
+      '/ai-visibility?analysis=an-2',
+    )
+    expect(within(table).getByRole('link', { name: 'gamma.test' })).toHaveAttribute(
+      'href',
+      '/ai-visibility?analysis=an-3',
+    )
+    expect(within(table).getByRole('link', { name: 'delta.test' })).toHaveAttribute(
+      'href',
+      '/ai-visibility?analysis=an-4',
     )
   })
 

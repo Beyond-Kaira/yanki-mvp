@@ -1,13 +1,18 @@
 """Keyword metrics providers (volume / competition / CPC) — separate from discovery.
 
-Discovery stays SearXNG. This seam is for Google Ads Keyword Planning (and later
-wholesale). See ``docs/keyword-preview-oss.md`` Ads volume metrics policy.
+Discovery stays on the SERP provider (SearXNG or DataForSEO). Volume enrichment
+uses DataForSEO Keywords Data when ``KEYWORD_ADS_ENABLED`` and
+``SERP_PROVIDER=dataforseo``. See ``docs/keyword-preview-oss.md``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
+
+
+class KeywordMetricsUnavailable(Exception):
+    """Metrics could not be fetched (auth, quota, or transport)."""
 
 
 @dataclass(frozen=True)

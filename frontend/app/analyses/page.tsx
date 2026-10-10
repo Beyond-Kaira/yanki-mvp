@@ -4,12 +4,11 @@ import AnalysisHistoryClient from './AnalysisHistoryClient'
 /**
  * `/analyses` — the organization's analysis history.
  *
- * Gated, unlike its own child route `/analyses/[id]`, which stays reachable
- * to anyone holding an id. A single result is a capability URL; a list has no
- * capability to present.
+ * Gated; individual runs open in AI Visibility. The retired `/analyses/[id]`
+ * route returns 404.
  *
- * The shell comes from `layout.tsx`, which wraps this page and `[id]` alike —
- * rendering another one here stacked a second nav rail under the first.
+ * The shell comes from the root layout — rendering another one here would
+ * stack a second nav rail under the first.
  */
 export default function AnalysisHistoryPage() {
   return (

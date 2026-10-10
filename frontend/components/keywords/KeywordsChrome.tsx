@@ -14,9 +14,9 @@ import localeEmoji from 'locale-emoji'
 
 /** Every ISO 639-1 language, as `{ code: 'tr', name: 'Turkish', nativeName: 'Türkçe' }`.
  *
- * The code is what we send as the locale: SearXNG takes it as the search
- * language, and the API's `locale_map` turns it into a Google Ads language/geo
- * pair — codes missing from that map fall back to English/US there.
+ * The code is what we send as the locale: the SERP provider (SearXNG or
+ * DataForSEO) uses it for search language; volume lookups map it to a
+ * DataForSEO location when KEYWORD_ADS_ENABLED is on.
  *
  * The flag is the language's CLDR default region, so it is a hint and not a
  * claim: Arabic shows 🇪🇬, and the ten languages with no region at all (Esperanto
@@ -258,9 +258,14 @@ export function KeywordsShell({ children }: { children: ReactNode }) {
         <EstimatedBadge />
       </div>
       <p className="mt-2 max-w-2xl text-sm text-surface-subtle">
-        Open-source preview via SearXNG. Demand and difficulty scores are
-        estimated proxies — not Semrush volume or KD%. Enable{' '}
-        <code className="font-mono text-xs">KEYWORD_ENABLED</code> on the API.
+        Idea expansion and rank checks use your configured SERP provider (
+        <code className="font-mono text-xs">SERP_PROVIDER</code>
+        : SearXNG or DataForSEO). Demand and difficulty stay estimated proxies
+        — not Semrush volume or KD%. Monthly search volume is optional via
+        DataForSEO when{' '}
+        <code className="font-mono text-xs">KEYWORD_ADS_ENABLED</code> is on.
+        Enable <code className="font-mono text-xs">KEYWORD_ENABLED</code> on the
+        API.
       </p>
       <KeywordsTabs />
       <div className="mt-6">{children}</div>

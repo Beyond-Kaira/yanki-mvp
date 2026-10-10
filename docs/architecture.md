@@ -866,3 +866,14 @@ reaching Yanki over the stack's loopback host binds:
 *Related: [design.md](design.md) (folder rationale + ADR log — the "why"),
 [02-mvp.md](02-mvp.md) (scope + acceptance criteria),
 [test-suite.md](test-suite.md) (how each step is tested).*
+
+## Citation source report (2026-09-17)
+
+`GET /api/v1/analyses/{id}/citation-sources` authorizes via `readable_analysis`
+and aggregates `Response.audit` through `app/citations/report.py`. The original
+response supplies prompt/model ids and the saved grounded answer; its search
+results supply source identity. Pages and Domains use distinct-response counts,
+with the filtered successful answer population as denominator. New runs persist
+`geo_run.dry_run` for provenance. See [ADR-52](design.md) and
+[feature scope](top-cited-pages-plan.md). No migration or live provider call is
+performed by this read path.

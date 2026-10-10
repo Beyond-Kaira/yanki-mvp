@@ -104,8 +104,11 @@ clear the floor. No new hexes were invented to reach compliance.
 
 ## 3. Typography
 
-Two webfonts, **self-hosted by `next/font/google`** at build (no runtime CDN, no
-`<link>` tags): Sora 300/400/500/600 and IBM Plex Mono 400/500, `display=swap`.
+Two webfonts, **bundled with `next/font/local`** (no build-time download, runtime
+CDN or `<link>` tags): Sora variable 100–800 (including the brand weights
+300/400/500/600) and IBM Plex Mono 400/500, `display=swap`.
+Files and SIL Open Font Licenses live in `frontend/app/fonts/`; source versions
+are pinned in [the font provenance note](../frontend/app/fonts/README.md).
 Wired to CSS variables (`--font-sans`, `--font-mono`) consumed by tailwind
 `fontFamily`. Mono is the "evidence" voice: KYC JSON, snippets, scores, ids.
 

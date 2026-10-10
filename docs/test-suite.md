@@ -723,3 +723,27 @@ deleted `FOR UPDATE` would not fail a single test.
 So CI runs them as their **own named step** rather than trusting the full-suite
 run to cover them, and the step prints a notice pointing at the skip count. If
 that step ever finishes suspiciously fast, read the count before believing it.
+
+## Citation source ranking (prod-1)
+
+`backend/tests/test_citation_sources.py` checks URL identity, distinct answer
+and prompt counts, domain union counts, denominators, source/rank/inline-answer
+validation, explicit provenance, ownership lookalikes, opportunity unknowns,
+filtering and pagination. `test_cross_tenant_leakage.py` classifies and probes
+the new route with owner, stranger and anonymous callers.
+
+`frontend/tests/citationSources.test.tsx` checks filters, evidence dialog,
+unknown-provenance messaging, retry, stale-response suppression and CSV formula
+escaping. Four export cases additionally cover all matching rows and applied
+(not draft) filters, UTF-8 BOM and download filename, object URL cleanup,
+5,000-row success versus 5,001-row refusal, and pending/error/retry behaviour.
+The download boundary is mocked in jsdom; saving a file in a real browser is
+not exercised by these tests. Local browser QA uses intercepted sample responses; it is not proof
+of live provider availability.
+
+2026-09-18: actual Chrome + local API validation on an existing grounded
+Trendyol analysis verified pagination, domain view, model/search/group/ownership
+and opportunity filters, evidence dialog and two saved CSV downloads. Parsed
+files contained 36 unfiltered rows and one filtered row with correct metadata
+and recomputed coverage. No new external-provider run was triggered; see
+[session evidence and limitations](sessions/2026-09-18-01.md).

@@ -235,13 +235,43 @@ scenario('a member row links to that record\'s own history', async ({ page }) =>
   await expect(page.getByRole('heading', { name: 'Change history' })).toBeVisible()
 })
 
-scenario('the nav advertises nothing that does not exist', async ({ page }) => {
-  await signUp(page, unique('nav'))
+for (const mobile of [false, true]) {
+  scenario(`the ${mobile ? 'mobile' : 'desktop'} nav distinguishes unavailable tools from live destinations`, async ({ page }) => {
+    await page.setViewportSize(mobile ? { width: 375, height: 812 } : { width: 1280, height: 900 })
+    await signUp(page, unique('nav'))
+    if (mobile) await page.getByRole('button', { name: /open navigation/i }).click()
 
-  // "N/A" was on fifteen entries and is the operator's complaint.
-  await expect(page.getByText('N/A')).toHaveCount(0)
-  await expect(page.getByRole('link', { name: /site audit/i })).toHaveCount(0) // in flyout only
-})
+    const nav = page.getByRole('navigation', { name: 'Toolkits' })
+    await expect(nav).toBeVisible()
+    const menuPrefix = mobile ? '#shell-subnav-' : '#shell-subnav-desktop-'
+
+    // The feature inventory intentionally includes N/A entries. They must be
+    // disabled labels, never links or buttons that promise a working tool.
+    for (const [id, label] of [
+      ['traffic-market', 'Traffic & Market'],
+      ['content', 'Content'],
+      ['ai-pr', 'AI PR'],
+      ['advertising', 'Advertising'],
+      ['local', 'Local'],
+      ['social', 'Social'],
+    ]) {
+      if (!mobile) await nav.getByRole('button', { name: label, exact: true }).hover()
+      const menu = nav.locator(`${menuPrefix}${id}`)
+      await expect(menu).toBeVisible()
+      const badges = menu.getByText('N/A', { exact: true })
+      await expect(badges.first()).toBeVisible()
+      await expect(menu.locator(':scope > [aria-disabled="true"]')).toHaveCount(await badges.count())
+      await expect(menu.locator('a, button, [role="link"], [role="button"], [href], [tabindex="0"]')).toHaveCount(0)
+    }
+
+    if (!mobile) await nav.getByRole('button', { name: 'Search Visibility', exact: true }).hover()
+    const searchMenu = nav.locator(`${menuPrefix}search-visibility`)
+    const siteAudit = searchMenu.getByRole('link', { name: /site audit/i })
+    await expect(siteAudit).toBeVisible()
+    await expect(siteAudit).toHaveAttribute('href', '/site-audit')
+    await expect(searchMenu.getByText('N/A', { exact: true })).toHaveCount(0)
+  })
+}
 
 scenario('the shell is usable on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })

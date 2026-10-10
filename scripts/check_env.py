@@ -51,6 +51,35 @@ def load_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+def _append_serp_provider_requirements(
+    reqs: list[tuple[str, str]],
+    values: dict[str, str],
+    *,
+    contexts: list[str],
+) -> None:
+    """Add keys for ``SERP_PROVIDER`` when SERP visibility or keywords need a live reader."""
+    provider = (values.get("SERP_PROVIDER", "searxng") or "searxng").strip().lower()
+    context = " or ".join(contexts)
+    existing = {key for key, _ in reqs}
+    if provider == "dataforseo":
+        for key in ("DATAFORSEO_LOGIN", "DATAFORSEO_PASSWORD"):
+            if key not in existing:
+                reqs.append(
+                    (
+                        key,
+                        f"{context} with SERP_PROVIDER=dataforseo (DRY_RUN=0)",
+                    )
+                )
+                existing.add(key)
+    elif "SERP_BASE_URL" not in existing and not values.get("SERP_BASE_URL"):
+        reqs.append(
+            (
+                "SERP_BASE_URL",
+                f"{context} with SERP_PROVIDER=searxng (DRY_RUN=0)",
+            )
+        )
+
+
 def required_when_live(values: dict[str, str]) -> list[tuple[str, str]]:
     """(variable, mode-that-requires-it) pairs that must be non-empty when live."""
     reqs = [
@@ -73,6 +102,15 @@ def required_when_live(values: dict[str, str]) -> list[tuple[str, str]]:
                 "GEO_MODE=measured (DRY_RUN=0) — each audit runs a Tavily search",
             )
         )
+
+    serp_contexts: list[str] = []
+    if values.get("SERP_ENABLED", "0").strip().lower() in TRUTHY:
+        serp_contexts.append("SERP_ENABLED=1")
+    if values.get("KEYWORD_ENABLED", "0").strip().lower() in TRUTHY:
+        serp_contexts.append("KEYWORD_ENABLED=1")
+    if serp_contexts:
+        _append_serp_provider_requirements(reqs, values, contexts=serp_contexts)
+
     return reqs
 
 
@@ -85,11 +123,7 @@ def main() -> int:
         print("check_env: DRY_RUN is on — no API keys required. OK.")
         return 0
 
-    missing = [
-        (key, reason)
-        for key, reason in required_when_live(values)
-        if not values.get(key)
-    ]
+    missing = [(key, reason) for key, reason in required_when_live(values) if not values.get(key)]
     if missing:
         print(
             "check_env: DRY_RUN is off but required variables are empty:",

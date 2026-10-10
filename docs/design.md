@@ -763,6 +763,10 @@ decision → consequences**, with one line on why the alternative was rejected.
   the `success-700`/`danger-700` names are removed in favor of the `-strong`
   shades. Fonts self-host via `next/font/google` in `app/layout.tsx` (CSS
   variables wired to tailwind `fontFamily`; no runtime CDN, no `<link>` tags).
+  **2026-10-05 amendment (PR #75):** use `next/font/local` with pinned font
+  assets and SIL licenses in `frontend/app/fonts/` instead. The Google loader
+  failed on an upstream font URL during CI, so builds must not download fonts.
+  Brand families and CSS variables stay the same; no migration is needed.
   Every existing surface is restyled token-for-token; radius moves to
   `rounded-xl` cards per §4.
 - **Score-band semantic change:** `ScoreGauge`/`lib/score.ts` now map 30–59% to
@@ -2563,3 +2567,35 @@ things the PR did not intend.*
 - **Rejected:** rewriting every `analysis_id` FK in one release; removing the
   bundle before standalone paths are production-ready; implicit auto-refresh
   ("re-run GEO when KYC updates").
+
+### ADR-52 — Evidence-backed citation source rankings (2026-09-17)
+
+The Top Cited Pages report reads `Response.audit` once, joined to its existing
+prompt and analysis. `GeoRecord` is its stored twin, so aggregating both would
+count the same observation twice. Source identities come from stored search
+results, matched by a non-ambiguous result rank; a rank must also appear inline
+in the grounded answer. Pipeline normalization now takes URL/title/domain from
+that search record, not from an LLM-proposed URL.
+
+`geo_run.dry_run` records test provenance for new runs without a migration.
+Only explicitly live, Tavily-grounded runs enter rankings. Legacy runs missing
+this field remain unknown; simulated and mock runs are excluded. This reduces
+historical coverage deliberately rather than treating plausible sources as
+observed citations. A new measured run restores coverage.
+
+The additive `/analyses/{id}/citation-sources` route uses `readable_analysis`,
+including its existing org-less capability policy and per-user/tenant checks.
+Pages count distinct responses; Domains union response ids across matching
+pages. Successful uncited answers remain in the denominator. Model and prompt
+group filters set the population; page/search/ownership/opportunity filters
+select sources within that population. No database migration or provider call
+is needed to read a report. CSV uses the same route and filters.
+
+Competitor ownership requires explicitly supplied domains because the current
+KYC competitor list contains names, not verified domains. Opportunities use
+known competitor names in the answer and an explicit false target mention;
+they do not assert absence of a mention or backlink on the external page.
+
+Native AI-platform observation, longitudinal source storage and market-wide
+industry sampling remain separate work. This report describes the selected
+analysis's questions and shared-search model answers.

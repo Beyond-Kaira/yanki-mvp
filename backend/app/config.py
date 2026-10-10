@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     # Worker / queue
     worker_poll_seconds: int = 2
     stale_claim_seconds: int = 300
+    # Optional Redis/Valkey URL for job dispatch (LPUSH/BRPOP). When unset, the
+    # worker falls back to Postgres claim_next polling — the pre-Redis behaviour.
+    redis_url: str | None = None
 
     # Worker liveness (ADR-47). The worker owns no HTTP surface, so it proves it
     # is alive by touching a file on a volume the api also mounts — the cheapest
@@ -231,17 +234,22 @@ class Settings(BaseSettings):
     # cost is 0, so any positive cap never trips.
     checker_daily_usd_cap: float = 5.0
 
-    # SERP visibility (ADR-28) — read an OPEN-SOURCE metasearch instance
-    # (SearXNG) to see whether the company also shows up in ordinary search
-    # results, alongside the AI-answer GEO score. No vendor, no per-query bill:
-    # the operator runs the instance.
+    # SERP visibility (ADR-28) — see whether the company shows up in ordinary
+    # search results alongside the AI-answer GEO score. Provider is ``searxng``
+    # (operator-run metasearch) or ``dataforseo`` (licensed SERP API).
     #
     # Default OFF, like checker_enabled and emails_enabled, because unlike the
-    # LLM panel this needs a piece of infrastructure no environment has until
-    # somebody stands it up. Under DRY_RUN an enabled run uses the deterministic
-    # mock source instead, so CI exercises the whole path with no instance and
-    # no outbound packet.
+    # LLM panel this needs configuration no environment has until an operator
+    # opts in. Under DRY_RUN an enabled run uses the deterministic mock source
+    # instead, so CI exercises the whole path with no instance and no outbound
+    # packet.
     serp_enabled: bool = False
+    serp_provider: str = "searxng"
+    dataforseo_login: str = ""
+    dataforseo_password: str = ""
+    # 0 = derive from ``serp_language`` (en→2840 US, tr→2792, …).
+    dataforseo_location_code: int = 0
+    dataforseo_device: str = "desktop"
     # Base URL of the SearXNG instance, e.g. http://searxng:8080 on the compose
     # network. The instance must have the JSON format enabled — it is off by
     # default (search.formats: [html, json] in its settings.yml).
@@ -261,10 +269,10 @@ class Settings(BaseSettings):
     serp_safesearch: int = 0
     serp_max_results: int = 20
 
-    # Keyword research preview (docs/keyword-preview-oss.md) — expand seeds via
-    # the same SearXNG instance as SERP visibility. Default OFF until the
-    # operator opts in. Under DRY_RUN an enabled run uses MockKeywordSource so
-    # CI needs no instance; live/default product path is SearXNG.
+    # Keyword research preview (docs/keyword-preview-oss.md) — expand seeds and
+    # rank-check via the same ``SERP_PROVIDER`` as SERP visibility (SearXNG or
+    # DataForSEO). Does not require ``SERP_ENABLED``. Default OFF until the
+    # operator opts in. Under DRY_RUN uses mock sources so CI needs no instance.
     keyword_enabled: bool = False
     # Cap on ideas returned from one expand call (politeness / payload size).
     keyword_max_ideas: int = 50
@@ -272,17 +280,9 @@ class Settings(BaseSettings):
     keyword_variant_max: int = 3
     # Max SERP lookups per rank-check request (politeness budget).
     keyword_rank_max_queries: int = 10
-    # Google Ads Keyword Planning metrics (volume/CPC). Default OFF until the
-    # operator has developer token + OAuth + customer ids configured.
+    # Keyword volume/CPC via DataForSEO Keywords Data (requires SERP_PROVIDER=dataforseo
+    # and DATAFORSEO_* credentials). Default OFF until operator opts in.
     keyword_ads_enabled: bool = False
-    google_ads_developer_token: str = ""
-    google_ads_client_id: str = ""
-    google_ads_client_secret: str = ""
-    google_ads_refresh_token: str = ""
-    # Client account that owns the Keyword Planning lookup (digits; no dashes).
-    google_ads_customer_id: str = ""
-    # Manager (MCC) account id when calling as a manager (digits; no dashes).
-    google_ads_login_customer_id: str = ""
 
     # Transactional email via the Resend REST API (P5.13). Fail-open + env-gated:
     # send_email is a NO-OP unless emails_enabled is True AND resend_api_key is

@@ -51,9 +51,7 @@ class RedisListDispatch:
     """Redis list queue: LPUSH to enqueue, BRPOP/RPOP to dequeue."""
 
     def __init__(self, redis_url: str) -> None:
-        self._client: redis.Redis = redis.Redis.from_url(
-            redis_url, decode_responses=True
-        )
+        self._client: redis.Redis = redis.Redis.from_url(redis_url, decode_responses=True)
 
     def push(self, queue: str, job_id: str) -> None:
         self._client.lpush(queue, job_id)

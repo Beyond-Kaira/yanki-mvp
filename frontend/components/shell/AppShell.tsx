@@ -36,40 +36,45 @@ type AppShellChromeProps = AppShellProps & {
   boundAnalysisId: string | null
 }
 
-function AppShellBound({ children }: AppShellProps) {
-  const pathname = usePathname()
+/** Reads `?analysis=` inside Suspense so the shell never mounts twice (duplicate #product-nav). */
+function SyncAnalysisQueryParam({
+  onAnalysisId,
+}: {
+  onAnalysisId: (id: string | null) => void
+}) {
   const searchParams = useSearchParams()
-  const { analysisId: sessionAnalysisId } = useAnalysisSession()
-  const boundAnalysisId = resolveBoundAnalysisId(
-    searchParams.get('analysis'),
-    pathname,
-    sessionAnalysisId,
-  )
+  const fromQuery = searchParams.get('analysis')
 
-  return (
-    <AppShellChrome boundAnalysisId={boundAnalysisId}>{children}</AppShellChrome>
-  )
+  useEffect(() => {
+    onAnalysisId(fromQuery)
+  }, [fromQuery, onAnalysisId])
+
+  return null
 }
 
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
   const { status } = useAuth()
   const { analysisId: sessionAnalysisId } = useAnalysisSession()
+  const [analysisFromQuery, setAnalysisFromQuery] = useState<string | null>(null)
 
   if (!showsAppShell(pathname, status === 'authenticated')) {
     return <>{children}</>
   }
 
-  const fallbackBound = resolveBoundAnalysisId(null, pathname, sessionAnalysisId)
+  const boundAnalysisId = resolveBoundAnalysisId(
+    analysisFromQuery,
+    pathname,
+    sessionAnalysisId,
+  )
 
   return (
-    <Suspense
-      fallback={
-        <AppShellChrome boundAnalysisId={fallbackBound}>{children}</AppShellChrome>
-      }
-    >
-      <AppShellBound>{children}</AppShellBound>
-    </Suspense>
+    <AppShellChrome boundAnalysisId={boundAnalysisId}>
+      <Suspense fallback={null}>
+        <SyncAnalysisQueryParam onAnalysisId={setAnalysisFromQuery} />
+      </Suspense>
+      {children}
+    </AppShellChrome>
   )
 }
 

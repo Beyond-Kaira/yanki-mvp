@@ -9,7 +9,9 @@ existing ``claim_next*`` polling handles dispatch.
 from __future__ import annotations
 
 import uuid
-from typing import Protocol
+from typing import Protocol, cast
+
+import redis
 
 from app.config import Settings
 
@@ -49,9 +51,9 @@ class RedisListDispatch:
     """Redis list queue: LPUSH to enqueue, BRPOP/RPOP to dequeue."""
 
     def __init__(self, redis_url: str) -> None:
-        import redis
-
-        self._client = redis.Redis.from_url(redis_url, decode_responses=True)
+        self._client: redis.Redis = redis.Redis.from_url(
+            redis_url, decode_responses=True
+        )
 
     def push(self, queue: str, job_id: str) -> None:
         self._client.lpush(queue, job_id)
@@ -60,14 +62,17 @@ class RedisListDispatch:
         self, queue: str, *, timeout_seconds: float = DEFAULT_POP_TIMEOUT_SECONDS
     ) -> str | None:
         timeout = max(0, int(timeout_seconds))
-        result = self._client.brpop(queue, timeout=timeout)
+        result = cast(
+            tuple[str, str] | None,
+            self._client.brpop([queue], timeout=timeout),
+        )
         if result is None:
             return None
         _key, job_id = result
         return job_id
 
     def try_pop(self, queue: str) -> str | None:
-        return self._client.rpop(queue)
+        return cast(str | None, self._client.rpop(queue))
 
 
 def connect_from_settings(settings: Settings) -> JobDispatchBackend:
@@ -95,7 +100,8 @@ def queue_depth(settings: Settings, queue: str) -> int | None:
     backend = connect_from_settings(settings)
     if not isinstance(backend, RedisListDispatch):
         return None
-    return int(backend._client.llen(queue) or 0)
+    length = cast(int, backend._client.llen(queue) or 0)
+    return length
 
 
 def ping_redis(settings: Settings) -> bool:

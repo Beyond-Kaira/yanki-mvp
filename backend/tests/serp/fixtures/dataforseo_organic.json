@@ -1,0 +1,55 @@
+{
+  "version": "0.1.20260101",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.12 sec.",
+  "cost": 0.003,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "test-task-id",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "result_count": 1,
+      "result": [
+        {
+          "keyword": "best crm software",
+          "items": [
+            {
+              "type": "organic",
+              "rank_group": 1,
+              "rank_absolute": 1,
+              "domain": "www.acmecrm.example",
+              "title": "Acme CRM — the best CRM software",
+              "url": "https://www.acmecrm.example/",
+              "description": "Acme CRM is a customer relationship platform."
+            },
+            {
+              "type": "organic",
+              "rank_group": 2,
+              "rank_absolute": 2,
+              "domain": "reviews.example",
+              "title": "The 8 best CRM systems compared",
+              "url": "https://reviews.example/top-crm",
+              "description": "We compare Acme CRM, Globex and others."
+            },
+            {
+              "type": "related_searches",
+              "items": ["crm for small business", "free crm software"]
+            },
+            {
+              "type": "people_also_ask",
+              "items": [
+                {
+                  "type": "people_also_ask_element",
+                  "title": "What is the best CRM for startups?"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

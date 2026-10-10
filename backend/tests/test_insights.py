@@ -26,13 +26,20 @@ def _prompt(prompt_id: str, category: str) -> SimpleNamespace:
     return SimpleNamespace(id=prompt_id, text=f"question {prompt_id}", category=category)
 
 
-def _response(prompt_id: str, engine: str, raw_text: str, footprint: bool) -> SimpleNamespace:
+def _response(
+    prompt_id: str,
+    engine: str,
+    raw_text: str,
+    footprint: bool,
+    audit: dict | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         prompt_id=prompt_id,
         llm_provider="openrouter",
         model=engine,
         raw_text=raw_text,
         footprint=footprint,
+        audit=audit,
     )
 
 
@@ -65,6 +72,62 @@ def test_brand_probe_answers_are_kept_out_of_the_scored_denominator() -> None:
     assert (insights.probe.mentioned, insights.probe.total) == (2, 2)
 
 
+def test_mention_share_uses_audit_pool_with_complete_name_matches() -> None:
+    prompts = [_prompt("p1", "makers"), _prompt("p2", "best-of")]
+    responses = [
+        _response(
+            "p1",
+            "openai",
+            "Amazon and eBay sell goods in Turkey. Turkish shoppers use both.",
+            False,
+            {"competitors": ["Amazon", "eBay", "Bay", "Turkey"]},
+        ),
+        _response(
+            "p2",
+            "openai",
+            "Good options include eBay and Walmart in Turkey.",
+            False,
+            {"competitors": ["Walmart"]},
+        ),
+    ]
+
+    insights = summarize_insights(responses, prompts, {**_KYC, "locations": ["Turkey"]})
+
+    assert insights is not None
+    competitors = {item.name: item.answers for item in insights.engines[0].competitors}
+    assert competitors == {"eBay": 2, "Amazon": 1, "Walmart": 1}
+
+
+def test_mention_share_does_not_guess_names_when_audit_pool_is_missing() -> None:
+    insights = summarize_insights(
+        [
+            _response(
+                "p1",
+                "openai",
+                "Good options in Turkey include eBay.",
+                False,
+                {"competitors": []},
+            )
+        ],
+        [_prompt("p1", "makers")],
+        {**_KYC, "locations": ["Turkey"]},
+    )
+
+    assert insights is not None
+    assert insights.engines[0].competitors == []
+
+
+def test_legacy_mention_share_uses_existing_name_heuristic() -> None:
+    insights = summarize_insights(
+        [_response("p1", "openai", "Acme and Globex are options.", False)],
+        [_prompt("p1", "makers")],
+        _KYC,
+    )
+
+    assert insights is not None
+    assert {item.name for item in insights.engines[0].competitors} == {"Acme", "Globex"}
+
+
 def test_entity_presence_requires_co_mention_with_the_brand() -> None:
     prompts = [_prompt("p1", "recommendation"), _prompt("p2", "comparison")]
     responses = [
@@ -82,23 +145,40 @@ def test_entity_presence_requires_co_mention_with_the_brand() -> None:
     assert entities["safety scanner"].presence == "missing"
 
 
-def test_landscape_does_not_repeat_own_term_as_a_competitor() -> None:
+def test_profile_locations_are_context_entities_without_competitor_or_opportunity_labels() -> None:
     prompts = [_prompt("p1", "recommendation"), _prompt("p2", "comparison")]
-    responses = [
-        _response("p1", "measured", "Yanki Demo Co operates in Turkey.", True),
-        _response("p2", "measured", "Turkey also has Globex.", False),
-    ]
-    kyc = {**_KYC, "locations": ["Turkey"]}
+    for location in ("Turkey", "United States"):
+        responses = [
+            _response(
+                "p1",
+                "measured",
+                "Yanki Demo Co offers automation.",
+                True,
+                {"competitors": []},
+            ),
+            _response(
+                "p2",
+                "measured",
+                f"{location} also has Globex.",
+                False,
+                {"competitors": ["Globex", location]},
+            ),
+        ]
+        kyc = {**_KYC, "locations": [location], "competitors": ["Globex"]}
 
-    insights = summarize_insights(responses, prompts, kyc)
+        insights = summarize_insights(responses, prompts, kyc)
 
-    assert insights is not None
-    turkey = [
-        entity for entity in insights.entityLandscape.entities if entity.name.casefold() == "turkey"
-    ]
-    assert len(turkey) == 1
-    assert turkey[0].ownership == "shared"
-    assert turkey[0].answers == 2
+        assert insights is not None
+        assert location not in {entity.name for entity in insights.entityCoverage.entities}
+        locations = [
+            entity for entity in insights.entityLandscape.entities if entity.name == location
+        ]
+        assert len(locations) == 1
+        assert locations[0].ownership == "location"
+        assert locations[0].answers == 1
+        assert [
+            group.competitors for group in insights.gap.categories if group.category == "comparison"
+        ] == [["Globex"]]
 
 
 def test_landscape_filters_one_off_external_names_but_keeps_known_competitors() -> None:

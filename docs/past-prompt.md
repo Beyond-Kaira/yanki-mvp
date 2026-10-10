@@ -478,3 +478,10 @@ first application call site of `tenancy.scoped()`, the fail-closed seam three
 documents had described as shipped with zero callers.
 
 **The next brief lives at the end of `sessions/2026-08-09-02.md` §8.**
+
+## 2026-10-05 — PR #75 CI repair
+
+The 2026-09-20 stored-sector follow-up brief remains archived in
+`sessions/2026-09-20-01.md`; it was not resumed. The user requested fixing PR #75's
+repeated failures. The next brief for this repair is in
+`sessions/2026-10-05-01.md`.

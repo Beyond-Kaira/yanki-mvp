@@ -10,8 +10,11 @@ describe('isPublicPath', () => {
     expect(isPublicPath('/methodology')).toBe(true)
   })
 
-  it('keeps capability URLs reachable', () => {
+  it('lets retired analysis URLs show 404 without redirecting to login', () => {
     expect(isPublicPath('/analyses/1f0c9d2e-0000-4000-8000-000000000000')).toBe(true)
+  })
+
+  it('keeps active capability URLs reachable', () => {
     expect(isPublicPath('/checker/1f0c9d2e-0000-4000-8000-000000000000')).toBe(true)
     expect(isPublicPath('/invite/some-token')).toBe(true)
   })
@@ -30,6 +33,7 @@ describe('isPublicPath', () => {
       '/ai-visibility',
       '/ai-visibility/citations',
       '/ai-visibility/drivers',
+      '/ai-visibility/interventions',
       '/ai-visibility/prompts',
       '/ai-visibility/settings',
       '/search-visibility',

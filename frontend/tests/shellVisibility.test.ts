@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { showsAppShell } from '@/lib/shell-nav'
 
-/**
- * The shell is the signed-in product surface. On a public route it is an
- * upgrade the visitor has earned, not the default chrome — so the question is
- * never "is this a shell route" alone.
- */
+/** The shell belongs to product routes, not retired URLs or public pages. */
 describe('showsAppShell', () => {
   it('keeps the shell off routes that never had one', () => {
     expect(showsAppShell('/', true)).toBe(false)
@@ -13,13 +9,9 @@ describe('showsAppShell', () => {
     expect(showsAppShell('/signup', false)).toBe(false)
   })
 
-  it('drops the shell for a signed-out visitor on a public route', () => {
-    // A shared result is a capability URL, so its reader may well be anonymous.
+  it('does not show a shell for retired analysis URLs', () => {
     expect(showsAppShell('/analyses/abc123', false)).toBe(false)
-  })
-
-  it('gives the same public route its shell once signed in', () => {
-    expect(showsAppShell('/analyses/abc123', true)).toBe(true)
+    expect(showsAppShell('/analyses/abc123', true)).toBe(false)
   })
 
   /**

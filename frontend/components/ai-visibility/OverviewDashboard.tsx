@@ -275,7 +275,6 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
                   <span className="flex-1 text-surface-foreground">
                     {item.title}
                   </span>
-                  <IconChevron className="h-4 w-4 text-surface-subtle" />
                 </li>
               ))}
             </ul>
@@ -283,8 +282,8 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
           <Link
             href={
               model.analysisId
-                ? `/ai-visibility/drivers?analysis=${model.analysisId}`
-                : "/ai-visibility/drivers"
+                ? `/ai-visibility/interventions?analysis=${model.analysisId}`
+                : "/ai-visibility/interventions"
             }
             className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-hover"
           >

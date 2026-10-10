@@ -11,6 +11,7 @@ interface EntityLandscapeProps {
 
 interface RelationshipMeta {
   label: string;
+  hint: string;
   badge: string;
   dot: string;
   description: (brand: string) => string;
@@ -22,12 +23,14 @@ interface RelationshipMeta {
 const RELATIONSHIP: Record<Ownership, RelationshipMeta> = {
   ours: {
     label: "Your brand",
+    hint: "the measured brand",
     badge: "bg-primary-soft text-primary-strong",
     dot: "bg-primary",
     description: () => "The brand being measured in this analysis.",
   },
   shared: {
     label: "Associated with you",
+    hint: "seen together",
     badge: "bg-success-soft text-success-strong",
     dot: "bg-success",
     description: (brand) =>
@@ -35,6 +38,7 @@ const RELATIONSHIP: Record<Ownership, RelationshipMeta> = {
   },
   competitor: {
     label: "Seen without you",
+    hint: "never seen together",
     badge: "bg-warning-soft text-warning-strong",
     dot: "bg-warning",
     description: (brand) =>
@@ -42,9 +46,18 @@ const RELATIONSHIP: Record<Ownership, RelationshipMeta> = {
   },
   unclaimed: {
     label: "Not observed",
+    hint: "absent from answers",
     badge: "bg-surface-muted text-surface-subtle",
     dot: "bg-surface-subtle/50",
     description: () => "Did not appear in any scored answer.",
+  },
+  location: {
+    label: "Profile location",
+    hint: "geographic context",
+    badge: "bg-surface-muted text-surface-foreground",
+    dot: "bg-surface-subtle",
+    description: () =>
+      "Listed as a location in the company profile and named in answers. The answer mention alone does not verify operations there.",
   },
 };
 
@@ -143,11 +156,11 @@ export default function EntityLandscape({
           <p className="mt-1 text-sm leading-6 text-surface-subtle">
             The percentage and green bar show presence across all{" "}
             {scoredAnswers} scored answers. The relationship label explains
-            whether an entity appeared with {brand}, without {brand}, or is the
-            measured brand itself.
+            whether an entity appeared with {brand}, without {brand}, is a
+            profile location, or is the measured brand itself.
           </p>
-          <ul className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-            {(["ours", "shared", "competitor"] as const).map((ownership) => {
+          <ul className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
+            {(["ours", "shared", "competitor", "location"] as const).map((ownership) => {
               const meta = RELATIONSHIP[ownership];
               return (
                 <li
@@ -162,11 +175,7 @@ export default function EntityLandscape({
                     <strong className="font-medium text-surface-foreground">
                       {meta.label}:
                     </strong>{" "}
-                    {ownership === "ours"
-                      ? "the measured brand"
-                      : ownership === "shared"
-                        ? "seen together"
-                        : "never seen together"}
+                    {meta.hint}
                   </span>
                 </li>
               );

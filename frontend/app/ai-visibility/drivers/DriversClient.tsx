@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import AnalysisBoundSubpage from "@/components/ai-visibility/AnalysisBoundSubpage";
 import {
   driversFromAnalysis,
@@ -109,61 +110,25 @@ export default function DriversPage() {
               </div>
             </section>
 
-            <section
-              className="overflow-hidden rounded-2xl border border-surface-border bg-white shadow-sm"
-              aria-labelledby="interventions-heading"
-            >
-              <div className="border-b border-surface-border px-5 py-5 sm:px-6">
+            <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-primary/20 bg-primary-soft/40 p-5 sm:p-6">
+              <div>
                 <p className="text-xs font-medium uppercase tracking-[0.14em] text-primary">
                   Next actions
                 </p>
-                <h2
-                  id="interventions-heading"
-                  className="mt-1 text-xl font-semibold text-surface-foreground"
-                >
-                  Recommended interventions
+                <h2 className="mt-1 text-lg font-semibold text-surface-foreground">
+                  Turn these gaps into a plan
                 </h2>
                 <p className="mt-1 text-sm text-surface-subtle">
-                  Suggested actions generated from the measured run.
+                  {model.interventions.length} recommended interventions from
+                  this run.
                 </p>
               </div>
-              <div className="p-5 sm:p-6">
-                {model.interventions.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-surface-border px-4 py-8 text-center text-sm text-surface-subtle">
-                    No interventions for this run yet.
-                  </p>
-                ) : (
-                  <ul className="grid gap-3 lg:grid-cols-2">
-                    {model.interventions.map((item) => (
-                      <li
-                        key={item.id}
-                        className="rounded-xl border border-surface-border bg-surface-muted/50 p-4"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="min-w-0 flex-1 text-sm font-semibold text-surface-foreground">
-                            {item.title}
-                          </p>
-                          {item.label ? (
-                            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary-strong">
-                              {item.label}
-                            </span>
-                          ) : null}
-                          {item.priority != null ? (
-                            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] tabular-nums text-surface-subtle">
-                              Priority {Math.round(item.priority * 100) / 100}
-                            </span>
-                          ) : null}
-                        </div>
-                        {item.description ? (
-                          <p className="mt-2 text-sm leading-6 text-surface-subtle">
-                            {item.description}
-                          </p>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              <Link
+                href={`/ai-visibility/interventions?analysis=${model.analysisId}`}
+                className="inline-flex rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                View action plan
+              </Link>
             </section>
           </div>
         );

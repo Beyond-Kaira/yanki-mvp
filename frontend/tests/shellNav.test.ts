@@ -59,6 +59,18 @@ describe('shell navigation', () => {
     expect(sectionFromPath('/site-audit/project-id')).toBe('search-visibility')
   })
 
+  it('gives recommended interventions a live AI Visibility destination', () => {
+    const ai = SHELL_SECTIONS.find((section) => section.id === 'ai-visibility')!
+    expect(ai.items.find((item) => item.id === 'interventions')).toEqual({
+      id: 'interventions',
+      label: 'Recommended interventions',
+      href: '/ai-visibility/interventions',
+      badge: 'live',
+    })
+    expect(sectionFromPath('/ai-visibility/interventions')).toBe('ai-visibility')
+    expect(isShellPath('/ai-visibility/interventions')).toBe(true)
+  })
+
   it('does not put the public invitation-accept page in the shell', () => {
     // Whoever opens it usually has no account, so the signed-in chrome — and
     // the auth gate that comes with it — would be exactly wrong.

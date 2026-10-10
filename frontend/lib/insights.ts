@@ -8,7 +8,7 @@
 // occurrences. One answer repeating a brand ten times must not outweigh ten
 // answers naming it once.
 
-export type Ownership = "ours" | "shared" | "competitor" | "unclaimed";
+export type Ownership = "ours" | "shared" | "competitor" | "unclaimed" | "location";
 export type Tier = "core" | "secondary" | "none";
 export type Presence = "present" | "high-impact-missing" | "missing";
 

@@ -15,6 +15,10 @@ Related: [architecture.md](architecture.md) (how it's built),
 
 ## How to use this doc
 
+2026-10-05 PR #75 CI repair: brand fonts are bundled via `next/font/local`
+to remove the Google Fonts build dependency that failed the first CI attempt.
+See [session validation](sessions/2026-10-05-01.md).
+
 2026-09-20 supersedes the question-generation plan below: the user chose global
 aggregation of existing GEO records by their stored sector label, excluding
 brand probes. The read-only ranking module, authenticated API and industry

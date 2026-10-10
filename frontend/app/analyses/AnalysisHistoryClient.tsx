@@ -250,11 +250,7 @@ export default function AnalysisHistoryClient() {
                   <tr key={row.id} className="border-b border-surface-border last:border-0">
                     <td className="px-4 py-3">
                       <Link
-                        href={
-                          row.status === 'awaiting_review'
-                            ? `/ai-visibility?analysis=${row.id}`
-                            : `/analyses/${row.id}`
-                        }
+                        href={`/ai-visibility?analysis=${encodeURIComponent(row.id)}`}
                         className="font-medium text-primary-strong underline underline-offset-2"
                       >
                         {readableTarget(row.url)}

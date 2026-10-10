@@ -14,6 +14,7 @@ from app.api.seo_project_routes import router as seo_project_router
 from app.config import Settings, get_settings
 from app.db.session import get_session
 from app.health import health_report
+from app.industry_citations.routes import router as industry_citations_router
 from app.request_context import RequestContextMiddleware
 from app.services.billing import InsufficientCredit, PlanCatalogMissing, QuotaExceeded
 from app.services.password_policy import PasswordPolicyViolation
@@ -35,6 +36,7 @@ app.include_router(backlink_router)
 app.include_router(keyword_router)
 app.include_router(admin_router)
 app.include_router(invitation_router)
+app.include_router(industry_citations_router)
 
 
 # --- Billing failures are HTTP statuses, translated once ---------------------

@@ -43,6 +43,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db.models import Analysis, Plan
+from app.jobs import redis_dispatch_queue
 
 PASS = "pass"
 WARN = "warn"
@@ -138,7 +139,7 @@ def _plans(session: Session, settings: Settings) -> Component:
     return Component(WARN, detail="catalog is empty; enforcement is off so nothing refuses")
 
 
-def _queue(session: Session) -> Component:
+def _queue(session: Session, settings: Settings) -> Component:
     """Depth and age of the analyses queue — the table IS the queue."""
 
     try:
@@ -171,6 +172,42 @@ def _queue(session: Session) -> Component:
         )
     if depth > QUEUE_BACKLOG_WARN:
         return Component(WARN, detail=f"{depth} jobs queued", data=data)
+    analysis_depth = redis_dispatch_queue.queue_depth(settings, redis_dispatch_queue.QUEUE_ANALYSIS)
+    if analysis_depth is not None:
+        data["redis_analysis_pending"] = analysis_depth
+
+    return Component(PASS, data=data)
+
+
+def _redis_dispatch(settings: Settings) -> Component:
+    """Whether the optional Redis job-dispatch sidecar is configured and reachable."""
+
+    if not redis_dispatch_queue.redis_is_enabled(settings):
+        return Component(PASS, data={"enabled": False})
+
+    try:
+        if not redis_dispatch_queue.ping_redis(settings):
+            return Component(
+                WARN,
+                detail="redis dispatch configured but ping failed",
+                data={"enabled": True},
+            )
+    except Exception as exc:
+        return Component(
+            WARN,
+            detail=f"unreachable ({type(exc).__name__})",
+            data={"enabled": True},
+        )
+
+    data: dict[str, Any] = {"enabled": True}
+    for key, queue in (
+        ("analysis_pending", redis_dispatch_queue.QUEUE_ANALYSIS),
+        ("module_pending", redis_dispatch_queue.QUEUE_MODULE),
+        ("site_audit_pending", redis_dispatch_queue.QUEUE_SITE_AUDIT),
+    ):
+        depth = redis_dispatch_queue.queue_depth(settings, queue)
+        if depth is not None:
+            data[key] = depth
     return Component(PASS, data=data)
 
 
@@ -243,7 +280,8 @@ def health_report(session: Session, settings: Settings) -> tuple[dict[str, Any],
         "database": _database(session),
         "schema": _schema(session),
         "plans": _plans(session, settings),
-        "queue": _queue(session),
+        "queue": _queue(session, settings),
+        "redis_dispatch": _redis_dispatch(settings),
         "worker": _worker(settings),
         "providers": _providers(settings),
     }

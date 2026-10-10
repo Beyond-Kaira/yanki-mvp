@@ -97,9 +97,9 @@ def test_run_alert_link_is_kind_aware():
     settings = Settings(**_ON, notify_email="ops@yanki.test")
 
     mvp_body = _alert_link("mvp", settings)
-    assert "https://yanki.beyondkaira.com/analyses/" in mvp_body
+    assert "https://yanki.beyondkaira.com/ai-visibility?analysis=" in mvp_body
     assert "/checker/" not in mvp_body
 
     checker_body = _alert_link("checker", settings)
     assert "https://yanki.beyondkaira.com/checker/" in checker_body
-    assert "/analyses/" not in checker_body
+    assert "/ai-visibility?analysis=" not in checker_body

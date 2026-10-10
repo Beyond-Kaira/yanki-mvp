@@ -7,7 +7,7 @@ verify the portable logic that both paths share.
 
 from datetime import UTC, datetime, timedelta
 
-from app.jobs.queue import claim_next
+from app.jobs.queue import claim_analysis_by_id, claim_next
 
 
 def _dt(offset_seconds: int = 0) -> datetime:
@@ -94,6 +94,23 @@ def test_fresh_running_job_is_not_reclaimed(db_session, make_analysis, settings)
     )
 
     assert claim_next(db_session, settings) is None
+
+
+def test_claim_analysis_by_id_claims_queued_row(db_session, make_analysis, settings):
+    analysis = make_analysis(url="https://target.test", status="queued", created_at=_dt(-5))
+
+    claimed = claim_analysis_by_id(db_session, analysis.id, settings)
+
+    assert claimed is not None
+    assert claimed.id == analysis.id
+    assert claimed.status == "running"
+    assert claimed.attempts == 1
+
+
+def test_claim_analysis_by_id_returns_none_for_done_row(db_session, make_analysis, settings):
+    analysis = make_analysis(url="https://done.test", status="done", created_at=_dt(-5))
+
+    assert claim_analysis_by_id(db_session, analysis.id, settings) is None
 
 
 def test_attempts_over_three_marks_failed(db_session, make_analysis, settings):

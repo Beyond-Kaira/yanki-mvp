@@ -24,7 +24,7 @@ export function guidedReviewHref(analysisId: string): string {
   return `/ai-visibility?analysis=${encodeURIComponent(analysisId)}`
 }
 
-/** Post-submit landing: guided runs always open the review wizard on AI Visibility. */
+/** Post-submit landing: guided runs and dashboard quick runs open AI Visibility. */
 export function analysisSubmitLandingHref(
   analysisId: string,
   options: { mode: 'quick' | 'guided'; pathname: string },
@@ -35,8 +35,5 @@ export function analysisSubmitLandingHref(
   if (options.pathname.startsWith('/search-visibility')) {
     return `/search-visibility?analysis=${encodeURIComponent(analysisId)}`
   }
-  if (options.pathname.startsWith('/ai-visibility')) {
-    return `/ai-visibility?analysis=${encodeURIComponent(analysisId)}`
-  }
-  return `/analyses/${encodeURIComponent(analysisId)}`
+  return guidedReviewHref(analysisId)
 }

@@ -6,36 +6,37 @@ import type {
   Prompt,
   SerpVisibility,
   SeoAudit,
-} from '@/lib/contracts'
-import type { AnalysisResponse } from '@/lib/contracts'
+} from "@/lib/contracts";
+import type { AnalysisResponse } from "@/lib/contracts";
 
 /** Which slice routes to fetch after the thin poll envelope reaches a terminal state. */
-export type AnalysisSliceMode = 'search' | 'ai' | 'full'
+export type AnalysisSliceMode = "search" | "ai" | "full";
 
-export type AnalysisKycSlice = { kyc: KYC | null }
+export type AnalysisKycSlice = { kyc: KYC | null };
 
-export type AnalysisPromptsSlice = { prompts: Prompt[] }
+export type AnalysisPromptsSlice = { prompts: Prompt[] };
 
 export type AnalysisGeoSlice = {
-  responses: AnalysisResponse[]
-  geo_score: number | null
-  footprint_count: number | null
-  total_responses: number | null
-  reliability_score?: number | null
-  interventions?: AnalysisResult['interventions']
-  citation_summary?: Record<string, unknown> | null
-  geo_records: AnalysisResult['geo_records']
-  engine_presence: AnalysisResult['engine_presence']
-  competitors_appeared: AnalysisResult['competitors_appeared']
-}
+  responses: AnalysisResponse[];
+  geo_score: number | null;
+  footprint_count: number | null;
+  total_responses: number | null;
+  reliability_score?: number | null;
+  interventions?: AnalysisResult["interventions"];
+  citation_summary?: Record<string, unknown> | null;
+  geo_records: AnalysisResult["geo_records"];
+  engine_presence: AnalysisResult["engine_presence"];
+  competitors_appeared: AnalysisResult["competitors_appeared"];
+  insights?: AnalysisResult["insights"];
+};
 
 export type FetchedAnalysisSlices = {
-  kyc?: AnalysisKycSlice
-  prompts?: AnalysisPromptsSlice
-  geo?: AnalysisGeoSlice
-  serp?: SerpVisibility | null
-  seo?: SeoAudit | null
-}
+  kyc?: AnalysisKycSlice;
+  prompts?: AnalysisPromptsSlice;
+  geo?: AnalysisGeoSlice;
+  serp?: SerpVisibility | null;
+  seo?: SeoAudit | null;
+};
 
 export function emptyAnalysisResult(): AnalysisResult {
   return {
@@ -50,7 +51,8 @@ export function emptyAnalysisResult(): AnalysisResult {
     competitors_appeared: null,
     serp: null,
     seo: null,
-  }
+    insights: null,
+  };
 }
 
 /** Merge a thin envelope with optional slice payloads into the legacy ``Analysis`` shape. */
@@ -58,7 +60,7 @@ export function mergeAnalysis(
   envelope: AnalysisEnvelope,
   slices: FetchedAnalysisSlices = {},
 ): Analysis {
-  const geo = slices.geo
+  const geo = slices.geo;
   return {
     ...envelope,
     result: {
@@ -75,24 +77,25 @@ export function mergeAnalysis(
       geo_records: geo?.geo_records ?? [],
       engine_presence: geo?.engine_presence ?? null,
       competitors_appeared: geo?.competitors_appeared ?? null,
+      insights: geo?.insights ?? null,
       serp: slices.serp ?? null,
       seo: slices.seo ?? null,
     },
-  }
+  };
 }
 
 /** Poll placeholder: envelope fields for progress UI, empty result until slices load. */
 export function analysisFromEnvelope(envelope: AnalysisEnvelope): Analysis {
-  return mergeAnalysis(envelope, {})
+  return mergeAnalysis(envelope, {});
 }
 
 export function slicePathsForMode(mode: AnalysisSliceMode): string[] {
   switch (mode) {
-    case 'search':
-      return ['serp', 'seo']
-    case 'ai':
-      return ['geo', 'kyc', 'prompts']
-    case 'full':
-      return ['geo', 'kyc', 'prompts', 'serp', 'seo']
+    case "search":
+      return ["serp", "seo"];
+    case "ai":
+      return ["geo", "kyc", "prompts"];
+    case "full":
+      return ["geo", "kyc", "prompts", "serp", "seo"];
   }
 }

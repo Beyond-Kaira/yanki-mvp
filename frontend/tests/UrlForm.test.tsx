@@ -68,6 +68,19 @@ describe('UrlForm', () => {
     expect(push).toHaveBeenCalledWith('/ai-visibility?analysis=run-123')
   })
 
+  it('sends quick runs from the dashboard to AI Visibility', async () => {
+    const user = userEvent.setup()
+    pathname = '/dashboard'
+    mockedCreate.mockResolvedValue({ id: 'run-123' })
+    render(<UrlForm />)
+
+    await user.type(screen.getByLabelText(/url/i), 'https://example.com')
+    await user.click(screen.getByRole('button', { name: /run analysis/i }))
+
+    expect(mockedCreate).toHaveBeenCalledWith('https://example.com', { mode: 'quick' })
+    expect(push).toHaveBeenCalledWith('/ai-visibility?analysis=run-123')
+  })
+
   it('records the product area together with the selected run mode', async () => {
     const user = userEvent.setup()
     pathname = '/search-visibility'

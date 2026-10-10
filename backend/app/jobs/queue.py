@@ -10,6 +10,7 @@ single-threaded so no locking is needed.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, or_, select
@@ -19,6 +20,58 @@ from app.config import Settings
 from app.db.models import Analysis
 
 MAX_ATTEMPTS = 3
+
+
+def _finalize_claim(session: Session, analysis: Analysis, now: datetime) -> Analysis | None:
+    analysis.attempts += 1
+
+    if analysis.attempts > MAX_ATTEMPTS:
+        analysis.status = "failed"
+        analysis.error = "max retries exceeded"
+        analysis.claimed_at = now
+        session.commit()
+        return None
+
+    analysis.status = "running"
+    analysis.claimed_at = now
+    session.commit()
+    return analysis
+
+
+def claim_analysis_by_id(
+    session: Session,
+    analysis_id: uuid.UUID,
+    settings: Settings,
+) -> Analysis | None:
+    """Claim one analysis by id when Redis dispatch pointed the worker at it.
+
+    Returns None when the row is absent, already terminal, or actively running
+    on another worker — so duplicate Redis deliveries are harmless.
+    """
+
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(seconds=settings.stale_claim_seconds)
+
+    stmt = (
+        select(Analysis)
+        .where(
+            Analysis.id == analysis_id,
+            or_(
+                Analysis.status == "queued",
+                and_(Analysis.status == "running", Analysis.claimed_at < cutoff),
+            ),
+        )
+        .limit(1)
+    )
+
+    if session.get_bind().dialect.name == "postgresql":
+        stmt = stmt.with_for_update(skip_locked=True)
+
+    analysis = session.execute(stmt).scalars().first()
+    if analysis is None:
+        return None
+
+    return _finalize_claim(session, analysis, now)
 
 
 def claim_next(session: Session, settings: Settings) -> Analysis | None:
@@ -54,16 +107,4 @@ def claim_next(session: Session, settings: Settings) -> Analysis | None:
     if analysis is None:
         return None
 
-    analysis.attempts += 1
-
-    if analysis.attempts > MAX_ATTEMPTS:
-        analysis.status = "failed"
-        analysis.error = "max retries exceeded"
-        analysis.claimed_at = now
-        session.commit()
-        return None
-
-    analysis.status = "running"
-    analysis.claimed_at = now
-    session.commit()
-    return analysis
+    return _finalize_claim(session, analysis, now)

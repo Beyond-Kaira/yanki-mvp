@@ -43,12 +43,14 @@ def _resp(
     footprint: bool | None,
     *,
     model: str | None = None,
+    audit: dict | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         llm_provider=llm_provider,
         model=model if model is not None else llm_provider,
         raw_text=raw_text,
         footprint=footprint,
+        audit=audit,
     )
 
 
@@ -132,6 +134,30 @@ def test_competitors_are_exactly_the_mock_fillers():
     assert names == _FILLERS
     # Every one of the 12 answers names every filler once.
     assert all(c.mentions == 12 for c in summary.competitors_appeared)
+
+
+def test_measured_checker_counts_audited_names_with_exact_matches():
+    rows = [
+        _resp(
+            "openrouter",
+            "eBay and Amazon operate in Turkey.",
+            False,
+            audit={"competitors": ["eBay", "Amazon", "Bay", "Turkey"]},
+        ),
+        _resp(
+            "openrouter",
+            "Turkish shoppers can use eBay and Walmart.",
+            False,
+            audit={"competitors": ["Walmart"]},
+        ),
+    ]
+    summary = summarize_checker(rows, {**_MOCK_KYC, "locations": ["Turkey"]})
+
+    assert {item.name: item.mentions for item in summary.competitors_appeared} == {
+        "eBay": 2,
+        "Amazon": 1,
+        "Walmart": 1,
+    }
 
 
 def test_searched_brand_and_aliases_excluded():

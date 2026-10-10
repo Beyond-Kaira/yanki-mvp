@@ -49,9 +49,12 @@ from app.api.schemas import (
     WaitlistRequest,
     WaitlistResponse,
 )
+from app.citations.report import build_citation_report
+from app.citations.schemas import CitationSourcesOut, Ownership, ReportView
 from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import get_session
+from app.jobs import redis_dispatch_queue
 from app.net_guard import is_public_url
 from app.services import audit, billing, quota
 from app.services.analyses import (
@@ -191,6 +194,7 @@ def submit_analysis(
         },
     )
     session.commit()
+    redis_dispatch_queue.notify_analysis_enqueued(analysis.id, settings)
     return CreateAnalysisResponse(id=analysis.id)
 
 
@@ -259,6 +263,8 @@ def submit_checker(
         detail={"cache_hit": is_cache_hit, "submission": str(submission.id)},
     )
     session.commit()
+    if analysis.status == "queued":
+        redis_dispatch_queue.notify_analysis_enqueued(analysis.id, settings)
     return CheckerSubmitResponse(id=analysis.id, submission_id=submission.id)
 
 
@@ -600,6 +606,7 @@ def execute_prompts_and_score(
         after={"status": analysis.status, "progress": analysis.progress},
     )
     session.commit()
+    redis_dispatch_queue.notify_analysis_enqueued(analysis_id, settings)
     return _to_out(analysis)
 
 
@@ -613,6 +620,39 @@ def read_analysis_prompts(
 
     analysis = _readable_or_404(session, analysis_id, org)
     return build_prompts_out(analysis)
+
+
+@router.get("/analyses/{analysis_id}/citation-sources", response_model=CitationSourcesOut)
+def read_citation_sources(
+    analysis_id: uuid.UUID,
+    view: ReportView = "pages",
+    model: str = Query("", max_length=200),
+    prompt_group: str = Query("", max_length=200),
+    ownership: Ownership | None = None,
+    q: str = Query("", max_length=300),
+    competitor_domains: str = Query("", max_length=1000),
+    opportunities: bool = False,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=5000),
+    org: OrgContext | None = Depends(get_optional_org_context),
+    session: Session = Depends(get_session),
+) -> CitationSourcesOut:
+    analysis = _readable_or_404(session, analysis_id, org)
+    try:
+        return build_citation_report(
+            analysis,
+            view=view,
+            model=model,
+            prompt_group=prompt_group,
+            ownership=ownership,
+            q=q,
+            competitor_domains=competitor_domains,
+            opportunities=opportunities,
+            offset=offset,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/analyses/{analysis_id}/geo", response_model=GeoOut)

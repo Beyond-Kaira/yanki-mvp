@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import { Sora, IBM_Plex_Mono } from 'next/font/google'
+import localFont from 'next/font/local'
 import AuthProvider from '@/components/AuthProvider'
 import AnalysisSessionProvider from '@/components/AnalysisSessionProvider'
 import AppShell from '@/components/shell/AppShell'
@@ -9,20 +9,25 @@ import RouteGuard from '@/components/RouteGuard'
 import SiteHeader from '@/components/SiteHeader'
 import './globals.css'
 
-// Brandkit v2 §3 webfonts, self-hosted by next/font at build (no runtime CDN,
-// no <link> tags). Exposed as CSS variables that tailwind fontFamily consumes.
-const sora = Sora({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
+// Brandkit v2 §3 webfonts, bundled so builds need no Google Fonts requests.
+// Exposed as CSS variables that tailwind fontFamily consumes.
+const sora = localFont({
+  src: './fonts/Sora-Variable.ttf',
+  weight: '100 800',
+  style: 'normal',
   variable: '--font-sans',
   display: 'swap',
 })
 
-const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
+const plexMono = localFont({
+  src: [
+    { path: './fonts/IBMPlexMono-Regular.ttf', weight: '400', style: 'normal' },
+    { path: './fonts/IBMPlexMono-Medium.ttf', weight: '500', style: 'normal' },
+  ],
   variable: '--font-mono',
   display: 'swap',
+  // Keep Tailwind's monospace fallback stack instead of localFont's Arial.
+  adjustFontFallback: false,
 })
 
 export const metadata: Metadata = {

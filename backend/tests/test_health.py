@@ -57,9 +57,11 @@ def test_a_healthy_deployment_answers_200_with_every_component_named(client):
         "schema",
         "plans",
         "queue",
+        "redis_dispatch",
         "worker",
         "providers",
     }
+    assert body["checks"]["redis_dispatch"]["enabled"] is False
     assert body["checks"]["database"]["status"] == "pass"
     assert body["checks"]["plans"]["count"] == 5
 
@@ -94,6 +96,16 @@ def test_missing_provider_keys_are_a_warning_under_live_mode_only(client, pin_se
     assert body["status"] == "ok", "a missing key must not fail the probe"
     assert body["checks"]["providers"]["status"] == "warn"
     assert "OPEN_ROUTER_KEY" in body["checks"]["providers"]["detail"]
+
+
+def test_redis_dispatch_unreachable_is_a_warning_not_a_failure(client, pin_settings):
+    pin_settings(redis_url="redis://127.0.0.1:6399/0")
+
+    body = client.get("/healthz").json()
+
+    assert body["status"] == "ok"
+    assert body["checks"]["redis_dispatch"]["status"] == "warn"
+    assert body["checks"]["redis_dispatch"]["enabled"] is True
 
 
 def test_an_absent_worker_is_a_warning_not_a_failure(client):

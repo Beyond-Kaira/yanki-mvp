@@ -44,10 +44,10 @@ describe('analysis route binding', () => {
     ).toBe('/ai-visibility?analysis=abc')
   })
 
-  it('keeps quick-run landing paths unchanged', () => {
+  it('opens dashboard quick runs in AI Visibility and search quick runs in Search Visibility', () => {
     expect(
       analysisSubmitLandingHref('abc', { mode: 'quick', pathname: '/dashboard' }),
-    ).toBe('/analyses/abc')
+    ).toBe('/ai-visibility?analysis=abc')
     expect(
       analysisSubmitLandingHref('abc', {
         mode: 'quick',

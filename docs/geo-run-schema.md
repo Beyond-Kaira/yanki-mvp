@@ -100,3 +100,11 @@ Until then the column is persisted and consumed internally; UI defaults come fro
 
 - Prompt generation (`prompts.py` vs `checker_prompts.py`) — unchanged.
 - Legacy `PANEL_ENGINES` registry — transitional; product path is OpenRouter fan-out.
+
+## Citation report provenance (2026-09-17)
+
+New execute runs also persist `geo_run.dry_run` as an explicit boolean. The
+citation source report includes only `mode=measured`, `dry_run=false`, Tavily
+runs. Absence of the boolean is unknown provenance, not false. This additive
+JSON field needs no migration and does not change existing scores or the
+`GeoOut` slice contract.

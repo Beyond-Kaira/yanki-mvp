@@ -161,14 +161,14 @@ function ClaimSection({
   );
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-surface-border bg-white shadow-sm">
+    <section className="flex max-h-[36rem] flex-col overflow-hidden rounded-2xl border border-surface-border bg-white shadow-sm lg:h-[36rem]">
       <div className="border-b border-surface-border px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-surface-foreground">
               {title}
             </h3>
-            <p className="mt-1 text-sm leading-6 text-surface-subtle">
+            <p className="mt-1 text-sm leading-6 text-surface-subtle lg:min-h-[4.5rem] xl:min-h-12">
               {description}
             </p>
           </div>
@@ -180,18 +180,22 @@ function ClaimSection({
         </div>
       </div>
 
-      <div className="p-3">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
+        role="region"
+        aria-label={`${title} observations`}
+        tabIndex={0}
+      >
         {buckets.length === 0 ? (
           <p className="rounded-xl border border-dashed border-surface-border px-3 py-8 text-center text-sm text-surface-subtle">
             {empty}
           </p>
         ) : (
           <div className="space-y-2">
-            {buckets.map((bucket, index) => (
+            {buckets.map((bucket) => (
               <details
                 key={bucket.category}
                 className="group rounded-xl border border-surface-border bg-white open:bg-surface-muted/50"
-                open={index === 0}
               >
                 <summary className="cursor-pointer list-none px-4 py-3.5">
                   <div className="flex items-center gap-3">

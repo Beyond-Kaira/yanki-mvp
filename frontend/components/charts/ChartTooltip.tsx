@@ -1,7 +1,8 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface ChartTooltipProps {
   // The evidence sentence — always the same fact shown visually, spelled out.
@@ -25,10 +26,56 @@ export default function ChartTooltip({
   className,
 }: ChartTooltipProps) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
   const id = useId();
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const anchor = anchorRef.current?.getBoundingClientRect();
+      const tooltip = tooltipRef.current?.getBoundingClientRect();
+      if (!anchor || !tooltip) return;
+
+      const margin = 8;
+      const left = Math.max(
+        margin,
+        Math.min(
+          anchor.left + anchor.width / 2 - tooltip.width / 2,
+          window.innerWidth - tooltip.width - margin,
+        ),
+      );
+      const above = anchor.top - tooltip.height - margin;
+      const top =
+        above >= margin
+          ? above
+          : Math.max(
+              margin,
+              Math.min(
+                anchor.bottom + margin,
+                window.innerHeight - tooltip.height - margin,
+              ),
+            );
+      setPosition({ left, top });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, content]);
 
   return (
     <span
+      ref={anchorRef}
       className={`relative inline-flex ${className ?? ""}`}
       style={style}
       onMouseEnter={() => setOpen(true)}
@@ -43,15 +90,26 @@ export default function ChartTooltip({
       >
         {children}
       </span>
-      <span
-        id={id}
-        role="tooltip"
-        className={`pointer-events-none absolute -top-2 left-1/2 z-10 w-max max-w-[16rem] -translate-x-1/2 -translate-y-full rounded-md bg-ink px-2.5 py-1.5 text-xs text-ink-foreground shadow-sm transition-opacity ${
-          open ? "opacity-100" : "opacity-0"
-        }`}
-      >
+      <span id={id} className="sr-only">
         {content}
       </span>
+      {open &&
+        createPortal(
+          <span
+            ref={tooltipRef}
+            role="tooltip"
+            aria-hidden="true"
+            className="pointer-events-none fixed z-50 w-max max-w-[16rem] rounded-md bg-ink px-2.5 py-1.5 text-xs text-ink-foreground shadow-sm"
+            style={{
+              left: position?.left ?? 0,
+              top: position?.top ?? 0,
+              visibility: position ? "visible" : "hidden",
+            }}
+          >
+            {content}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }

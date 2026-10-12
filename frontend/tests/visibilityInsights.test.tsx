@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import IntentHeatmap from "@/components/charts/IntentHeatmap";
 import OverviewInsightCards from "@/components/ai-visibility/OverviewInsightCards";
@@ -65,6 +65,20 @@ describe("visibility insights", () => {
     expect(container.querySelector(".bg-warning")).not.toBeInTheDocument();
   });
 
+  it("shows heatmap tooltips outside the scrolling grid", () => {
+    const { container } = render(<IntentHeatmap engines={engines} />);
+    const grid = container.querySelector(".overflow-x-auto");
+    const trigger = grid?.querySelector('[tabindex="0"]')?.parentElement;
+
+    expect(trigger).toBeInTheDocument();
+    fireEvent.mouseEnter(trigger!);
+
+    const tooltip = document.body.querySelector('[role="tooltip"]');
+    expect(tooltip).toBeInTheDocument();
+    expect(tooltip?.parentElement).toBe(document.body);
+    expect(grid?.contains(tooltip)).toBe(false);
+  });
+
   it("shows competitor labels below mention-share bars", () => {
     render(<MentionShare brand="Yanki Demo Co" engines={engines} />);
 
@@ -113,7 +127,9 @@ describe("visibility insights", () => {
     expect(screen.getByText("Seen without you")).toBeInTheDocument();
     expect(screen.getByText("Profile location")).toBeInTheDocument();
     expect(
-      screen.getByText(/The answer mention alone does not verify operations there/),
+      screen.getByText(
+        /The answer mention alone does not verify operations there/,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("progressbar", {

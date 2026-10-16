@@ -1,6 +1,8 @@
 import type { Analysis } from "@/lib/contracts";
 import { citationsFromAnalysis } from "@/lib/ai-visibility-data";
+import { modelSlugLabel, responseModelId } from "@/lib/engines";
 import type { Insights } from "@/lib/insights";
+import { groupByQuestion } from "@/lib/results";
 
 export interface CitationDomainRow {
   domain: string;
@@ -9,6 +11,17 @@ export interface CitationDomainRow {
 
 export interface InterventionRow {
   title: string;
+}
+
+export interface AnswerEvidence {
+  questionCount: number;
+  answerCount: number;
+  scoredCount: number;
+  mentionedCount: number;
+  example: {
+    question: string;
+    outcomes: { label: string; mentioned: boolean | null }[];
+  } | null;
 }
 
 export interface AiOverviewModel {
@@ -20,6 +33,7 @@ export interface AiOverviewModel {
   interventions: InterventionRow[];
   isSample: boolean;
   analysisId: string | null;
+  evidence: AnswerEvidence | null;
   insights?: Insights | null;
 }
 
@@ -45,6 +59,7 @@ const SAMPLE: AiOverviewModel = {
   ],
   isSample: true,
   analysisId: null,
+  evidence: null,
   insights: null,
 };
 
@@ -79,6 +94,80 @@ function normalizeGeoScore(score: number | null | undefined): number | null {
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 
+function answerEvidence(analysis: Analysis): AnswerEvidence | null {
+  const { prompts, responses, geo_records: geoRecords } = analysis.result;
+  const savedResponses = responses.filter((response) => response.raw_text.trim());
+
+  if (prompts.length > 0 && savedResponses.length > 0) {
+    const groups = groupByQuestion(prompts, savedResponses);
+    const exampleGroup =
+      groups.find(
+        (group) =>
+          group.responses.some((response) => response.footprint === true) &&
+          group.responses.some((response) => response.footprint === false),
+      ) ?? groups.find((group) => group.responses.length > 0) ?? null;
+    const outcomes = new Map<string, boolean | null>();
+    for (const response of exampleGroup?.responses ?? []) {
+      const modelId = responseModelId(response);
+      if (!outcomes.has(modelId)) outcomes.set(modelId, response.footprint);
+    }
+    return {
+      questionCount: prompts.length,
+      answerCount: savedResponses.length,
+      scoredCount: savedResponses.filter((response) => response.footprint != null).length,
+      mentionedCount: savedResponses.filter((response) => response.footprint === true).length,
+      example: exampleGroup
+        ? {
+            question: exampleGroup.prompt.text,
+            outcomes: [...outcomes].slice(0, 3).map(([id, mentioned]) => ({
+              label: modelSlugLabel(id),
+              mentioned,
+            })),
+          }
+        : null,
+    };
+  }
+
+  const savedGeoRecords = (geoRecords ?? []).filter(
+    (record) =>
+      record.grounded_answer?.trim() ||
+      record.simulated_answer?.trim() ||
+      record.answer_summary?.trim(),
+  );
+  if (geoRecords?.length && savedGeoRecords.length > 0) {
+    const questionCount = new Set(
+      geoRecords.map((record) => record.prompt.trim()).filter(Boolean),
+    ).size;
+    const example =
+      savedGeoRecords.find((record) => record.mentioned === false) ??
+      savedGeoRecords[0];
+    return {
+      questionCount,
+      answerCount: savedGeoRecords.length,
+      scoredCount: savedGeoRecords.filter((record) => record.mentioned != null).length,
+      mentionedCount: savedGeoRecords.filter((record) => record.mentioned === true).length,
+      example: {
+        question: example.prompt,
+        outcomes: [{ label: "Recorded answer", mentioned: example.mentioned ?? null }],
+      },
+    };
+  }
+
+  if (prompts.length > 0 || geoRecords?.length) {
+    return {
+      questionCount:
+        prompts.length ||
+        new Set(geoRecords.map((record) => record.prompt.trim()).filter(Boolean))
+          .size,
+      answerCount: 0,
+      scoredCount: 0,
+      mentionedCount: 0,
+      example: null,
+    };
+  }
+  return null;
+}
+
 export function sampleOverview(): AiOverviewModel {
   return SAMPLE;
 }
@@ -108,6 +197,7 @@ export function overviewFromAnalysis(analysis: Analysis): AiOverviewModel {
     interventions: collectInterventions(analysis),
     isSample: false,
     analysisId: analysis.id,
+    evidence: answerEvidence(analysis),
     insights: result.insights ?? null,
   };
 }

@@ -1,25 +1,34 @@
-'use client'
+"use client";
 
-import AnalysisBoundSubpage from '@/components/ai-visibility/AnalysisBoundSubpage'
-import QuestionBreakdown from '@/components/QuestionBreakdown'
-import { promptsFromAnalysis } from '@/lib/ai-visibility-data'
+import AnalysisBoundSubpage from "@/components/ai-visibility/AnalysisBoundSubpage";
+import QuestionBreakdown from "@/components/QuestionBreakdown";
+import PromptFindingsNextStep from "@/components/ai-visibility/PromptFindingsNextStep";
+import { promptsFromAnalysis } from "@/lib/ai-visibility-data";
 
 export default function PromptsPage() {
   return (
     <AnalysisBoundSubpage title="Prompts & Answers">
       {(analysis) => {
-        const model = promptsFromAnalysis(analysis)
-        const hasLegacy = model.groups.length > 0
-        const hasGeo = model.geoPromptRows.length > 0
+        const model = promptsFromAnalysis(analysis);
+        const hasLegacy = model.groups.length > 0;
+        const hasGeo = model.geoPromptRows.length > 0;
 
         return (
           <>
             <p className="text-sm text-surface-subtle">
-              Measured run for{' '}
+              Measured run for{" "}
               <span className="font-medium text-surface-foreground">
                 {model.domain}
               </span>
             </p>
+
+            {hasLegacy || hasGeo ? (
+              <p className="max-w-3xl text-sm leading-6 text-surface-subtle">
+                Review the questions and AI answers to see where your brand
+                appears. Then explore the strengths and gaps identified across
+                this run.
+              </p>
+            ) : null}
 
             {hasLegacy ? (
               <QuestionBreakdown
@@ -29,12 +38,17 @@ export default function PromptsPage() {
             ) : null}
 
             {hasGeo ? (
-              <section className="space-y-3" aria-labelledby="geo-prompts-heading">
+              <section
+                className="space-y-3"
+                aria-labelledby="geo-prompts-heading"
+              >
                 <h2
                   id="geo-prompts-heading"
                   className="text-xl font-semibold text-surface-foreground"
                 >
-                  {hasLegacy ? 'Measured prompt records' : 'Prompts & grounded answers'}
+                  {hasLegacy
+                    ? "Measured prompt records"
+                    : "Prompts & grounded answers"}
                 </h2>
                 <ul className="space-y-3">
                   {model.geoPromptRows.map((row) => (
@@ -50,16 +64,16 @@ export default function PromptsPage() {
                           <span
                             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                               row.mentioned
-                                ? 'bg-success-soft text-success-strong'
-                                : 'bg-surface-muted text-surface-subtle'
+                                ? "bg-success-soft text-success-strong"
+                                : "bg-surface-muted text-surface-subtle"
                             }`}
                           >
-                            {row.mentioned ? 'Mentioned' : 'Not mentioned'}
+                            {row.mentioned ? "Mentioned" : "Not mentioned"}
                           </span>
                         )}
                         {row.mentionContext ? (
                           <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary-strong">
-                            {row.mentionContext.replace(/_/g, ' ')}
+                            {row.mentionContext.replace(/_/g, " ")}
                           </span>
                         ) : null}
                         {row.sentiment ? (
@@ -88,9 +102,16 @@ export default function PromptsPage() {
                 No prompts or answers were recorded for this analysis.
               </p>
             ) : null}
+
+            {hasLegacy || hasGeo ? (
+              <PromptFindingsNextStep
+                key={model.analysisId}
+                analysisId={model.analysisId}
+              />
+            ) : null}
           </>
-        )
+        );
       }}
     </AnalysisBoundSubpage>
-  )
+  );
 }

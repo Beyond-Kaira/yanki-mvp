@@ -106,21 +106,21 @@ export const SHELL_SECTIONS: ShellSection[] = [
         badge: 'live',
       },
       {
+        id: "drivers",
+        label: "Drivers & Gaps",
+        href: "/ai-visibility/drivers",
+        badge: "live",
+      },
+      {
         id: 'citations',
         label: 'Citations',
         href: '/ai-visibility/citations',
         badge: 'live',
       },
       {
-        id: 'industry-citations',
-        label: 'Top Cited Pages for Your Industry',
-        href: '/ai-visibility/industry-citations',
-        badge: 'live',
-      },
-      {
-        id: "drivers",
-        label: "Drivers & Gaps",
-        href: "/ai-visibility/drivers",
+        id: "entities",
+        label: "Entities",
+        href: "/ai-visibility/entities",
         badge: "live",
       },
       {
@@ -128,6 +128,12 @@ export const SHELL_SECTIONS: ShellSection[] = [
         label: "Recommended interventions",
         href: "/ai-visibility/interventions",
         badge: "live",
+      },
+      {
+        id: 'industry-citations',
+        label: 'Top Cited Pages for Your Industry',
+        href: '/ai-visibility/industry-citations',
+        badge: 'live',
       },
       // The record of what this organization has actually run. It belongs in
       // this section rather than under Home because a GEO analysis *is* the AI
@@ -138,12 +144,6 @@ export const SHELL_SECTIONS: ShellSection[] = [
         id: "analysis-history",
         label: "Your analyses",
         href: "/analyses",
-        badge: "live",
-      },
-      {
-        id: "entities",
-        label: "Entities",
-        href: "/ai-visibility/entities",
         badge: "live",
       },
     ],

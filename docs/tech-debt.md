@@ -6,6 +6,13 @@ roughly by risk.*
 
 Last updated: 2026-08-09 (**session 26** — the audit-coverage session).
 
+2026-10-14 navigation maintenance: the Prompts & Answers next-step card and
+floating shortcut add no dependency, API change or architectural shortcut. The
+card remains available if IntersectionObserver is unavailable; only its optional
+floating shortcut is omitted. No new technical debt was introduced.
+Follow-up: Drivers & Gaps shares the same `AnalysisNextStep` component instead
+of duplicating observer, focus and scrolling behavior.
+
 2026-10-05 CI maintenance: removed the Google Fonts build-time dependency after
 PR #75 failed in the Next.js Google font loader. Official Sora and IBM Plex Mono
 files and licenses are now pinned in the repository. Font updates are intentional

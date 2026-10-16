@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import AnalysisBoundSubpage from "@/components/ai-visibility/AnalysisBoundSubpage";
+import AnalysisNextStep from "@/components/ai-visibility/AnalysisNextStep";
 import {
   driversFromAnalysis,
   type ClaimBucket,
@@ -110,26 +110,16 @@ export default function DriversPage() {
               </div>
             </section>
 
-            <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-primary/20 bg-primary-soft/40 p-5 sm:p-6">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.14em] text-primary">
-                  Next actions
-                </p>
-                <h2 className="mt-1 text-lg font-semibold text-surface-foreground">
-                  Turn these gaps into a plan
-                </h2>
-                <p className="mt-1 text-sm text-surface-subtle">
-                  {model.interventions.length} recommended interventions from
-                  this run.
-                </p>
-              </div>
-              <Link
-                href={`/ai-visibility/interventions?analysis=${model.analysisId}`}
-                className="inline-flex rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                View action plan
-              </Link>
-            </section>
+            <AnalysisNextStep
+              key={model.analysisId}
+              id="drivers-action-plan-next-step"
+              eyebrow="Next actions"
+              title="Turn these gaps into a plan"
+              description={`${model.interventions.length} recommended interventions from this run.`}
+              href={`/ai-visibility/interventions?analysis=${encodeURIComponent(model.analysisId)}`}
+              linkLabel="View action plan"
+              nextStepLabel="Action Plan"
+            />
           </div>
         );
       }}

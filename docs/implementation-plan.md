@@ -15,6 +15,17 @@ Related: [architecture.md](architecture.md) (how it's built),
 
 ## How to use this doc
 
+2026-10-14 customer reading flow: **done locally** on
+`feat/overview-prompts-evidence-card`. Prompts & Answers now leads to the same
+run's Drivers & Gaps through an explanatory end card and a floating shortcut
+that scrolls to it. Desktop/mobile browser checks, reduced-motion and keyboard
+checks, TypeScript, scoped ESLint and the 41 relevant frontend tests passed. See
+[session validation](sessions/2026-10-14-prompts-findings.md).
+
+Follow-up: Drivers & Gaps now also has an Action Plan sticker pointing to its
+existing final card. Both pages share `AnalysisNextStep` for visibility, scroll
+and keyboard behavior. Follow-up validation is recorded in the same session log.
+
 2026-10-05 PR #75 CI repair: brand fonts are bundled via `next/font/local`
 to remove the Google Fonts build dependency that failed the first CI attempt.
 See [session validation](sessions/2026-10-05-01.md).

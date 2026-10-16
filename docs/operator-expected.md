@@ -4,6 +4,17 @@
 do them. Nothing here blocks local development — `make dev` + `make test`
 work with zero keys and zero cost (DRY_RUN).*
 
+## 2026-10-14 — Prompts & Answers next step
+
+No operator setup is required. The approved floating shortcut and end card are
+implemented locally on `feat/overview-prompts-evidence-card`; no migration or
+provider call is needed. See [validation](sessions/2026-10-14-prompts-findings.md).
+The same shortcut is now also available on Drivers & Gaps, leading to its
+Action Plan card.
+2026-10-16: the user requested publishing this branch and opening a PR. No new
+operator setup is needed; the frontend's full 540-test suite, lint, typecheck
+and production build pass locally. Merge and deployment were not requested.
+
 ## 2026-10-05 — PR #75 CI repair
 
 No new operator setup is required. Fonts are bundled with their licenses, so CI

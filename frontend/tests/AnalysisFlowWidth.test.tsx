@@ -128,6 +128,7 @@ describe('analysis flow content width', () => {
           interventions: [],
           isSample: false,
           analysisId: 'a1',
+          evidence: null,
         }}
       />,
     )

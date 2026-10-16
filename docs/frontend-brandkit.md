@@ -214,6 +214,23 @@ We *show* numbers instead of *claiming* results.
 
 ### English (launch)
 
+#### AI Visibility reading flow
+
+The recommended reading sequence is Overview → Prompts & Answers → Drivers &
+Gaps → Action Plan. Overview introduces the recorded evidence; Prompts & Answers
+explains what the reader is reviewing and ends with an “Explore the findings
+behind these answers” card. Its “Explore drivers & gaps” link preserves the
+current `analysis` query parameter and opens the whole run's findings.
+
+On long Prompts & Answers pages, a compact “Next step / Drivers & Gaps” sticker
+stays at the viewport's lower right. Drivers & Gaps uses the same behavior with
+“Next step / Action Plan” pointing to its existing “Turn these gaps into a plan”
+card. Each sticker scrolls to its final card, rather than navigating directly.
+It disappears while that card is visible, respects reduced motion, and transfers
+keyboard focus to the destination link. Stickers use the existing surface and
+primary tokens and sit below navigation drawers and dialogs. Unfinished runs
+do not show next-step controls; empty Prompts & Answers runs omit them as well.
+
 | Context | Copy |
 |---|---|
 | Landing headline | "See how AI answers talk about your brand." |

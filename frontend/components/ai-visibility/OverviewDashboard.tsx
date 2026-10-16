@@ -16,6 +16,7 @@ import MentionShare from "@/components/insights/MentionShare";
 import MultiLlmComparison from "@/components/insights/MultiLlmComparison";
 import NamingOrder from "@/components/insights/NamingOrder";
 import OverviewInsightCards from "@/components/ai-visibility/OverviewInsightCards";
+import OverviewEvidenceCard from "@/components/ai-visibility/OverviewEvidenceCard";
 
 interface OverviewDashboardProps {
   model: AiOverviewModel;
@@ -115,6 +116,8 @@ export default function OverviewDashboard({ model }: OverviewDashboardProps) {
           ) : null}
         </p>
       </PageHeaderRow>
+
+      <OverviewEvidenceCard model={model} />
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard label="GEO score">

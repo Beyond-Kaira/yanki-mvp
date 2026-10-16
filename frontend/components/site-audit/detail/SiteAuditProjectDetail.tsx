@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import Button from '@/components/Button'
+import SiteAuditComparePanel from '@/components/site-audit/compare/SiteAuditComparePanel'
 import SiteAuditSettingsDialog from '@/components/site-audit/dashboard/SiteAuditSettingsDialog'
 import type { SiteAuditSettings } from '@/components/site-audit/dashboard/SiteAuditSettingsDialog'
 import { ApiError, startSiteAudit } from '@/lib/api'
@@ -167,6 +168,13 @@ export default function SiteAuditProjectDetail() {
               <SiteAuditCrawledPagesPanel pages={audit.pages} />
             ) : null}
             {tab === 'schema' ? <SiteAuditSchemaPanel pages={audit.pages} /> : null}
+            {tab === 'compare' ? (
+              <SiteAuditComparePanel
+                projectId={projectId}
+                project={project}
+                loadedAudit={audit}
+              />
+            ) : null}
           </div>
         </>
       )}

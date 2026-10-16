@@ -31,20 +31,27 @@ export default function SiteAuditSettingsDialog({
   domain,
   submitting,
   submitError,
+  initialSettings,
   onClose,
   onStart,
 }: {
   domain: string
   submitting: boolean
   submitError: string | null
+  /** Prefill, used when re-running: the last run's settings are the ones the
+   * customer already chose, and silently resetting a 100-page crawl back to
+   * the 10-page default is a change they did not ask for and would not see. */
+  initialSettings?: SiteAuditSettings
   onClose: () => void
   onStart: (settings: SiteAuditSettings) => Promise<void>
 }) {
-  const [pageLimit, setPageLimit] = useState('10')
-  const [profileId, setProfileId] = useState<SiteAuditSettings['profile_id']>(
-    'site_audit_mobile',
+  const [pageLimit, setPageLimit] = useState(
+    String(initialSettings?.page_limit ?? 10),
   )
-  const [jsRendering, setJsRendering] = useState(true)
+  const [profileId, setProfileId] = useState<SiteAuditSettings['profile_id']>(
+    initialSettings?.profile_id ?? 'site_audit_mobile',
+  )
+  const [jsRendering, setJsRendering] = useState(initialSettings?.js_rendering ?? true)
   const [limitError, setLimitError] = useState<string | null>(null)
 
   // Identity-stable so ModalDialog's effect does not re-run on every render of

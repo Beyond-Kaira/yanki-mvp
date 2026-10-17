@@ -30,6 +30,7 @@ from app.services.brand_contexts import (
     get_org_brand_context,
     patch_brand_context,
 )
+from app.jobs import redis_dispatch_queue
 from app.services.module_runs import ModuleRunValidationError, enqueue_module_run
 from app.services.guided_profile import GuidedProfileValidationError
 from app.services.permissions import ANALYSIS_READ, ANALYSIS_RUN
@@ -128,6 +129,7 @@ def enqueue_profile_extract(
     body: ExtractBrandContextRequest,
     org: Annotated[OrgContext, Depends(requires(ANALYSIS_RUN))],
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> ModuleRunOut:
     context = get_org_brand_context(session, org_id=org.org_id, context_id=profile_id)
     if context is None:
@@ -167,4 +169,5 @@ def enqueue_profile_extract(
         after={"job_kind": run.job_kind, "brand_context_id": str(context.id)},
     )
     session.commit()
+    redis_dispatch_queue.notify_module_run_enqueued(run.id, settings)
     return ModuleRunOut.model_validate(run)

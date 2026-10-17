@@ -158,6 +158,10 @@ ORG = {
     ("POST", "/api/v1/kyc/profiles"),
     ("GET", "/api/v1/kyc/profiles/{profile_id}"),
     ("PATCH", "/api/v1/kyc/profiles/{profile_id}"),
+    ("POST", "/api/v1/kyc/profiles/{profile_id}/extract"),
+    ("POST", "/api/v1/ai-visibility/runs"),
+    ("GET", "/api/v1/ai-visibility/runs/{run_id}"),
+    ("GET", "/api/v1/ai-visibility/runs/{run_id}/geo"),
 }
 
 CLASSIFIED = PUBLIC | SELF | CAPABILITY | ORG

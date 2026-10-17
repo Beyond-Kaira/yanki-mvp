@@ -24,7 +24,7 @@ from app import health
 from app.config import Settings, get_settings
 from app.db.models import Analysis, ModuleRun
 from app.db.session import SessionLocal
-from app.jobs.module_queue import claim_next_module_run
+from app.jobs.module_queue import claim_module_run_by_id, claim_next_module_run
 from app.jobs import redis_dispatch_queue
 from app.jobs.queue import claim_analysis_by_id, claim_next
 from app.services import audit
@@ -205,8 +205,27 @@ def _run_analysis_once(session, settings: Settings) -> bool:
     return True
 
 
+def _claim_module(session, settings: Settings) -> ModuleRun | None:
+    """Prefer a Redis dispatch hint, then fall back to Postgres FIFO claim."""
+
+    job_id = redis_dispatch_queue.connect_from_settings(settings).try_pop(
+        redis_dispatch_queue.QUEUE_MODULE
+    )
+    if job_id:
+        try:
+            run_id = uuid.UUID(job_id)
+        except ValueError:
+            logger.warning("ignored invalid module job id from redis: %r", job_id)
+        else:
+            run = claim_module_run_by_id(session, run_id, settings)
+            if run is not None:
+                return run
+
+    return claim_next_module_run(session, settings)
+
+
 def _run_module_once(session, settings: Settings) -> bool:
-    run = claim_next_module_run(session, settings)
+    run = _claim_module(session, settings)
     if run is None:
         return False
 

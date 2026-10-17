@@ -4,7 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 from app.db.models import ModuleRun
 from app.jobs.module_kinds import JOB_KIND_KYC_EXTRACT
-from app.jobs.module_queue import claim_next_module_run
+import uuid
+
+from app.jobs.module_queue import claim_module_run_by_id, claim_next_module_run
 
 
 def _dt(offset_seconds: int = 0) -> datetime:
@@ -50,6 +52,23 @@ def test_stale_module_run_is_reclaimed(db_session, settings):
     assert claimed is not None
     assert claimed.id == stale.id
     assert claimed.attempts == 2
+
+
+def test_claim_module_run_by_id_skips_terminal(db_session, settings):
+    done = _make_run(db_session, status="done")
+    assert claim_module_run_by_id(db_session, done.id, settings) is None
+
+
+def test_claim_module_run_by_id_claims_queued(db_session, settings):
+    run = _make_run(db_session, status="queued")
+    claimed = claim_module_run_by_id(db_session, run.id, settings)
+    assert claimed is not None
+    assert claimed.id == run.id
+    assert claimed.status == "running"
+
+
+def test_claim_module_run_by_id_unknown_id(db_session, settings):
+    assert claim_module_run_by_id(db_session, uuid.uuid4(), settings) is None
 
 
 def test_module_run_attempts_over_three_marks_failed(db_session, settings):

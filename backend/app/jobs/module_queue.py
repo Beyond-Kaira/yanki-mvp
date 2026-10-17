@@ -6,6 +6,7 @@ touch the monolith ``analyses`` queue — per-kind failure isolation.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, or_, select
@@ -15,6 +16,59 @@ from app.config import Settings
 from app.db.models import ModuleRun
 
 MAX_ATTEMPTS = 3
+
+
+def _finalize_module_claim(session: Session, run: ModuleRun, now: datetime) -> ModuleRun | None:
+    run.attempts += 1
+
+    if run.attempts > MAX_ATTEMPTS:
+        run.status = "failed"
+        run.error = "max retries exceeded"
+        run.claimed_at = now
+        session.commit()
+        return None
+
+    run.status = "running"
+    run.claimed_at = now
+    run.error = None
+    session.commit()
+    return run
+
+
+def claim_module_run_by_id(
+    session: Session,
+    run_id: uuid.UUID,
+    settings: Settings,
+) -> ModuleRun | None:
+    """Claim one module run when Redis dispatch pointed the worker at it.
+
+    Returns None when the row is absent, terminal, or actively running elsewhere —
+    duplicate Redis deliveries are harmless.
+    """
+
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(seconds=settings.stale_claim_seconds)
+
+    stmt = (
+        select(ModuleRun)
+        .where(
+            ModuleRun.id == run_id,
+            or_(
+                ModuleRun.status == "queued",
+                and_(ModuleRun.status == "running", ModuleRun.claimed_at < cutoff),
+            ),
+        )
+        .limit(1)
+    )
+
+    if session.get_bind().dialect.name == "postgresql":
+        stmt = stmt.with_for_update(skip_locked=True)
+
+    run = session.execute(stmt).scalars().first()
+    if run is None:
+        return None
+
+    return _finalize_module_claim(session, run, now)
 
 
 def claim_next_module_run(session: Session, settings: Settings) -> ModuleRun | None:
@@ -42,17 +96,4 @@ def claim_next_module_run(session: Session, settings: Settings) -> ModuleRun | N
     if run is None:
         return None
 
-    run.attempts += 1
-
-    if run.attempts > MAX_ATTEMPTS:
-        run.status = "failed"
-        run.error = "max retries exceeded"
-        run.claimed_at = now
-        session.commit()
-        return None
-
-    run.status = "running"
-    run.claimed_at = now
-    run.error = None
-    session.commit()
-    return run
+    return _finalize_module_claim(session, run, now)

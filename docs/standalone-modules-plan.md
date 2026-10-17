@@ -154,7 +154,7 @@ When `REDIS_URL` is unset, behaviour falls back to today's Postgres `claim_next`
 | `rq-0` | ADR — hybrid queue, at-least-once, fallback rules | Pending |
 | `rq-1` | Valkey/Redis in `deploy/docker-compose.yml` + `Settings.redis_url` | **Done** (main) |
 | `rq-2` | Broker abstraction — today `app/jobs/redis_dispatch_queue.py` | **Partial** |
-| `rq-3` | Wire `module_runs` enqueue + worker (`queue:module`) | **Next** (see implementation order) |
+| `rq-3` | Wire `module_runs` enqueue + worker (`queue:module`) | **Done** |
 | `rq-4` | Monolith `analyses` queue Redis dispatch | **Done** (main; before rq-3) |
 | `rq-5` | Site audit worker queue + ops (AOF, memory) | With mod-11 |
 

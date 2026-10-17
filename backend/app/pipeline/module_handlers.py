@@ -148,6 +148,11 @@ def handle_geo_run(session: Session, run: ModuleRun, settings: Settings) -> dict
     if not prompt_specs:
         raise ModuleRunError("prompts are required")
 
+    mode = (payload.get("mode") or "measured").strip().lower()
+    if mode not in {"measured", "simulated"}:
+        raise ModuleRunError("mode must be measured or simulated")
+    effective_settings = settings.model_copy(update={"geo_mode": mode})
+
     run.current_step = "execute"
     run.progress = 5
     session.commit()
@@ -167,7 +172,7 @@ def handle_geo_run(session: Session, run: ModuleRun, settings: Settings) -> dict
         prompt_rows.append(row)
     session.flush()
 
-    analysis = run_geo_only(session, analysis, prompt_rows, kyc, settings)
+    analysis = run_geo_only(session, analysis, prompt_rows, kyc, effective_settings)
     return {
         "analysis_id": str(analysis.id),
         "geo_score": analysis.geo_score,

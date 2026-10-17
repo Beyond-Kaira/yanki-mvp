@@ -14,6 +14,7 @@ from app.jobs.module_kinds import JOB_KIND_GEO_RUN, JOB_KIND_KYC_EXTRACT, JOB_KI
 from app.net_guard import is_public_url
 from app.pipeline import kyc as kyc_step
 from app.pipeline import serp_visibility as serp_step
+from app.pipeline.prompts import brand_keys, leaks_brand
 from app.pipeline.runner import run_geo_only
 from app.services.brand_contexts import extract_brand_context_profile
 from app.serp import registry as serp_registry
@@ -104,7 +105,28 @@ def handle_serp_run(session: Session, run: ModuleRun, settings: Settings) -> dic
     run.progress = 5
     session.commit()
 
+    payload = run.payload or {}
+    locale = (payload.get("locale") or context.locale or "en").strip() or "en"
+
     analysis = _shell_analysis(session, run, context, kind="serp_run")
+    analysis.lang = locale
+    session.flush()
+
+    query_list: list[str] | None = None
+    raw_queries = payload.get("queries")
+    if raw_queries is not None:
+        keys = brand_keys(kyc)
+        picked: list[str] = []
+        for item in raw_queries:
+            text = (item if isinstance(item, str) else str(item)).strip()
+            if not text:
+                continue
+            if leaks_brand(text, keys):
+                raise ModuleRunError("queries must not contain the brand name")
+            picked.append(text)
+        if not picked:
+            raise ModuleRunError("queries must not be empty")
+        query_list = picked
 
     serp_source = serp_registry.get_serp_source(settings)
     if serp_source is None:
@@ -117,7 +139,9 @@ def handle_serp_run(session: Session, run: ModuleRun, settings: Settings) -> dic
             "reason": "no serp source configured",
         }
 
-    outcome = serp_step.run_serp(session, analysis, kyc, serp_source, settings)
+    outcome = serp_step.run_serp(
+        session, analysis, kyc, serp_source, settings, query_list=query_list
+    )
     analysis.serp_status = outcome.status
     analysis.serp_source = outcome.source or None
     analysis.serp_hit_count = outcome.hits

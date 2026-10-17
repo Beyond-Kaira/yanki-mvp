@@ -263,16 +263,31 @@ def serp_score(hits: int, measured: int) -> float | None:
     return hits / measured
 
 
-def run_serp(session, analysis, kyc, source: SerpSource, settings) -> SerpOutcome:
+def run_serp(
+    session,
+    analysis,
+    kyc,
+    source: SerpSource,
+    settings,
+    *,
+    query_list: list[str] | None = None,
+) -> SerpOutcome:
     """Run the SERP pass for one analysis, persisting a row per query.
 
     Never raises: every failure mode collapses into a status the row can carry.
     The caller is responsible for not calling this at all when the registry
     hands back no source — a run with SERP switched off leaves every ``serp_*``
     column null, which is a different statement from "we tried and failed".
+
+    When ``query_list`` is provided (standalone ``serp_run`` module jobs), those
+    strings are used instead of ``build_queries`` — callers must keep them
+    brand-free (ADR-27).
     """
-    count = getattr(settings, "serp_query_count", DEFAULT_QUERY_COUNT)
-    queries = build_queries(kyc, count)
+    if query_list is not None:
+        queries = [q.strip() for q in query_list if q and q.strip()]
+    else:
+        count = getattr(settings, "serp_query_count", DEFAULT_QUERY_COUNT)
+        queries = build_queries(kyc, count)
     if not queries:
         # A profile with no category-like topic gives us nothing a buyer would
         # ever type. Same judgement ``require_usable`` makes before the paid

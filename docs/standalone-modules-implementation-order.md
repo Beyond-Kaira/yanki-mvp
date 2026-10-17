@@ -11,8 +11,8 @@ Execute in this order (action-plan item numbers in parentheses):
 1. **Tracker sync (4)** — progress canvas + this doc reflect repo reality.
 2. ~~**rq-3 (5–8)**~~ — `module_runs` LPUSH + worker pop `queue:module` (ops below).
 3. ~~**mod-4 API (9–12)**~~ — `POST/GET /api/v1/ai-visibility/runs` + `GET …/geo` (linked analysis slice).
-4. ~~**Module poll (16–17)**~~ — `GET /api/v1/module/runs/{id}` + `ModuleRunOut` fields.
-5. **mod-3 API (13–15)** — `POST/GET /api/v1/serp/runs` (+ checks). Live DataForSEO smoke when credits available.
+4. ~~**Module poll (16–17)**~~ — `GET /api/v1/background-jobs/{id}` + `ModuleRunOut` fields.
+5. ~~**mod-3 API (13–14)**~~ — `POST/GET /api/v1/serp/runs` + `GET …/checks`. Item **15** (DataForSEO live smoke) when credits available.
 6. **Doc cleanup (1–3)** — dedupe `standalone-modules-plan.md`, ADR-52 numbering, align progress canvas.
 7. **18+** — backfill BrandContext, bundle orchestrator, frontend wizard, backlinks, site audit, rq-5.
 
@@ -23,7 +23,7 @@ Execute in this order (action-plan item numbers in parentheses):
 | mod-0, mod-1, mod-2 | Done | Phase A |
 | mod-5, mod-6 | Done | KYC profiles + worker handlers (`serp_run`, `geo_run`, `kyc_extract`) |
 | mod-4 | Done | `POST/GET /api/v1/ai-visibility/runs`, `GET …/geo` |
-| mod-3 | Not started | Handler only; no `/serp/runs` routes |
+| mod-3 | Done (API) | `/serp/runs` routes; live smoke (15) ops |
 | rq-1 | Done | Valkey compose, `REDIS_URL`, health `redis_dispatch` |
 | rq-4 | Done (analysis) | `notify_analysis_enqueued` + worker `try_pop` on `queue:analysis` |
 | rq-2 | Partial | `app/jobs/redis_dispatch_queue.py` (no separate `broker.py`) |

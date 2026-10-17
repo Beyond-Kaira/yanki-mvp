@@ -377,9 +377,9 @@ export async function getAnalysis(id: string): Promise<AnalysisEnvelope> {
   return readAnalysisJson<AnalysisEnvelope>(res)
 }
 
-export async function getModuleRun(runId: string): Promise<ModuleRunOut> {
+export async function getBackgroundJob(jobId: string): Promise<ModuleRunOut> {
   const res = await authorizedFetch(
-    `/api/v1/module/runs/${encodeURIComponent(runId)}`,
+    `/api/v1/background-jobs/${encodeURIComponent(jobId)}`,
     {
       headers: { Accept: 'application/json' },
       cache: 'no-store',
@@ -388,12 +388,15 @@ export async function getModuleRun(runId: string): Promise<ModuleRunOut> {
   if (!res.ok) {
     const message =
       res.status === 404 || res.status === 422
-        ? "We couldn't find that module run."
+        ? "We couldn't find that background job."
         : await readErrorMessage(res)
     throw new ApiError(message, res.status)
   }
   return res.json() as Promise<ModuleRunOut>
 }
+
+/** @deprecated Use getBackgroundJob */
+export const getModuleRun = getBackgroundJob
 
 export async function getAnalysisKyc(id: string): Promise<AnalysisKycSlice> {
   return analysisSliceFetch<AnalysisKycSlice>(id, '/kyc')

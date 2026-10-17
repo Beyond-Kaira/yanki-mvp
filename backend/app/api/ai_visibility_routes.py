@@ -18,7 +18,6 @@ from app.api.kyc_schemas import ModuleRunOut
 from app.api.org_dependencies import requires
 from app.api.schemas import GeoOut
 from app.config import Settings, get_settings
-from app.db.models import Analysis
 from app.db.session import get_session
 from app.jobs import redis_dispatch_queue
 from app.jobs.module_kinds import JOB_KIND_GEO_RUN
@@ -104,8 +103,8 @@ def get_ai_visibility_geo_artifact(
     if run.linked_analysis_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="geo artifact not ready")
 
-    analysis = session.get(Analysis, run.linked_analysis_id)
-    if analysis is None or not readable_analysis(org, analysis):
+    analysis = readable_analysis(session, run.linked_analysis_id, org)
+    if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="geo artifact not found")
 
     return build_geo_out(analysis)

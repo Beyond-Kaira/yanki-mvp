@@ -31,6 +31,7 @@ import type {
   KeywordRankCheckResponse,
   LinkEventPage,
   LoginResponse,
+  ModuleRunOut,
   ReferringDomainPage,
     SeoProject,
     SeoProjectDetail,
@@ -374,6 +375,24 @@ export async function getAnalysis(id: string): Promise<AnalysisEnvelope> {
     throw new ApiError(message, res.status)
   }
   return readAnalysisJson<AnalysisEnvelope>(res)
+}
+
+export async function getModuleRun(runId: string): Promise<ModuleRunOut> {
+  const res = await authorizedFetch(
+    `/api/v1/module/runs/${encodeURIComponent(runId)}`,
+    {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    },
+  )
+  if (!res.ok) {
+    const message =
+      res.status === 404 || res.status === 422
+        ? "We couldn't find that module run."
+        : await readErrorMessage(res)
+    throw new ApiError(message, res.status)
+  }
+  return res.json() as Promise<ModuleRunOut>
 }
 
 export async function getAnalysisKyc(id: string): Promise<AnalysisKycSlice> {

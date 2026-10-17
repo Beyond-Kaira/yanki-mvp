@@ -11,7 +11,7 @@ Execute in this order (action-plan item numbers in parentheses):
 1. **Tracker sync (4)** — progress canvas + this doc reflect repo reality.
 2. ~~**rq-3 (5–8)**~~ — `module_runs` LPUSH + worker pop `queue:module` (ops below).
 3. ~~**mod-4 API (9–12)**~~ — `POST/GET /api/v1/ai-visibility/runs` + `GET …/geo` (linked analysis slice).
-4. **Module poll (16–17)** — `GET /api/v1/module/runs/{id}` (or equivalent) for KYC extract + future runs.
+4. ~~**Module poll (16–17)**~~ — `GET /api/v1/module/runs/{id}` + `ModuleRunOut` fields.
 5. **mod-3 API (13–15)** — `POST/GET /api/v1/serp/runs` (+ checks). Live DataForSEO smoke when credits available.
 6. **Doc cleanup (1–3)** — dedupe `standalone-modules-plan.md`, ADR-52 numbering, align progress canvas.
 7. **18+** — backfill BrandContext, bundle orchestrator, frontend wizard, backlinks, site audit, rq-5.

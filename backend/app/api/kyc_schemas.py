@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -89,21 +89,27 @@ class ExtractBrandContextRequest(BaseModel):
     source_url: str | None = None
 
 
+ModuleRunStatus = Literal["queued", "running", "done", "failed"]
+ModuleJobKind = Literal["kyc_extract", "geo_run", "serp_run"]
+
+
 class ModuleRunOut(BaseModel):
-    """One standalone module job row."""
+    """One standalone module job row — shared poll shape (POST …/extract, ai-visibility, serp)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     job_kind: str
-    status: str
+    status: ModuleRunStatus
     progress: int
     current_step: str | None
     error: str | None
     org_id: uuid.UUID | None
+    created_by_user_id: uuid.UUID | None
     brand_context_id: uuid.UUID | None
     linked_analysis_id: uuid.UUID | None
     payload: dict[str, Any]
     result: dict[str, Any] | None
+    attempts: int
     created_at: datetime
     updated_at: datetime

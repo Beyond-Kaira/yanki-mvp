@@ -162,6 +162,7 @@ ORG = {
     ("POST", "/api/v1/ai-visibility/runs"),
     ("GET", "/api/v1/ai-visibility/runs/{run_id}"),
     ("GET", "/api/v1/ai-visibility/runs/{run_id}/geo"),
+    ("GET", "/api/v1/module/runs/{run_id}"),
 }
 
 CLASSIFIED = PUBLIC | SELF | CAPABILITY | ORG

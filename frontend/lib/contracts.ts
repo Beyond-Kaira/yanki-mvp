@@ -308,3 +308,25 @@ export type KeywordRankHit = Schemas['KeywordRankHitOut']
 /** Evidence-backed, single-analysis source ranking. */
 export type CitationSourcesReport = components['schemas']['CitationSourcesOut']
 export type CitationSourceRow = components['schemas']['CitationSourceRow']
+
+/** Standalone module worker jobs (KYC extract, GEO run, SERP run). */
+export type ModuleJobKind = 'kyc_extract' | 'geo_run' | 'serp_run'
+export type ModuleRunStatus = 'queued' | 'running' | 'done' | 'failed'
+
+export interface ModuleRunOut {
+  id: string
+  job_kind: ModuleJobKind | string
+  status: ModuleRunStatus
+  progress: number
+  current_step: string | null
+  error: string | null
+  org_id: string | null
+  created_by_user_id: string | null
+  brand_context_id: string | null
+  linked_analysis_id: string | null
+  payload: Record<string, unknown>
+  result: Record<string, unknown> | null
+  attempts: number
+  created_at: string
+  updated_at: string
+}

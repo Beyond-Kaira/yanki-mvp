@@ -10,6 +10,7 @@ from app.api.backlink_routes import router as backlink_router
 from app.api.invitation_routes import router as invitation_router
 from app.api.keyword_routes import router as keyword_router
 from app.api.ai_visibility_routes import router as ai_visibility_router
+from app.api.module_routes import router as module_router
 from app.api.kyc_routes import router as kyc_router
 from app.api.routes import router
 from app.api.seo_project_routes import router as seo_project_router
@@ -38,6 +39,7 @@ app.include_router(backlink_router)
 app.include_router(keyword_router)
 app.include_router(kyc_router)
 app.include_router(ai_visibility_router)
+app.include_router(module_router)
 app.include_router(admin_router)
 app.include_router(invitation_router)
 app.include_router(industry_citations_router)

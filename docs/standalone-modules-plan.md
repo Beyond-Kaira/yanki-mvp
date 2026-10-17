@@ -149,19 +149,18 @@ See [dataforseo-touchpoint-map.md](./dataforseo-touchpoint-map.md) for file-leve
 Postgres keeps **run state** (`module_runs`, `analyses`), artifacts, audit, and poll APIs.
 When `REDIS_URL` is unset, behaviour falls back to today's Postgres `claim_next` path.
 
-| ID | Task | When |
-|----|------|------|
-| `rq-0` | ADR — hybrid queue, at-least-once, fallback rules | Before any Redis code |
-| `rq-1` | Valkey/Redis in `deploy/docker-compose.yml` + `Settings.redis_url` | After rq-0 |
-| `rq-2` | `app/jobs/broker.py` — Redis LPUSH/BRPOP vs DbBroker noop | After rq-1 |
-| `rq-3` | Wire `module_runs` enqueue + worker (first migration) | After mod-6 + mod-4/mod-3 APIs |
-| `rq-4` | Migrate monolith `analyses` queue | After rq-3 stable |
+| ID | Task | Status (Oct 2026) |
+|----|------|-------------------|
+| `rq-0` | ADR — hybrid queue, at-least-once, fallback rules | Pending |
+| `rq-1` | Valkey/Redis in `deploy/docker-compose.yml` + `Settings.redis_url` | **Done** (main) |
+| `rq-2` | Broker abstraction — today `app/jobs/redis_dispatch_queue.py` | **Partial** |
+| `rq-3` | Wire `module_runs` enqueue + worker (`queue:module`) | **Next** (see implementation order) |
+| `rq-4` | Monolith `analyses` queue Redis dispatch | **Done** (main; before rq-3) |
 | `rq-5` | Site audit worker queue + ops (AOF, memory) | With mod-11 |
 
-**Recommended order:** finish Phase B product APIs (`mod-4` → `mod-3`), then `rq-0` → `rq-3`.
-Enable `rq-4`/`rq-5` when `/healthz` queue depth or worker count justifies it.
+**Recommended order:** [standalone-modules-implementation-order.md](./standalone-modules-implementation-order.md) — sprint `rq-3` → mod-4 API → module poll → mod-3 API → doc cleanup.
 
-Progress canvas: `canvases/standalone-modules-progress.canvas.tsx` (Phase Q tab).
+Progress canvases: `standalone-modules-progress.canvas.tsx`, `standalone-modules-action-plan.canvas.tsx`.
 
 ---
 

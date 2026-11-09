@@ -121,6 +121,8 @@ class Settings(BaseSettings):
     # shape as CHECKER_ENABLED / SERP_ENABLED.
     backlinks_enabled: bool = False
     backlink_vendor: str = "mock"
+    # Opt-in live DataForSEO backlinks fetch (mod-10); default off until API wired.
+    backlink_dataforseo_enabled: bool = False
 
     # Pipeline behaviour
     dry_run: bool = True

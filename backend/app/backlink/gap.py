@@ -139,6 +139,7 @@ def unlinked_mentions(
     project_id: uuid.UUID,
     own_domain: str,
     org_id: uuid.UUID | None = None,
+    analysis_ids: list[uuid.UUID] | None = None,
     limit: int = 100,
 ) -> list[UnlinkedMention]:
     """Pages that talked about the brand without linking to it.
@@ -172,11 +173,12 @@ def unlinked_mentions(
         )
     }
 
-    analysis_ids = [
-        row[0]
-        for row in session.execute(select(Analysis.id, Analysis.url))
-        if domain_key(row[1]) == own
-    ]
+    if analysis_ids is None:
+        analysis_ids = [
+            row[0]
+            for row in session.execute(select(Analysis.id, Analysis.url))
+            if domain_key(row[1]) == own
+        ]
     if not analysis_ids:
         return []
 
@@ -234,6 +236,7 @@ def outreach_list(
     project_id: uuid.UUID,
     own_domain: str,
     limit: int = 100,
+    evidence_analysis_ids: list[uuid.UUID] | None = None,
 ) -> dict[str, Any]:
     """The two opportunity sources in one payload, each labelled with its origin.
 
@@ -243,16 +246,27 @@ def outreach_list(
     """
 
     gap = link_gap(session, project_id=project_id, own_domain=own_domain, limit=limit)
-    mentions = unlinked_mentions(session, project_id=project_id, own_domain=own_domain, limit=limit)
+    mentions = unlinked_mentions(
+        session,
+        project_id=project_id,
+        own_domain=own_domain,
+        analysis_ids=evidence_analysis_ids,
+        limit=limit,
+    )
+    mention_provenance = (
+        "explicit analysis / module run ids (mod-7)"
+        if evidence_analysis_ids is not None
+        else (
+            "Yanki's own citation and SERP evidence — no vendor call, and not "
+            "available to link-only tools"
+        )
+    )
     return {
         "link_gap": [row.as_dict() for row in gap],
         "unlinked_mentions": [row.as_dict() for row in mentions],
         "provenance": {
             "link_gap": "licensed backlink index, competitor profiles",
-            "unlinked_mentions": (
-                "Yanki's own citation and SERP evidence — no vendor call, and not "
-                "available to link-only tools"
-            ),
+            "unlinked_mentions": mention_provenance,
         },
     }
 

@@ -31,8 +31,13 @@ def get_backlink_source(settings: Any, *, cycle: int = 0) -> BacklinkSource | No
     if not vendor or vendor == "mock":
         return MockBacklinkSource(cycle=cycle)
 
-    # P8.2 lands the first licensed adapter here, as one branch, once the
-    # operator answers A4 (vendor + budget). Until then an unrecognised vendor
-    # is honestly "not measured" rather than a silent fallback to fixtures that
-    # would look like real data.
+    if vendor == "dataforseo":
+        # Live fetch gated until mod-10 API mapping ships; adapter lives in
+        # ``app/backlink/dataforseo.py`` for the first PR that wires credentials.
+        if bool(getattr(settings, "backlink_dataforseo_enabled", False)):
+            from app.backlink.dataforseo import as_backlink_source
+
+            return as_backlink_source(settings)
+        return None
+
     return None

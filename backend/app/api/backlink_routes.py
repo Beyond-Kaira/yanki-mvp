@@ -194,11 +194,37 @@ def read_events(
 def read_opportunities(
     project_id: uuid.UUID,
     limit: Annotated[int, Query(ge=1, le=backlinks.MAX_PAGE_SIZE)] = 100,
+    analysis_ids: Annotated[list[uuid.UUID] | None, Query()] = None,
+    module_run_ids: Annotated[list[uuid.UUID] | None, Query()] = None,
     org: OrgContext = Depends(requires(BACKLINK_VIEW)),
     session: Session = Depends(get_session),
 ) -> OpportunitiesOut:
+    from app.services.unlinked_evidence import (
+        UnlinkedEvidenceValidationError,
+        resolve_analysis_ids_for_evidence,
+    )
+
     subject = _subject(session, org, project_id)
-    return OpportunitiesOut.model_validate(backlinks.opportunities(session, subject, limit=limit))
+    evidence_ids: list[uuid.UUID] | None = None
+    if analysis_ids or module_run_ids:
+        try:
+            evidence_ids = resolve_analysis_ids_for_evidence(
+                session,
+                org_id=org.require_org_id,
+                own_domain=subject.domain,
+                analysis_ids=analysis_ids,
+                module_run_ids=module_run_ids,
+            )
+        except UnlinkedEvidenceValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return OpportunitiesOut.model_validate(
+        backlinks.opportunities(
+            session,
+            subject,
+            limit=limit,
+            evidence_analysis_ids=evidence_ids,
+        )
+    )
 
 
 @router.post("/refresh", status_code=status.HTTP_201_CREATED, response_model=RefreshOut)

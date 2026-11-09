@@ -148,6 +148,13 @@ def submit_analysis(
     if not is_public_url(str(payload.url)):
         raise HTTPException(status_code=422, detail="URL host is not allowed")
 
+    steps = payload.steps
+    if steps is not None and not steps.kyc and payload.brand_context_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="brand_context_id is required when steps.kyc is false",
+        )
+
     # Rate-limit BEFORE create_analysis so a throttled client never gets a row
     # or spends money — even for an otherwise-valid URL.
     ip_hash = hash_ip(client_ip(request) or "unknown", settings.ip_hash_salt)
@@ -168,6 +175,9 @@ def submit_analysis(
     # would let the run be created and the quota rolled back by a later failure.
     org_id = org.require_org_id
     quota.consume(session, settings, org_id=org_id, metric=billing.METRIC_ANALYSES, context=org)
+    from app.services.bundle_steps import bundle_steps_to_json
+
+    bundle_json = bundle_steps_to_json(steps) if steps is not None else None
     analysis = create_analysis(
         session,
         str(payload.url),
@@ -175,6 +185,8 @@ def submit_analysis(
         org_id=org_id,
         created_by_user_id=user_id,
         run_mode=payload.mode,
+        brand_context_id=payload.brand_context_id,
+        bundle_steps=bundle_json,
         commit=False,
     )
 

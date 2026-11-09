@@ -305,6 +305,7 @@ def create_site_audit(
             page_limit=payload.page_limit,
             profile_id=payload.profile_id,
             js_rendering=payload.js_rendering,
+            settings=settings,
         )
     except SiteAuditAlreadyActive as exc:
         raise HTTPException(

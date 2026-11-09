@@ -335,6 +335,7 @@ def queue_site_audit(
     page_limit: int,
     profile_id: AuditProfileId,
     js_rendering: bool,
+    settings=None,
 ) -> SiteAudit:
     active_id = session.scalar(
         select(SiteAudit.id).where(
@@ -372,6 +373,10 @@ def queue_site_audit(
     except IntegrityError as exc:
         session.rollback()
         raise SiteAuditAlreadyActive from exc
+    if settings is not None:
+        from app.jobs import redis_dispatch_queue
+
+        redis_dispatch_queue.notify_site_audit_enqueued(site_audit.id, settings)
     return site_audit
 
 

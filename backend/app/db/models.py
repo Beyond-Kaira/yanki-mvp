@@ -154,6 +154,10 @@ class Analysis(Base):
     brand_context_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("brand_contexts.id", ondelete="SET NULL"), nullable=True
     )
+    # Optional step flags for the monolith bundle (mod-8). Null = all steps on.
+    bundle_steps: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     claimed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

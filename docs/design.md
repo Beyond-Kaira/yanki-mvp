@@ -2568,7 +2568,30 @@ things the PR did not intend.*
   bundle before standalone paths are production-ready; implicit auto-refresh
   ("re-run GEO when KYC updates").
 
-### ADR-52 — Evidence-backed citation source rankings (2026-09-17)
+### ADR-54 — Hybrid job dispatch: Redis pointers, Postgres state (2026-10-17, rq-0)
+
+- **Context:** Workers historically polled Postgres (`claim_next` on `analyses`,
+  `module_runs`, `site_audits`). At scale, idle polling competes with OLTP.
+  Valkey/Redis is available in compose (`REDIS_URL`) for analysis and module
+  enqueue (rq-3, rq-4).
+
+- **Decision:** Redis holds **dispatch pointers only** — list keys
+  `queue:analysis`, `queue:module`, `queue:site_audit` with LPUSH on enqueue and
+  BRPOP/RPOP hint before Postgres claim. **Postgres remains source of truth** for
+  status, progress, artifacts, and poll APIs (`GET /background-jobs/{id}`, feature
+  run GETs). Claim is **idempotent** (`queued` → `running` only if still queued).
+  When `REDIS_URL` is unset, dispatch backends are no-ops and behaviour matches
+  the legacy Postgres-only path.
+
+- **Consequences:** at-least-once delivery — duplicate list entries cause extra
+  pop attempts but must not double-run; ops scripts may re-LPUSH orphaned queued
+  rows. Site audit worker uses the same hint-then-FIFO pattern (rq-5). Broker
+  entrypoint: `app/jobs/broker.py` re-exports `redis_dispatch_queue`.
+
+- **Rejected:** storing run payloads or results in Redis; requiring Redis for
+  read paths; removing Postgres claim fallback.
+
+### ADR-53 — Evidence-backed citation source rankings (2026-09-17)
 
 The Top Cited Pages report reads `Response.audit` once, joined to its existing
 prompt and analysis. `GeoRecord` is its stored twin, so aggregating both would

@@ -443,12 +443,19 @@ def events(
     return rows, total
 
 
-def opportunities(session: Session, subject: Subject, *, limit: int = 100) -> dict[str, Any]:
+def opportunities(
+    session: Session,
+    subject: Subject,
+    *,
+    limit: int = 100,
+    evidence_analysis_ids: list[uuid.UUID] | None = None,
+) -> dict[str, Any]:
     return outreach_list(
         session,
         project_id=subject.project_id,
         own_domain=subject.domain,
         limit=min(limit, MAX_PAGE_SIZE),
+        evidence_analysis_ids=evidence_analysis_ids,
     )
 
 

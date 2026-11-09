@@ -46,6 +46,14 @@ NormalizedEmail = Annotated[
 ]
 
 
+class BundleStepsRequest(BaseModel):
+    """Optional monolith step flags (mod-8). Omitted = legacy all-on bundle."""
+
+    kyc: bool = True
+    geo: bool = True
+    serp: bool = True
+
+
 class CreateAnalysisRequest(BaseModel):
     # AnyHttpUrl accepts http/https URLs only; anything else is a 422.
     url: AnyHttpUrl
@@ -55,6 +63,8 @@ class CreateAnalysisRequest(BaseModel):
     # caller that is not a screen, record no source.
     source: Literal["ai_visibility", "search_visibility"] | None = None
     mode: Literal["quick", "guided"] = "quick"
+    brand_context_id: uuid.UUID | None = None
+    steps: BundleStepsRequest | None = None
 
 
 class CreateAnalysisResponse(BaseModel):

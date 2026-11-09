@@ -94,6 +94,12 @@ def notify_module_run_enqueued(run_id: uuid.UUID, settings: Settings) -> None:
     connect_from_settings(settings).push(QUEUE_MODULE, str(run_id))
 
 
+def notify_site_audit_enqueued(audit_id: uuid.UUID, settings: Settings) -> None:
+    """Push a site audit id onto the Redis dispatch list (no-op when Redis is off)."""
+
+    connect_from_settings(settings).push(QUEUE_SITE_AUDIT, str(audit_id))
+
+
 def redis_is_enabled(settings: Settings) -> bool:
     return bool((settings.redis_url or "").strip())
 

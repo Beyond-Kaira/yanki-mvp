@@ -97,6 +97,8 @@ def create_analysis(
     org_id: uuid.UUID | None = None,
     created_by_user_id: uuid.UUID | None = None,
     run_mode: str = "quick",
+    brand_context_id: uuid.UUID | None = None,
+    bundle_steps: dict[str, Any] | None = None,
     commit: bool = True,
 ) -> Analysis:
     """Insert a new queued analysis and return it.
@@ -118,6 +120,8 @@ def create_analysis(
     """
     analysis = Analysis(
         url=url,
+        brand_context_id=brand_context_id,
+        bundle_steps=bundle_steps,
         ip_hash=ip_hash,
         org_id=org_id,
         created_by_user_id=created_by_user_id,

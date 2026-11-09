@@ -39,8 +39,10 @@ from app.pipeline import serp_visibility as serp_step
 from app.providers import registry
 from app.providers.base import UsageTrackingProvider
 from app.serp import registry as serp_registry
+from app.db.models import BrandContext
 from app.services.analyses import delete_analysis_children, delete_measure_outputs
 from app.services.analysis_run_mode import RUN_MODE_GUIDED, STATUS_AWAITING_REVIEW
+from app.services.bundle_steps import bundle_steps_from_analysis
 
 # progress % set when each step COMPLETES (see the master SPEC).
 _DISCOVERY_DONE = 15
@@ -126,8 +128,9 @@ def _run_measure_phase(
     analysis.reliability_score = reliability_report.get("reliability_score")
     footprint_count = sum(1 for response in responses if response.footprint)
 
+    steps = bundle_steps_from_analysis(analysis)
     serp_source = serp_registry.get_serp_source(settings)
-    if serp_source is not None:
+    if steps.serp and serp_source is not None:
         outcome = serp_step.run_serp(session, analysis, kyc, serp_source, settings)
         analysis.serp_status = outcome.status
         analysis.serp_source = outcome.source or None
@@ -232,8 +235,17 @@ def run_execute_prompts_and_score(session, analysis_id, settings) -> Analysis:
     return _run_measure_phase(session, analysis, prompt_rows, kyc, settings)
 
 
+def _kyc_from_brand_context(session, analysis: Analysis) -> kyc_step.KYC:
+    ctx = session.get(BrandContext, analysis.brand_context_id)
+    if ctx is None:
+        raise kyc_step.PipelineError("brand context not found")
+    profile = ctx.profile or {"company": ctx.brand}
+    return kyc_step.KYC.model_validate({**profile, "company": profile.get("company") or ctx.brand})
+
+
 def run_pipeline(session, analysis_id, settings) -> Analysis:
     analysis = session.execute(select(Analysis).where(Analysis.id == analysis_id)).scalar_one()
+    steps = bundle_steps_from_analysis(analysis)
 
     delete_analysis_children(session, analysis.id)
     # The SERP summary is cleared with the evidence it summarises, not alongside
@@ -275,25 +287,26 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
 
     # 2. kyc
     _start_step(session, analysis, "kyc", settings)
-    kyc_provider = UsageTrackingProvider(registry.get_analysis_provider(settings))
-    try:
-        kyc = kyc_step.generate_kyc(
-            text,
-            analysis.url,
-            kyc_provider,
-            # Grounding checks the model's proper nouns against the crawl. A checker
-            # row has no crawl — its "text" is the brand + category sentence composed
-            # above — so verifying against it would delete every competitor the model
-            # knows and degrade the run to the neutral fallbacks.
-            verify_against_source=not is_checker,
-        )
+    if not steps.kyc and analysis.brand_context_id is not None:
+        kyc = _kyc_from_brand_context(session, analysis)
         analysis.kyc = kyc.model_dump()
-    finally:
-        # Persist even when parsing/validation fails after a paid response. The
-        # failed analysis still cost money and its terminal audit event must say so.
-        analysis.kyc_cost_usd = kyc_provider.cost_usd
-        analysis.kyc_usage = kyc_provider.usage or None
+        analysis.kyc_cost_usd = 0
+        analysis.kyc_usage = None
         session.commit()
+    else:
+        kyc_provider = UsageTrackingProvider(registry.get_analysis_provider(settings))
+        try:
+            kyc = kyc_step.generate_kyc(
+                text,
+                analysis.url,
+                kyc_provider,
+                verify_against_source=not is_checker,
+            )
+            analysis.kyc = kyc.model_dump()
+        finally:
+            analysis.kyc_cost_usd = kyc_provider.cost_usd
+            analysis.kyc_usage = kyc_provider.usage or None
+            session.commit()
     _complete_step(session, analysis, _KYC_DONE)
 
     # Refuse to fan out on input we already know is unusable. ``execute`` below
@@ -322,6 +335,14 @@ def run_pipeline(session, analysis_id, settings) -> Analysis:
     if analysis.run_mode == RUN_MODE_GUIDED and not is_checker:
         analysis.status = STATUS_AWAITING_REVIEW
         analysis.current_step = None
+        analysis.claimed_at = _now()
+        session.commit()
+        return analysis
+
+    if not steps.geo:
+        analysis.status = "done"
+        analysis.current_step = None
+        analysis.progress = _PROMPTS_DONE
         analysis.claimed_at = _now()
         session.commit()
         return analysis

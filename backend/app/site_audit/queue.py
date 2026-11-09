@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, or_, select
@@ -11,6 +12,31 @@ from app.config import Settings
 from app.db.models import SiteAudit
 
 MAX_ATTEMPTS = 3
+
+
+def claim_site_audit_by_id(session: Session, settings: Settings, audit_id: uuid.UUID) -> SiteAudit | None:
+    """Claim one queued audit by id (Redis hint path, rq-5)."""
+
+    audit = session.get(SiteAudit, audit_id)
+    if audit is None or audit.status not in ("queued", "running"):
+        return None
+    now = datetime.now(UTC)
+    audit.attempts += 1
+    audit.claimed_at = now
+    if audit.attempts > MAX_ATTEMPTS:
+        audit.status = "failed"
+        audit.error = "max retries exceeded"
+        audit.completed_at = now
+        session.commit()
+        return None
+    audit.status = "running"
+    audit.error = None
+    session.commit()
+    return audit
+
+
+# Alias for worker import name in action plan
+claim_by_id = claim_site_audit_by_id
 
 
 def claim_next_site_audit(session: Session, settings: Settings) -> SiteAudit | None:

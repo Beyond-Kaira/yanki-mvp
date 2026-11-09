@@ -12,6 +12,7 @@ from app.api.keyword_routes import router as keyword_router
 from app.api.ai_visibility_routes import router as ai_visibility_router
 from app.api.background_jobs_routes import router as background_jobs_router
 from app.api.serp_routes import router as serp_routes_router
+from app.api.site_audit_routes import router as site_audit_router
 from app.api.kyc_routes import router as kyc_router
 from app.api.routes import router
 from app.api.seo_project_routes import router as seo_project_router
@@ -42,6 +43,7 @@ app.include_router(kyc_router)
 app.include_router(ai_visibility_router)
 app.include_router(background_jobs_router)
 app.include_router(serp_routes_router)
+app.include_router(site_audit_router)
 app.include_router(admin_router)
 app.include_router(invitation_router)
 app.include_router(industry_citations_router)
